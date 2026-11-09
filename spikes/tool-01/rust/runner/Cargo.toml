@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+[package]
+name = "runner"
+description = "DuoSpool TOOL-01 spike manifest runner (safe)"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+duospool_core = { path = "../core" }
+duospool = { path = "../capi" }

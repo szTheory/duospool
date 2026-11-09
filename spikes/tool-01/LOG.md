@@ -59,3 +59,5 @@ M01 note rust: single run, perl -MTime::HiRes=time around opt_build debug (cargo
 native-static-libs rust: -lSystem -lc -lm (printed by: cargo rustc -p duospool --release --crate-type staticlib -- --print native-static-libs; consumed by the G4 consumer build through pkgconf --static, as Libs.private in rust/duospool.pc.in; taken after the M01 build so as not to disturb it)
 INSTALL-BUILD-TYPE rust release+debuginfo
 rust-tracer: gates.sh rust --no-fuzz: build, header-identical, consumer-proof PASS (LEAK 0, SEEDED-LEAK 8); test-* FAIL as expected until the runner exists (Task 2)
+rust-core-path-end: 2026-11-09T22:32:37Z (gates.sh rust --no-fuzz green: build, header-identical, test-refusals, test-controls, test-interleave, transcript, transcript-identical, consumer-proof; LEAK 0, SEEDED-LEAK 8; cargo clippy --workspace -- -D warnings and cargo fmt --check clean on 1.99.1; transcript.c.txt equals transcript.rust.txt byte for byte)
+mutation check rust: changing 'len > MAX_SIZE' to 'len >= MAX_SIZE' in core turned test-refusals, test-controls and transcript-identical FAIL; restored with git checkout and gates went green again.

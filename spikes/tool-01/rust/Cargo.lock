@@ -12,3 +12,11 @@ dependencies = [
 [[package]]
 name = "duospool_core"
 version = "0.0.0"
+
+[[package]]
+name = "runner"
+version = "0.0.0"
+dependencies = [
+ "duospool",
+ "duospool_core",
+]

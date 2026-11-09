@@ -67,3 +67,10 @@ opt_install() {
     echo 'INSTALL-BUILD-TYPE rust release+debuginfo' >> "$SPIKE_DIR/LOG.md"
   fi
 }
+
+# opt_runner [debug|release]: print the path of the manifest runner binary for that profile (default debug).
+opt_runner() {
+  _p=${1:-debug}
+  rust_profile_flag "$_p" > /dev/null || return 1
+  echo "$SPIKE_DIR/out/build-rust-$_p/$_p/runner"
+}

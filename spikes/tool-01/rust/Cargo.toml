@@ -4,7 +4,7 @@
 # Self-contained workspace: a later repository-root workspace cannot absorb this one (RESEARCH Pitfall 16).
 [workspace]
 resolver = "3"
-members = ["core", "capi"]
+members = ["core", "capi", "runner"]
 
 [workspace.package]
 edition = "2024"
