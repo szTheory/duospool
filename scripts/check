@@ -346,6 +346,51 @@ stage_protocol_negatives() {
   return "$r"
 }
 
+# every tests/score/<case>/ is a control: scores.txt is the scorer input and EXPECT lists lines that the scorer's output
+# must contain verbatim. `EXIT=n` expects that exit status instead of 0, and `CODE=X` expects an output line whose first
+# word is X. A case that disagrees is a broken control (the decision rule moved, or the control is wrong).
+stage_score_controls() {
+  rc=0
+  n=0
+  for d in tests/score/*/; do
+    [ -d "$d" ] || continue
+    n=$((n + 1))
+    case_name=$(basename "$d")
+    if [ ! -f "${d}scores.txt" ] || [ ! -f "${d}EXPECT" ]; then
+      echo "HARNESS_NO_EXPECT $case_name"
+      rc=2
+      continue
+    fi
+    if awk -f "$here/lib/score.awk" "${d}scores.txt" > "$tmp/case.out" 2>&1; then r=0; else r=$?; fi
+    want=0
+    if grep -q '^EXIT=' "${d}EXPECT"; then
+      want=$(sed -n 's/^EXIT=//p' "${d}EXPECT" | sed -n 1p)
+    fi
+    ok=1
+    [ "$r" -eq "$want" ] || ok=0
+    while IFS= read -r line; do
+      case $line in
+        '' | EXIT=*) ;;
+        CODE=*)
+          code=${line#CODE=}
+          awk -v c="$code" '$1 == c { f = 1 } END { exit !f }' "$tmp/case.out" || ok=0
+          ;;
+        *) grep -Fxq -e "$line" "$tmp/case.out" || ok=0 ;;
+      esac
+    done < "${d}EXPECT"
+    if [ "$ok" -eq 0 ]; then
+      echo "CONTROL BROKEN $case_name (exit $r, wanted $want)"
+      sed 's/^/  /' "$tmp/case.out"
+      [ "$rc" -eq 2 ] || rc=1
+    fi
+  done
+  if [ "$n" -eq 0 ]; then
+    echo "NO_CONTROLS tests/score"
+    [ "$rc" -eq 2 ] || rc=1
+  fi
+  return "$rc"
+}
+
 # ---- self-test: prove the gate is alive (not vacuous). Mutates a COPY of scripts/ only ----
 
 selftest() {
@@ -383,6 +428,18 @@ selftest() {
   mv "$cp_dir/lib/provenance-register.mutated" "$cp_dir/lib/provenance-register.awk"
   if sh "$cp_dir/provenance-check" --root tests/provenance/gpl-spdx --expect PROV_BAD_SPDX > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
   if [ "$r" -eq 1 ]; then echo "SELFTEST mutation-provenance-rule PASS"; else echo "SELFTEST mutation-provenance-rule FAIL"; failed=1; fi
+
+  # (e) delete the rule that emits margin-below-10 from score.awk: the 9.90-point control must now be broken, because
+  # the scorer would pre-authorize or blame the ND rule instead of rejecting a lead under 10.00
+  rm -rf "$cp_dir"
+  cp -R "$here" "$cp_dir"
+  grep -v 'margin-below-10' "$cp_dir/lib/score.awk" > "$cp_dir/lib/score.mutated"
+  mv "$cp_dir/lib/score.mutated" "$cp_dir/lib/score.awk"
+  if awk -f "$cp_dir/lib/score.awk" tests/score/margin-9.90/scores.txt > "$tmp/st.out" 2>&1 && ! grep -qx 'REASON=margin-below-10' "$tmp/st.out"; then
+    echo "SELFTEST mutation-margin-rule PASS"
+  else
+    echo "SELFTEST mutation-margin-rule FAIL"; failed=1
+  fi
 
   if [ "$failed" -eq 0 ]; then echo "SELFTEST RESULT PASS"; return 0; fi
   echo "SELFTEST RESULT FAIL"
@@ -428,6 +485,7 @@ run_stage licences stage_licence_files
 run_stage licence-negatives stage_licence_negatives
 run_stage protocol-order stage_protocol_order
 run_stage protocol-negatives stage_protocol_negatives
+run_stage score-controls stage_score_controls
 
 if [ "$errs" -gt 0 ]; then
   echo "CHECK RESULT FAIL"

@@ -1,0 +1,6 @@
+TOTAL c 7000
+TOTAL rust 5000
+MARGIN nominal 2000 worst 2000
+LEADER c
+RESULT=proposed-default
+REASON=leader-fails-gate

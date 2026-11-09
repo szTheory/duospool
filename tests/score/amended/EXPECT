@@ -1,0 +1,6 @@
+TOTAL c 6500
+TOTAL rust 5500
+MARGIN nominal 1000 worst 1000
+LEADER c
+RESULT=proposed-default
+REASON=amended-after-spike

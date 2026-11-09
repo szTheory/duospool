@@ -1,0 +1,24 @@
+# both options fail a gate
+gate c G1 PASS
+gate c G2 PASS
+gate c G3 PASS
+gate c G4 FAIL
+gate c G5 PASS
+gate rust G1 PASS
+gate rust G2 PASS
+gate rust G3 PASS
+gate rust G4 PASS
+gate rust G5 FAIL
+score c C1 5.0
+score c C2 3.0
+score c C3 3.0
+score c C4 3.0
+score c C5 3.0
+score c C6 3.0
+score rust C1 1.0
+score rust C2 3.0
+score rust C3 3.0
+score rust C4 3.0
+score rust C5 3.0
+score rust C6 3.0
+amendment no

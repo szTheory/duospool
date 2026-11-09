@@ -1,0 +1,8 @@
+TOTAL c 6300
+TOTAL rust 5310
+WORST c 6300
+WORST rust 5310
+MARGIN nominal 990 worst 990
+LEADER c
+RESULT=proposed-default
+REASON=margin-below-10

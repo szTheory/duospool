@@ -1,0 +1,24 @@
+# every score at its extreme: totals 10000 and 0
+gate c G1 PASS
+gate c G2 PASS
+gate c G3 PASS
+gate c G4 PASS
+gate c G5 PASS
+gate rust G1 PASS
+gate rust G2 PASS
+gate rust G3 PASS
+gate rust G4 PASS
+gate rust G5 PASS
+score c C1 5.0
+score c C2 5.0
+score c C3 5.0
+score c C4 5.0
+score c C5 5.0
+score c C6 5.0
+score rust C1 0.0
+score rust C2 0.0
+score rust C3 0.0
+score rust C4 0.0
+score rust C5 0.0
+score rust C6 0.0
+amendment no

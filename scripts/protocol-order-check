@@ -11,6 +11,8 @@
 #                               before the first "## Amendment" heading differs from the pre-registered text (D-09: append only)
 #   PROTOCOL_AMENDMENT_UNDATED  a heading starting "## Amendment" is not "## Amendment YYYY-MM-DD: <text>"
 #   PROTOCOL_CITE_MISMATCH      docs/decisions/0001-language-build.md exists and its "Protocol commit:" value is not the add commit
+#   SCORER_AFTER_SPIKE          once a spikes/tool-01 file exists, scripts/lib/score.awk was not added in a commit that is a
+#                               strict ancestor of every spike-adding commit (or was never committed)
 # stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then the info line
 #         PROTOCOL add=<sha|none> first_spike=<sha|none> amendments=<n> amended_after_spike=<yes|no>  , then  RECORDS n
 # stdout on a met --expect: the info line, then the single line EXPECT_OK
@@ -42,6 +44,7 @@ repo=$(cd "$repo" && pwd)
 
 proto=docs/decisions/0001-language-build.protocol.md
 record=docs/decisions/0001-language-build.md
+scorer=scripts/lib/score.awk
 spikes=spikes/tool-01
 
 g() { git -C "$repo" "$@"; }
@@ -125,6 +128,22 @@ else
     if [ -z "$cited" ] || [ "$cited" != "$add" ] || ! g rev-parse --verify -q "$cited^{commit}" > /dev/null 2>&1; then
       printf '%s\tPROTOCOL_CITE_MISMATCH\t0\tcited %s add %s\n' "$record" "${cited:-none}" "$add" >> "$viol0"
     fi
+  fi
+fi
+
+# the scorer is pre-registered too (D-35): once any spike file exists, its add commit must be a strict ancestor of
+# every spike-adding commit, and a scorer that was never committed counts as late
+if [ -n "$spike_adds" ]; then
+  score_add=$(add_commit "$scorer")
+  if [ -z "$score_add" ]; then
+    printf '%s\tSCORER_AFTER_SPIKE\t0\tno add commit for the scorer\n' "$scorer" >> "$viol0"
+  else
+    for s in $spike_adds; do
+      if [ "$s" = "$score_add" ] || ! g merge-base --is-ancestor "$score_add" "$s" 2> /dev/null; then
+        printf '%s\tSCORER_AFTER_SPIKE\t0\tadd %s spike %s\n' "$scorer" "$score_add" "$s" >> "$viol0"
+        break
+      fi
+    done
   fi
 fi
 

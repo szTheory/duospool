@@ -1,0 +1,8 @@
+TOTAL c 6500
+TOTAL rust 5500
+WORST c 6500
+WORST rust 5500
+MARGIN nominal 1000 worst 1000
+LEADER c
+RESULT=owner-recorded-preauth
+REASON=clear-winner

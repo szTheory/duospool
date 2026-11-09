@@ -1,0 +1,8 @@
+TOTAL c 6650
+TOTAL rust 5170
+WORST c 6150
+WORST rust 5170
+MARGIN nominal 1480 worst 980
+LEADER c
+RESULT=proposed-default
+REASON=nd-sensitivity
