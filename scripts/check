@@ -34,6 +34,14 @@ checker() {
   return "$r"
 }
 
+# read_expect FILE: load a control's EXPECT into $exp. An EXPECT that names no code (empty, blank, or only commas) makes the
+# control assert nothing: with no violations, got and want are both empty and the control passes vacuously (WR-05). Returns
+# non-zero so the caller can report HARNESS_EMPTY_EXPECT (harness error 2).
+read_expect() {
+  exp=$(cat "$1")
+  [ -n "$(printf '%s' "$exp" | tr -d ', \t\r\n')" ]
+}
+
 # ---- stages: each is a function that prints details and returns 0 pass, 1 fail, 2 harness error ----
 
 stage_ledger_entries() {
@@ -54,7 +62,11 @@ stage_ledger_negatives() {
       rc=2
       continue
     fi
-    exp=$(cat "$d/EXPECT")
+    if ! read_expect "$d/EXPECT"; then
+      echo "HARNESS_EMPTY_EXPECT $case_name"
+      rc=2
+      continue
+    fi
     if [ -f "$d/REQUIRED" ]; then
       if checker sh "$here/ledger-check" --expect "$exp" --required "$d/REQUIRED" "$d" > "$tmp/case.out"; then r=0; else r=$?; fi
     else
@@ -134,7 +146,11 @@ stage_decision_negatives() {
           rc=2
           continue
         fi
-        exp=$(cat "$d/EXPECT")
+        if ! read_expect "$d/EXPECT"; then
+          echo "HARNESS_EMPTY_EXPECT $case_name"
+          rc=2
+          continue
+        fi
         if checker sh "$here/decision-check" --expect "$exp" "$d" > "$tmp/case.out"; then r=0; else r=$?; fi
         if [ "$r" -eq 1 ]; then
           echo "CONTROL BROKEN $case_name"
@@ -185,7 +201,11 @@ stage_profile_negatives() {
       continue
     fi
     if [ -f "${d}EXPECT" ]; then
-      exp=$(cat "${d}EXPECT")
+      if ! read_expect "${d}EXPECT"; then
+        echo "HARNESS_EMPTY_EXPECT $case_name"
+        rc=2
+        continue
+      fi
       if checker sh "$here/profile-check" --expect "$exp" "$rec" > "$tmp/case.out"; then r=0; else r=$?; fi
       if [ "$r" -eq 1 ]; then
         echo "CONTROL BROKEN $case_name"
@@ -282,6 +302,54 @@ stage_filename_controls() {
   return "$rc"
 }
 
+# an empty --expect, or an EXPECT file that names no code, must be a harness error and never a vacuous pass (WR-05). Fixed
+# expectations: every checker exits 2 on --expect "" (and on a blank or comma-only value), and read_expect refuses an empty,
+# blank or comma-only EXPECT file while accepting a real one.
+# empty_expect_control CASE CHECKER ARGS... : the checker must exit 2 for each degenerate --expect value
+empty_expect_control() {
+  ec_case=$1
+  ec_ck=$2
+  shift 2
+  for ec_val in "" " " "," ", ,"; do
+    if sh "$here/$ec_ck" --expect "$ec_val" "$@" > "$tmp/case.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$r" -ne 2 ] || grep -q '^EXPECT_OK$' "$tmp/case.out"; then
+      echo "CONTROL BROKEN $ec_case (--expect '$ec_val' exited $r, wanted 2)"
+      sed 's/^/  /' "$tmp/case.out"
+      [ "$rc" -eq 2 ] || rc=1
+    fi
+  done
+}
+
+stage_empty_expect_controls() {
+  rc=0
+  empty_expect_control ledger-check ledger-check ledger/entries/
+  empty_expect_control profile-check profile-check profiles/pce-hucard-2btn/r1.toml
+  empty_expect_control decision-check decision-check docs/decisions
+  empty_expect_control provenance-check provenance-check
+  empty_expect_control licence-check licence-check
+  empty_expect_control check-results check-results docs/decisions/0001-language-build.protocol.md --record docs/decisions/0001-language-build.md
+  empty_expect_control protocol-order-check protocol-order-check
+  w="$tmp/expects"
+  rm -rf "$w"
+  mkdir -p "$w" || { echo "HARNESS_ERROR cannot create $w"; return 2; }
+  : > "$w/empty"
+  printf '\n' > "$w/newline"
+  printf '  \n' > "$w/blank"
+  printf ',\n' > "$w/comma"
+  printf 'SOME_CODE\n' > "$w/real"
+  for ec_f in empty newline blank comma; do
+    if read_expect "$w/$ec_f"; then
+      echo "CONTROL BROKEN read_expect accepted the $ec_f EXPECT file"
+      [ "$rc" -eq 2 ] || rc=1
+    fi
+  done
+  if ! read_expect "$w/real"; then
+    echo "CONTROL BROKEN read_expect refused a real EXPECT file"
+    [ "$rc" -eq 2 ] || rc=1
+  fi
+  return "$rc"
+}
+
 stage_provenance_register() {
   checker sh "$here/provenance-check"
 }
@@ -314,7 +382,11 @@ stage_provenance_negatives() {
           rc=2
           continue
         fi
-        exp=$(cat "$d/EXPECT")
+        if ! read_expect "$d/EXPECT"; then
+          echo "HARNESS_EMPTY_EXPECT $case_name"
+          rc=2
+          continue
+        fi
         if checker sh "$here/provenance-check" --root "$d" --expect "$exp" > "$tmp/case.out"; then r=0; else r=$?; fi
         if [ "$r" -eq 1 ]; then
           echo "CONTROL BROKEN $case_name"
@@ -367,7 +439,11 @@ stage_licence_negatives() {
           rc=2
           continue
         fi
-        exp=$(cat "$d/EXPECT")
+        if ! read_expect "$d/EXPECT"; then
+          echo "HARNESS_EMPTY_EXPECT $case_name"
+          rc=2
+          continue
+        fi
         if checker sh "$here/licence-check" --root "$d" --expect "$exp" > "$tmp/case.out"; then r=0; else r=$?; fi
         if [ "$r" -eq 1 ]; then
           echo "CONTROL BROKEN $case_name"
@@ -416,6 +492,11 @@ stage_score_controls() {
     case_name=$(basename "$d")
     if [ ! -f "${d}scores.txt" ] || [ ! -f "${d}EXPECT" ]; then
       echo "HARNESS_NO_EXPECT $case_name"
+      rc=2
+      continue
+    fi
+    if ! read_expect "${d}EXPECT"; then
+      echo "HARNESS_EMPTY_EXPECT $case_name"
       rc=2
       continue
     fi
@@ -490,7 +571,11 @@ stage_results_negatives() {
           rc=2
           continue
         fi
-        exp=$(cat "${d}EXPECT")
+        if ! read_expect "${d}EXPECT"; then
+          echo "HARNESS_EMPTY_EXPECT $case_name"
+          rc=2
+          continue
+        fi
         if checker sh "$here/check-results" --expect "$exp" "${d}protocol.md" --record "${d}record.md" > "$tmp/case.out"; then r=0; else r=$?; fi
         if [ "$r" -eq 1 ]; then
           echo "CONTROL BROKEN $case_name"
@@ -600,6 +685,7 @@ run_stage decision-negatives stage_decision_negatives
 run_stage profile-records stage_profile_records
 run_stage profile-negatives stage_profile_negatives
 run_stage filename-controls stage_filename_controls
+run_stage empty-expect-controls stage_empty_expect_controls
 run_stage provenance stage_provenance_register
 run_stage provenance-negatives stage_provenance_negatives
 run_stage licences stage_licence_files
