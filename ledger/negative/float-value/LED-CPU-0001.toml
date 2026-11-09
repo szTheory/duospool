@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# Control case. States no hardware claim.
+id = "LED-CPU-0001"
+statement = "Control case only; this file states no hardware claim."
+profile = "pce-hucard-2btn"
+status = "open"
+sources = ["FACT|control|synthetic control, no hardware claim"]
+evidence = []
+disagreement = "none"
+pinning_test = "NONE:control"
+updated = "2026-11-09"
+revisit_phase = 4.5
