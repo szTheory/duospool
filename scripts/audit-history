@@ -19,7 +19,7 @@
 # allowlist: lines  path<TAB>CHECK<TAB>reason  ('#' comments). A hit is suppressed only when its path AND its CHECK match.
 #   A ROM-SIZE allowance applies only while the blob has no NUL byte.
 # stdout: hits as  CHECK <size|line> <path> , then a summary; a clean history ends with the line  audit-history: clean
-# exit  : 0 clean | 1 hits | 2 harness failure (a git read failed, bad usage, empty history). Exit 2 always comes first:
+# exit  : 0 clean | 1 hits | 2 harness failure (a git read failed, bad usage, empty or shallow history). Exit 2 always comes first:
 #         a failed read never reaches the clean/hit decision.
 # Self-match safety: this file is itself in history, so every TEXT-PATTERN below is written so that its own source text
 # cannot match it (each fixed prefix is followed by a bracket expression that the next source character, an opening
@@ -58,6 +58,16 @@ readfail() {
   [ ! -s "$t/err" ] || sed 's/^/  /' "$t/err" >&2
   exit 2
 }
+
+# ---- 0. the audit needs the whole history: a shallow clone (a default CI checkout) holds a cut-off history, and auditing
+# it would print "clean" for commits that were never read (CR-02). Anything but a plain "false" is a harness failure; that
+# also covers git older than 2.15, which does not know the option and echoes it back.
+shallow=$(git rev-parse --is-shallow-repository 2> "$t/err") || shallow=unreadable
+if [ "$shallow" != false ]; then
+  echo "audit-history: shallow or unreadable repository ($shallow): the audit needs full history; run git fetch --unshallow first" >&2
+  [ ! -s "$t/err" ] || sed 's/^/  /' "$t/err" >&2
+  exit 2
+fi
 
 # ---- 1. enumerate the history (every status checked right after the command) ----
 git rev-list --all > "$t/commits" 2> "$t/err" || readfail "git rev-list --all"

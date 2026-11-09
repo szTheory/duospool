@@ -180,5 +180,23 @@ ok=0
 if [ "$rc" -eq 1 ] && has y.pce; then ok=1; fi
 verdict tag-only "$ok"
 
+# ---- shallow-clone: a --depth 1 clone of a two-commit repository holds a cut-off history; the audit must refuse with exit 2,
+# never print clean (CR-02). The control is only meaningful if the clone really is shallow and the full source audits clean.
+d=$(new shallow-source)
+printf 'first\n' > "$d/a.txt"
+commit "$d" first
+printf 'second\n' > "$d/b.txt"
+commit "$d" second
+audit "$d" "$empty_allow"
+full_ok=0
+if [ "$rc" -eq 0 ] && has 'audit-history: clean'; then full_ok=1; fi
+shallow_dir="$work/shallow-clone"
+git clone -q --depth 1 "file://$d" "$shallow_dir"
+is_shallow=$(git -C "$shallow_dir" rev-parse --is-shallow-repository)
+audit "$shallow_dir" "$empty_allow"
+ok=0
+if [ "$full_ok" -eq 1 ] && [ "$is_shallow" = true ] && [ "$rc" -eq 2 ] && ! has 'audit-history: clean' && has 'shallow'; then ok=1; fi
+verdict shallow-clone "$ok"
+
 [ "$failed" -eq 0 ] || exit 1
 exit 0
