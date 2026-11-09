@@ -1,0 +1,121 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# check-results - results-table completeness check against the TOOL-01 protocol's metric register (D-12, D-15).
+# This check enforces that every pre-registered (metric, variant) row has a value for both options, not that a value is good.
+# usage: check-results [--expect CODE[,CODE...]] PROTOCOL (--tsv FILE | --record FILE)
+#   PROTOCOL  the protocol file; its register is the rows between <!-- metric-register:begin --> and <!-- metric-register:end -->
+#   --tsv     spikes/tool-01/results/results.tsv: five tab-separated columns metric, variant, option, value, evidence
+#   --record  a decision record: the markdown table rows between <!-- results:begin --> and <!-- results:end -->
+#             (columns Metric, Variant, Option, Value, Evidence); the record must also carry a line starting RESULT=
+# codes (the register is read first; with no register rows only REGISTER_EMPTY is reported):
+#   REGISTER_EMPTY       the protocol has no register rows
+#   RESULT_MISSING       a (metric, variant) register row has no result for option c or rust (detail: metric variant option)
+# stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then one line  RECORDS n  (result rows read)
+# stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
+# exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error
+set -eu
+LC_ALL=C; export LC_ALL
+
+usage() {
+  echo "usage: check-results [--expect CODE[,CODE...]] PROTOCOL (--tsv FILE | --record FILE)" >&2
+  exit 2
+}
+
+expect=""
+have_expect=0
+mode=""
+resfile=""
+proto=""
+while [ $# -gt 0 ]; do
+  case $1 in
+    --expect) [ $# -ge 2 ] || usage; expect=$2; have_expect=1; shift 2 ;;
+    --tsv) [ $# -ge 2 ] || usage; [ -z "$mode" ] || usage; mode=tsv; resfile=$2; shift 2 ;;
+    --record) [ $# -ge 2 ] || usage; [ -z "$mode" ] || usage; mode=record; resfile=$2; shift 2 ;;
+    --) shift; break ;;
+    -*) usage ;;
+    *) [ -z "$proto" ] || usage; proto=$1; shift ;;
+  esac
+done
+[ $# -eq 0 ] || usage
+[ -n "$proto" ] && [ -n "$mode" ] || usage
+for f in "$proto" "$resfile"; do
+  if [ ! -f "$f" ]; then
+    echo "HARNESS_NO_FILE $f" >&2
+    exit 2
+  fi
+done
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+reg="$tmp/register"
+res="$tmp/results"
+viol0="$tmp/viol0"
+viol="$tmp/viol"
+: > "$viol0"
+
+# the register: one "metric<TAB>variant" line per row between the markers
+awk -F'|' '
+  index($0, "<!-- metric-register:begin -->") { on = 1; next }
+  index($0, "<!-- metric-register:end -->") { on = 0; next }
+  on && NF >= 6 {
+    m = $2; v = $3
+    gsub(/^[ \t]+|[ \t]+$/, "", m)
+    gsub(/^[ \t]+|[ \t]+$/, "", v)
+    if (m ~ /^M[0-9][0-9]$/ && v != "") print m "\t" v
+  }' "$proto" > "$reg"
+
+# the results: "line<TAB>metric<TAB>variant<TAB>option<TAB>value" per row
+if [ "$mode" = tsv ]; then
+  awk -F'\t' 'NF >= 3 && $0 !~ /^#/ { print NR "\t" $1 "\t" $2 "\t" $3 "\t" $4 }' "$resfile" > "$res"
+else
+  awk -F'|' '
+    index($0, "<!-- results:begin -->") { on = 1; next }
+    index($0, "<!-- results:end -->") { on = 0; next }
+    on && /^[ \t]*\|/ {
+      for (i = 2; i <= 6; i++) { c[i] = $i; gsub(/^[ \t]+|[ \t]+$/, "", c[i]) }
+      if (c[2] == "Metric" || c[2] ~ /^:?-+:?$/) next
+      print NR "\t" c[2] "\t" c[3] "\t" c[4] "\t" c[5]
+    }' "$resfile" > "$res"
+fi
+nrec=$(wc -l < "$res" | tr -d ' ')
+
+if [ ! -s "$reg" ]; then
+  printf '%s\tREGISTER_EMPTY\t0\tno rows between the metric-register markers\n' "$proto" >> "$viol0"
+else
+  RESFILE=$resfile awk '
+    BEGIN { FS = "\t"; OFS = "\t"; file = ENVIRON["RESFILE"] }
+    FNR == NR { nreg++; rm[nreg] = $1; rv[nreg] = $2; inreg[$1 SUBSEP $2] = 1; next }
+    {
+      line = $1; m = $2; v = $3; o = $4; val = $5
+      gsub(/^[ \t]+|[ \t]+$/, "", val)
+      seen[m SUBSEP v SUBSEP o] = 1
+    }
+    END {
+      for (i = 1; i <= nreg; i++) {
+        if (!((rm[i] SUBSEP rv[i] SUBSEP "c") in seen)) print file, "RESULT_MISSING", 0, rm[i] " " rv[i] " c"
+        if (!((rm[i] SUBSEP rv[i] SUBSEP "rust") in seen)) print file, "RESULT_MISSING", 0, rm[i] " " rv[i] " rust"
+      }
+    }' "$reg" "$res" >> "$viol0"
+fi
+sort -u "$viol0" > "$viol"
+
+if [ "$have_expect" -eq 1 ]; then
+  got=$(awk -F'\t' '{ print $2 }' "$viol" | sort -u | tr '\n' ',' | sed 's/,$//')
+  want=$(printf '%s\n' "$expect" | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/,$//')
+  if [ "$got" = "$want" ]; then
+    echo "EXPECT_OK"
+    exit 0
+  fi
+  echo "EXPECT_MISMATCH wanted '$want' got '${got:-<none>}'" >&2
+  cat "$viol" >&2
+  exit 1
+fi
+
+cat "$viol"
+echo "RECORDS $nrec"
+if [ -s "$viol" ]; then
+  exit 1
+fi
+exit 0
