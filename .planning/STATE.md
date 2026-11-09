@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 1
 current_phase_name: Owner Decisions, Claim Ledger and Toolchain Spike
 status: executing
-stopped_at: Completed 01-04-PLAN.md
-last_updated: "2026-11-09T21:21:57.809Z"
+stopped_at: Completed 01-05-PLAN.md
+last_updated: "2026-11-09T21:31:14.746Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 1 execution started
-state_head: fbb8b0845955052e259d6f3ca58645be291a3f0c
+state_head: a1c7bf1c46a9c124197c7a0ba0f1131ba9c5eecc
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 12
-  completed_plans: 4
+  completed_plans: 5
   percent: 0
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 1 (Owner Decisions, Claim Ledger and Toolchain Spike) — EXECUTING
-Plan: 5 of 12
+Plan: 6 of 12
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 1 execution started
 
@@ -60,6 +60,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 1 P02 | 45min | 3 tasks | 56 files |
 | Phase 1 P03 | 15 min | 3 tasks | 60 files |
 | Phase 1 P04 | 25min | 3 tasks | 87 files |
+| Phase 1 P05 | 30min | 2 tasks | 39 files |
 
 ## Accumulated Context
 
@@ -77,6 +78,8 @@ Recent decisions affecting current work:
 - [Phase 1]: Records 0003-0007 are owner-recorded using only verbatim CONTEXT.md quotes; 0007 marks the D-26 mechanism as Claude's design
 - [Phase 1]: decision-check scans every DIR/*.md except README.md and *.protocol.md and enforces index drift, record naming, duplicate numbers and the 0005 no-GPL sentence
 - [Phase 1]: 01-04: provenance-check scans the whole tree with exact-path exclusions (SELF-FIXTURES); a malformed-id entry skips the per-path marker check
+- [Phase 1]: 01-05: PROTOCOL_EDITED is an append-only byte-prefix rule (a blank separator before an amendment heading must not read as an edit)
+- [Phase 1]: 01-05: a gate recorded as ND is not PASS; a leader with an ND gate is leader-fails-gate (D-37)
 
 ### Pending Todos
 
@@ -99,6 +102,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-09T21:21:57.783Z
-Stopped at: Completed 01-04-PLAN.md
+Last session: 2026-11-09T21:31:14.725Z
+Stopped at: Completed 01-05-PLAN.md
 Resume file: None
