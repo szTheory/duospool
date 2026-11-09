@@ -1,0 +1,3 @@
+# False positive: a test-case description in a PLAN (RESULT=owner-recorded-preauth) matched generic-api-key; not a credential.
+# Allowlisted by the owner at the 01-12 publication checkpoint, 2026-11-09.
+04fff180aaa2a9d81a5f876f75516c01f2de7b1d:.planning/phases/01-owner-decisions-claim-ledger-and-toolchain-spike/01-05-PLAN.md:generic-api-key:304
