@@ -37,14 +37,14 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. The claim ledger exists with these fields: statement, profile, evidence tier (E0-E4), source citation, disagreement, status, and pinning test. A ledger check rejects a deliberately mislabelled sample entry that is marked "supported" on E0/E4 evidence only.
   4. Each conflict the slice depends on is an open ledger entry with its chosen modelling assumption, not stated as fact. The list includes at least: PSG clock, 262 vs 263 lines, VBlank/RCR IRQ position, dot-clock encoding, 7 MHz active width, `$1000` bit 6, HuCard byte order, copier-header rule, and PSG channel numbering.
   5. Decision records exist for licence/visibility, fixture rights, API/ABI posture, CI provider, and the copied-code provenance rule. Each one is either owner-recorded or explicitly open. The fixture-rights record states that no GPL or unclear-licence material is admitted until the owner decides.
-**Plans:** 1/12 plans executed
+**Plans:** 2/12 plans executed
 
 Plans:
 **Wave 1**
 - [x] 01-01-PLAN.md — Walking-skeleton gate: scripts/check, the ledger and decision checkers, the E0/E4 negative control, record 0008, the full ledger negative corpus and --selftest
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 01-02-PLAN.md — Seed ledger (9 mandated conflicts + C14), first-profile record r1 with profile-check, record 0002 with the criterion-2 mapping
+- [x] 01-02-PLAN.md — Seed ledger (9 mandated conflicts + C14), first-profile record r1 with profile-check, record 0002 with the criterion-2 mapping
 
 **Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 01-03-PLAN.md — Decision records 0003-0007, the README index with its drift check, PROJECT.md pointers, the decision negative corpus
@@ -174,7 +174,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phases 4 and 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Owner Decisions, Claim Ledger and Toolchain Spike | 1/12 | In Progress | - |
+| 1. Owner Decisions, Claim Ledger and Toolchain Spike | 2/12 | In Progress | - |
 | 2. Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate | 0/TBD | Not started | - |
 | 3. HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad | 0/TBD | Not started | - |
 | 4. VCE/VDC Raw Video | 0/TBD | Not started | - |

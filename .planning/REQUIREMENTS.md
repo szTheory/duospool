@@ -20,11 +20,11 @@ E4 = differential vs another emulator (finds disagreements, decides nothing).
 
 ### Profile, Scope & Evidence
 
-- [ ] **PROF-01**: The owner-selected first machine profile is recorded as a named, versioned profile record (console model/region, `$1000` bit-6 value, CPU/PSG revision, line count/frame timing, controller type, expansion-port presence, content format). Research's proposed default is Japanese PC Engine / HuC6280 / 2-button pad. It is a proposal until the owner selects it.
+- [x] **PROF-01**: The owner-selected first machine profile is recorded as a named, versioned profile record (console model/region, `$1000` bit-6 value, CPU/PSG revision, line count/frame timing, controller type, expansion-port presence, content format). Research's proposed default is Japanese PC Engine / HuC6280 / 2-button pad. It is a proposal until the owner selects it.
 - [ ] **PROF-02**: Loading content or running with an unsupported or mismatched profile is refused with a typed reason. It never falls back silently.
 - [ ] **PROF-03**: Any setting that changes guest-visible behavior is part of profile identity and appears in every run's recorded configuration.
 - [x] **PROF-04**: A claim ledger lists each supported behavior with its profile, evidence tier (E0–E4), source citation, and fixture/test link. Behaviors with only E0/E4 evidence are not labeled "supported".
-- [ ] **PROF-05**: Conflicting or unresolved hardware facts the slice depends on (e.g. PSG clock, 262 vs 263 lines, VBlank IRQ position, VCE dot-clock encoding) are recorded as open in the ledger with the chosen modelling assumption, not asserted as fact.
+- [x] **PROF-05**: Conflicting or unresolved hardware facts the slice depends on (e.g. PSG clock, 262 vs 263 lines, VBlank IRQ position, VCE dot-clock encoding) are recorded as open in the ledger with the chosen modelling assumption, not asserted as fact.
 
 ### CPU & Bus (HuC6280)
 
@@ -155,11 +155,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PROF-01 | Phase 1 | Pending |
+| PROF-01 | Phase 1 | Complete |
 | PROF-02 | Phase 2 | Pending |
 | PROF-03 | Phase 2 | Pending |
 | PROF-04 | Phase 1 | Complete |
-| PROF-05 | Phase 1 | Pending |
+| PROF-05 | Phase 1 | Complete |
 | CPU-01 | Phase 3 | Pending |
 | CPU-02 | Phase 3 | Pending |
 | CPU-03 | Phase 3 | Pending |

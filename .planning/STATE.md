@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 1
 current_phase_name: Owner Decisions, Claim Ledger and Toolchain Spike
 status: executing
-stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-11-09T21:03:52.246Z"
+stopped_at: Completed 01-02-PLAN.md
+last_updated: "2026-11-09T21:10:47.551Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 1 execution started
-state_head: 6b31fd242e89d6c86f3b2ee87b0d64794cec41d3
+state_head: e3c639eaafab223fbffa10ac3cdc71179dbddb5c
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 12
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 1 (Owner Decisions, Claim Ledger and Toolchain Spike) — EXECUTING
-Plan: 2 of 12
+Plan: 3 of 12
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 1 execution started
 
@@ -57,6 +57,7 @@ Progress: [░░░░░░░░░░] 0%
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 1 P01 | 60min | 3 tasks | 67 files |
+| Phase 1 P02 | 45min | 3 tasks | 56 files |
 
 ## Accumulated Context
 
@@ -69,6 +70,8 @@ Recent decisions affecting current work:
 - [Roadmap]: 6 phases (granularity standard). Loader folded into the deterministic-shell phase; both VDC slices merged into one video phase; Phases 4 and 5 can run in parallel.
 - [Roadmap]: E4 (emulator differential) is triage only and never backs a correctness claim. This is a proposed default; owner confirmation is pending (decision 17).
 - [Phase 1]: Gate checkers print a marker line on a clean exit and scripts/check fails closed on a silent exit 0 (bash 3.2 /bin/sh exits 0 on script syntax errors)
+- [Phase 1]: 01-02: open profile fields carry no value; proposals labelled and checked against allowed (OPEN_HAS_VALUE control)
+- [Phase 1]: 01-02: ledger IDs, decision paths and profile values are shape-validated before use as file names
 
 ### Pending Todos
 
@@ -91,6 +94,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-09T21:03:52.212Z
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-11-09T21:10:47.520Z
+Stopped at: Completed 01-02-PLAN.md
 Resume file: None
