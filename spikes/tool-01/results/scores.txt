@@ -1,0 +1,58 @@
+# TOOL-01 scores, scorer input format (scripts/lib/score.awk). Written from spikes/tool-01/results/results.tsv, the gate
+# outputs results/gates-c.txt and results/gates-rust.txt, and the pre-registered rubric (protocol section 5). Nothing is
+# rescored after seeing the totals. No item is not demonstrated: every metric has a measured or copied value.
+#
+# Hard gates. G1 test-refusals, G2 test-controls (CONTROL-REJECTED), G3 test-interleave, G4 consumer-proof (LEAK 0 and
+# the seeded leak caught), G5 fuzz60 (60 s, no crash) plus the planted-bug liveness control found.
+gate c G1 PASS
+gate c G2 PASS
+gate c G3 PASS
+gate c G4 PASS
+gate c G5 PASS
+gate rust G1 PASS
+gate rust G2 PASS
+gate rust G3 PASS
+gate rust G4 PASS
+gate rust G5 PASS
+#
+# C1 (anchor judgement). c 3.0: the C loader and core can make unchecked accesses; every buffer access is guarded by explicit
+# bounds code (the length decides before memcpy of exactly 65536 bytes; digest_hex checks out_len); M08 (ASan+UBSan) and G5 pass.
+# Exactly the 3.0 anchor. rust 5.0: core and runner carry #![forbid(unsafe_code)], unsafe is confined to the capi crate with a
+# SAFETY comment on every block, and M08 (Miri on the facade) passes. Exactly the 5.0 anchor.
+score c C1 3.0
+score rust C1 5.0
+#
+# C2 (computed by derive-scores.awk). M04-debug c 0.19373 s, rust 0.80201 s: both under 2 s, a tie, both 5.0.
+# M06-debug c 1.79103 s, rust 3.38013 s: outside the tie band, rust floor(50 x 1.79103/3.38013) = 26 tenths = 2.6.
+# C2 = mean truncated: c 5.0, rust (5.0+2.6)/2 = 3.8.
+score c C2 5.0
+score rust C2 3.8
+#
+# C3 (computed). T c 3 (cmake, ninja, Homebrew llvm@21), T rust 4 (rustup, rust-toolchain 1.99.1, nightly-2026-11-09,
+# cargo-fuzz). Excluded by the protocol baseline or scope: Apple clang (the system cc), wasmtime (M14 only), hyperfine.
+# c 5.0, rust 5.0 - (4-3) = 4.0. No third-party library is linked into the product artifact.
+score c C3 5.0
+score rust C3 4.0
+#
+# C4 (computed). G c 198 (38+15+145), G rust 476 (231+69+176); ratio 2.40 is outside 1.20; c 5.0, rust floor(50 x 198/476) = 20 tenths.
+score c C4 5.0
+score rust C4 2.0
+#
+# C5 (rubric subtraction from 5.0, one point each). c: (c) manual runtime-archive linking is needed (Homebrew llvm@21 libFuzzer
+# archive by explicit path) = -1.0; (a) not applied, because fuzz compiles with the normal build's clang and the archive is the
+# (c) item; (b) ASan present; (d) liveness found in 0.4 s and 1.2 s; (e) M08 ran with plain Apple clang. c 4.0.
+# rust: (a) fuzzing needs the dated nightly, a toolchain other than the build's = -1.0; (b) ASan present; (c) the 10 s canary
+# passed, so no -s none fallback and no manual archive linking; (d) found in 0.4 s; (e) Miri ran, and the nightly for Miri is
+# the D-36 design, not a fallback. rust 4.0. The Rust planted-bug ergonomics observation (a starts_with(b"DSPB") form was not
+# found in 60 s and the single-integer prefix compare was needed; LOG.md) is recorded in the record as an ergonomics cost and
+# is not a rubric subtraction, because M13 is measured on the final form (0.4 s) and (d) is a time-to-find test.
+score c C5 4.0
+score rust C5 4.0
+#
+# C6 (anchor judgement). c 1.0: wasm not attempted, install cost recorded (180,322,002-byte wasi-sdk 34.0 download); no Linux
+# container fallback used. rust 5.0: wasm32-wasip1 runs under wasmtime 50.0.1 and the transcript equals native; no container fallback.
+score c C6 1.0
+score rust C6 5.0
+#
+# amendment flag: the amended_after_spike value printed by scripts/protocol-order-check (not typed by hand)
+amendment no

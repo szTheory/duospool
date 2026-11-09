@@ -391,6 +391,12 @@ stage_score_controls() {
   return "$rc"
 }
 
+# the real record 0001: every pre-registered (metric, variant) row has a value for both options (D-12, D-15), and the record
+# carries the scorer's RESULT= line. Structure only: the check does not judge whether a value is good.
+stage_results() {
+  checker sh "$here/check-results" docs/decisions/0001-language-build.protocol.md --record docs/decisions/0001-language-build.md
+}
+
 # every tests/results/<case>/ is a control on its own protocol.md and record.md: a case with an EXPECT file is a must-fail
 # control run in --record mode, and every tests/results/ok-<case>/ must pass. Exit 1 from the checker means the control is broken.
 stage_results_negatives() {
@@ -542,6 +548,7 @@ run_stage licence-negatives stage_licence_negatives
 run_stage protocol-order stage_protocol_order
 run_stage protocol-negatives stage_protocol_negatives
 run_stage score-controls stage_score_controls
+run_stage results stage_results
 run_stage results-negatives stage_results_negatives
 
 if [ "$errs" -gt 0 ]; then
