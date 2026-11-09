@@ -28,6 +28,13 @@ opt_build() {
   cmake --build "$_bd" >> "$_log" 2>&1 || { cat "$_log" >&2; return 1; }
 }
 
+# opt_runner [debug|release]: print the path of the manifest runner binary for that profile (default debug).
+opt_runner() {
+  _p=${1:-debug}
+  c_build_type "$_p" > /dev/null || return 1
+  echo "$SPIKE_DIR/out/build-c-$_p/duospool-runner"
+}
+
 # opt_install <src_copy> <build_dir> <prefix> <remap yes|no>
 # Builds the library from the given source copy and installs lib/libduospool.a, include/duospool.h and
 # lib/pkgconfig/duospool.pc under prefix. With remap yes the compile gets -ffile-prefix-map / -fdebug-prefix-map for both

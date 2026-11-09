@@ -11,6 +11,11 @@ add_library(duospool STATIC src/core.c)
 target_include_directories(duospool PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 target_compile_options(duospool PRIVATE -Wall -Wextra -Wconversion -Werror)
 
+# The manifest runner links the library and uses only the public duospool.h API. It is a test tool and is not installed.
+add_executable(duospool-runner src/runner.c)
+target_link_libraries(duospool-runner PRIVATE duospool)
+target_compile_options(duospool-runner PRIVATE -Wall -Wextra -Wconversion -Werror)
+
 install(TARGETS duospool ARCHIVE DESTINATION lib)
 install(FILES include/duospool.h DESTINATION include)
 configure_file(duospool.pc.in duospool.pc @ONLY)

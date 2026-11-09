@@ -34,3 +34,4 @@ ninja --version:
 M01 cold-first-build c 0.768
 INSTALL-BUILD-TYPE c RelWithDebInfo
 M01 note: single run, perl -MTime::HiRes=time around opt_build debug with the build directory absent; library and install targets only; never repeated.
+c-core-path-end: 2026-11-09T21:58:44Z (gates.sh c --no-fuzz green: build, test-refusals, test-controls, test-interleave, transcript, consumer-proof)
