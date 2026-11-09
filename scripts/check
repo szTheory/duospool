@@ -155,6 +155,20 @@ stage_decision_negatives() {
   return "$rc"
 }
 
+# every profiles/<id>/rN.toml must pass; no record at all is a dead gate, not a pass
+stage_profile_records() {
+  n=0
+  for f in profiles/*/r*.toml; do
+    [ -e "$f" ] || continue
+    n=$((n + 1))
+  done
+  if [ "$n" -eq 0 ]; then
+    echo "NO_RECORDS profiles"
+    return 1
+  fi
+  checker sh "$here/profile-check" profiles/*/r*.toml
+}
+
 # ---- self-test: prove the gate is alive (not vacuous). Mutates a COPY of scripts/ only ----
 
 selftest() {
@@ -213,6 +227,7 @@ run_stage ledger-negatives stage_ledger_negatives
 run_stage ledger-samples stage_ledger_samples
 run_stage decision-records stage_decision_records
 run_stage decision-negatives stage_decision_negatives
+run_stage profile-records stage_profile_records
 
 if [ "$errs" -gt 0 ]; then
   echo "CHECK RESULT FAIL"

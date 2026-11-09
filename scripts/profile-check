@@ -1,0 +1,116 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# profile-check - versioned profile record checker (PROF-01, D-27, D-28). This check enforces structure, not truth.
+# usage: profile-check [--expect CODE[,CODE...]] [--ledger DIR] FILE...
+#   FILE is a profiles/<profile_id>/rN.toml record. --ledger DIR (default ledger/entries) is where ledger IDs resolve.
+#   Decision paths resolve relative to the current directory (scripts/check runs from the repository root).
+# stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then one line  RECORDS profiles=N
+# stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
+# exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error
+set -eu
+LC_ALL=C; export LC_ALL
+here=$(cd "$(dirname "$0")" && pwd)
+
+usage() {
+  echo "usage: profile-check [--expect CODE[,CODE...]] [--ledger DIR] FILE..." >&2
+  exit 2
+}
+
+expect=""
+have_expect=0
+ledger_dir="ledger/entries"
+while [ $# -gt 0 ]; do
+  case $1 in
+    --expect) [ $# -ge 2 ] || usage; expect=$2; have_expect=1; shift 2 ;;
+    --ledger) [ $# -ge 2 ] || usage; ledger_dir=$2; shift 2 ;;
+    --) shift; break ;;
+    -*) usage ;;
+    *) break ;;
+  esac
+done
+[ $# -ge 1 ] || usage
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+raw="$tmp/raw"        # FILE<TAB>CODE<TAB>LINE<TAB>DETAIL violations, plus  FILE<TAB>P<TAB>id  per record read
+t1="$tmp/stage1"
+t2="$tmp/stage2"
+viol="$tmp/viol"
+: > "$raw"
+tab=$(printf '\t')
+
+# check_file FILE : size gates, stage 1 into a temp file, stage 2 over that file, then resolve REF and DECISION records
+check_file() {
+  f=$1
+  size=$(wc -c < "$f" | tr -d ' ')
+  if [ "$size" -eq 0 ]; then
+    printf '%s\tEMPTY_FILE\t0\t\n' "$f" >> "$raw"
+    return 0
+  fi
+  if [ "$size" -gt 16384 ]; then
+    printf '%s\tFILE_TOO_BIG\t0\t%s bytes\n' "$f" "$size" >> "$raw"
+    return 0
+  fi
+  base=$(basename "$f" .toml)
+  dir=$(dirname "$f")
+  dname=$(basename "$(cd "$dir" && pwd)")
+  # no pipeline: a failing stage 1 must not read as "no violations"
+  awk -f "$here/lib/toml-subset.awk" "$f" > "$t1" 2>/dev/null || : > "$t1"
+  # stage 2 always prints at least one record; an empty or failed stage 2 is a dead checker, not a pass
+  if fname="$base" dname="$dname" awk -f "$here/lib/profile-rules.awk" "$t1" > "$t2" 2>/dev/null && [ -s "$t2" ]; then :; else
+    printf '%s\tSTAGE2_DEAD\t0\t\n' "$f" >> "$raw"
+    return 0
+  fi
+  while IFS="$tab" read -r tag a b c; do
+    case $tag in
+      V) printf '%s\t%s\t%s\t%s\n' "$f" "$a" "$b" "$c" >> "$raw" ;;
+      P) printf '%s\tP\t%s\t\n' "$f" "$a" >> "$raw" ;;
+      REF)
+        if [ ! -f "$ledger_dir/$a.toml" ]; then
+          printf '%s\tLEDGER_REF_MISSING\t%s\t%s\n' "$f" "$b" "$a" >> "$raw"
+        fi
+        ;;
+      DECISION)
+        if [ ! -f "$a" ]; then
+          printf '%s\tSELECTED_NO_DECISION\t%s\t%s\n' "$f" "$b" "$a" >> "$raw"
+        fi
+        ;;
+      *) printf '%s\tSTAGE2_DEAD\t0\tunknown record %s\n' "$f" "$tag" >> "$raw" ;;
+    esac
+  done < "$t2"
+  return 0
+}
+
+for p in "$@"; do
+  if [ -f "$p" ]; then
+    check_file "$p"
+  else
+    echo "HARNESS_NO_FILE $p" >&2
+    exit 2
+  fi
+done
+
+# violations: everything but the P records, sorted and de-duplicated (several fields may name the same missing ID)
+awk 'BEGIN { FS = "\t" } $2 != "P"' "$raw" | sort -u > "$viol"
+nrec=$(awk 'BEGIN { FS = "\t" } $2 == "P" { n++ } END { print n + 0 }' "$raw")
+
+if [ "$have_expect" -eq 1 ]; then
+  got=$(awk -F'\t' '{ print $2 }' "$viol" | sort -u | tr '\n' ',' | sed 's/,$//')
+  want=$(printf '%s\n' "$expect" | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/,$//')
+  if [ "$got" = "$want" ]; then
+    echo "EXPECT_OK"
+    exit 0
+  fi
+  echo "EXPECT_MISMATCH wanted '$want' got '${got:-<none>}'" >&2
+  cat "$viol" >&2
+  exit 1
+fi
+
+cat "$viol"
+if [ -s "$viol" ]; then
+  exit 1
+fi
+echo "RECORDS profiles=$nrec"
+exit 0
