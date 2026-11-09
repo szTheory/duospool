@@ -12,7 +12,7 @@ reopen-if: the owner reconsiders after a measurement at emulator scale (the spik
 
 TOOL-01 asks for a language and build-system choice for the core, the loader and the headless runner, with measured results rather than a preference. Two skeletons, C11 with CMake and Ninja and Rust with Cargo, were built from one workload spec and run on one manifest (spike tree, `spikes/tool-01/`, preserved by the annotated tag `spike-tool-01-evidence`). The protocol was pre-registered before any spike file existed, and `scripts/protocol-order-check` enforces that order.
 
-Protocol commit: aea02af6e6d17bc1933fbb3467e38eb063f9a031
+Protocol commit: 62ad0503cc2efa7110444ac61cf837d07661ddca
 
 The protocol is `docs/decisions/0001-language-build.protocol.md` (not a record, no front matter). It fixes the workload, the hard gates G1 to G5, the metric register M01 to M15, the criteria and weights, the rubric anchors and the decision rule. This record applies it. No amendment exists (`amendments=0`, `amended_after_spike=no`).
 
@@ -290,3 +290,7 @@ LEADER rust
 RESULT=proposed-default
 REASON=margin-below-10
 ```
+
+## Dated note: history rewritten before publication (2026-11-09)
+
+Before the first public push the owner chose to rewrite the 64 local commits to replace absolute home-directory paths in prose with the placeholders `[repo-root]` and `[home]` (`git filter-repo --replace-text`; no content other than those strings changed). Every commit hash changed as a result. The protocol commit cited above is the rewritten hash; the commit it replaces was `aea02af6e6d17bc1933fbb3467e38eb063f9a031`. The annotated tag `spike-tool-01-evidence` was rewritten with the history and points at the rewritten spike-evidence commit. The protocol was not amended (`amendments=0`), and no scores changed. Earlier hashes quoted in the plan and summary files of this phase refer to the pre-rewrite history, which is not published. A bundle of the pre-rewrite history was kept outside the repository by the orchestrating session.
