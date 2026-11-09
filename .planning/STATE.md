@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 1
 current_phase_name: Owner Decisions, Claim Ledger and Toolchain Spike
 status: executing
-stopped_at: Completed 01-06-PLAN.md
-last_updated: "2026-11-09T22:00:11.476Z"
+stopped_at: Completed 01-07-PLAN.md
+last_updated: "2026-11-09T22:17:40.879Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 1 execution started
-state_head: 52bc510183391a3cc46ad8f2d9d388188f2e03c9
+state_head: 83770426d1809ea605fec73de68e39ebf66e6a11
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 12
-  completed_plans: 6
+  completed_plans: 7
   percent: 0
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 1 (Owner Decisions, Claim Ledger and Toolchain Spike) — EXECUTING
-Plan: 7 of 12
+Plan: 8 of 12
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 1 execution started
 
@@ -62,6 +62,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 1 P04 | 25min | 3 tasks | 87 files |
 | Phase 1 P05 | 30min | 2 tasks | 39 files |
 | Phase 1 P06 | 10 min | 2 tasks | 13 files |
+| Phase 1 P07 | 17 min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -82,6 +83,7 @@ Recent decisions affecting current work:
 - [Phase 1]: 01-05: PROTOCOL_EDITED is an append-only byte-prefix rule (a blank separator before an amendment heading must not read as an edit)
 - [Phase 1]: 01-05: a gate recorded as ND is not PASS; a leader with an ND gate is leader-fails-gate (D-37)
 - [Phase 1]: 01-06: opt_install builds RelWithDebInfo for both the remapped and seeded-leak runs so the path-leak grep inspects an archive that carries DWARF paths; prefix remap covers both /var and /private/var spellings
+- [Phase 1]: 01-07: C fuzz run sets ASAN_OPTIONS=handle_sigtrap=1 so the arm64 SIGTRAP from the planted __builtin_trap is reported and a crash artifact is written; runtime setting only, protocol unchanged
 
 ### Pending Todos
 
@@ -104,6 +106,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-09T22:00:11.444Z
-Stopped at: Completed 01-06-PLAN.md
+Last session: 2026-11-09T22:17:40.861Z
+Stopped at: Completed 01-07-PLAN.md
 Resume file: None
