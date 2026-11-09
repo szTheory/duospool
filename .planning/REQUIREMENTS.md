@@ -155,13 +155,60 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (filled by roadmapper) | | |
+| PROF-01 | Phase 1 | Pending |
+| PROF-02 | Phase 2 | Pending |
+| PROF-03 | Phase 2 | Pending |
+| PROF-04 | Phase 1 | Pending |
+| PROF-05 | Phase 1 | Pending |
+| CPU-01 | Phase 3 | Pending |
+| CPU-02 | Phase 3 | Pending |
+| CPU-03 | Phase 3 | Pending |
+| CPU-04 | Phase 3 | Pending |
+| CPU-05 | Phase 3 | Pending |
+| CPU-06 | Phase 3 | Pending |
+| VID-01 | Phase 4 | Pending |
+| VID-02 | Phase 4 | Pending |
+| VID-03 | Phase 4 | Pending |
+| VID-04 | Phase 4 | Pending |
+| VID-05 | Phase 4 | Pending |
+| VID-06 | Phase 4 | Pending |
+| AUD-01 | Phase 5 | Pending |
+| AUD-02 | Phase 5 | Pending |
+| AUD-03 | Phase 5 | Pending |
+| INP-01 | Phase 3 | Pending |
+| INP-02 | Phase 3 | Pending |
+| INP-03 | Phase 3 | Pending |
+| INP-04 | Phase 3 | Pending |
+| CONT-01 | Phase 2 | Pending |
+| CONT-02 | Phase 2 | Pending |
+| CONT-03 | Phase 2 | Pending |
+| CONT-04 | Phase 2 | Pending |
+| CORE-01 | Phase 2 | Pending |
+| CORE-02 | Phase 2 | Pending |
+| CORE-03 | Phase 2 | Pending |
+| CORE-04 | Phase 3 | Pending |
+| CORE-05 | Phase 3 | Pending |
+| CORE-06 | Phase 3 | Pending |
+| RUN-01 | Phase 6 | Pending |
+| RUN-02 | Phase 2 | Pending |
+| FIX-01 | Phase 3 | Pending |
+| FIX-02 | Phase 2 | Pending |
+| FIX-03 | Phase 3 | Pending |
+| FIX-04 | Phase 2 | Pending |
+| FIX-05 | Phase 2 | Pending |
+| TOOL-01 | Phase 1 | Pending |
+| TOOL-02 | Phase 2 | Pending |
+| PKG-01 | Phase 6 | Pending |
+| CI-01 | Phase 2 | Pending |
+| CI-02 | Phase 6 | Pending |
+| PERF-01 | Phase 6 | Pending |
+| INTG-01 | Phase 6 | Pending |
 
 **Coverage:**
 - v1 requirements: 48 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 48 ⚠️
+- Mapped to phases: 48
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-11-09*
-*Last updated: 2026-11-09 after initial definition*
+*Last updated: 2026-11-09 after roadmap creation (traceability filled)*
