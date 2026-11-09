@@ -55,7 +55,7 @@ The planner fills in Task IDs. Rows are keyed by success criterion; each row nam
 | SC1 | TOOL-01 | Protocol committed before any spike code | git | protocol-before-code check | synthetic repo with spike first → `PROTOCOL_AFTER_SPIKE` | ❌ W2 | ⬜ pending |
 | SC1 | TOOL-01 | Both skeletons pass hard gates on the shared manifest | integration | `sh spikes/tool-01/gates.sh {rust,c}` | wrong expectation rejected; header removed breaks consumer; seeded path leak caught; planted fuzz bug found within 60 s | ❌ W3 | ⬜ pending |
 | SC1 | TOOL-01 | Record 0001 has every metric for both options (value or `not demonstrated: <reason>`) | awk | `sh scripts/check-results docs/decisions/0001-language-build.md docs/decisions/0001-language-build.protocol.md` | a deleted row → `RESULT_MISSING` | ❌ W3 | ⬜ pending |
-| SC1 | TOOL-01 | Score arithmetic and D-07 margin rule | unit | `awk -f spikes/tool-01/score.awk <scores>` | a tie, a 9.9-point lead and a leader that fails a gate each print `proposed-default` | ❌ W2 | ⬜ pending |
+| SC1 | TOOL-01 | Score arithmetic and D-07 margin rule | unit | `awk -f scripts/lib/score.awk <scores>` | a tie, a 9.9-point lead and a leader that fails a gate each print `proposed-default` | ❌ W2 | ⬜ pending |
 | D-01 | — | Licence files canonical | unit | `shasum -a 256 LICENSE-APACHE` matches the pinned hash; grep holder line | an altered file fails | ❌ W0 | ⬜ pending |
 | D-02/D-33 | — | History clean before publication | script | `sh scripts/audit-history .` + `gitleaks git` | synthetic repo with `x.pce` (8 KiB) fails; a missing object fails | ❌ W4 | ⬜ pending |
 

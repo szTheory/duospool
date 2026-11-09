@@ -946,7 +946,18 @@ Every owner-selected field carries `decision = "docs/decisions/0002-first-profil
 | A10 | `AGENTS.md`/`.claude/CLAUDE.md` wording about LibFuturo and siblings may need an owner glance before going public | Pitfall 18 | Minor disclosure; owner decides at the checkpoint |
 | A11 | The `git grep` pattern set in `audit-history` is adequate for a no-secrets docs-only history | Code Examples | gitleaks second opinion at the checkpoint covers this |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+Resolutions were recorded on 2026-11-09 after research.
+
+- Q1 is **RESOLVED by D-32**: keep D-28 and use the mapping table in 0002, checked by grep.
+- Q2 is **RESOLVED by D-34**: the field holds the power-on value, and the label and LED-VID-0001 say so.
+- Q3 is **RESOLVED by D-31**: the owner selected "The DuoSpool Authors", 2026.
+- Q4 is **RESOLVED by D-33**: publish once at the end of Phase 1, after the audit.
+- Q5 is **RESOLVED by D-13/D-35**: the weights are Claude-proposed and fixed in the protocol commit, rubric anchors are included, and the owner may amend before the spike. There is no blocking checkpoint, because D-07 pre-authorizes.
+- Q6 is **RESOLVED (machine check, 2026-11-09)**: `docker info` reports server 29.5.2, so the daemon is running and the Linux-container fallback is available. Any use of it is recorded as a portability cost.
+
+The original questions are kept below for audit.
 
 1. **Console model/region field (criterion 2 vs D-28).**
    - What we know: ROADMAP criterion 2 names "console model/region"; D-27/D-28 give a closed field list without it and say the id omits region/revision.
@@ -975,7 +986,7 @@ Every owner-selected field carries `decision = "docs/decisions/0002-first-profil
 | wasi-sdk | C wasm | **no** (no brew formula) | 34.0 tarball, 180,322,002 bytes | "not attempted, install cost 180 MB" |
 | gh (authenticated) | public repo | yes | 2.101.0 | owner runs manually |
 | gitleaks | optional audit second opinion | yes | 8.30.1 | skip |
-| docker | Linux fallback | client only | 29.5.2 | daemon state unknown |
+| docker | Linux fallback | yes (daemon running, `docker info` server 29.5.2, checked 2026-11-09) | 29.5.2 | n/a |
 | python3 >= 3.11 | optional toml cross-check | `/opt/homebrew/bin/python3` 3.14.4 | | skip |
 
 **Missing with no fallback:** none blocking. **Missing with fallback:** Rust toolchain stack, hyperfine, wasmtime, wasi-sdk (install is routine and reversible; no checkpoint required, but record the cost).
