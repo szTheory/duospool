@@ -49,9 +49,28 @@ viol="$tmp/viol"
 statusfile="$tmp/status"
 : > "$raw"
 
+# bad_name PATH : true when PATH holds a TAB or a newline. Those bytes are the record separators of the stream below,
+# so a name carrying one could pick its own record tag and turn garbage into a pass (CR-01). Such a path never reaches
+# the stream; it is reported as BAD_FILENAME under a fixed placeholder, and the raw name is not echoed.
+tab=$(printf '\t')
+nl=$(printf '\n.'); nl=${nl%.}
+bad_name() {
+  case $1 in
+    *"$tab"* | *"$nl"*) return 0 ;;
+  esac
+  return 1
+}
+bad_filename() {
+  printf '%s\tV\tBAD_FILENAME\t0\tpath contains TAB or newline\n' "<bad-filename>" >> "$raw"
+}
+
 # check_file FILE : size gates, stage 1 into a temp file, then stage 2 over that file
 check_file() {
   f=$1
+  if bad_name "$f"; then
+    bad_filename
+    return 0
+  fi
   size=$(wc -c < "$f" | tr -d ' ')
   if [ "$size" -eq 0 ]; then
     printf '%s\tV\tEMPTY_FILE\t0\t\n' "$f" >> "$raw"
@@ -74,6 +93,10 @@ check_file() {
 }
 
 for p in "$@"; do
+  if bad_name "$p"; then
+    bad_filename
+    continue
+  fi
   if [ -d "$p" ]; then
     n=0
     for f in "$p"/*.toml; do
@@ -95,7 +118,6 @@ done
 # profile cross-check (D-23): each distinct (file, profile) pair must name a profiles/<id>/ holding an rN.toml record.
 # The value becomes a path component, so anything outside [a-z0-9-] is unknown without touching the file system.
 awk 'BEGIN { FS = "\t" } $2 == "PROFILE" { print $1 "\t" $3 "\t" $4 }' "$raw" | sort -u > "$tmp/profiles"
-tab=$(printf '\t')
 while IFS="$tab" read -r pf pv pl; do
   [ -n "$pf" ] || continue
   found=0
@@ -113,7 +135,9 @@ while IFS="$tab" read -r pf pv pl; do
 done < "$tmp/profiles"
 
 # REQUIRED file: each non-blank, non-comment line is  LED-ID<space>origin text
-if [ -n "$reqfile" ]; then
+if [ -n "$reqfile" ] && bad_name "$reqfile"; then
+  bad_filename
+elif [ -n "$reqfile" ]; then
   reqfile="$reqfile" awk '
     BEGIN { FS = "\n"; rf = ENVIRON["reqfile"] }
     /^[ \t]*(#.*)?$/ { next }

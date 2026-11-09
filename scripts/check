@@ -224,6 +224,64 @@ stage_profile_negatives() {
   return "$rc"
 }
 
+# a TAB or a newline in an input path must be refused as BAD_FILENAME (CR-01): those bytes are the record separators of
+# the ledger and profile checkers' internal stream, so a name carrying one could pick its own record tag and turn garbage
+# into a pass. The names are created at run time under $tmp because git cannot be relied on to carry such a name on every
+# host. The expected code is fixed here: BAD_FILENAME, and without --expect the checker must exit 1.
+# name_control CASE CHECKER PATH
+name_control() {
+  nc_case=$1
+  nc_ck=$2
+  nc_path=$3
+  if checker sh "$here/$nc_ck" --expect BAD_FILENAME "$nc_path" > "$tmp/case.out"; then r=0; else r=$?; fi
+  if [ "$r" -eq 1 ]; then
+    echo "CONTROL BROKEN $nc_case"
+    sed 's/^/  /' "$tmp/case.out"
+    [ "$rc" -eq 2 ] || rc=1
+    return 0
+  elif [ "$r" -ne 0 ]; then
+    echo "HARNESS_ERROR $nc_case"
+    sed 's/^/  /' "$tmp/case.out"
+    rc=2
+    return 0
+  fi
+  if checker sh "$here/$nc_ck" "$nc_path" > "$tmp/case.out"; then r=0; else r=$?; fi
+  if [ "$r" -ne 1 ]; then
+    echo "CONTROL BROKEN $nc_case (exit $r without --expect, wanted 1)"
+    sed 's/^/  /' "$tmp/case.out"
+    [ "$rc" -eq 2 ] || rc=1
+  fi
+  return 0
+}
+
+stage_filename_controls() {
+  rc=0
+  tab=$(printf '\t')
+  nl=$(printf '\n.'); nl=${nl%.}
+  w="$tmp/names"
+  rm -rf "$w"
+  # the contents are garbage on purpose: under a plain name every one of these files is rejected for other reasons, so
+  # only the name decides whether the checker reports BAD_FILENAME
+  if mkdir -p "$w/led-tab" "$w/led-nl" "$w/led-dir${tab}x" "$w/prof-tab" "$w/prof-nl" "$w/prof-dir${tab}d" \
+    && printf 'garbage line\n' > "$w/led-tab/x${tab}F${tab}y${tab}z.toml" \
+    && printf 'garbage line\n' > "$w/led-nl/a${nl}b.toml" \
+    && printf 'garbage line\n' > "$w/led-dir${tab}x/ok.toml" \
+    && printf 'garbage\n' > "$w/prof-tab/r1${tab}P${tab}x.toml" \
+    && printf 'garbage\n' > "$w/prof-nl/r1${nl}x.toml" \
+    && printf 'garbage\n' > "$w/prof-dir${tab}d/r1.toml"; then :; else
+    echo "HARNESS_ERROR cannot create the tab and newline named files"
+    return 2
+  fi
+  name_control ledger-tab-in-name ledger-check "$w/led-tab"
+  name_control ledger-newline-in-name ledger-check "$w/led-nl"
+  name_control ledger-tab-in-dir ledger-check "$w/led-dir${tab}x"
+  name_control ledger-tab-in-file-argument ledger-check "$w/led-tab/x${tab}F${tab}y${tab}z.toml"
+  name_control profile-tab-in-name profile-check "$w/prof-tab/r1${tab}P${tab}x.toml"
+  name_control profile-newline-in-name profile-check "$w/prof-nl/r1${nl}x.toml"
+  name_control profile-tab-in-dir profile-check "$w/prof-dir${tab}d/r1.toml"
+  return "$rc"
+}
+
 stage_provenance_register() {
   checker sh "$here/provenance-check"
 }
@@ -541,6 +599,7 @@ run_stage decision-records stage_decision_records
 run_stage decision-negatives stage_decision_negatives
 run_stage profile-records stage_profile_records
 run_stage profile-negatives stage_profile_negatives
+run_stage filename-controls stage_filename_controls
 run_stage provenance stage_provenance_register
 run_stage provenance-negatives stage_provenance_negatives
 run_stage licences stage_licence_files
