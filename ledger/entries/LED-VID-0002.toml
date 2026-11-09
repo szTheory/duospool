@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# Seed entry for research conflict C4 (VCE dot-clock encoding). A modelling assumption, not an established hardware fact.
+id = "LED-VID-0002"
+statement = "DuoSpool models the VCE as selecting the dot clock from the low two bits of its control register: 0 = master/4, 1 = master/3, 2 and 3 = master/2; the encoding is not established."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|HuC6260 manual page read|documents only /4 and /3; second-hand (SUMMARY C4, C19)", "CODE|several emulators|implement /2 as well (SUMMARY C4)", "REPORT|pcetech.txt|register section says 7 and 5 MHz, internally inconsistent (SUMMARY C4)", "UNKNOWN|register encoding|not established (SUMMARY C4)"]
+evidence = []
+disagreement = "the manual page read documents only master/4 and master/3 while several codebases implement master/2; the pcetech register section gives 7 and 5 MHz and is internally inconsistent"
+pinning_test = "PENDING:4"
+updated = "2026-11-09"
+assumption = "Three enumerated modes are modelled (5.37, 7.16 and 10.74 MHz); the master/2 encoding is a placeholder to re-check against the HuC6260 page before the first VCE fixture. Listed in unresolved_behaviours of the profile."
+revisit_phase = 4
+withheld = ["any claim about the encoding of mode 2 or 3", "mid-frame mode-change correctness (SUMMARY C11)"]
+origin = "SUMMARY C4"

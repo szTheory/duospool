@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# Seed entry for research conflict C6 ($1000 bit 6). A modelling assumption, not an established hardware fact.
+id = "LED-IO-0001"
+statement = "DuoSpool models bit 6 of a $1000 read as reading 1 and bit 7 (CD sense) as reading 1 for no CD; what bit 6 means is not established."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["REPORT|pcetech.txt|bit 6 described as a country bit (SUMMARY C6)", "CODE|Geargrafx|country: 1 = PC Engine (SUMMARY C6)", "REPORT|teardown author|reads bit 6 as boot ROM present, disputed (SUMMARY C6)"]
+evidence = []
+disagreement = "country bit that reads 1 on a PC Engine (pcetech; Geargrafx) versus boot ROM present (one teardown author); the meaning is unresolved"
+pinning_test = "PENDING:2"
+updated = "2026-11-09"
+assumption = "The bits are named by observed behaviour (io_1000_d6_value and io_1000_d7_value, both open); the proposal is 1 for each, tests assert behaviour and never semantics. D7 (CD sense, 1 = absent) shares this entry."
+revisit_phase = 2
+withheld = ["any region claim", "any TG-16 profile claim"]
+origin = "SUMMARY C6"

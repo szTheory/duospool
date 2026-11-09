@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# Seed entry for research open gap 9 (PSG channel numbering). A modelling assumption, not an established hardware fact.
+id = "LED-AUD-0002"
+statement = "DuoSpool models PSG channels as numbered 0 to 5 with noise on channels 4 and 5 and channel 1 modulating channel 0 (LFO); the numbering and placement are not established."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|wiki per ARCHITECTURE|6 channels, 32 x 5-bit waveform; second-hand (SUMMARY open-gap 9, C19)", "CODE|emulators|noise and LFO channel placement (SUMMARY open-gap 9)", "REPORT|PITFALLS, Mesen2 notes|number channels 1-based while ARCHITECTURE is 0-based (SUMMARY open-gap 9)"]
+evidence = []
+disagreement = "ARCHITECTURE numbers channels 0-based; PITFALLS and the Mesen2 notes number them 1-based; noise and LFO placement comes from emulator code"
+pinning_test = "PENDING:5"
+updated = "2026-11-09"
+assumption = "The ledger and all fixtures use 0-based indices; any 1-based source is converted at citation time and the base is written in the sources detail."
+revisit_phase = 5
+withheld = ["any noise behaviour beyond channel placement", "any LFO behaviour beyond channel placement"]
+origin = "SUMMARY open-gap 9"

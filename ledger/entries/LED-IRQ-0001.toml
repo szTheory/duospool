@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# Seed entry for research conflict C3 (VBlank and RCR IRQ position). A modelling assumption, not an established hardware fact.
+id = "LED-IRQ-0001"
+statement = "DuoSpool models the VBlank IRQ as raised on the first line after the active display area and the RCR IRQ at the end of the HDW period; the hardware position is not established."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["REPORT|pcetech.txt|VBlank on first line after active area (SUMMARY C3)", "CODE|MAME|VBlank at HDW start after VDW ends, RCR near HDW end (SUMMARY C3)", "CODE|Mednafen|RCR 4 VDC clocks before HDW end (SUMMARY C3)", "REPORT|Covell|says Mednafen VSync IRQ fires late (SUMMARY C3)", "UNKNOWN|hardware IRQ position|not established (SUMMARY C3)"]
+evidence = []
+disagreement = "VBlank on the first line after the active area (pcetech) versus MAME and Mednafen sub-line placements of VBlank and RCR; Covell reports Mednafen VSync fires late; hardware position unknown"
+pinning_test = "PENDING:4"
+updated = "2026-11-09"
+assumption = "Fixtures record the IRQ scanline and phase into guest RAM; the core uses the stated placeholder and no literal line number is asserted. Listed in unresolved_behaviours of the profile."
+revisit_phase = 4
+withheld = ["any literal IRQ line claim", "any IRQ phase claim", "any raster accurate wording"]
+origin = "SUMMARY C3"

@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# Seed entry for research conflict C8 (copier header rule). A modelling assumption, not an established hardware fact.
+id = "LED-LOAD-0002"
+statement = "DuoSpool models a copier header as present exactly when the image size modulo 8 KiB is 512 and the caller declares it; the detection rule is not established."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["CODE|Beetle|strips 512 bytes when the size has bit 9 set (SUMMARY C8)", "CODE|MAME|detects a header only when length mod 16 KB is 512 (SUMMARY C8)"]
+evidence = []
+disagreement = "Beetle strips 512 bytes when the size has bit 9 set; MAME detects a header only when the length mod 16 KB equals 512; the heuristics disagree"
+pinning_test = "PENDING:2"
+updated = "2026-11-09"
+assumption = "content_copier_header is proposed as refuse: a header-prefixed image is refused, never stripped or detected; header handling is a declared input. The profile field stays open."
+revisit_phase = 2
+withheld = ["any claim that headered dumps load"]
+origin = "SUMMARY C8"

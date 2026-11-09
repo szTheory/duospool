@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# Seed entry for research conflict C14 (CPU revision per model). A modelling assumption, not an established hardware fact.
+id = "LED-PROF-0001"
+statement = "The first profile assumes a HuC6280 (not a 6280A); DuoSpool makes no claim about which retail models contain the 6280A."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["REPORT|PCE_Soundtest|says some CoreGrafx units differ (SUMMARY C14)", "REPORT|Wikipedia|CoreGrafx has the A, CoreGrafx II reverts (SUMMARY C14)", "UNKNOWN|per-model revision|analog capture is the only discriminator (SUMMARY C14)"]
+evidence = []
+disagreement = "two reports place the 6280A in some CoreGrafx units and disagree on later models; only an analog capture (E3) could discriminate"
+pinning_test = "PENDING:6"
+updated = "2026-11-09"
+assumption = "chip_revision is huc6280 and is owner-selected as a scope choice (D-06); no per-model statement is made."
+revisit_phase = 6
+withheld = ["any per-model revision claim", "any HuC6280A claim", "any PSG DC-offset claim"]
+origin = "SUMMARY C14"
