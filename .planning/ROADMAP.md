@@ -37,18 +37,21 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. The claim ledger exists with these fields: statement, profile, evidence tier (E0-E4), source citation, disagreement, status, and pinning test. A ledger check rejects a deliberately mislabelled sample entry that is marked "supported" on E0/E4 evidence only.
   4. Each conflict the slice depends on is an open ledger entry with its chosen modelling assumption, not stated as fact. The list includes at least: PSG clock, 262 vs 263 lines, VBlank/RCR IRQ position, dot-clock encoding, 7 MHz active width, `$1000` bit 6, HuCard byte order, copier-header rule, and PSG channel numbering.
   5. Decision records exist for licence/visibility, fixture rights, API/ABI posture, CI provider, and the copied-code provenance rule. Each one is either owner-recorded or explicitly open. The fixture-rights record states that no GPL or unclear-licence material is admitted until the owner decides.
-**Plans:** 9 plans
+**Plans:** 12 plans
 
 Plans:
 - [ ] 01-01-PLAN.md — Walking-skeleton gate: scripts/check, the ledger and decision checkers, the E0/E4 negative control, record 0008, the full ledger negative corpus and --selftest
 - [ ] 01-02-PLAN.md — Seed ledger (9 mandated conflicts + C14), first-profile record r1 with profile-check, record 0002 with the criterion-2 mapping
 - [ ] 01-03-PLAN.md — Decision records 0003-0007, the README index with its drift check, PROJECT.md pointers, the decision negative corpus
 - [ ] 01-04-PLAN.md — PROVENANCE.md with provenance-check, licence files with licence-check, README, .gitignore
-- [ ] 01-05-PLAN.md — Pre-registered spike protocol for 0001 (rubric, arithmetic), score.awk with D-07 controls, protocol-order-check
-- [ ] 01-06-PLAN.md — Spike harness and the C11/CMake skeleton (written first), passing hard gates G1-G5
-- [ ] 01-07-PLAN.md — Rust/Cargo skeleton with toolchain installs, G1-G5, Miri and wasm rows
-- [ ] 01-08-PLAN.md — Measurements, record 0001 by the executable D-07 rule, evidence tag, spike removed from main
-- [ ] 01-09-PLAN.md — Full-history audit and gitleaks, the owner checkpoint, then the public repository with main and the evidence tag pushed
+- [ ] 01-05-PLAN.md — Pre-registered spike protocol for 0001 (rubric, arithmetic, D-36 toolchain rule), score.awk with D-07 controls, protocol-order-check
+- [ ] 01-06-PLAN.md — Spike harness and the C11/CMake core path (written first): fixtures, manifest, consumer, core and runner, hard gates G1-G4
+- [ ] 01-07-PLAN.md — C fuzz gate G5 with liveness, M08 sanitizer row, C bench hooks and LINES.map
+- [ ] 01-08-PLAN.md — Rust/Cargo core path on stable 1.99.1: safe core, capi facade, safe runner, hard gates G1-G4
+- [ ] 01-09-PLAN.md — Rust fuzz gate G5 with ASan canary, Miri on the facade (D-36 nightly), wasm row, Rust bench hooks and LINES.map
+- [ ] 01-10-PLAN.md — Pre-registered measurements for both options, run once, with check-results and its negative controls
+- [ ] 01-11-PLAN.md — Scores, record 0001 by the executable D-07 rule, evidence tag, spike removed from main
+- [ ] 01-12-PLAN.md — Full-history audit and gitleaks, the owner checkpoint, then the public repository with main and the evidence tag pushed
 **Research**: Not needed beyond the spike, which has a fixed plan (SUMMARY: standard pattern). The real work is the owner decisions.
 
 ### Phase 2: Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate
