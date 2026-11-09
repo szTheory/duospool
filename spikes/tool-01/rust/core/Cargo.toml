@@ -9,3 +9,7 @@ publish.workspace = true
 license.workspace = true
 
 [dependencies]
+
+# Liveness control for the G5 fuzz gate only (D-35). Never enabled by a default build, test or install.
+[features]
+planted-bug = []

@@ -126,6 +126,16 @@ impl Instance {
 
     /// Load content following the W-05 decision order. Every refusal leaves time and digest unchanged.
     pub fn load(&mut self, bytes: &[u8]) -> Status {
+        // Liveness control for the G5 fuzz gate only. Placed before the length ladder, as in the C option, so that the
+        // 4-byte input `DSPB` reaches it instead of being refused as truncated. Only the planted fuzz build enables it.
+        // The prefix is compared as one integer (little-endian "DSPB"), not through a memcmp call: under the ASan runtime
+        // on macOS libFuzzer did not see the bcmp that `starts_with` compiles to, and 60 s found nothing (LOG.md).
+        #[cfg(feature = "planted-bug")]
+        if let Some(prefix) = bytes.first_chunk::<4>()
+            && u32::from_le_bytes(*prefix) == 0x4250_5344
+        {
+            panic!("planted bug: input starts with DSPB");
+        }
         let by_length = length_status(bytes.len());
         if by_length != Status::Ok {
             return by_length;
