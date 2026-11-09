@@ -1,8 +1,9 @@
 ---
-status: proposed-default
-blocks: Phase 2 (hard gate: language/build must be owner-recorded)
-default-in-force: rust per the pre-registered score, provisional only; Phase 2 does not start until the owner records a choice
+status: owner-recorded
+owner-statement: Owner selected "C11 + CMake + Ninja" for decision 1 (language and build system) in the /gsd-execute-phase 1 session, 2026-11-09, after the pre-registered scorer returned proposed-default (Rust 80.20 against C 79.00, margin below 10.00) and the decision came back to the owner
+owner-date: 2026-11-09
 research-ref: SUMMARY #1
+reopen-if: the owner reconsiders after a measurement at emulator scale (the spike times are toy-workload only), or the C path proves unable to meet the memory-safety evidence the content boundary needs
 ---
 
 # 0001: Language and build system
@@ -78,7 +79,18 @@ Choosing among these readings is not done silently here: the protocol text says 
 
 ## Decision
 
-The language decision is open and Phase 2 is blocked.
+Owner decision (2026-11-09): C11 with CMake and Ninja (clang or gcc) for the core, loader and headless runner. The owner selected "C11 + CMake + Ninja" after the pre-registered scorer did not produce a clear winner; this is a deliberate owner choice and is not the scorer's result. Phase 2 is unblocked.
+
+What this choice commits Phase 2 to, and what it does not:
+
+- The language and build system are C11 and CMake with Ninja. Rust is not adopted. The Rust skeleton stays available at the tag `spike-tool-01-evidence` as evidence only.
+- The scorer's RESULT below (`proposed-default`, Rust ahead by 1.20 points) is kept as the record of how the spike came out. The owner chose against the nominal leader, by weighing the measurements and sensitivity table below.
+- The measured advantages of the Rust option that C does not have (memory safety by construction at the content boundary, a verified wasm run) become Phase 2 obligations for C: sanitizer and fuzz runs of the content loader and input parser in the staged job (CI-02), explicit bounds and size-cap checks with the refusal matrix (CONT-01..04), no hidden globals (CORE-01), and a wasm build attempt when wasm is promised (decision 13). Plan these as evidence the C core must supply, not as optional extras.
+- The record `reopen-if` names the conditions under which this choice is revisited.
+
+Scorer outcome at the time of the spike (kept for the audit trail):
+
+The language decision was open and Phase 2 was blocked until the owner chose, and the owner has now chosen.
 
 The scorer's REASON is `margin-below-10`: both options pass every hard gate, Rust leads nominally by 1.20 points (80.20 against 79.00), and D-07 as confirmed by D-37 needs a lead of at least 10.00 points before a result stands in for an owner choice. The status is therefore `proposed-default`, not `owner-recorded`. The `default-in-force` names Rust only because the pre-registered score put it ahead; it is provisional, the STACK.md research ranking was not used, and the sensitivity table shows the leader can flip.
 

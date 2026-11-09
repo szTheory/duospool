@@ -100,11 +100,11 @@ None yet.
 
 ### Blockers/Concerns
 
-- [Phase 1]: Open owner decisions: language/build (1), first-profile values (2), API/ABI posture (6), licence/visibility (8), fixture rights (9), CI provider (14). Phase 2 is blocked until decision 1 is recorded.
+- [Phase 1]: Owner decisions recorded 2026-11-09: language/build (1) = C11 + CMake + Ninja (owner chose against the Rust nominal leader), first-profile scope (2), API/ABI posture (6), licence/visibility (8), fixture rights (9), CI provider (14). Phase 2 is unblocked.
 - [Phase 3]: No fixture can be admitted until the licence (8) and fixture-rights (9) decisions are recorded.
 - [Phases 4-5]: Hardware timing conflicts (C1 PSG clock, C2 line count, C3 IRQ position, C4 dot-clock encoding, C5 active width) stay modelling assumptions. Settling them needs a primary source or an owner-approved capture (10).
 - [Phase 6]: LibFuturo evaluation needs owner-supplied or owner-authorized access to the current contract (7). Package format needs decision 12.
-- Phase 2 blocked: language/build record 0001 is proposed-default (REASON=margin-below-10); owner must state a choice (Rust/Cargo or C11/CMake) and the record then becomes owner-recorded
+- RESOLVED 2026-11-09: Phase 2 language/build gate cleared. Record 0001 is owner-recorded: C11 + CMake + Ninja (owner chose it after the scorer returned proposed-default, Rust 80.20 vs C 79.00)
 
 ## Deferred Items
 

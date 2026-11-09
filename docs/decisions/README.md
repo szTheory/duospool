@@ -8,7 +8,7 @@ Every record has exactly one row in this index, and the row's status matches the
 
 | Record | Title | Status |
 |--------|-------|--------|
-| [0001](0001-language-build.md) | Language and build system | proposed-default |
+| [0001](0001-language-build.md) | Language and build system | owner-recorded |
 | [0002](0002-first-profile.md) | First profile scope (pce-hucard-2btn) | owner-recorded |
 | [0003](0003-api-abi.md) | Core API and ABI posture | owner-recorded |
 | [0004](0004-licence-visibility.md) | Licence and repository visibility | owner-recorded |

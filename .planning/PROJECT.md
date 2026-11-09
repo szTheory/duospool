@@ -164,7 +164,7 @@ planning configuration, the bootstrap pack, and `AGENTS.md`.
 | First vertical slice: base PC Engine/TG-16 profile + HuCard + original diagnostic fixture + headless runner + installed-consumer proof | Seed recommendation; small enough to diagnose, broad enough to exercise input/timing/video/audio/lifecycle seams | — Proposed (candidate, not owner-selected) |
 | Exact first profile (region, console revision, CPU revision HuC6280 vs HuC6280A, video timing) | Requires research and owner input | → docs/decisions/0002-first-profile.md (owner-recorded scope; disputed fields open) |
 | SuperGrafx, CD-ROM²/Super CD-ROM², Arcade Card, multitap/peripherals in product scope | Each changes architecture, timing, media, rights, and testing cost; must earn a roadmap slot via a named user outcome | — Open (not in v1; not excluded from the North Star) |
-| Language and build system | Research recommendation pending; decide at Phase 1 discussion | → docs/decisions/0001-language-build.md (proposed-default) |
+| Language and build system | Research recommendation pending; decide at Phase 1 discussion | → docs/decisions/0001-language-build.md (owner-recorded) |
 | Host/platform targets, package format | Decide when the installed-consumer proof is planned | — Open |
 | Core API/ABI shape and evolution policy | Do not freeze before a real consumer proof | → docs/decisions/0003-api-abi.md (owner-recorded) |
 | LibFuturo adoption | Candidate only; requires a prototype adapter or a named concrete mismatch | — Open |
