@@ -1,0 +1,52 @@
+M01	cold-first-build	c	seconds=0.768	copied from LOG.md line M01 cold-first-build c (single first-ever opt_build debug, never re-measured)
+M01	toolchain-install	c	preinstalled	protocol M01 row: preinstalled for C
+M02	debug	c	median=0.76583 mean=0.78520 stddev=0.11689 min=0.67255 max=1.05690	hyperfine --warmup 1 --runs 10; raw JSON spikes/tool-01/results/M02-c-debug.json
+M02	release	c	median=0.70303 mean=0.73408 stddev=0.05894 min=0.68184 max=0.85237	hyperfine --warmup 1 --runs 10; raw JSON spikes/tool-01/results/M02-c-release.json
+M03	debug	c	median=0.22438 mean=0.24675 stddev=0.05243 min=0.19982 max=0.34000	hyperfine --warmup 1 --runs 10; raw JSON spikes/tool-01/results/M03-c-debug.json
+M03	release	c	median=0.21722 mean=0.21526 stddev=0.00977 min=0.19424 max=0.22625	hyperfine --warmup 1 --runs 10; raw JSON spikes/tool-01/results/M03-c-release.json
+M04	debug	c	median=0.19373 mean=0.19519 stddev=0.00936 min=0.18364 max=0.21065	hyperfine --warmup 1 --runs 10; raw JSON spikes/tool-01/results/M04-c-debug.json
+M04	release	c	median=0.19877 mean=0.19928 stddev=0.01136 min=0.18111 max=0.21224	hyperfine --warmup 1 --runs 10; raw JSON spikes/tool-01/results/M04-c-release.json
+M05	debug	c	median=0.03523 mean=0.03570 stddev=0.00197 min=0.03340 max=0.03949	hyperfine --warmup 1 --runs 10; raw JSON spikes/tool-01/results/M05-c-debug.json
+M05	release	c	median=0.03582 mean=0.03479 stddev=0.00242 min=0.03098 max=0.03721	hyperfine --warmup 1 --runs 10; raw JSON spikes/tool-01/results/M05-c-release.json
+M06	debug	c	median=1.79103 mean=1.76777 stddev=0.08497 min=1.57522 max=1.85446	hyperfine --warmup 1 --runs 10; raw JSON spikes/tool-01/results/M06-c-debug.json
+M06	release	c	median=1.52524 mean=1.49076 stddev=0.15208 min=1.28789 max=1.72765	hyperfine --warmup 1 --runs 10; raw JSON spikes/tool-01/results/M06-c-release.json
+M07	debug	c	median=2.46434 mean=2.54371 stddev=0.21320 min=2.33119 max=2.98182	hyperfine --warmup 1 --runs 10; raw JSON spikes/tool-01/results/M07-c-debug.json
+M07	release	c	median=2.46817 mean=2.47902 stddev=0.15460 min=2.28758 max=2.72369	hyperfine --warmup 1 --runs 10; raw JSON spikes/tool-01/results/M07-c-release.json
+M08	sanitizer	c	PASS	LOG.md line SANITIZER c (opt_sanitizer, plans 01-07 and 01-09)
+M09	core	c	109	awk count of non-blank non-comment lines over c/LINES.map category core
+M09	ffi-glue	c	38	awk count of non-blank non-comment lines over c/LINES.map category ffi-glue
+M09	build	c	15	awk count of non-blank non-comment lines over c/LINES.map category build
+M09	scripts	c	145	awk count of non-blank non-comment lines over c/LINES.map category scripts
+M09	runner	c	311	awk count of non-blank non-comment lines over c/LINES.map category runner
+M10	list	c	cmake 4.4.3 (preinstalled; build, install); ninja 1.13.2 (preinstalled; build); Apple clang 21.0.0 (preinstalled; build, sanitizer, fuzz compile); Homebrew llvm@21 21.1.8 (preinstalled; libFuzzer runtime archive by explicit path only, D-17); baseline excluded from T by the protocol: sh, awk, git, perl, pkgconf, system cc; measurement only: hyperfine 2.0.0	LOG.md install lines and toolchain versions
+M11	G4	c	PASS	spikes/tool-01/results/gates-c.txt (end-of-plan SLOW gate output, copied verbatim)
+M12	G5	c	PASS elapsed=61.1 crashed=no execs_per_sec=39814	spikes/tool-01/results/gates-c.txt (end-of-plan SLOW gate output, copied verbatim)
+M13	liveness	c	found_after=0.4	spikes/tool-01/results/gates-c.txt (end-of-plan SLOW gate output, copied verbatim)
+M14	wasm	c	not attempted, install cost 180,322,002-byte wasi-sdk 34.0 download	LOG.md line WASM c
+M15	path-leak	c	leak=0 seeded-leak=10	spikes/tool-01/results/gates-c.txt (end-of-plan SLOW gate output, copied verbatim)
+M01	cold-first-build	rust	seconds=0.686	copied from LOG.md line M01 cold-first-build rust (single first-ever opt_build debug, never re-measured)
+M01	toolchain-install	rust	seconds=36.6 (rustup 16.1 s plus stable 1.99.1 20.5 s; rustup also fetched its default stable channel during the first sync, which is 1.99.1 as well)	copied from LOG.md line M01 toolchain-install rust and the install lines for rustup and 1.99.1
+M02	debug	rust	median=0.72240 mean=0.71787 stddev=0.02578 min=0.67268 max=0.75022	hyperfine --warmup 1 --runs 10; raw JSON spikes/tool-01/results/M02-rust-debug.json
+M02	release	rust	median=0.88911 mean=0.89928 stddev=0.02626 min=0.87813 max=0.96510	hyperfine --warmup 1 --runs 10; raw JSON spikes/tool-01/results/M02-rust-release.json
+M03	debug	rust	median=0.45316 mean=0.47275 stddev=0.05702 min=0.42424 max=0.58407	hyperfine --warmup 1 --runs 10; raw JSON spikes/tool-01/results/M03-rust-debug.json
+M03	release	rust	median=0.86287 mean=0.91048 stddev=0.13163 min=0.79256 max=1.15478	hyperfine --warmup 1 --runs 10; raw JSON spikes/tool-01/results/M03-rust-release.json
+M04	debug	rust	median=0.80201 mean=0.84329 stddev=0.27557 min=0.58283 max=1.49011	hyperfine --warmup 1 --runs 10; raw JSON spikes/tool-01/results/M04-rust-debug.json
+M04	release	rust	median=0.77937 mean=0.78288 stddev=0.03274 min=0.72277 max=0.82074	hyperfine --warmup 1 --runs 10; raw JSON spikes/tool-01/results/M04-rust-release.json
+M05	debug	rust	median=0.11780 mean=0.15620 stddev=0.09694 min=0.10941 max=0.42364	hyperfine --warmup 1 --runs 10; raw JSON spikes/tool-01/results/M05-rust-debug.json
+M05	release	rust	median=0.10185 mean=0.10153 stddev=0.00370 min=0.09689 max=0.10790	hyperfine --warmup 1 --runs 10; raw JSON spikes/tool-01/results/M05-rust-release.json
+M06	debug	rust	median=3.38013 mean=3.43064 stddev=0.14427 min=3.27320 max=3.67873	hyperfine --warmup 1 --runs 10; raw JSON spikes/tool-01/results/M06-rust-debug.json
+M06	release	rust	median=3.17626 mean=3.15102 stddev=0.22058 min=2.75808 max=3.42142	hyperfine --warmup 1 --runs 10; raw JSON spikes/tool-01/results/M06-rust-release.json
+M07	debug	rust	median=3.94651 mean=3.94070 stddev=0.16282 min=3.68141 max=4.28334	hyperfine --warmup 1 --runs 10; raw JSON spikes/tool-01/results/M07-rust-debug.json
+M07	release	rust	median=4.25537 mean=4.11360 stddev=0.44591 min=3.32231 max=4.77078	hyperfine --warmup 1 --runs 10; raw JSON spikes/tool-01/results/M07-rust-release.json
+M08	sanitizer	rust	PASS	LOG.md line SANITIZER rust (opt_sanitizer, plans 01-07 and 01-09)
+M09	core	rust	148	awk count of non-blank non-comment lines over rust/LINES.map category core
+M09	ffi-glue	rust	231	awk count of non-blank non-comment lines over rust/LINES.map category ffi-glue
+M09	build	rust	69	awk count of non-blank non-comment lines over rust/LINES.map category build
+M09	scripts	rust	176	awk count of non-blank non-comment lines over rust/LINES.map category scripts
+M09	runner	rust	181	awk count of non-blank non-comment lines over rust/LINES.map category runner
+M10	list	rust	rustup 1.29.3 (install 16.1 s; licence Apache-2.0-OR-MIT; source homebrew-core formula rustup (brew install rustup; keg-only, bottled; never curl|sh)); rust-toolchain 1.99.1 (install 20.5 s; licence Apache-2.0-OR-MIT; source rustup toolchain install 1.99.1 --profile minimal -c rustfmt -c clippy -t wasm32-wasip1 (static.rust-lang.org via rustup, D-17/D-36)); nightly-2026-11-09 rustc-1.102.0-nightly-5b7b37aef (install 17.3 s; licence Apache-2.0-OR-MIT; source rustup toolchain install nightly-2026-11-09 --profile minimal -c miri -c rust-src (static.rust-lang.org via rustup, D-36; used only for cargo-fuzz and Miri; tools required (M10), not part of M01)); cargo-fuzz 0.13.2 (install 15.4 s; licence MIT-OR-Apache-2.0; source cargo +nightly-2026-11-09 install cargo-fuzz --version 0.13.2 --locked (crates.io; package-legitimacy check verdict OK, 170393 weekly downloads, repo rust-fuzz/cargo-fuzz)); wasmtime 50.0.1 (install 7.7 s; licence Apache-2.0-WITH-LLVM-exception; source homebrew-core formula wasmtime (brew install wasmtime, bottled; never curl|sh)); baseline excluded from T by the protocol: sh, awk, git, perl, pkgconf, system cc; measurement only: hyperfine 2.0.0	LOG.md install lines and toolchain versions
+M11	G4	rust	PASS	spikes/tool-01/results/gates-rust.txt (end-of-plan SLOW gate output, copied verbatim)
+M12	G5	rust	PASS elapsed=61.2 crashed=no execs_per_sec=46895	spikes/tool-01/results/gates-rust.txt (end-of-plan SLOW gate output, copied verbatim)
+M13	liveness	rust	found_after=0.4	spikes/tool-01/results/gates-rust.txt (end-of-plan SLOW gate output, copied verbatim)
+M14	wasm	rust	transcript-identical=yes	LOG.md line WASM transcript-identical (opt_wasm, wasm32-wasip1 under wasmtime)
+M15	path-leak	rust	leak=0 seeded-leak=8	spikes/tool-01/results/gates-rust.txt (end-of-plan SLOW gate output, copied verbatim)

@@ -1,0 +1,21 @@
+FIXTURE zero-64k.bin OK
+FIXTURE lcg-64k.bin OK
+FIXTURE empty.bin OK
+FIXTURE trunc-65535.bin OK
+FIXTURE hdr-66048.bin OK
+FIXTURE bad-98304.bin OK
+FIXTURE cap-1048576.bin OK
+FIXTURE over-1048577.bin OK
+GATE fixtures PASS
+GATE build PASS
+GATE test-refusals PASS
+GATE test-controls PASS
+GATE test-interleave PASS
+GATE transcript PASS
+LEAK 0
+SEEDED-LEAK 10
+GATE consumer-proof PASS
+LIVENESS found_after=0.4
+FUZZ elapsed=61.1 crashed=no execs_per_sec=39814
+GATE fuzz60 PASS
+GATES c RESULT PASS
