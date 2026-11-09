@@ -9,6 +9,7 @@
 #           S<TAB>status                      a valid status (tallied by the wrapper; never a violation)
 #           I<TAB>id                          the id value (the wrapper tallies DUP_ID across files)
 #           F<TAB>fname<TAB>origin            this file's name and origin value (REQUIRED cross-check)
+#           PROFILE<TAB>value<TAB>line        the profile value (the wrapper checks that profiles/<value>/rN.toml exists)
 # If the stage-1 sentinel is missing, only  V NO_SENTINEL  is emitted (a dead stage 1 must not read as a pass).
 # This check enforces structure, not truth.
 BEGIN {
@@ -93,5 +94,6 @@ END {
     else if (pin !~ /^TEST:/ && pin != "") viol("SUPPORTED_NEEDS_TEST", ln["pinning_test"], pin)
   }
   printf "F\t%s\t%s\n", fname, (ok("origin") ? val["origin"] : "")
+  if (ok("profile")) printf "PROFILE\t%s\t%s\n", val["profile"], ln["profile"]
   for (i = 1; i <= nv; i++) print vbuf[i]
 }

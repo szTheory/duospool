@@ -3,7 +3,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
 # ledger-check - claim-ledger checker (D-18..D-23). This check enforces structure, not truth.
-# usage: ledger-check [--expect CODE[,CODE...]] [--required FILE] PATH...
+# usage: ledger-check [--expect CODE[,CODE...]] [--required FILE] [--profiles DIR] PATH...
+#   --profiles DIR (default profiles): an entry whose profile has no DIR/<profile>/rN.toml gives PROFILE_UNKNOWN (D-23).
 #   PATH is a .toml file or a directory (every *.toml directly inside it is checked).
 # stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then one line
 #         STATUS open=N assumed=N supported=N refuted=N deferred=N withdrawn=N
@@ -14,17 +15,19 @@ LC_ALL=C; export LC_ALL
 here=$(cd "$(dirname "$0")" && pwd)
 
 usage() {
-  echo "usage: ledger-check [--expect CODE[,CODE...]] [--required FILE] PATH..." >&2
+  echo "usage: ledger-check [--expect CODE[,CODE...]] [--required FILE] [--profiles DIR] PATH..." >&2
   exit 2
 }
 
 expect=""
 have_expect=0
 reqfile=""
+profiles_dir="profiles"
 while [ $# -gt 0 ]; do
   case $1 in
     --expect) [ $# -ge 2 ] || usage; expect=$2; have_expect=1; shift 2 ;;
     --required) [ $# -ge 2 ] || usage; reqfile=$2; shift 2 ;;
+    --profiles) [ $# -ge 2 ] || usage; profiles_dir=$2; shift 2 ;;
     --) shift; break ;;
     -*) usage ;;
     *) break ;;
@@ -88,6 +91,26 @@ for p in "$@"; do
     exit 2
   fi
 done
+
+# profile cross-check (D-23): each distinct (file, profile) pair must name a profiles/<id>/ holding an rN.toml record.
+# The value becomes a path component, so anything outside [a-z0-9-] is unknown without touching the file system.
+awk 'BEGIN { FS = "\t" } $2 == "PROFILE" { print $1 "\t" $3 "\t" $4 }' "$raw" | sort -u > "$tmp/profiles"
+tab=$(printf '\t')
+while IFS="$tab" read -r pf pv pl; do
+  [ -n "$pf" ] || continue
+  found=0
+  case $pv in
+    ""|*[!a-z0-9-]*) found=0 ;;
+    *)
+      for r in "$profiles_dir/$pv"/r[0-9]*.toml; do
+        [ -f "$r" ] && found=1
+      done
+      ;;
+  esac
+  if [ "$found" -eq 0 ]; then
+    printf '%s\tV\tPROFILE_UNKNOWN\t%s\t%s\n' "$pf" "$pl" "$pv" >> "$raw"
+  fi
+done < "$tmp/profiles"
 
 # REQUIRED file: each non-blank, non-comment line is  LED-ID<space>origin text
 if [ -n "$reqfile" ]; then
