@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 1
 current_phase_name: Owner Decisions, Claim Ledger and Toolchain Spike
 status: executing
-stopped_at: Completed 01-10-PLAN.md
-last_updated: "2026-11-09T23:02:22.388Z"
+stopped_at: Completed 01-11-PLAN.md
+last_updated: "2026-11-09T23:08:50.953Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 1 execution started
-state_head: 9a5b0a2f2aadba4842885f324ff3507664ef54bd
+state_head: b956d9e8784c6ab4a68a90c3cdeaff0e5f797aaa
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 12
-  completed_plans: 10
+  completed_plans: 11
   percent: 0
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 1 (Owner Decisions, Claim Ledger and Toolchain Spike) — EXECUTING
-Plan: 11 of 12
+Plan: 12 of 12
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 1 execution started
 
@@ -66,6 +66,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 1 P08 | 25 min | 2 tasks | 14 files |
 | Phase 1 P09 | 20 min | 2 tasks | 9 files |
 | Phase 1 P10 | 13 min | 3 tasks | 40 files |
+| Phase 1 P11 | 15 min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -91,6 +92,7 @@ Recent decisions affecting current work:
 - [Phase 1]: 01-09: planted-bug prefix compared as one little-endian integer because bytes.starts_with was not found by cargo-fuzz in 60 s under macOS ASan (found in 0.4 s after); fuzz and Miri trees under out/
 - [Phase 1]: 01-10: run-all.sh timing parser takes the last occurrence of each key; with hyperfine 2.0.0 that is the time_wall_clock block, verified for all 24 JSON files by an independent cross-check (0 mismatches); script left as run
 - [Phase 1]: 01-10: M09 line counts follow LINES.map as pre-registered, so the Rust ffi-glue count (231) includes the capi Miri test module; C4 inputs are 198 (C) and 476 (Rust); for the 01-11 scorer to weigh
+- [Phase 1]: 01-11: Record 0001 (language/build) is proposed-default: score.awk RESULT=proposed-default REASON=margin-below-10 (Rust 80.20 vs C 79.00); Phase 2 blocked pending an owner choice; leader Rust is provisional and flips under two plausible rubric readings
 
 ### Pending Todos
 
@@ -102,6 +104,7 @@ None yet.
 - [Phase 3]: No fixture can be admitted until the licence (8) and fixture-rights (9) decisions are recorded.
 - [Phases 4-5]: Hardware timing conflicts (C1 PSG clock, C2 line count, C3 IRQ position, C4 dot-clock encoding, C5 active width) stay modelling assumptions. Settling them needs a primary source or an owner-approved capture (10).
 - [Phase 6]: LibFuturo evaluation needs owner-supplied or owner-authorized access to the current contract (7). Package format needs decision 12.
+- Phase 2 blocked: language/build record 0001 is proposed-default (REASON=margin-below-10); owner must state a choice (Rust/Cargo or C11/CMake) and the record then becomes owner-recorded
 
 ## Deferred Items
 
@@ -113,6 +116,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-09T23:02:22.358Z
-Stopped at: Completed 01-10-PLAN.md
+Last session: 2026-11-09T23:08:43.732Z
+Stopped at: Completed 01-11-PLAN.md
 Resume file: None
