@@ -1,3 +1,14 @@
 # Control fixtures that carry a line-start Provenance marker. They are checked under their own --root by the
 # provenance-negatives stage, so the real-root scan skips these exact paths. One root-relative path per line; no globs.
 tests/provenance/gpl-spdx/src/copied.c
+tests/provenance/bad-ref/src/copied.c
+tests/provenance/bad-sync-policy/src/copied.c
+tests/provenance/dup-id/src/copied.c
+tests/provenance/missing-field/src/copied.c
+tests/provenance/ok-one-entry/src/copied.c
+tests/provenance/ok-stale-warning/src/copied.c
+tests/provenance/unknown-field/src/copied.c
+tests/provenance/unresolved-marker-docs/docs/x.c.txt
+tests/provenance/unresolved-marker-scripts/scripts/x.sh
+tests/provenance/unresolved-marker/src/copied.c
+tests/provenance/with-exception/src/copied.c

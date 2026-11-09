@@ -1,0 +1,2 @@
+// Provenance: PROV-0010
+// Control stub: not real copied code.
