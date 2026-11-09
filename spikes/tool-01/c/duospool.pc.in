@@ -1,9 +1,0 @@
-prefix=${pcfiledir}/../..
-libdir=${prefix}/lib
-includedir=${prefix}/include
-
-Name: duospool
-Description: DuoSpool TOOL-01 spike workload (C skeleton)
-Version: 1
-Cflags: -I${includedir}
-Libs: -L${libdir} -lduospool

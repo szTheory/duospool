@@ -1,7 +1,0 @@
-src/core.c	core
-include/duospool.h	ffi-glue
-duospool.pc.in	ffi-glue
-CMakeLists.txt	build
-hooks.sh	scripts
-src/runner.c	runner
-fuzz/fuzz_loader.c	runner

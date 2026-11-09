@@ -1,8 +1,0 @@
-TOTAL c 7900
-TOTAL rust 8020
-WORST c 7900
-WORST rust 8020
-MARGIN nominal 120 worst 120
-LEADER rust
-RESULT=proposed-default
-REASON=margin-below-10
