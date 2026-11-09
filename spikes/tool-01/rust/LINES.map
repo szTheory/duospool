@@ -1,0 +1,13 @@
+core/src/lib.rs	core
+capi/src/lib.rs	ffi-glue
+include/duospool.h	ffi-glue
+duospool.pc.in	ffi-glue
+Cargo.toml	build
+core/Cargo.toml	build
+capi/Cargo.toml	build
+runner/Cargo.toml	build
+fuzz/Cargo.toml	build
+rust-toolchain.toml	build
+hooks.sh	scripts
+runner/src/main.rs	runner
+fuzz/fuzz_targets/loader.rs	runner

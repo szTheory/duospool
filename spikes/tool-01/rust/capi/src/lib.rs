@@ -159,3 +159,127 @@ pub mod probe {
         status
     }
 }
+
+/// The Miri target (protocol M08, D-36): the facade's own tests drive the `extern "C"` entry points, so the interpreter
+/// checks every unsafe block above for undefined behaviour. `cargo +nightly-2026-11-09 miri test -p duospool` runs them.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use duospool_core::CONTENT_SIZE;
+
+    /// A deterministic 65536-byte buffer, built in memory (no fixture file and no host I/O under Miri).
+    fn content() -> Vec<u8> {
+        (0..CONTENT_SIZE)
+            .map(|i| (i.wrapping_mul(31).wrapping_add(7) & 0xff) as u8)
+            .collect()
+    }
+
+    fn create() -> *mut Handle {
+        let mut inst: *mut Handle = ptr::null_mut();
+        // SAFETY: `&mut inst` is a valid, aligned pointer to a local pointer that lives for the whole call.
+        let status = unsafe { duospool_create(&mut inst) };
+        assert_eq!(status, Status::Ok.code());
+        assert!(!inst.is_null());
+        inst
+    }
+
+    #[test]
+    fn create_load_step_digest_destroy() {
+        let inst = create();
+        let buf = content();
+        // SAFETY: `inst` is the live instance from `create`, and `buf` is valid for reads of `buf.len()` bytes.
+        let status = unsafe { duospool_load(inst, buf.as_ptr(), buf.len()) };
+        assert_eq!(status, Status::Ok.code());
+        // SAFETY: `inst` is live and not otherwise borrowed.
+        assert_eq!(unsafe { duospool_step(inst, 100) }, Status::Ok.code());
+        let mut time = 0_u64;
+        // SAFETY: `inst` is live and `&mut time` is valid for a write of a `u64`.
+        assert_eq!(unsafe { duospool_time(inst, &mut time) }, Status::Ok.code());
+        assert_eq!(time, 100);
+        let mut hex = [0_u8; DIGEST_HEX_LEN];
+        // SAFETY: `inst` is live and `hex` is valid for writes of `DIGEST_HEX_LEN` bytes.
+        let status =
+            unsafe { duospool_digest_hex(inst, hex.as_mut_ptr().cast::<c_char>(), hex.len()) };
+        assert_eq!(status, Status::Ok.code());
+        assert_eq!(hex[DIGEST_HEX_LEN - 1], 0);
+        assert!(hex[..16].iter().all(|b| b.is_ascii_hexdigit()));
+        // SAFETY: `inst` came from `duospool_create` and is destroyed exactly once, here.
+        unsafe { duospool_destroy(inst) };
+    }
+
+    #[test]
+    fn null_arguments_and_null_buffer() {
+        // SAFETY: a null `out` is the case under test and is checked before any write.
+        assert_eq!(
+            unsafe { duospool_create(ptr::null_mut()) },
+            Status::ErrNullArg.code()
+        );
+        let inst = create();
+        // SAFETY: `inst` is live; the null buffer is the case under test and is checked before any read.
+        let status = unsafe { duospool_load(inst, ptr::null(), CONTENT_SIZE) };
+        assert_eq!(status, Status::ErrNullArg.code());
+        // SAFETY: a null instance is the case under test and is checked before any use.
+        let status = unsafe { duospool_load(ptr::null_mut(), content().as_ptr(), CONTENT_SIZE) };
+        assert_eq!(status, Status::ErrNullArg.code());
+        // SAFETY: a null instance is the case under test and is checked before any use.
+        assert_eq!(
+            unsafe { duospool_step(ptr::null_mut(), 1) },
+            Status::ErrNullArg.code()
+        );
+        // SAFETY: `inst` is live; the null output is checked before any write.
+        assert_eq!(
+            unsafe { duospool_time(inst, ptr::null_mut()) },
+            Status::ErrNullArg.code()
+        );
+        // SAFETY: a null instance is a no-op by contract.
+        unsafe { duospool_destroy(ptr::null_mut()) };
+        // SAFETY: `inst` came from `duospool_create` and is destroyed exactly once, here.
+        unsafe { duospool_destroy(inst) };
+    }
+
+    #[test]
+    fn short_digest_buffer() {
+        let inst = create();
+        for out_len in [0_usize, 1, DIGEST_HEX_LEN - 1] {
+            let mut buf = vec![0xAA_u8; out_len];
+            // SAFETY: `inst` is live; `buf` is valid for `out_len` bytes and is not written, because the length is short.
+            let status =
+                unsafe { duospool_digest_hex(inst, buf.as_mut_ptr().cast::<c_char>(), out_len) };
+            assert_eq!(status, Status::ErrShortBuffer.code());
+            assert!(buf.iter().all(|&b| b == 0xAA));
+        }
+        // SAFETY: `inst` is live; a null output is checked before any write.
+        let status = unsafe { duospool_digest_hex(inst, ptr::null_mut(), DIGEST_HEX_LEN) };
+        assert_eq!(status, Status::ErrNullArg.code());
+        // SAFETY: `inst` came from `duospool_create` and is destroyed exactly once, here.
+        unsafe { duospool_destroy(inst) };
+    }
+
+    #[test]
+    fn refused_length_never_reads_the_buffer() {
+        let inst = create();
+        let small = [0_u8; 8];
+        // The claimed lengths are far larger than the 8-byte allocation. A refused length must be decided from the
+        // length alone, so Miri would report an out-of-bounds read if the facade touched the buffer.
+        for (len, want) in [
+            (0_usize, Status::RefuseEmpty),
+            (4, Status::RefuseTruncated),
+            (duospool_core::HEADER_SIZE, Status::RefuseHeader),
+            (98_304, Status::RefuseBadSize),
+            (duospool_core::MAX_SIZE + 1, Status::RefuseOversized),
+            (usize::MAX, Status::RefuseOversized),
+        ] {
+            // SAFETY: `inst` is live; `small` is valid for 8 bytes and is not read for these refused lengths.
+            let status = unsafe { duospool_load(inst, small.as_ptr(), len) };
+            assert_eq!(status, want.code(), "length {len}");
+        }
+        // SAFETY: `inst` came from `duospool_create` and is destroyed exactly once, here.
+        unsafe { duospool_destroy(inst) };
+    }
+
+    #[test]
+    fn probes_match_the_extern_paths() {
+        assert_eq!(probe::probe_load_null(), Status::ErrNullArg.code());
+        assert_eq!(probe::probe_digest_short(16), Status::ErrShortBuffer.code());
+    }
+}
