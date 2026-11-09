@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# Format: path<TAB>CHECK<TAB>reason. A hit is suppressed only when both path and CHECK match; ROM-SIZE allowances also need zero NUL bytes.
+ledger/samples/ok-boundary-16384/LED-CPU-0001.toml	ROM-SIZE-8K	16384-byte ASCII size-boundary control (plans 01-01/01-02); NUL-free
+tests/profile/ok-boundary-16384/pce-hucard-2btn/r1.toml	ROM-SIZE-8K	16384-byte ASCII size-boundary control (plans 01-01/01-02); NUL-free

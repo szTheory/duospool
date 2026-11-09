@@ -1,0 +1,198 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# audit-history - pre-publication audit of the full git history (D-02, D-33). Heuristic, not proof: it flags, the owner decides.
+# usage: audit-history [--allow FILE] [REPO]       (REPO defaults to .; FILE defaults to audit-history.allow beside this script)
+#   Scans every blob reachable from every ref (branches AND tags): `git rev-list --objects --all`, read back with
+#   `git cat-file --batch-check` using %(rest) in the format (without it every path-bearing line reads as "missing" and the
+#   audit passes vacuously). rev-list lists each object once, under one path, so every (blob, path) pair is also
+#   enumerated per commit with `git ls-tree -r`, otherwise a blob shared by two paths shows only one of them.
+#   Flags:
+#     UNREADABLE    an object that is missing or cannot be read
+#     NUL-BYTES     the blob contains a NUL byte (binary content)
+#     ROM-SIZE-8K   size is at least 4096 and a multiple of 8192
+#     ROM-SIZE-HDR  size is at least 4096 and 512 more than a multiple of 8192 (copier-header shape)
+#     EXT           ROM, disc, save, archive or key extension
+#     TEXT-PATTERN  private-key header, cloud or token credential shape, or an absolute home-directory path
+#                   (only path:line and the kind are printed, never the matched text)
+# allowlist: lines  path<TAB>CHECK<TAB>reason  ('#' comments). A hit is suppressed only when its path AND its CHECK match.
+#   A ROM-SIZE allowance applies only while the blob has no NUL byte.
+# stdout: hits as  CHECK <size|line> <path> , then a summary; a clean history ends with the line  audit-history: clean
+# exit  : 0 clean | 1 hits | 2 harness failure (a git read failed, bad usage, empty history). Exit 2 always comes first:
+#         a failed read never reaches the clean/hit decision.
+# Self-match safety: this file is itself in history, so every TEXT-PATTERN below is written so that its own source text
+# cannot match it (each fixed prefix is followed by a bracket expression that the next source character, an opening
+# bracket, does not satisfy). Keep it that way: no literal example key, token or home path anywhere in this file.
+# The bash 3.2 /bin/sh mis-parses a case statement placed inside a command substitution: none is used that way here.
+LC_ALL=C; export LC_ALL
+
+usage() {
+  echo "usage: audit-history [--allow FILE] [REPO]" >&2
+  exit 2
+}
+
+here=$(cd "$(dirname "$0")" && pwd)
+allow="$here/audit-history.allow"
+repo=.
+while [ $# -gt 0 ]; do
+  case $1 in
+    --allow) [ $# -ge 2 ] || usage; allow=$2; shift 2 ;;
+    -*) usage ;;
+    *) repo=$1; shift ;;
+  esac
+done
+if [ ! -f "$allow" ]; then
+  echo "audit-history: allowlist not found: $allow" >&2
+  exit 2
+fi
+allow=$(cd "$(dirname "$allow")" && pwd)/$(basename "$allow")
+cd "$repo" || { echo "audit-history: cannot enter $repo" >&2; exit 2; }
+
+t=$(mktemp -d) || exit 2
+trap 'rm -rf "$t"' EXIT
+
+# readfail DESC: report a failed history read and stop with exit 2 (stderr of the git command is shown, indented)
+readfail() {
+  echo "audit-history: git read failed: $1" >&2
+  [ ! -s "$t/err" ] || sed 's/^/  /' "$t/err" >&2
+  exit 2
+}
+
+# ---- 1. enumerate the history (every status checked right after the command) ----
+git rev-list --all > "$t/commits" 2> "$t/err" || readfail "git rev-list --all"
+ncommits=$(wc -l < "$t/commits" | tr -d ' ')
+if [ "$ncommits" -eq 0 ]; then
+  echo "audit-history: no commits reachable from any ref (nothing to audit)" >&2
+  exit 2
+fi
+git rev-list --objects --missing=print --all > "$t/objs.raw" 2> "$t/err" || readfail "git rev-list --objects --all"
+# --missing=print lists an object that is absent as ?<hash> instead of aborting: those are UNREADABLE hits (exit 1), not harness failures
+: > "$t/unread"
+awk -v ufile="$t/unread" '
+  /^\?/ { print "UNREADABLE missing " substr($0, 2) > ufile; next }
+  { print }
+' "$t/objs.raw" > "$t/objs" || { echo "audit-history: awk failed (split missing objects)" >&2; exit 2; }
+git cat-file --batch-check='%(objecttype) %(objectname) %(objectsize) %(rest)' < "$t/objs" > "$t/chk" 2> "$t/err" \
+  || readfail "git cat-file --batch-check"
+
+# ---- 2. classify: blobs to read, and anything that is neither blob, tree, commit nor tag is unreadable ----
+awk -v ufile="$t/unread" '
+  {
+    rest = $0
+    sub(/^[^ ]+ [^ ]+ [^ ]+ ?/, "", rest)
+    if ($1 == "commit" || $1 == "tree" || $1 == "tag") next
+    if ($1 == "blob") { printf "%s\t%s\t%s\n", $2, $3, rest; next }
+    rest = $0
+    print "UNREADABLE " rest >> ufile
+  }
+' "$t/chk" > "$t/blobs" || { echo "audit-history: awk failed (classify)" >&2; exit 2; }
+sort -u "$t/blobs" > "$t/blobs.s" || exit 2
+
+# (blob, path) pairs: rev-list's own plus every path in every commit's tree
+awk -F'\t' '{ printf "%s\t%s\n", $1, $3 }' "$t/blobs.s" > "$t/pairs"
+while read -r c; do
+  git ls-tree -r "$c" > "$t/lt" 2> "$t/err" || readfail "git ls-tree -r $c"
+  awk -F'\t' '{ split($1, m, " "); if (m[2] == "blob") printf "%s\t%s\n", m[3], $2 }' "$t/lt" >> "$t/pairs"
+done < "$t/commits"
+sort -u "$t/pairs" > "$t/pairs.s" || exit 2
+
+# ---- 3. read every distinct blob once: size and whether it holds a NUL byte ----
+: > "$t/facts"
+nblobs=0
+awk -F'\t' '{ print $1 }' "$t/blobs.s" | sort -u > "$t/hashes"
+while read -r h; do
+  nblobs=$((nblobs + 1))
+  if ! git cat-file blob "$h" > "$t/blob" 2> "$t/err"; then
+    echo "UNREADABLE blob $h" >> "$t/unread"
+    continue
+  fi
+  n1=$(wc -c < "$t/blob" | tr -d ' ')
+  n2=$(tr -d '\000' < "$t/blob" | wc -c | tr -d ' ')
+  nul=0
+  [ "$n1" -eq "$n2" ] || nul=1
+  printf '%s\t%s\t%s\n' "$h" "$n1" "$nul" >> "$t/facts"
+done < "$t/hashes"
+
+# ---- 4. path and content checks, with the allowlist ----
+awk -F'\t' -v allowf="$allow" -v factsf="$t/facts" '
+  FILENAME == allowf {
+    if ($0 ~ /^#/ || $0 ~ /^[ \t]*$/) next
+    if (NF < 3) { printf "audit-history: malformed allowlist line %d\n", FNR > "/dev/stderr"; bad = 1; next }
+    al[$1 SUBSEP $2] = 1
+    next
+  }
+  FILENAME == factsf { sz[$1] = $2; nu[$1] = $3; next }
+  {
+    h = $1; p = $2
+    if (!(h in sz)) next
+    size = sz[h] + 0; nul = nu[h] + 0
+    if (nul) emit("NUL-BYTES", size, p, 0)
+    if (size >= 4096 && size % 8192 == 0) emit("ROM-SIZE-8K", size, p, nul)
+    if (size >= 4096 && size % 8192 == 512) emit("ROM-SIZE-HDR", size, p, nul)
+    lp = tolower(p)
+    if (lp ~ /\.(pce|sgx|iso|cue|bin|rom|chd|sav|srm|zip|7z|pem|key)"?$/) emit("EXT", size, p, 0)
+  }
+  function emit(check, val, path, hasnul) {
+    if ((path SUBSEP check) in al) {
+      if ((check == "ROM-SIZE-8K" || check == "ROM-SIZE-HDR") && hasnul) { } else return
+    }
+    printf "%s %s %s\n", check, val, path
+  }
+  END { if (bad) exit 3 }
+' "$allow" "$t/facts" "$t/pairs.s" > "$t/hits.blob"
+rc=$?
+[ "$rc" -eq 0 ] || { echo "audit-history: awk failed (blob checks, status $rc)" >&2; exit 2; }
+
+# ---- 5. text patterns over every commit, one kind at a time (each prefix is followed by a bracket that the next source char fails) ----
+: > "$t/text.raw"
+# textscan KIND PATTERN
+textscan() {
+  while read -r c; do
+    git grep -I -n -E "$2" "$c" -- . > "$t/gg" 2> "$t/err"
+    grc=$?
+    [ "$grc" -le 1 ] || readfail "git grep $1 $c"
+    awk -v kind="$1" '{
+      s = substr($0, 42)
+      if (match(s, /:[0-9]+:/)) printf "%s\t%s\t%s\n", kind, substr(s, RSTART + 1, RLENGTH - 2), substr(s, 1, RSTART - 1)
+    }' "$t/gg" >> "$t/text.raw" || { echo "audit-history: awk failed (git grep output)" >&2; exit 2; }
+  done < "$t/commits"
+}
+textscan private-key 'BEGIN [A-Z ]*PRIVATE KEY'
+textscan aws-key 'AKIA[0-9A-Z]{16}'
+textscan github-token 'gh[pousr]_[A-Za-z0-9]{20,}'
+textscan github-pat 'github_pat_[A-Za-z0-9_]{20,}'
+textscan slack-token 'xox[abp]-[0-9A-Za-z-]{10,}'
+textscan home-path-mac '/Users/[A-Za-z0-9._-]+/'
+textscan home-path-linux '/home/[A-Za-z0-9._-]+/'
+
+awk -F'\t' -v allowf="$allow" '
+  FILENAME == allowf {
+    if ($0 ~ /^#/ || $0 ~ /^[ \t]*$/ || NF < 3) next
+    al[$1 SUBSEP $2] = 1
+    next
+  }
+  {
+    path = $3
+    if ((path SUBSEP "TEXT-PATTERN") in al) next
+    key = $2 "\t" path "\t" $1
+    n[key]++
+  }
+  END { for (k in n) { split(k, f, "\t"); printf "TEXT-PATTERN %s %s [%s, %d commit(s)]\n", f[1], f[2], f[3], n[k] } }
+' "$allow" "$t/text.raw" > "$t/hits.text.raw" || { echo "audit-history: awk failed (text hits)" >&2; exit 2; }
+sort "$t/hits.text.raw" > "$t/hits.text" || exit 2
+
+# ---- 6. decision (only after every read above succeeded) ----
+sort -u "$t/unread" > "$t/hits.unread"
+sort -u "$t/hits.blob" > "$t/hits.blob.s"
+cat "$t/hits.unread" "$t/hits.blob.s" "$t/hits.text" > "$t/hits.all"
+npaths=$(wc -l < "$t/pairs.s" | tr -d ' ')
+echo "audit-history: scanned $ncommits commits, $nblobs blobs, $npaths blob-path pairs"
+if [ -s "$t/hits.all" ]; then
+  cat "$t/hits.all"
+  nh=$(wc -l < "$t/hits.all" | tr -d ' ')
+  echo "audit-history: $nh hit(s)"
+  exit 1
+fi
+echo "audit-history: clean"
+exit 0
