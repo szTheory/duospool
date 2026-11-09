@@ -9,5 +9,9 @@ Every record has exactly one row in this index, and the row's status matches the
 | Record | Title | Status |
 |--------|-------|--------|
 | [0002](0002-first-profile.md) | First profile scope (pce-hucard-2btn) | owner-recorded |
+| [0003](0003-api-abi.md) | Core API and ABI posture | owner-recorded |
 | [0004](0004-licence-visibility.md) | Licence and repository visibility | owner-recorded |
+| [0005](0005-fixture-rights.md) | Fixture rights | owner-recorded |
+| [0006](0006-ci-provider.md) | CI provider | owner-recorded |
+| [0007](0007-copied-code-provenance.md) | Copied-code provenance | owner-recorded |
 | [0008](0008-evidence-tier-policy.md) | Evidence-tier policy | proposed-default |

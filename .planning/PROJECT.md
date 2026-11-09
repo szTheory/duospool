@@ -162,17 +162,20 @@ planning configuration, the bootstrap pack, and `AGENTS.md`.
 | Automate useful verification; favor small dependencies; keep CI efficient without reducing evidence | Owner-selected | ✓ Owner decision |
 | Close milestones cleanly; target frequent releases when rights, qualification and authority permit | Owner-selected | ✓ Owner decision |
 | First vertical slice: base PC Engine/TG-16 profile + HuCard + original diagnostic fixture + headless runner + installed-consumer proof | Seed recommendation; small enough to diagnose, broad enough to exercise input/timing/video/audio/lifecycle seams | — Proposed (candidate, not owner-selected) |
-| Exact first profile (region, console revision, CPU revision HuC6280 vs HuC6280A, video timing) | Requires research and owner input | — Open |
+| Exact first profile (region, console revision, CPU revision HuC6280 vs HuC6280A, video timing) | Requires research and owner input | → docs/decisions/0002-first-profile.md (owner-recorded scope; disputed fields open) |
 | SuperGrafx, CD-ROM²/Super CD-ROM², Arcade Card, multitap/peripherals in product scope | Each changes architecture, timing, media, rights, and testing cost; must earn a roadmap slot via a named user outcome | — Open (not in v1; not excluded from the North Star) |
 | Language and build system | Research recommendation pending; decide at Phase 1 discussion | — Open |
 | Host/platform targets, package format | Decide when the installed-consumer proof is planned | — Open |
-| Core API/ABI shape and evolution policy | Do not freeze before a real consumer proof | — Open |
+| Core API/ABI shape and evolution policy | Do not freeze before a real consumer proof | → docs/decisions/0003-api-abi.md (owner-recorded) |
 | LibFuturo adoption | Candidate only; requires a prototype adapter or a named concrete mismatch | — Open |
 | License and repository visibility | Owner authority; do not copy a sibling's or LibFuturo's provisional license | → docs/decisions/0004-licence-visibility.md (owner-recorded) |
 | CPU/video/audio timing fidelity targets, performance budget | Requires research and measurement | — Open |
 | Save-state, replay, debugger scope | Not selected | — Open |
-| First homebrew/game and fixture rights | Owner/rights decision; authored fixtures preferred for the fast suite | — Open |
+| First homebrew/game and fixture rights | Owner/rights decision; authored fixtures preferred for the fast suite | → docs/decisions/0005-fixture-rights.md (owner-recorded) |
 | Release policy details | Owner authority | — Open |
+| CI provider | Thin wrapper around scripts/check; workflow is Phase 2 | → docs/decisions/0006-ci-provider.md (owner-recorded) |
+| Copied-code provenance rule | Owner principle: small flat dependency tree, copy with provenance over a new dep | → docs/decisions/0007-copied-code-provenance.md (owner-recorded principle) |
+| Evidence-tier policy (E4 triage only) | Emulator agreement is not correctness | → docs/decisions/0008-evidence-tier-policy.md (proposed-default) |
 | GSD config: existing `.planning/config.json` preserved; `granularity: standard` added because it was unset (consistent with `nyquist_validation: true`) | Routine, reversible | ✓ Applied at init |
 
 ## Evolution
