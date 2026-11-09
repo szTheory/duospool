@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 1
 current_phase_name: Owner Decisions, Claim Ledger and Toolchain Spike
 status: executing
-stopped_at: Completed 01-07-PLAN.md
-last_updated: "2026-11-09T22:17:40.879Z"
+stopped_at: Completed 01-08-PLAN.md
+last_updated: "2026-11-09T22:33:51.794Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 1 execution started
-state_head: 83770426d1809ea605fec73de68e39ebf66e6a11
+state_head: 9ab861564611cc590f4b5f9040e03597347000f4
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 12
-  completed_plans: 7
+  completed_plans: 8
   percent: 0
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 1 (Owner Decisions, Claim Ledger and Toolchain Spike) — EXECUTING
-Plan: 8 of 12
+Plan: 9 of 12
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 1 execution started
 
@@ -63,6 +63,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 1 P05 | 30min | 2 tasks | 39 files |
 | Phase 1 P06 | 10 min | 2 tasks | 13 files |
 | Phase 1 P07 | 17 min | 2 tasks | 6 files |
+| Phase 1 P08 | 25 min | 2 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -84,6 +85,7 @@ Recent decisions affecting current work:
 - [Phase 1]: 01-05: a gate recorded as ND is not PASS; a leader with an ND gate is leader-fails-gate (D-37)
 - [Phase 1]: 01-06: opt_install builds RelWithDebInfo for both the remapped and seeded-leak runs so the path-leak grep inspects an archive that carries DWARF paths; prefix remap covers both /var and /private/var spellings
 - [Phase 1]: 01-07: C fuzz run sets ASAN_OPTIONS=handle_sigtrap=1 so the arm64 SIGTRAP from the planted __builtin_trap is reported and a crash artifact is written; runtime setting only, protocol unchanged
+- [Phase 1]: 01-08: Rust build trees live under out/build-rust-<profile> (not rust/target) and the installed release build carries debug info so the path-leak grep is non-vacuous; Rust core allocates the content buffer with try_reserve_exact (ERR_STATE) while Box<Handle> in create can abort
 
 ### Pending Todos
 
@@ -106,6 +108,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-09T22:17:40.861Z
-Stopped at: Completed 01-07-PLAN.md
+Last session: 2026-11-09T22:33:51.760Z
+Stopped at: Completed 01-08-PLAN.md
 Resume file: None
