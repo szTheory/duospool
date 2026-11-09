@@ -37,7 +37,18 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. The claim ledger exists with these fields: statement, profile, evidence tier (E0-E4), source citation, disagreement, status, and pinning test. A ledger check rejects a deliberately mislabelled sample entry that is marked "supported" on E0/E4 evidence only.
   4. Each conflict the slice depends on is an open ledger entry with its chosen modelling assumption, not stated as fact. The list includes at least: PSG clock, 262 vs 263 lines, VBlank/RCR IRQ position, dot-clock encoding, 7 MHz active width, `$1000` bit 6, HuCard byte order, copier-header rule, and PSG channel numbering.
   5. Decision records exist for licence/visibility, fixture rights, API/ABI posture, CI provider, and the copied-code provenance rule. Each one is either owner-recorded or explicitly open. The fixture-rights record states that no GPL or unclear-licence material is admitted until the owner decides.
-**Plans**: TBD
+**Plans:** 9 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Walking-skeleton gate: scripts/check, the ledger and decision checkers, the E0/E4 negative control, record 0008, the full ledger negative corpus and --selftest
+- [ ] 01-02-PLAN.md — Seed ledger (9 mandated conflicts + C14), first-profile record r1 with profile-check, record 0002 with the criterion-2 mapping
+- [ ] 01-03-PLAN.md — Decision records 0003-0007, the README index with its drift check, PROJECT.md pointers, the decision negative corpus
+- [ ] 01-04-PLAN.md — PROVENANCE.md with provenance-check, licence files with licence-check, README, .gitignore
+- [ ] 01-05-PLAN.md — Pre-registered spike protocol for 0001 (rubric, arithmetic), score.awk with D-07 controls, protocol-order-check
+- [ ] 01-06-PLAN.md — Spike harness and the C11/CMake skeleton (written first), passing hard gates G1-G5
+- [ ] 01-07-PLAN.md — Rust/Cargo skeleton with toolchain installs, G1-G5, Miri and wasm rows
+- [ ] 01-08-PLAN.md — Measurements, record 0001 by the executable D-07 rule, evidence tag, spike removed from main
+- [ ] 01-09-PLAN.md — Full-history audit and gitleaks, the owner checkpoint, then the public repository with main and the evidence tag pushed
 **Research**: Not needed beyond the spike, which has a fixed plan (SUMMARY: standard pattern). The real work is the owner decisions.
 
 ### Phase 2: Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate
@@ -137,7 +148,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phases 4 and 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Owner Decisions, Claim Ledger and Toolchain Spike | 0/TBD | Not started | - |
+| 1. Owner Decisions, Claim Ledger and Toolchain Spike | 0/9 | Planned | - |
 | 2. Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate | 0/TBD | Not started | - |
 | 3. HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad | 0/TBD | Not started | - |
 | 4. VCE/VDC Raw Video | 0/TBD | Not started | - |
