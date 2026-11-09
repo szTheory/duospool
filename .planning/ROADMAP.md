@@ -37,7 +37,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. The claim ledger exists with these fields: statement, profile, evidence tier (E0-E4), source citation, disagreement, status, and pinning test. A ledger check rejects a deliberately mislabelled sample entry that is marked "supported" on E0/E4 evidence only.
   4. Each conflict the slice depends on is an open ledger entry with its chosen modelling assumption, not stated as fact. The list includes at least: PSG clock, 262 vs 263 lines, VBlank/RCR IRQ position, dot-clock encoding, 7 MHz active width, `$1000` bit 6, HuCard byte order, copier-header rule, and PSG channel numbering.
   5. Decision records exist for licence/visibility, fixture rights, API/ABI posture, CI provider, and the copied-code provenance rule. Each one is either owner-recorded or explicitly open. The fixture-rights record states that no GPL or unclear-licence material is admitted until the owner decides.
-**Plans:** 5/12 plans executed
+**Plans:** 6/12 plans executed
 
 Plans:
 **Wave 1**
@@ -56,7 +56,7 @@ Plans:
 - [x] 01-05-PLAN.md — Pre-registered spike protocol for 0001 (rubric, arithmetic, D-36 toolchain rule), score.awk with D-07 controls, protocol-order-check
 
 **Wave 6** *(blocked on Wave 5 completion)*
-- [ ] 01-06-PLAN.md — Spike harness and the C11/CMake core path (written first): fixtures, manifest, consumer, core and runner, hard gates G1-G4
+- [x] 01-06-PLAN.md — Spike harness and the C11/CMake core path (written first): fixtures, manifest, consumer, core and runner, hard gates G1-G4
 
 **Wave 7** *(blocked on Wave 6 completion)*
 - [ ] 01-07-PLAN.md — C fuzz gate G5 with liveness, M08 sanitizer row, C bench hooks and LINES.map
@@ -174,7 +174,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phases 4 and 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Owner Decisions, Claim Ledger and Toolchain Spike | 5/12 | In Progress | - |
+| 1. Owner Decisions, Claim Ledger and Toolchain Spike | 6/12 | In Progress | - |
 | 2. Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate | 0/TBD | Not started | - |
 | 3. HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad | 0/TBD | Not started | - |
 | 4. VCE/VDC Raw Video | 0/TBD | Not started | - |
