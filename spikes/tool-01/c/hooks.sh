@@ -5,6 +5,9 @@
 # hooks.sh - the C option's implementation of the shared gates.sh hook contract (TOOL-01 spike). Sourced, never executed.
 # The caller (gates.sh or a bench script) sets SPIKE_DIR (spikes/tool-01) and OPT_DIR (spikes/tool-01/c) first.
 # Build trees live under SPIKE_DIR/out/, which is gitignored.
+# When sourced from the repository root without those variables (a one-off verify command), they default from $PWD.
+SPIKE_DIR=${SPIKE_DIR:-$PWD/spikes/tool-01}
+OPT_DIR=${OPT_DIR:-$SPIKE_DIR/c}
 
 c_build_type() {
   case $1 in
@@ -108,4 +111,86 @@ opt_fuzz60() {
   else
     [ "$_crashed" = no ]
   fi
+}
+
+# c_run_standalone <out_dir> <sanitize yes|no>: compile core.c and runner.c directly (no CMake, no build tree) with the
+# system clang into <out_dir>, run the binary over the manifest and print its transcript on stdout. The runner's exit
+# status is returned. Used by opt_sanitizer (yes) and by the edit assertion in opt_edit (no).
+c_run_standalone() {
+  _od=${1:?out_dir}
+  _san=${2:?sanitize}
+  mkdir -p "$_od" || return 1
+  if [ "$_san" = yes ]; then
+    set -- -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=undefined
+  else
+    set -- -O0
+  fi
+  /usr/bin/clang -std=c11 -Wall -Wextra -Wconversion "$@" -I "$OPT_DIR/include" "$OPT_DIR/src/core.c" "$OPT_DIR/src/runner.c" \
+    -o "$_od/runner" > "$_od/build.log" 2>&1 || { cat "$_od/build.log" >&2; return 1; }
+  [ -f "$SPIKE_DIR/out/lcg-64k.bin" ] || sh "$SPIKE_DIR/gen-fixtures.sh" > /dev/null || return 1
+  perl -e 'alarm 300; exec @ARGV' "$_od/runner" "$SPIKE_DIR/fixtures.manifest" "$SPIKE_DIR/out" 2> "$_od/run.err"
+}
+
+# opt_sanitizer (protocol M08): the manifest runner built with Apple clang -fsanitize=address,undefined runs the whole
+# manifest. Prints SANITIZER PASS or SANITIZER FAIL and returns 0 or 1. Any sanitizer report on stderr is a FAIL.
+opt_sanitizer() {
+  _od=$SPIKE_DIR/out/sanitizer-c
+  if c_run_standalone "$_od" yes > "$_od.transcript.txt" 2> /dev/null && [ ! -s "$_od/run.err" ] &&
+    grep -q '^RUNNER pass=[0-9]* fail=0 ' "$_od.transcript.txt"; then
+    echo "SANITIZER PASS"
+  else
+    [ ! -s "$_od/run.err" ] || cat "$_od/run.err" >&2
+    echo "SANITIZER FAIL"
+    return 1
+  fi
+}
+
+# opt_clean <debug|release|all>: remove the matching build directories (and their logs) so the next build is cold.
+opt_clean() {
+  _w=${1:?debug|release|all}
+  case $_w in
+    debug | release) rm -rf "$SPIKE_DIR/out/build-c-$_w" "$SPIKE_DIR/out/build-c-$_w.log" ;;
+    all) rm -rf "$SPIKE_DIR"/out/build-c-debug "$SPIKE_DIR"/out/build-c-release "$SPIKE_DIR"/out/build-c-debug.log "$SPIKE_DIR"/out/build-c-release.log ;;
+    *) echo "hooks: opt_clean wants debug, release or all" >&2; return 1 ;;
+  esac
+}
+
+# opt_edit <comment|real> (protocol M03, M04): edit src/core.c in place.
+#   comment: append a unique comment line. real: toggle one assignment between two values that no reader distinguishes
+#   (inst->loaded is only ever compared with 0), so the code changes and the observable output must not. The hook proves
+#   that by comparing the runner transcript before and after, using a standalone compile outside every build tree.
+#   Undo either with opt_restore.
+opt_edit() {
+  _k=${1:?comment|real}
+  _core=$OPT_DIR/src/core.c
+  case $_k in
+    comment)
+      printf '/* bench edit %s %s */\n' "$(date +%s)" "$$" >> "$_core" || return 1
+      ;;
+    real)
+      c_run_standalone "$SPIKE_DIR/out/edit-check-before" no > "$SPIKE_DIR/out/edit-check-before.txt" || { echo "hooks: opt_edit: the pre-edit transcript run failed" >&2; return 1; }
+      if grep -q 'inst->loaded = 1;' "$_core"; then
+        perl -pi -e 's/inst->loaded = 1;/inst->loaded = 2;/' "$_core" || return 1
+      else
+        perl -pi -e 's/inst->loaded = 2;/inst->loaded = 1;/' "$_core" || return 1
+      fi
+      c_run_standalone "$SPIKE_DIR/out/edit-check-after" no > "$SPIKE_DIR/out/edit-check-after.txt" || { echo "hooks: opt_edit: the post-edit transcript run failed" >&2; return 1; }
+      cmp -s "$SPIKE_DIR/out/edit-check-before.txt" "$SPIKE_DIR/out/edit-check-after.txt" || { echo "hooks: opt_edit real changed the runner transcript" >&2; return 1; }
+      ;;
+    *) echo "hooks: opt_edit wants comment or real" >&2; return 1 ;;
+  esac
+}
+
+# opt_restore: undo opt_edit.
+opt_restore() {
+  git -C "$OPT_DIR" checkout -- src/core.c
+}
+
+# opt_test [debug|release] (protocol M05, default debug): build that profile, then run its manifest runner over the manifest.
+opt_test() {
+  _p=${1:-debug}
+  opt_build "$_p" || return 1
+  _rb=$(opt_runner "$_p") || return 1
+  [ -f "$SPIKE_DIR/out/lcg-64k.bin" ] || sh "$SPIKE_DIR/gen-fixtures.sh" > /dev/null || return 1
+  perl -e 'alarm 300; exec @ARGV' "$_rb" "$SPIKE_DIR/fixtures.manifest" "$SPIKE_DIR/out" > /dev/null
 }
