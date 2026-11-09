@@ -3,7 +3,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
 # check - the Phase 1 gate entry point (D-30). Phase 2 extends this script; it does not add a second one.
-# usage: sh scripts/check
+# usage: sh scripts/check [--selftest]
+#   --selftest mutates a temp copy of scripts/ and proves that a removed rule or a dead stage 1 turns the gate red
 # stdout: one line per stage  CHECK <stage> PASS|FAIL|ERROR , then  CHECK RESULT PASS|FAIL
 # exit  : 0 all stages pass | 1 a stage failed (violation or broken control) | 2 harness error in a stage
 set -eu
@@ -106,6 +107,81 @@ stage_decision_records() {
   checker sh "$here/decision-check" docs/decisions
 }
 
+# every tests/decision/<case>/ is a control with an EXPECT file; every tests/decision/ok-<case>/ must pass
+stage_decision_negatives() {
+  rc=0
+  n=0
+  for d in tests/decision/*/; do
+    [ -d "$d" ] || continue
+    n=$((n + 1))
+    case_name=$(basename "$d")
+    case $case_name in
+      ok-*)
+        if checker sh "$here/decision-check" "$d" > "$tmp/case.out"; then r=0; else r=$?; fi
+        if [ "$r" -eq 1 ]; then
+          echo "SAMPLE REJECTED $case_name"
+          sed 's/^/  /' "$tmp/case.out"
+          [ "$rc" -eq 2 ] || rc=1
+        elif [ "$r" -ne 0 ]; then
+          echo "HARNESS_ERROR $case_name"
+          sed 's/^/  /' "$tmp/case.out"
+          rc=2
+        fi
+        ;;
+      *)
+        if [ ! -f "$d/EXPECT" ]; then
+          echo "HARNESS_NO_EXPECT $case_name"
+          rc=2
+          continue
+        fi
+        exp=$(cat "$d/EXPECT")
+        if checker sh "$here/decision-check" --expect "$exp" "$d" > "$tmp/case.out"; then r=0; else r=$?; fi
+        if [ "$r" -eq 1 ]; then
+          echo "CONTROL BROKEN $case_name"
+          sed 's/^/  /' "$tmp/case.out"
+          [ "$rc" -eq 2 ] || rc=1
+        elif [ "$r" -ne 0 ]; then
+          echo "HARNESS_ERROR $case_name"
+          sed 's/^/  /' "$tmp/case.out"
+          rc=2
+        fi
+        ;;
+    esac
+  done
+  if [ "$n" -eq 0 ]; then
+    echo "NO_CONTROLS tests/decision"
+    [ "$rc" -eq 2 ] || rc=1
+  fi
+  return "$rc"
+}
+
+# ---- self-test: prove the gate is alive (not vacuous). Mutates a COPY of scripts/ only ----
+
+selftest() {
+  cp_dir="$tmp/selftest/scripts"
+  mkdir -p "$tmp/selftest"
+  failed=0
+
+  # (a) delete the rule that emits SUPPORTED_NO_QUALIFYING_EVIDENCE: the e0-e4 control must now be broken (exit 1)
+  rm -rf "$cp_dir"
+  cp -R "$here" "$cp_dir"
+  grep -v 'SUPPORTED_NO_QUALIFYING_EVIDENCE' "$cp_dir/lib/ledger-rules.awk" > "$cp_dir/lib/ledger-rules.mutated"
+  mv "$cp_dir/lib/ledger-rules.mutated" "$cp_dir/lib/ledger-rules.awk"
+  if sh "$cp_dir/ledger-check" --expect SUPPORTED_NO_QUALIFYING_EVIDENCE ledger/negative/e0-e4/ > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+  if [ "$r" -eq 1 ]; then echo "SELFTEST mutation-supported-rule PASS"; else echo "SELFTEST mutation-supported-rule FAIL"; failed=1; fi
+
+  # (b) a stage 1 that prints nothing must give NO_SENTINEL and exit 1, never a pass
+  rm -rf "$cp_dir"
+  cp -R "$here" "$cp_dir"
+  echo 'BEGIN { exit 0 }' > "$cp_dir/lib/toml-subset.awk"
+  if sh "$cp_dir/ledger-check" ledger/entries/ > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+  if [ "$r" -eq 1 ] && grep -q 'NO_SENTINEL' "$tmp/st.out"; then echo "SELFTEST missing-sentinel PASS"; else echo "SELFTEST missing-sentinel FAIL"; failed=1; fi
+
+  if [ "$failed" -eq 0 ]; then echo "SELFTEST RESULT PASS"; return 0; fi
+  echo "SELFTEST RESULT FAIL"
+  return 1
+}
+
 # ---- runner ----
 
 # run_stage NAME FUNCTION : prints the verdict line, then any detail output indented
@@ -124,10 +200,19 @@ run_stage() {
   fi
 }
 
+if [ $# -gt 0 ]; then
+  if [ "$1" = "--selftest" ] && [ $# -eq 1 ]; then
+    if selftest; then exit 0; else exit 1; fi
+  fi
+  echo "usage: sh scripts/check [--selftest]" >&2
+  exit 2
+fi
+
 run_stage ledger-entries stage_ledger_entries
 run_stage ledger-negatives stage_ledger_negatives
 run_stage ledger-samples stage_ledger_samples
 run_stage decision-records stage_decision_records
+run_stage decision-negatives stage_decision_negatives
 
 if [ "$errs" -gt 0 ]; then
   echo "CHECK RESULT FAIL"
