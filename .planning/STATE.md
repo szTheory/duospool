@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 1
 current_phase_name: Owner Decisions, Claim Ledger and Toolchain Spike
 status: executing
-stopped_at: Completed 01-02-PLAN.md
-last_updated: "2026-11-09T21:10:47.551Z"
+stopped_at: Completed 01-03-PLAN.md
+last_updated: "2026-11-09T21:15:12.065Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 1 execution started
-state_head: e3c639eaafab223fbffa10ac3cdc71179dbddb5c
+state_head: 551cf7f7ad118143dda44160c90096bdf58e2ea9
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 12
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 1 (Owner Decisions, Claim Ledger and Toolchain Spike) — EXECUTING
-Plan: 3 of 12
+Plan: 4 of 12
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 1 execution started
 
@@ -58,6 +58,7 @@ Progress: [░░░░░░░░░░] 0%
 |------|----------|-------|-------|
 | Phase 1 P01 | 60min | 3 tasks | 67 files |
 | Phase 1 P02 | 45min | 3 tasks | 56 files |
+| Phase 1 P03 | 15 min | 3 tasks | 60 files |
 
 ## Accumulated Context
 
@@ -72,6 +73,8 @@ Recent decisions affecting current work:
 - [Phase 1]: Gate checkers print a marker line on a clean exit and scripts/check fails closed on a silent exit 0 (bash 3.2 /bin/sh exits 0 on script syntax errors)
 - [Phase 1]: 01-02: open profile fields carry no value; proposals labelled and checked against allowed (OPEN_HAS_VALUE control)
 - [Phase 1]: 01-02: ledger IDs, decision paths and profile values are shape-validated before use as file names
+- [Phase 1]: Records 0003-0007 are owner-recorded using only verbatim CONTEXT.md quotes; 0007 marks the D-26 mechanism as Claude's design
+- [Phase 1]: decision-check scans every DIR/*.md except README.md and *.protocol.md and enforces index drift, record naming, duplicate numbers and the 0005 no-GPL sentence
 
 ### Pending Todos
 
@@ -94,6 +97,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-09T21:10:47.520Z
-Stopped at: Completed 01-02-PLAN.md
+Last session: 2026-11-09T21:15:12.037Z
+Stopped at: Completed 01-03-PLAN.md
 Resume file: None
