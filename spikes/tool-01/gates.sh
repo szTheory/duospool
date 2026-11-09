@@ -164,6 +164,11 @@ stage_transcript() {
   cp "$transcript" "$OUT/transcript.$opt.txt" || { reason="cannot write transcript.$opt.txt"; return 1; }
 }
 
+# W-10: the option's duospool.h is byte-identical to the C skeleton's canonical copy.
+stage_header_identical() {
+  cmp "$SPIKE_DIR/$opt/include/duospool.h" "$SPIKE_DIR/c/include/duospool.h" || { reason="$opt/include/duospool.h differs from c/include/duospool.h"; return 1; }
+}
+
 stage_transcript_identical() {
   cmp "$OUT/transcript.c.txt" "$OUT/transcript.rust.txt" || { reason="transcript.c.txt and transcript.rust.txt differ"; return 1; }
 }
@@ -271,6 +276,7 @@ stage_fuzz60() {
 mkdir -p "$OUT"
 run_stage fixtures stage_fixtures
 run_stage build stage_build
+run_stage header-identical stage_header_identical
 run_runner
 run_stage test-refusals stage_test_refusals
 run_stage test-controls stage_test_controls
