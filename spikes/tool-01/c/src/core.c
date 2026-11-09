@@ -53,6 +53,12 @@ ds_status duospool_load(ds_instance *inst, const uint8_t *buf, size_t len) {
     if (inst == NULL || buf == NULL) {
         return DS_ERR_NULL_ARG;
     }
+#ifdef DS_PLANTED_BUG
+    /* Liveness control for the G5 fuzz gate only. Only the planted fuzz build defines DS_PLANTED_BUG. */
+    if (len >= 4u && memcmp(buf, "DSPB", 4u) == 0) {
+        __builtin_trap();
+    }
+#endif
     if (len == 0u) {
         return DS_REFUSE_EMPTY;
     }

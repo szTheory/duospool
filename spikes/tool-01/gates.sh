@@ -256,13 +256,16 @@ stage_fuzz60() {
     reason="opt_fuzz60 is not defined by $opt/hooks.sh"
     return 1
   fi
-  opt_fuzz60 60 no > "$OUT/fuzz60.$opt.txt" 2>&1 || { reason="the 60 s fuzz run crashed or failed: $(tail -n 2 "$OUT/fuzz60.$opt.txt" | tr '\n' ' ')"; return 1; }
+  # Liveness first: the planted-bug build must be found within 60 s, or a clean run proves nothing (T-01-30).
+  # opt_fuzz60 returns 0 when the outcome is the wanted one (planted: crash found; clean: no crash).
+  opt_fuzz60 60 yes > "$OUT/fuzz60-planted.$opt.txt" 2>&1 || { reason="liveness control broken: the planted-bug build was not found: $(tail -n 2 "$OUT/fuzz60-planted.$opt.txt" | tr '\n' ' ')"; return 1; }
+  _lv=$(sed -n 's/^FUZZ elapsed=\([0-9.]*\) crashed=yes .*/\1/p' "$OUT/fuzz60-planted.$opt.txt" | head -n 1)
+  [ -n "$_lv" ] || { reason="the planted-bug run printed no crashed=yes line"; return 1; }
+  echo "LIVENESS found_after=$_lv"
+  awk -v t="$_lv" 'BEGIN { exit !(t + 0 <= 60) }' || { reason="the planted bug was found after $_lv s, more than 60 s"; return 1; }
+  opt_fuzz60 60 no > "$OUT/fuzz60.$opt.txt" 2>&1 || { reason="the 60 s clean fuzz run crashed or failed: $(tail -n 2 "$OUT/fuzz60.$opt.txt" | tr '\n' ' ')"; return 1; }
   grep -q '^FUZZ elapsed=.* crashed=no ' "$OUT/fuzz60.$opt.txt" || { reason="no FUZZ crashed=no line from the clean run"; return 1; }
-  if opt_fuzz60 60 yes > "$OUT/fuzz60-planted.$opt.txt" 2>&1; then
-    reason="liveness control broken: the planted-bug build was not found"
-    return 1
-  fi
-  grep -q '^FUZZ elapsed=.* crashed=yes ' "$OUT/fuzz60-planted.$opt.txt" || { reason="the planted-bug run printed no crashed=yes line"; return 1; }
+  grep '^FUZZ ' "$OUT/fuzz60.$opt.txt"
 }
 
 mkdir -p "$OUT"
