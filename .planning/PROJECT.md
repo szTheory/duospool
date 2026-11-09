@@ -168,7 +168,7 @@ planning configuration, the bootstrap pack, and `AGENTS.md`.
 | Host/platform targets, package format | Decide when the installed-consumer proof is planned | — Open |
 | Core API/ABI shape and evolution policy | Do not freeze before a real consumer proof | — Open |
 | LibFuturo adoption | Candidate only; requires a prototype adapter or a named concrete mismatch | — Open |
-| License and repository visibility | Owner authority; do not copy a sibling's or LibFuturo's provisional license | — Open (owner decision required) |
+| License and repository visibility | Owner authority; do not copy a sibling's or LibFuturo's provisional license | → docs/decisions/0004-licence-visibility.md (owner-recorded) |
 | CPU/video/audio timing fidelity targets, performance budget | Requires research and measurement | — Open |
 | Save-state, replay, debugger scope | Not selected | — Open |
 | First homebrew/game and fixture rights | Owner/rights decision; authored fixtures preferred for the fast suite | — Open |

@@ -4,7 +4,9 @@
 #
 # decision-check - decision-record front-matter checker (D-24, D-25).
 # usage: decision-check [--expect CODE[,CODE...]] DIR
-#   checks every DIR/[0-9][0-9][0-9][0-9]-*.md, except names ending in .protocol.md (D-09: not a record).
+#   checks every DIR/*.md, except README.md (the index) and names ending in .protocol.md (D-09: not a record).
+#   index rules: INDEX_MISSING, INDEX_DRIFT; name rules: BAD_RECORD_NAME, DUP_RECORD_NUMBER;
+#   FIXTURE_RIGHTS_SENTENCE_MISSING (D-04) for 0005-fixture-rights.md.
 # stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then one line  RECORDS n
 # stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
 # exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error
@@ -90,22 +92,90 @@ check_record() {
     }' "$1"
 }
 
+addv() { printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" >> "$viol0"; }
+
+# front-matter status of a record: the first status: line between the opening and closing ---; empty if none
+fm_status() {
+  awk '
+    NR == 1 { if ($0 != "---") exit; infm = 1; next }
+    infm && $0 == "---" { exit }
+    infm && /^status:/ { v = substr($0, 8); sub(/^[ \t]+/, "", v); sub(/[ \t]+$/, "", v); print v; exit }' "$1"
+}
+
+recs="$tmp/recs"
+: > "$recs"
 n=0
-for f in "$dir"/[0-9][0-9][0-9][0-9]-*.md; do
+for f in "$dir"/*.md; do
   [ -e "$f" ] || continue
-  case $f in
+  base=${f##*/}
+  case $base in
+    README.md) continue ;;
     *.protocol.md) continue ;;
   esac
   n=$((n + 1))
+  if printf '%s\n' "$base" | grep -Eq '^[0-9]{4}-[a-z0-9]+(-[a-z0-9]+)*\.md$'; then :; else
+    addv "$f" BAD_RECORD_NAME 0 "$base"
+  fi
+  fm_status "$f" > "$tmp/st"
+  printf '%s\t%s\n' "$base" "$(cat "$tmp/st")" >> "$recs"
   # a dead awk must not read as "no violations": fail closed with a harness error
   if check_record "$f" > "$tmp/rec"; then :; else
     echo "HARNESS_AWK_FAILED $f" >&2
     exit 2
   fi
   fpath="$f" awk 'BEGIN { FS = OFS = "\t" } { print ENVIRON["fpath"], $1, $2, $3 }' "$tmp/rec" >> "$viol0"
+  # D-04: the fixture-rights record states the no-GPL rule as a full line
+  if [ "$base" = "0005-fixture-rights.md" ]; then
+    if grep -qxF 'No GPL or unclear-licence material is admitted without a further owner decision.' "$f"; then :; else
+      addv "$f" FIXTURE_RIGHTS_SENTENCE_MISSING 0 ""
+    fi
+  fi
 done
 if [ "$n" -eq 0 ]; then
   printf '%s\tNO_RECORDS\t0\t\n' "$dir" >> "$viol0"
+fi
+
+# two records must not share a number
+cut -f1 "$recs" | cut -c1-4 | sort | uniq -d > "$tmp/dupnums"
+while IFS= read -r num; do
+  [ -n "$num" ] || continue
+  addv "$dir" DUP_RECORD_NUMBER 0 "$num"
+done < "$tmp/dupnums"
+
+# index: README.md has one row per record, with a matching status (D-25)
+readme="$dir/README.md"
+if [ ! -f "$readme" ]; then
+  addv "$readme" INDEX_MISSING 0 ""
+else
+  # rows are lines starting with "| [": target<TAB>status<TAB>line
+  awk '
+    /^\| \[/ {
+      line = $0
+      if (!match(line, /\]\([^)]*\)/)) { printf "%s\t\t%d\n", "?", NR; next }
+      tgt = substr(line, RSTART + 2, RLENGTH - 3)
+      st = line; sub(/[ \t]*\|[ \t]*$/, "", st); sub(/^.*\|[ \t]*/, "", st)
+      printf "%s\t%s\t%d\n", tgt, st, NR
+    }' "$readme" > "$tmp/rows"
+  # every row names an existing record
+  while IFS="$(printf '\t')" read -r tgt st ln; do
+    [ -n "$tgt" ] || continue
+    if ! awk -F'\t' -v t="$tgt" '$1 == t { found = 1 } END { exit !found }' "$recs"; then
+      addv "$readme" INDEX_DRIFT "$ln" "$tgt"
+    fi
+  done < "$tmp/rows"
+  # every record has exactly one row, and the status matches
+  while IFS="$(printf '\t')" read -r base rst; do
+    [ -n "$base" ] || continue
+    cnt=$(awk -F'\t' -v t="$base" '$1 == t { c++ } END { print c + 0 }' "$tmp/rows")
+    if [ "$cnt" -ne 1 ]; then
+      addv "$dir/$base" INDEX_DRIFT 0 "$base"
+    elif [ -n "$rst" ]; then
+      ist=$(awk -F'\t' -v t="$base" '$1 == t { print $2 }' "$tmp/rows")
+      if [ "$ist" != "$rst" ]; then
+        addv "$dir/$base" INDEX_DRIFT 0 "$base"
+      fi
+    fi
+  done < "$recs"
 fi
 sort "$viol0" > "$viol"
 
