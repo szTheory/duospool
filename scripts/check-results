@@ -12,6 +12,9 @@
 # codes (the register is read first; with no register rows only REGISTER_EMPTY is reported):
 #   REGISTER_EMPTY       the protocol has no register rows
 #   RESULT_MISSING       a (metric, variant) register row has no result for option c or rust (detail: metric variant option)
+#   RESULT_EMPTY         a result row has an empty value
+#   RESULT_UNKNOWN_ROW   a result row whose (metric, variant) is not in the register, or whose option is not c or rust
+#   SCORES_MISSING       --record only: the record has no line starting RESULT=
 # stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then one line  RECORDS n  (result rows read)
 # stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
 # exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error
@@ -78,6 +81,9 @@ else
       if (c[2] == "Metric" || c[2] ~ /^:?-+:?$/) next
       print NR "\t" c[2] "\t" c[3] "\t" c[4] "\t" c[5]
     }' "$resfile" > "$res"
+  if ! grep -q '^RESULT=' "$resfile"; then
+    printf '%s\tSCORES_MISSING\t0\tno line starting RESULT=\n' "$resfile" >> "$viol0"
+  fi
 fi
 nrec=$(wc -l < "$res" | tr -d ' ')
 
@@ -90,7 +96,9 @@ else
     {
       line = $1; m = $2; v = $3; o = $4; val = $5
       gsub(/^[ \t]+|[ \t]+$/, "", val)
+      if (!((m SUBSEP v) in inreg) || (o != "c" && o != "rust")) { print file, "RESULT_UNKNOWN_ROW", line, m " " v " " o; next }
       seen[m SUBSEP v SUBSEP o] = 1
+      if (val == "") print file, "RESULT_EMPTY", line, m " " v " " o
     }
     END {
       for (i = 1; i <= nreg; i++) {

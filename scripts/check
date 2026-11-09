@@ -396,10 +396,12 @@ stage_score_controls() {
 stage_results_negatives() {
   rc=0
   n=0
+  neg=0
   for d in tests/results/*/; do
     [ -d "$d" ] || continue
     n=$((n + 1))
     case_name=$(basename "$d")
+    case $case_name in ok-*) ;; *) neg=$((neg + 1)) ;; esac
     if [ ! -f "${d}protocol.md" ] || [ ! -f "${d}record.md" ]; then
       echo "HARNESS_NO_FILE $case_name"
       rc=2
@@ -438,7 +440,7 @@ stage_results_negatives() {
         ;;
     esac
   done
-  if [ "$n" -eq 0 ]; then
+  if [ "$n" -eq 0 ] || [ "$neg" -eq 0 ]; then
     echo "NO_CONTROLS tests/results"
     [ "$rc" -eq 2 ] || rc=1
   fi
