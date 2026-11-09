@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 1
 current_phase_name: Owner Decisions, Claim Ledger and Toolchain Spike
 status: executing
-stopped_at: Completed 01-09-PLAN.md
-last_updated: "2026-11-09T22:46:45.251Z"
+stopped_at: Completed 01-10-PLAN.md
+last_updated: "2026-11-09T23:02:22.388Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 1 execution started
-state_head: 4bc2d8816487c94ff1bd57b98b2ad1ee35265b6a
+state_head: 9a5b0a2f2aadba4842885f324ff3507664ef54bd
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 12
-  completed_plans: 9
+  completed_plans: 10
   percent: 0
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 1 (Owner Decisions, Claim Ledger and Toolchain Spike) — EXECUTING
-Plan: 10 of 12
+Plan: 11 of 12
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 1 execution started
 
@@ -65,6 +65,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 1 P07 | 17 min | 2 tasks | 6 files |
 | Phase 1 P08 | 25 min | 2 tasks | 14 files |
 | Phase 1 P09 | 20 min | 2 tasks | 9 files |
+| Phase 1 P10 | 13 min | 3 tasks | 40 files |
 
 ## Accumulated Context
 
@@ -88,6 +89,8 @@ Recent decisions affecting current work:
 - [Phase 1]: 01-07: C fuzz run sets ASAN_OPTIONS=handle_sigtrap=1 so the arm64 SIGTRAP from the planted __builtin_trap is reported and a crash artifact is written; runtime setting only, protocol unchanged
 - [Phase 1]: 01-08: Rust build trees live under out/build-rust-<profile> (not rust/target) and the installed release build carries debug info so the path-leak grep is non-vacuous; Rust core allocates the content buffer with try_reserve_exact (ERR_STATE) while Box<Handle> in create can abort
 - [Phase 1]: 01-09: planted-bug prefix compared as one little-endian integer because bytes.starts_with was not found by cargo-fuzz in 60 s under macOS ASan (found in 0.4 s after); fuzz and Miri trees under out/
+- [Phase 1]: 01-10: run-all.sh timing parser takes the last occurrence of each key; with hyperfine 2.0.0 that is the time_wall_clock block, verified for all 24 JSON files by an independent cross-check (0 mismatches); script left as run
+- [Phase 1]: 01-10: M09 line counts follow LINES.map as pre-registered, so the Rust ffi-glue count (231) includes the capi Miri test module; C4 inputs are 198 (C) and 476 (Rust); for the 01-11 scorer to weigh
 
 ### Pending Todos
 
@@ -110,6 +113,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-09T22:46:45.204Z
-Stopped at: Completed 01-09-PLAN.md
+Last session: 2026-11-09T23:02:22.358Z
+Stopped at: Completed 01-10-PLAN.md
 Resume file: None
