@@ -17,13 +17,30 @@ trap 'rm -rf "$tmp"' EXIT
 fails=0
 errs=0
 
+# ---- helpers ----
+
+# checker CMD...: run one checker invocation and relay its output and status.
+# Every checker prints a marker line on a clean exit (EXPECT_OK, STATUS or RECORDS). A checker that exits 0
+# without one is dead (for example a script that /bin/sh stopped parsing at a syntax error): that is a harness
+# error (2), never a pass.
+checker() {
+  if "$@" > "$tmp/chk" 2>&1; then r=0; else r=$?; fi
+  cat "$tmp/chk"
+  if [ "$r" -eq 0 ] && ! grep -Eq '^(EXPECT_OK$|STATUS |RECORDS )' "$tmp/chk"; then
+    echo "CHECKER_DEAD $*"
+    return 2
+  fi
+  return "$r"
+}
+
 # ---- stages: each is a function that prints details and returns 0 pass, 1 fail, 2 harness error ----
 
 stage_ledger_entries() {
-  sh "$here/ledger-check" ledger/entries/
+  checker sh "$here/ledger-check" --required ledger/REQUIRED ledger/entries/
 }
 
-# stage_ledger_negatives: every ledger/negative/<case>/ is a control; its EXPECT file holds the exact code set
+# every ledger/negative/<case>/ is a control; its EXPECT file holds the exact code set, an optional
+# REQUIRED file is passed through. Exit 1 from the checker means the control is broken.
 stage_ledger_negatives() {
   rc=0
   n=0
@@ -38,26 +55,55 @@ stage_ledger_negatives() {
     fi
     exp=$(cat "$d/EXPECT")
     if [ -f "$d/REQUIRED" ]; then
-      if sh "$here/ledger-check" --expect "$exp" --required "$d/REQUIRED" "$d"; then :; else
-        r=$?
-        if [ "$r" -eq 1 ]; then echo "CONTROL BROKEN $case_name"; [ "$rc" -eq 2 ] || rc=1; else rc=2; fi
-      fi
+      if checker sh "$here/ledger-check" --expect "$exp" --required "$d/REQUIRED" "$d" > "$tmp/case.out"; then r=0; else r=$?; fi
     else
-      if sh "$here/ledger-check" --expect "$exp" "$d"; then :; else
-        r=$?
-        if [ "$r" -eq 1 ]; then echo "CONTROL BROKEN $case_name"; [ "$rc" -eq 2 ] || rc=1; else rc=2; fi
-      fi
+      if checker sh "$here/ledger-check" --expect "$exp" "$d" > "$tmp/case.out"; then r=0; else r=$?; fi
+    fi
+    if [ "$r" -eq 1 ]; then
+      echo "CONTROL BROKEN $case_name"
+      sed 's/^/  /' "$tmp/case.out"
+      [ "$rc" -eq 2 ] || rc=1
+    elif [ "$r" -ne 0 ]; then
+      echo "HARNESS_ERROR $case_name"
+      sed 's/^/  /' "$tmp/case.out"
+      rc=2
     fi
   done
   if [ "$n" -eq 0 ]; then
     echo "NO_CONTROLS ledger/negative"
-    rc=1
+    [ "$rc" -eq 2 ] || rc=1
+  fi
+  return "$rc"
+}
+
+# every ledger/samples/ok-<case>/ is a must-pass control
+stage_ledger_samples() {
+  rc=0
+  n=0
+  for d in ledger/samples/ok-*/; do
+    [ -d "$d" ] || continue
+    n=$((n + 1))
+    case_name=$(basename "$d")
+    if checker sh "$here/ledger-check" "$d" > "$tmp/case.out"; then r=0; else r=$?; fi
+    if [ "$r" -eq 1 ]; then
+      echo "SAMPLE REJECTED $case_name"
+      sed 's/^/  /' "$tmp/case.out"
+      [ "$rc" -eq 2 ] || rc=1
+    elif [ "$r" -ne 0 ]; then
+      echo "HARNESS_ERROR $case_name"
+      sed 's/^/  /' "$tmp/case.out"
+      rc=2
+    fi
+  done
+  if [ "$n" -eq 0 ]; then
+    echo "NO_CONTROLS ledger/samples"
+    [ "$rc" -eq 2 ] || rc=1
   fi
   return "$rc"
 }
 
 stage_decision_records() {
-  sh "$here/decision-check" docs/decisions
+  checker sh "$here/decision-check" docs/decisions
 }
 
 # ---- runner ----
@@ -80,6 +126,7 @@ run_stage() {
 
 run_stage ledger-entries stage_ledger_entries
 run_stage ledger-negatives stage_ledger_negatives
+run_stage ledger-samples stage_ledger_samples
 run_stage decision-records stage_decision_records
 
 if [ "$errs" -gt 0 ]; then

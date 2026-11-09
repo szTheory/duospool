@@ -7,6 +7,7 @@
 #   PATH is a .toml file or a directory (every *.toml directly inside it is checked).
 # stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then one line
 #         STATUS open=N assumed=N supported=N refuted=N deferred=N withdrawn=N
+# stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
 # exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error
 set -eu
 LC_ALL=C; export LC_ALL
@@ -123,6 +124,7 @@ if [ "$have_expect" -eq 1 ]; then
   got=$(awk -F'\t' '{ print $2 }' "$viol" | sort -u | tr '\n' ',' | sed 's/,$//')
   want=$(printf '%s\n' "$expect" | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/,$//')
   if [ "$got" = "$want" ]; then
+    echo "EXPECT_OK"
     exit 0
   fi
   echo "EXPECT_MISMATCH wanted '$want' got '${got:-<none>}'" >&2

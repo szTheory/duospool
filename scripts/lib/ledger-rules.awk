@@ -44,8 +44,8 @@ function cnt(s) { return (s == "") ? 0 : split(s, tmp, "\037") }
 function ok(k) { return (k in typ) && !(k in wt) }
 END {
   if (!sentinel) { print "V\tNO_SENTINEL\t0\tstage 1 produced no END sentinel"; exit }
-  for (k in typ) {
-    if ((k in want) && typ[k] != want[k]) { viol("WRONG_TYPE", ln[k], k); wt[k] = 1 }
+  for (kk in typ) {
+    if ((kk in want) && typ[kk] != want[kk]) { viol("WRONG_TYPE", ln[kk], kk); wt[kk] = 1 }
   }
   for (i = 1; i <= n; i++) if (!(req[i] in typ) && !(req[i] in errkey)) viol("MISSING_FIELD", 0, req[i])
   if (ok("id")) {

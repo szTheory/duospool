@@ -6,6 +6,7 @@
 # usage: decision-check [--expect CODE[,CODE...]] DIR
 #   checks every DIR/[0-9][0-9][0-9][0-9]-*.md, except names ending in .protocol.md (D-09: not a record).
 # stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then one line  RECORDS n
+# stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
 # exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error
 # There is deliberately no git-author check: the agent commits under the owner identity (D-25).
 set -eu
@@ -108,6 +109,7 @@ if [ "$have_expect" -eq 1 ]; then
   got=$(awk -F'\t' '{ print $2 }' "$viol" | sort -u | tr '\n' ',' | sed 's/,$//')
   want=$(printf '%s\n' "$expect" | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/,$//')
   if [ "$got" = "$want" ]; then
+    echo "EXPECT_OK"
     exit 0
   fi
   echo "EXPECT_MISMATCH wanted '$want' got '${got:-<none>}'" >&2
