@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 1
 current_phase_name: Owner Decisions, Claim Ledger and Toolchain Spike
 status: executing
-stopped_at: Phase 1 context gathered
-last_updated: "2026-11-09T20:51:40.843Z"
+stopped_at: Completed 01-01-PLAN.md
+last_updated: "2026-11-09T21:03:52.246Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 1 execution started
-state_head: a96b941aa09f87c56e99ba9c05171f7b56883551
+state_head: 6b31fd242e89d6c86f3b2ee87b0d64794cec41d3
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 12
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -28,8 +28,8 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 1 (Owner Decisions, Claim Ledger and Toolchain Spike) — EXECUTING
-Plan: 1 of 12
-Status: Executing Phase 1
+Plan: 2 of 12
+Status: Ready to execute
 Last activity: 2026-11-09 — Phase 1 execution started
 
 Progress: [░░░░░░░░░░] 0%
@@ -52,6 +52,11 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: -
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 1 P01 | 60min | 3 tasks | 67 files |
 
 ## Accumulated Context
 
@@ -63,6 +68,7 @@ Recent decisions affecting current work:
 - [Init]: First vertical slice (base profile + HuCard + authored fixtures + headless runner + installed-consumer proof) is a candidate. The owner has not selected it.
 - [Roadmap]: 6 phases (granularity standard). Loader folded into the deterministic-shell phase; both VDC slices merged into one video phase; Phases 4 and 5 can run in parallel.
 - [Roadmap]: E4 (emulator differential) is triage only and never backs a correctness claim. This is a proposed default; owner confirmation is pending (decision 17).
+- [Phase 1]: Gate checkers print a marker line on a clean exit and scripts/check fails closed on a silent exit 0 (bash 3.2 /bin/sh exits 0 on script syntax errors)
 
 ### Pending Todos
 
@@ -85,6 +91,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-09T17:49:55.659Z
-Stopped at: Phase 1 context gathered
-Resume file: .planning/phases/01-owner-decisions-claim-ledger-and-toolchain-spike/01-CONTEXT.md
+Last session: 2026-11-09T21:03:52.212Z
+Stopped at: Completed 01-01-PLAN.md
+Resume file: None
