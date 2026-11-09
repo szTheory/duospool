@@ -1,0 +1,27 @@
+# Build outputs
+target/
+build/
+prefix/
+*.a
+.DS_Store
+
+# Generated spike fixtures look like ROMs and are never committed (D-35)
+spikes/tool-01/out/
+
+# Fuzzing artifacts
+fuzz/artifacts/
+fuzz/corpus/
+
+# ROM-like extensions, so such files cannot be staged by accident (T-01-12).
+# These patterns are active, not commented out. The Phase 2 FIX-05 tree check is the real gate.
+# Phase 3 authored fixture ROMs will need an explicit !-prefixed allow rule for their own fixture directory
+# when they are admitted.
+*.pce
+*.sgx
+*.iso
+*.cue
+*.bin
+*.img
+*.chd
+*.sav
+*.srm

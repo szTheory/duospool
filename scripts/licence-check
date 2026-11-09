@@ -1,0 +1,115 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# licence-check - licence-file pin and SPDX-header check (D-01, D-31). This check enforces text identity, not legal advice.
+# usage: licence-check [--expect CODE[,CODE...]] [--root DIR]      (--root defaults to the repository root)
+#   LICENSE-MIT, LICENSE-APACHE and LICENSE-0BSD must exist (LICENSE_FILE_MISSING).
+#   LICENSE-APACHE must match the pinned apache.org sha256 (LICENSE_HASH_MISMATCH).
+#   LICENSE-MIT and LICENSE-0BSD must carry the holder line (LICENSE_HOLDER_MISSING) and their permission
+#   sentence, matched as a fixed string (LICENSE_TEXT_MISSING).
+#   Every regular file under ROOT/scripts/ must carry both SPDX lines in its first five lines (SPDX_HEADER_MISSING).
+# stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then one line  RECORDS n
+# stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
+# exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error
+set -eu
+LC_ALL=C; export LC_ALL
+here=$(cd "$(dirname "$0")" && pwd)
+
+usage() {
+  echo "usage: licence-check [--expect CODE[,CODE...]] [--root DIR]" >&2
+  exit 2
+}
+
+apache_sha256=cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30
+holder='Copyright (c) 2026 The DuoSpool Authors'
+mit_sentence='Permission is hereby granted, free of charge, to any person obtaining a copy'
+bsd_sentence='Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted.'
+spdx_id='SPDX-License-Identifier: MIT OR Apache-2.0'
+spdx_holder='SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors'
+
+expect=""
+have_expect=0
+root=$(cd "$here/.." && pwd)
+while [ $# -gt 0 ]; do
+  case $1 in
+    --expect) [ $# -ge 2 ] || usage; expect=$2; have_expect=1; shift 2 ;;
+    --root) [ $# -ge 2 ] || usage; root=$2; shift 2 ;;
+    *) usage ;;
+  esac
+done
+if [ ! -d "$root" ]; then
+  echo "HARNESS_NO_FILE $root" >&2
+  exit 2
+fi
+root=$(cd "$root" && pwd)
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+viol0="$tmp/viol0"
+viol="$tmp/viol"
+: > "$viol0"
+nrec=0
+
+for f in LICENSE-MIT LICENSE-APACHE LICENSE-0BSD; do
+  if [ ! -f "$root/$f" ]; then
+    printf '%s\tLICENSE_FILE_MISSING\t0\t\n' "$f" >> "$viol0"
+  else
+    nrec=$((nrec + 1))
+  fi
+done
+
+if [ -f "$root/LICENSE-APACHE" ]; then
+  got=$(shasum -a 256 "$root/LICENSE-APACHE" | awk '{ print $1 }')
+  if [ "$got" != "$apache_sha256" ]; then
+    printf 'LICENSE-APACHE\tLICENSE_HASH_MISMATCH\t0\t%s\n' "$got" >> "$viol0"
+  fi
+fi
+
+# check_permissive FILE SENTENCE
+check_permissive() {
+  [ -f "$root/$1" ] || return 0
+  if ! grep -Fq -e "$holder" "$root/$1"; then
+    printf '%s\tLICENSE_HOLDER_MISSING\t0\t%s\n' "$1" "$holder" >> "$viol0"
+  fi
+  if ! grep -Fq -e "$2" "$root/$1"; then
+    printf '%s\tLICENSE_TEXT_MISSING\t0\tpermission sentence\n' "$1" >> "$viol0"
+  fi
+}
+check_permissive LICENSE-MIT "$mit_sentence"
+check_permissive LICENSE-0BSD "$bsd_sentence"
+
+# SPDX header on every regular file under scripts/, both lines within the first five
+if [ -d "$root/scripts" ]; then
+  find "$root/scripts" -type f > "$tmp/scripts.list"
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    nrec=$((nrec + 1))
+    rel=${f#"$root"/}
+    head -n 5 "$f" > "$tmp/head5"
+    if ! grep -Fq -e "$spdx_id" "$tmp/head5" || ! grep -Fq -e "$spdx_holder" "$tmp/head5"; then
+      printf '%s\tSPDX_HEADER_MISSING\t0\t%s\n' "$rel" "$rel" >> "$viol0"
+    fi
+  done < "$tmp/scripts.list"
+fi
+
+sort -u "$viol0" > "$viol"
+
+if [ "$have_expect" -eq 1 ]; then
+  got=$(awk -F'\t' '{ print $2 }' "$viol" | sort -u | tr '\n' ',' | sed 's/,$//')
+  want=$(printf '%s\n' "$expect" | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/,$//')
+  if [ "$got" = "$want" ]; then
+    echo "EXPECT_OK"
+    exit 0
+  fi
+  echo "EXPECT_MISMATCH wanted '$want' got '${got:-<none>}'" >&2
+  cat "$viol" >&2
+  exit 1
+fi
+
+cat "$viol"
+echo "RECORDS $nrec"
+if [ -s "$viol" ]; then
+  exit 1
+fi
+exit 0
