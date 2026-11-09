@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# Seed entry for research conflict C1 (PSG clock). A modelling assumption, not an established hardware fact.
+id = "LED-AUD-0001"
+statement = "DuoSpool models the PSG as advancing its counters at master clock divided by 6 (about 3.58 MHz); this is a modelling assumption, not an established hardware fact."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["REPORT|pcetech.txt|effective tick master/6 (SUMMARY C1)", "CODE|Geargrafx, Mednafen, Ares|each models master/6 (SUMMARY C1)", "FACT|HuC6280 manual p. H8-23|clock pin OSC1/3 = 7.16 MHz; second-hand via ARCHITECTURE (SUMMARY C19)"]
+evidence = []
+disagreement = "master/6 = 3.58 MHz (pcetech report; three codebases) versus OSC1/3 = 7.16 MHz on the manual clock pin (second-hand fact); patents cited by pcetech say 7.16 MHz while its formulas imply 3.58"
+pinning_test = "PENDING:5"
+updated = "2026-11-09"
+assumption = "psg_tick_divisor is proposed as 6 as a labelled placeholder; the profile field stays open until a measurement exists."
+revisit_phase = 5
+withheld = ["any PSG pitch claim", "any PSG period claim", "any PSG timing claim", "PCM rate claims tied to the tick"]
+origin = "SUMMARY C1"

@@ -1,0 +1,138 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# ledger-check - claim-ledger checker (D-18..D-23). This check enforces structure, not truth.
+# usage: ledger-check [--expect CODE[,CODE...]] [--required FILE] PATH...
+#   PATH is a .toml file or a directory (every *.toml directly inside it is checked).
+# stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then one line
+#         STATUS open=N assumed=N supported=N refuted=N deferred=N withdrawn=N
+# exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error
+set -eu
+LC_ALL=C; export LC_ALL
+here=$(cd "$(dirname "$0")" && pwd)
+
+usage() {
+  echo "usage: ledger-check [--expect CODE[,CODE...]] [--required FILE] PATH..." >&2
+  exit 2
+}
+
+expect=""
+have_expect=0
+reqfile=""
+while [ $# -gt 0 ]; do
+  case $1 in
+    --expect) [ $# -ge 2 ] || usage; expect=$2; have_expect=1; shift 2 ;;
+    --required) [ $# -ge 2 ] || usage; reqfile=$2; shift 2 ;;
+    --) shift; break ;;
+    -*) usage ;;
+    *) break ;;
+  esac
+done
+[ $# -ge 1 ] || usage
+if [ -n "$reqfile" ] && [ ! -f "$reqfile" ]; then
+  echo "HARNESS_NO_FILE $reqfile" >&2
+  exit 2
+fi
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+raw="$tmp/raw"        # FILE<TAB>TAG<TAB>... records from every file
+t1="$tmp/stage1"
+t2="$tmp/stage2"
+viol0="$tmp/viol0"
+viol="$tmp/viol"
+statusfile="$tmp/status"
+: > "$raw"
+
+# check_file FILE : size gates, stage 1 into a temp file, then stage 2 over that file
+check_file() {
+  f=$1
+  size=$(wc -c < "$f" | tr -d ' ')
+  if [ "$size" -eq 0 ]; then
+    printf '%s\tV\tEMPTY_FILE\t0\t\n' "$f" >> "$raw"
+    return 0
+  fi
+  if [ "$size" -gt 16384 ]; then
+    printf '%s\tV\tFILE_TOO_BIG\t0\t%s bytes\n' "$f" "$size" >> "$raw"
+    return 0
+  fi
+  base=$(basename "$f" .toml)
+  # no pipeline: a failing stage 1 must not read as "no violations"
+  awk -f "$here/lib/toml-subset.awk" "$f" > "$t1" 2>/dev/null || : > "$t1"
+  fname="$base" awk -f "$here/lib/ledger-rules.awk" "$t1" > "$t2" 2>/dev/null || : > "$t2"
+  fpath="$f" awk 'BEGIN { FS = OFS = "\t" } { print ENVIRON["fpath"], $0 }' "$t2" >> "$raw"
+  return 0
+}
+
+for p in "$@"; do
+  if [ -d "$p" ]; then
+    n=0
+    for f in "$p"/*.toml; do
+      [ -e "$f" ] || continue
+      n=$((n + 1))
+      check_file "$f"
+    done
+    if [ "$n" -eq 0 ]; then
+      printf '%s\tV\tEMPTY_LEDGER\t0\t\n' "$p" >> "$raw"
+    fi
+  elif [ -f "$p" ]; then
+    check_file "$p"
+  else
+    echo "HARNESS_NO_FILE $p" >&2
+    exit 2
+  fi
+done
+
+# REQUIRED file: each non-blank, non-comment line is  LED-ID<space>origin text
+if [ -n "$reqfile" ]; then
+  reqfile="$reqfile" awk '
+    BEGIN { FS = "\n"; rf = ENVIRON["reqfile"] }
+    /^[ \t]*(#.*)?$/ { next }
+    {
+      if ($0 ~ /^LED-(PROF|CPU|VID|AUD|IRQ|LOAD|IO|TOOL)-[0-9][0-9][0-9][0-9] [^ ].*$/) {
+        sp = index($0, " "); id = substr($0, 1, sp - 1); org = substr($0, sp + 1)
+        printf "%s\tR\t%s\t%s\n", rf, id, org
+      } else printf "%s\tB\t%d\t%s\n", rf, NR, $0
+    }' "$reqfile" >> "$raw"
+fi
+
+# cross-file pass: violations, DUP_ID, REQUIRED checks and the status tally
+statusfile="$statusfile" awk '
+  BEGIN { FS = "\t"; OFS = "\t" }
+  $2 == "V" { print $1, $3, $4, $5; next }
+  $2 == "S" { cnt[$3]++; next }
+  $2 == "I" { nid[$3]++; idfile[$3, nid[$3]] = $1; next }
+  $2 == "F" { have[$3] = 1; org[$3] = $4; next }
+  $2 == "R" { nreq++; rid[nreq] = $3; rorg[nreq] = $4; rfile = $1; next }
+  $2 == "B" { print $1, "REQUIRED_BAD_LINE", $3, $4; next }
+  END {
+    for (id in nid) if (nid[id] > 1) for (i = 1; i <= nid[id]; i++) print idfile[id, i], "DUP_ID", 0, id
+    for (i = 1; i <= nreq; i++) {
+      if (!(rid[i] in have)) print rfile, "REQUIRED_MISSING", 0, rid[i]
+      else if (org[rid[i]] != rorg[i]) print rfile, "REQUIRED_ORIGIN_MISMATCH", 0, rid[i] ": wanted " rorg[i] " got " org[rid[i]]
+    }
+    st = "STATUS"
+    n = split("open assumed supported refuted deferred withdrawn", names, " ")
+    for (i = 1; i <= n; i++) st = st " " names[i] "=" (cnt[names[i]] + 0)
+    print st > ENVIRON["statusfile"]
+  }' "$raw" > "$viol0"
+sort "$viol0" > "$viol"
+
+if [ "$have_expect" -eq 1 ]; then
+  got=$(awk -F'\t' '{ print $2 }' "$viol" | sort -u | tr '\n' ',' | sed 's/,$//')
+  want=$(printf '%s\n' "$expect" | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/,$//')
+  if [ "$got" = "$want" ]; then
+    exit 0
+  fi
+  echo "EXPECT_MISMATCH wanted '$want' got '${got:-<none>}'" >&2
+  cat "$viol" >&2
+  exit 1
+fi
+
+cat "$viol"
+cat "$statusfile"
+if [ -s "$viol" ]; then
+  exit 1
+fi
+exit 0

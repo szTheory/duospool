@@ -1,0 +1,94 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# check - the Phase 1 gate entry point (D-30). Phase 2 extends this script; it does not add a second one.
+# usage: sh scripts/check
+# stdout: one line per stage  CHECK <stage> PASS|FAIL|ERROR , then  CHECK RESULT PASS|FAIL
+# exit  : 0 all stages pass | 1 a stage failed (violation or broken control) | 2 harness error in a stage
+set -eu
+LC_ALL=C; export LC_ALL
+here=$(cd "$(dirname "$0")" && pwd)
+root=$(cd "$here/.." && pwd)
+cd "$root"
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+fails=0
+errs=0
+
+# ---- stages: each is a function that prints details and returns 0 pass, 1 fail, 2 harness error ----
+
+stage_ledger_entries() {
+  sh "$here/ledger-check" ledger/entries/
+}
+
+# stage_ledger_negatives: every ledger/negative/<case>/ is a control; its EXPECT file holds the exact code set
+stage_ledger_negatives() {
+  rc=0
+  n=0
+  for d in ledger/negative/*/; do
+    [ -d "$d" ] || continue
+    n=$((n + 1))
+    case_name=$(basename "$d")
+    if [ ! -f "$d/EXPECT" ]; then
+      echo "HARNESS_NO_EXPECT $case_name"
+      rc=2
+      continue
+    fi
+    exp=$(cat "$d/EXPECT")
+    if [ -f "$d/REQUIRED" ]; then
+      if sh "$here/ledger-check" --expect "$exp" --required "$d/REQUIRED" "$d"; then :; else
+        r=$?
+        if [ "$r" -eq 1 ]; then echo "CONTROL BROKEN $case_name"; [ "$rc" -eq 2 ] || rc=1; else rc=2; fi
+      fi
+    else
+      if sh "$here/ledger-check" --expect "$exp" "$d"; then :; else
+        r=$?
+        if [ "$r" -eq 1 ]; then echo "CONTROL BROKEN $case_name"; [ "$rc" -eq 2 ] || rc=1; else rc=2; fi
+      fi
+    fi
+  done
+  if [ "$n" -eq 0 ]; then
+    echo "NO_CONTROLS ledger/negative"
+    rc=1
+  fi
+  return "$rc"
+}
+
+stage_decision_records() {
+  sh "$here/decision-check" docs/decisions
+}
+
+# ---- runner ----
+
+# run_stage NAME FUNCTION : prints the verdict line, then any detail output indented
+run_stage() {
+  name=$1
+  fn=$2
+  if "$fn" > "$tmp/out" 2>&1; then rc=0; else rc=$?; fi
+  case $rc in
+    0) verdict=PASS ;;
+    1) verdict=FAIL; fails=$((fails + 1)) ;;
+    *) verdict=ERROR; errs=$((errs + 1)) ;;
+  esac
+  echo "CHECK $name $verdict"
+  if [ "$rc" -ne 0 ]; then
+    sed 's/^/    /' "$tmp/out"
+  fi
+}
+
+run_stage ledger-entries stage_ledger_entries
+run_stage ledger-negatives stage_ledger_negatives
+run_stage decision-records stage_decision_records
+
+if [ "$errs" -gt 0 ]; then
+  echo "CHECK RESULT FAIL"
+  exit 2
+fi
+if [ "$fails" -gt 0 ]; then
+  echo "CHECK RESULT FAIL"
+  exit 1
+fi
+echo "CHECK RESULT PASS"
+exit 0
