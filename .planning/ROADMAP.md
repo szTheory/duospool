@@ -40,17 +40,40 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans:** 12 plans
 
 Plans:
+**Wave 1**
 - [ ] 01-01-PLAN.md — Walking-skeleton gate: scripts/check, the ledger and decision checkers, the E0/E4 negative control, record 0008, the full ledger negative corpus and --selftest
+
+**Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 01-02-PLAN.md — Seed ledger (9 mandated conflicts + C14), first-profile record r1 with profile-check, record 0002 with the criterion-2 mapping
+
+**Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 01-03-PLAN.md — Decision records 0003-0007, the README index with its drift check, PROJECT.md pointers, the decision negative corpus
+
+**Wave 4** *(blocked on Wave 3 completion)*
 - [ ] 01-04-PLAN.md — PROVENANCE.md with provenance-check, licence files with licence-check, README, .gitignore
+
+**Wave 5** *(blocked on Wave 4 completion)*
 - [ ] 01-05-PLAN.md — Pre-registered spike protocol for 0001 (rubric, arithmetic, D-36 toolchain rule), score.awk with D-07 controls, protocol-order-check
+
+**Wave 6** *(blocked on Wave 5 completion)*
 - [ ] 01-06-PLAN.md — Spike harness and the C11/CMake core path (written first): fixtures, manifest, consumer, core and runner, hard gates G1-G4
+
+**Wave 7** *(blocked on Wave 6 completion)*
 - [ ] 01-07-PLAN.md — C fuzz gate G5 with liveness, M08 sanitizer row, C bench hooks and LINES.map
+
+**Wave 8** *(blocked on Wave 7 completion)*
 - [ ] 01-08-PLAN.md — Rust/Cargo core path on stable 1.99.1: safe core, capi facade, safe runner, hard gates G1-G4
+
+**Wave 9** *(blocked on Wave 8 completion)*
 - [ ] 01-09-PLAN.md — Rust fuzz gate G5 with ASan canary, Miri on the facade (D-36 nightly), wasm row, Rust bench hooks and LINES.map
+
+**Wave 10** *(blocked on Wave 9 completion)*
 - [ ] 01-10-PLAN.md — Pre-registered measurements for both options, run once, with check-results and its negative controls
+
+**Wave 11** *(blocked on Wave 10 completion)*
 - [ ] 01-11-PLAN.md — Scores, record 0001 by the executable D-07 rule, evidence tag, spike removed from main
+
+**Wave 12** *(blocked on Wave 11 completion)*
 - [ ] 01-12-PLAN.md — Full-history audit and gitleaks, the owner checkpoint, then the public repository with main and the evidence tag pushed
 **Research**: Not needed beyond the spike, which has a fixed plan (SUMMARY: standard pattern). The real work is the owner decisions.
 

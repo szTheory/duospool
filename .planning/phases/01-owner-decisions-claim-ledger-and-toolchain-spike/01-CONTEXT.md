@@ -146,7 +146,7 @@ Each of these becomes an `owner-recorded` decision record. The `owner-statement`
 
 ### Shared record format
 
-- **D-18 One strict TOML subset for all hand-edited data** (ledger entries, profile records, and later manifests):
+- **D-18 One strict TOML subset for all hand-edited data:** This covers ledger entries, profile records, and later manifests.
   - Allowed: `# comments`, `key = "string"`, `key = <integer>`, `key = true|false`, single-line `key = ["a", "b"]`, and one-level `[table]` headers.
   - Not allowed: inline tables, multiline strings, dates or floats.
   - ASCII only, 16 KiB size cap per file.
