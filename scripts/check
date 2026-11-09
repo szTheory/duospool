@@ -330,6 +330,22 @@ stage_licence_negatives() {
   return "$rc"
 }
 
+stage_protocol_order() {
+  checker sh "$here/protocol-order-check"
+}
+
+# synthetic.sh prints one SYNTH line per case; its exit status is the verdict. The marker line keeps a dead script
+# (for example one /bin/sh stopped parsing) from passing as an empty success.
+stage_protocol_negatives() {
+  if sh tests/protocol/synthetic.sh > "$tmp/case.out" 2>&1; then r=0; else r=$?; fi
+  cat "$tmp/case.out"
+  if [ "$r" -eq 0 ] && ! grep -q '^SYNTH .* PASS$' "$tmp/case.out"; then
+    echo "NO_CONTROLS tests/protocol"
+    return 1
+  fi
+  return "$r"
+}
+
 # ---- self-test: prove the gate is alive (not vacuous). Mutates a COPY of scripts/ only ----
 
 selftest() {
@@ -410,6 +426,8 @@ run_stage provenance stage_provenance_register
 run_stage provenance-negatives stage_provenance_negatives
 run_stage licences stage_licence_files
 run_stage licence-negatives stage_licence_negatives
+run_stage protocol-order stage_protocol_order
+run_stage protocol-negatives stage_protocol_negatives
 
 if [ "$errs" -gt 0 ]; then
   echo "CHECK RESULT FAIL"

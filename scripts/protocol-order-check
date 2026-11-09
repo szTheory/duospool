@@ -1,0 +1,153 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# protocol-order-check - pre-registration order and edit check for the TOOL-01 spike protocol (D-09, D-35).
+# usage: protocol-order-check [--expect CODE[,CODE...]] [--repo DIR]      (--repo defaults to the repository root)
+#   The history of the checked-out HEAD is the evidence; a branch name is never assumed.
+#   PROTOCOL_MISSING            docs/decisions/0001-language-build.protocol.md has no add commit, or is absent from the tree
+#   PROTOCOL_AFTER_SPIKE        its add commit is not a strict ancestor of every commit that adds a file under spikes/tool-01
+#   PROTOCOL_EDITED             the add commit's text is not an unchanged byte prefix of the current file, so anything
+#                               before the first "## Amendment" heading differs from the pre-registered text (D-09: append only)
+#   PROTOCOL_AMENDMENT_UNDATED  a heading starting "## Amendment" is not "## Amendment YYYY-MM-DD: <text>"
+#   PROTOCOL_CITE_MISMATCH      docs/decisions/0001-language-build.md exists and its "Protocol commit:" value is not the add commit
+# stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then the info line
+#         PROTOCOL add=<sha|none> first_spike=<sha|none> amendments=<n> amended_after_spike=<yes|no>  , then  RECORDS n
+# stdout on a met --expect: the info line, then the single line EXPECT_OK
+# exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error
+set -eu
+LC_ALL=C; export LC_ALL
+here=$(cd "$(dirname "$0")" && pwd)
+
+usage() {
+  echo "usage: protocol-order-check [--expect CODE[,CODE...]] [--repo DIR]" >&2
+  exit 2
+}
+
+expect=""
+have_expect=0
+repo=$(cd "$here/.." && pwd)
+while [ $# -gt 0 ]; do
+  case $1 in
+    --expect) [ $# -ge 2 ] || usage; expect=$2; have_expect=1; shift 2 ;;
+    --repo) [ $# -ge 2 ] || usage; repo=$2; shift 2 ;;
+    *) usage ;;
+  esac
+done
+if [ ! -d "$repo" ]; then
+  echo "HARNESS_NO_FILE $repo" >&2
+  exit 2
+fi
+repo=$(cd "$repo" && pwd)
+
+proto=docs/decisions/0001-language-build.protocol.md
+record=docs/decisions/0001-language-build.md
+spikes=spikes/tool-01
+
+g() { git -C "$repo" "$@"; }
+
+if ! g rev-parse --git-dir > /dev/null 2>&1; then
+  echo "HARNESS_NO_REPO $repo" >&2
+  exit 2
+fi
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+viol0="$tmp/viol0"
+viol="$tmp/viol"
+: > "$viol0"
+nrec=0
+
+# add_commit PATH: the oldest commit on HEAD's history that adds PATH, or nothing
+add_commit() {
+  g log --format=%H --diff-filter=A --no-renames -- "$1" 2> /dev/null | tail -n 1 || true
+}
+
+add=$(add_commit "$proto")
+first_spike=""
+spike_adds=""
+if g rev-parse --verify -q HEAD > /dev/null 2>&1; then
+  spike_adds=$(g log --format=%H --diff-filter=A --no-renames --reverse -- "$spikes" 2> /dev/null || true)
+fi
+first_spike=$(printf '%s\n' "$spike_adds" | sed -n 1p)
+
+amendments=0
+amended_after=no
+
+if [ -z "$add" ] || [ ! -f "$repo/$proto" ]; then
+  printf '%s\tPROTOCOL_MISSING\t0\tno add commit or no file in the tree\n' "$proto" >> "$viol0"
+else
+  nrec=$((nrec + 1))
+
+  # ordering: the add commit must be a strict ancestor of every commit that adds a spikes/tool-01 file
+  for s in $spike_adds; do
+    if [ "$s" = "$add" ] || ! g merge-base --is-ancestor "$add" "$s" 2> /dev/null; then
+      printf '%s\tPROTOCOL_AFTER_SPIKE\t0\tadd %s spike %s\n' "$proto" "$add" "$s" >> "$viol0"
+      break
+    fi
+  done
+
+  # in-place edits: text before the first amendment heading must equal the add commit's, byte for byte
+  # An appended amendment leaves every byte of the add commit's text where it was, so that text must be an exact
+  # byte prefix of the current file. This also catches a fake amendment heading planted above edited text.
+  g show "$add:$proto" > "$tmp/add.md"
+  add_size=$(wc -c < "$tmp/add.md" | tr -d ' ')
+  head -c "$add_size" "$repo/$proto" > "$tmp/cur.head"
+  if ! cmp -s "$tmp/add.md" "$tmp/cur.head"; then
+    printf '%s\tPROTOCOL_EDITED\t0\tthe text of %s is not an unchanged prefix of the file\n' "$proto" "$add" >> "$viol0"
+  fi
+
+  # amendment headings: dated, and counted
+  grep -n '^## Amendment' "$repo/$proto" > "$tmp/headings" || true
+  while IFS= read -r hl; do
+    [ -n "$hl" ] || continue
+    amendments=$((amendments + 1))
+    lineno=${hl%%:*}
+    text=${hl#*:}
+    if ! printf '%s\n' "$text" | grep -Eq '^## Amendment [0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]): .+$'; then
+      printf '%s\tPROTOCOL_AMENDMENT_UNDATED\t%s\t%s\n' "$proto" "$lineno" "$text" >> "$viol0"
+    fi
+    if [ -n "$first_spike" ]; then
+      # the commit that introduced this heading is the oldest one whose diff changes the heading's occurrence count
+      intro=$(g log -S"$text" --format=%H --no-renames -- "$proto" 2> /dev/null | tail -n 1 || true)
+      if [ -z "$intro" ]; then
+        amended_after=yes   # not committed yet, so it will be committed after the spike
+      elif [ "$intro" = "$first_spike" ] || g merge-base --is-ancestor "$first_spike" "$intro" 2> /dev/null; then
+        amended_after=yes
+      fi
+    fi
+  done < "$tmp/headings"
+
+  # record 0001, once it exists, must cite the add commit
+  if [ -f "$repo/$record" ]; then
+    nrec=$((nrec + 1))
+    cited=$(sed -n 's/^Protocol commit: \([0-9a-f]\{40\}\)[[:space:]]*$/\1/p' "$repo/$record" | sed -n 1p)
+    if [ -z "$cited" ] || [ "$cited" != "$add" ] || ! g rev-parse --verify -q "$cited^{commit}" > /dev/null 2>&1; then
+      printf '%s\tPROTOCOL_CITE_MISMATCH\t0\tcited %s add %s\n' "$record" "${cited:-none}" "$add" >> "$viol0"
+    fi
+  fi
+fi
+
+sort -u "$viol0" > "$viol"
+info="PROTOCOL add=${add:-none} first_spike=${first_spike:-none} amendments=$amendments amended_after_spike=$amended_after"
+
+if [ "$have_expect" -eq 1 ]; then
+  got=$(awk -F'\t' '{ print $2 }' "$viol" | sort -u | tr '\n' ',' | sed 's/,$//')
+  want=$(printf '%s\n' "$expect" | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/,$//')
+  if [ "$got" = "$want" ]; then
+    echo "$info"
+    echo "EXPECT_OK"
+    exit 0
+  fi
+  echo "EXPECT_MISMATCH wanted '$want' got '${got:-<none>}'" >&2
+  cat "$viol" >&2
+  exit 1
+fi
+
+cat "$viol"
+echo "$info"
+echo "RECORDS $nrec"
+if [ -s "$viol" ]; then
+  exit 1
+fi
+exit 0
