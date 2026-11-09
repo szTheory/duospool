@@ -61,7 +61,11 @@ check_file() {
   base=$(basename "$f" .toml)
   # no pipeline: a failing stage 1 must not read as "no violations"
   awk -f "$here/lib/toml-subset.awk" "$f" > "$t1" 2>/dev/null || : > "$t1"
-  fname="$base" awk -f "$here/lib/ledger-rules.awk" "$t1" > "$t2" 2>/dev/null || : > "$t2"
+  # stage 2 always prints at least one record; an empty or failed stage 2 is a dead checker, not a pass
+  if fname="$base" awk -f "$here/lib/ledger-rules.awk" "$t1" > "$t2" 2>/dev/null && [ -s "$t2" ]; then :; else
+    printf '%s\tV\tSTAGE2_DEAD\t0\t\n' "$f" >> "$raw"
+    return 0
+  fi
   fpath="$f" awk 'BEGIN { FS = OFS = "\t" } { print ENVIRON["fpath"], $0 }' "$t2" >> "$raw"
   return 0
 }

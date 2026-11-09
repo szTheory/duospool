@@ -97,7 +97,11 @@ for f in "$dir"/[0-9][0-9][0-9][0-9]-*.md; do
     *.protocol.md) continue ;;
   esac
   n=$((n + 1))
-  check_record "$f" > "$tmp/rec" || : > "$tmp/rec"
+  # a dead awk must not read as "no violations": fail closed with a harness error
+  if check_record "$f" > "$tmp/rec"; then :; else
+    echo "HARNESS_AWK_FAILED $f" >&2
+    exit 2
+  fi
   fpath="$f" awk 'BEGIN { FS = OFS = "\t" } { print ENVIRON["fpath"], $1, $2, $3 }' "$tmp/rec" >> "$viol0"
 done
 if [ "$n" -eq 0 ]; then
