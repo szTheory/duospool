@@ -224,6 +224,59 @@ stage_profile_negatives() {
   return "$rc"
 }
 
+stage_provenance_register() {
+  checker sh "$here/provenance-check"
+}
+
+# every tests/provenance/<case>/ with an EXPECT is a must-fail control run under its own --root; every
+# tests/provenance/ok-<case>/ must pass. Exit 1 from the checker means the control is broken.
+stage_provenance_negatives() {
+  rc=0
+  n=0
+  for d in tests/provenance/*/; do
+    [ -d "$d" ] || continue
+    n=$((n + 1))
+    case_name=$(basename "$d")
+    case $case_name in
+      ok-*)
+        if checker sh "$here/provenance-check" --root "$d" > "$tmp/case.out"; then r=0; else r=$?; fi
+        if [ "$r" -eq 1 ]; then
+          echo "SAMPLE REJECTED $case_name"
+          sed 's/^/  /' "$tmp/case.out"
+          [ "$rc" -eq 2 ] || rc=1
+        elif [ "$r" -ne 0 ]; then
+          echo "HARNESS_ERROR $case_name"
+          sed 's/^/  /' "$tmp/case.out"
+          rc=2
+        fi
+        ;;
+      *)
+        if [ ! -f "$d/EXPECT" ]; then
+          echo "HARNESS_NO_EXPECT $case_name"
+          rc=2
+          continue
+        fi
+        exp=$(cat "$d/EXPECT")
+        if checker sh "$here/provenance-check" --root "$d" --expect "$exp" > "$tmp/case.out"; then r=0; else r=$?; fi
+        if [ "$r" -eq 1 ]; then
+          echo "CONTROL BROKEN $case_name"
+          sed 's/^/  /' "$tmp/case.out"
+          [ "$rc" -eq 2 ] || rc=1
+        elif [ "$r" -ne 0 ]; then
+          echo "HARNESS_ERROR $case_name"
+          sed 's/^/  /' "$tmp/case.out"
+          rc=2
+        fi
+        ;;
+    esac
+  done
+  if [ "$n" -eq 0 ]; then
+    echo "NO_CONTROLS tests/provenance"
+    [ "$rc" -eq 2 ] || rc=1
+  fi
+  return "$rc"
+}
+
 # ---- self-test: prove the gate is alive (not vacuous). Mutates a COPY of scripts/ only ----
 
 selftest() {
@@ -253,6 +306,14 @@ selftest() {
   mv "$cp_dir/lib/profile-rules.mutated" "$cp_dir/lib/profile-rules.awk"
   if sh "$cp_dir/profile-check" --expect OPEN_HAS_VALUE tests/profile/open-with-value/pce-hucard-2btn/r1.toml > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
   if [ "$r" -eq 1 ]; then echo "SELFTEST mutation-profile-rule PASS"; else echo "SELFTEST mutation-profile-rule FAIL"; failed=1; fi
+
+  # (d) delete the rule that emits PROV_BAD_SPDX: the gpl-spdx control must now be broken (exit 1)
+  rm -rf "$cp_dir"
+  cp -R "$here" "$cp_dir"
+  grep -v 'PROV_BAD_SPDX' "$cp_dir/lib/provenance-register.awk" > "$cp_dir/lib/provenance-register.mutated"
+  mv "$cp_dir/lib/provenance-register.mutated" "$cp_dir/lib/provenance-register.awk"
+  if sh "$cp_dir/provenance-check" --root tests/provenance/gpl-spdx --expect PROV_BAD_SPDX > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+  if [ "$r" -eq 1 ]; then echo "SELFTEST mutation-provenance-rule PASS"; else echo "SELFTEST mutation-provenance-rule FAIL"; failed=1; fi
 
   if [ "$failed" -eq 0 ]; then echo "SELFTEST RESULT PASS"; return 0; fi
   echo "SELFTEST RESULT FAIL"
@@ -292,6 +353,8 @@ run_stage decision-records stage_decision_records
 run_stage decision-negatives stage_decision_negatives
 run_stage profile-records stage_profile_records
 run_stage profile-negatives stage_profile_negatives
+run_stage provenance stage_provenance_register
+run_stage provenance-negatives stage_provenance_negatives
 
 if [ "$errs" -gt 0 ]; then
   echo "CHECK RESULT FAIL"

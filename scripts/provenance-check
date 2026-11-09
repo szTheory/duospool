@@ -1,0 +1,177 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# provenance-check - copied-code provenance gate (D-26). This check enforces structure, not truth.
+# usage: provenance-check [--expect CODE[,CODE...]] [--root DIR]      (--root defaults to the repository root)
+#   Register: ROOT/PROVENANCE.md, parsed after its "## Entries" line (see scripts/lib/provenance-register.awk).
+#   Markers : a line-start comment  (// # ; * /*)  followed by  Provenance: PROV-NNNN  anywhere under ROOT
+#             (.git and the untracked output directories target, build, out, prefix are pruned). A marker whose id
+#             has no register entry gives PROV_UNRESOLVED_MARKER. A mention in the middle of a sentence never counts.
+#   Skipped exactly: PROVENANCE.md, scripts/provenance-check, and each path listed in ROOT/tests/provenance/SELF-FIXTURES.
+#   Codes   : PROV_REGISTER_MISSING PROV_BAD_EXCLUSION PROV_SYNTAX PROV_UNKNOWN_FIELD PROV_MISSING_FIELD PROV_BAD_ID
+#             PROV_DUP_ID PROV_BAD_SYNC_POLICY PROV_BAD_SPDX PROV_BAD_REF PROV_BAD_DATE PROV_PATH_MISSING
+#             PROV_PATH_NO_MARKER PROV_UNRESOLVED_MARKER ; warning  WARN PROV_STALE <id>  (never changes the exit code)
+# stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , warnings, then one line  RECORDS n
+# stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
+# exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error
+set -eu
+LC_ALL=C; export LC_ALL
+here=$(cd "$(dirname "$0")" && pwd)
+
+usage() {
+  echo "usage: provenance-check [--expect CODE[,CODE...]] [--root DIR]" >&2
+  exit 2
+}
+
+expect=""
+have_expect=0
+root=$(cd "$here/.." && pwd)
+while [ $# -gt 0 ]; do
+  case $1 in
+    --expect) [ $# -ge 2 ] || usage; expect=$2; have_expect=1; shift 2 ;;
+    --root) [ $# -ge 2 ] || usage; root=$2; shift 2 ;;
+    *) usage ;;
+  esac
+done
+if [ ! -d "$root" ]; then
+  echo "HARNESS_NO_FILE $root" >&2
+  exit 2
+fi
+root=$(cd "$root" && pwd)
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+viol0="$tmp/viol0"
+viol="$tmp/viol"
+warn="$tmp/warn"
+: > "$viol0"
+: > "$warn"
+
+# one line-start marker, as an ERE (shared by the scan, the exclusion check and the per-entry path check)
+marker_head='^[[:space:]]*(//|#|;|\*|/\*)[[:space:]]*Provenance: '
+any_marker="${marker_head}PROV-[0-9][0-9][0-9][0-9]([^0-9]|\$)"
+
+nentries=0
+reg="$root/PROVENANCE.md"
+if [ ! -f "$reg" ]; then
+  printf 'PROVENANCE.md\tPROV_REGISTER_MISSING\t0\t\n' >> "$viol0"
+else
+  today=$(date -u +%Y-%m-%d)
+  if today="$today" awk -f "$here/lib/provenance-register.awk" "$reg" > "$tmp/reg" 2> "$tmp/reg.err" && [ -s "$tmp/reg" ] && [ ! -s "$tmp/reg.err" ]; then :; else
+    echo "HARNESS_ERROR register parser produced no usable output" >&2
+    exit 2
+  fi
+  tab=$(printf '\t')
+  : > "$tmp/ids"
+  while IFS="$tab" read -r tag a b c d; do
+    case $tag in
+      V) printf 'PROVENANCE.md\t%s\t%s\t%s\n' "$a" "$b" "$c" >> "$viol0" ;;
+      W) printf 'WARN %s %s\n' "$a" "$c" >> "$warn" ;;
+      I) printf '%s\n' "$a" >> "$tmp/ids" ;;
+      N) nentries=$a ;;
+      P|Q)
+        if [ "$tag" = P ]; then pid=$a; ppath=$b; pline=$c; else pid=""; ppath=$a; pline=$b; fi
+        case $ppath in
+          ""|/*|..|../*|*/..|*/../*)
+            printf 'PROVENANCE.md\tPROV_PATH_MISSING\t%s\t%s\n' "$pline" "$ppath" >> "$viol0"
+            ;;
+          *)
+            if [ ! -f "$root/$ppath" ]; then
+              printf 'PROVENANCE.md\tPROV_PATH_MISSING\t%s\t%s\n' "$pline" "$ppath" >> "$viol0"
+            elif [ -n "$pid" ] && ! grep -Eq "${marker_head}${pid}([^0-9]|\$)" "$root/$ppath"; then
+              printf 'PROVENANCE.md\tPROV_PATH_NO_MARKER\t%s\t%s %s\n' "$pline" "$pid" "$ppath" >> "$viol0"
+            fi
+            ;;
+        esac
+        ;;
+    esac
+  done < "$tmp/reg"
+
+  # exclusion list: exact root-relative paths of control fixtures that carry a marker
+  excl="$tmp/excl"
+  printf '%s\n' "PROVENANCE.md" "scripts/provenance-check" > "$excl"
+  sf="$root/tests/provenance/SELF-FIXTURES"
+  if [ -f "$sf" ]; then
+    n=0
+    while IFS= read -r line || [ -n "$line" ]; do
+      n=$((n + 1))
+      case $line in
+        ""|"#"*) continue ;;
+      esac
+      case $line in
+        tests/provenance/*)
+          case $line in
+            *..*|*"*"*|*/) printf 'tests/provenance/SELF-FIXTURES\tPROV_BAD_EXCLUSION\t%s\t%s\n' "$n" "$line" >> "$viol0"; continue ;;
+          esac
+          if [ -f "$root/$line" ] && grep -Eq "$any_marker" "$root/$line"; then
+            printf '%s\n' "$line" >> "$excl"
+          else
+            printf 'tests/provenance/SELF-FIXTURES\tPROV_BAD_EXCLUSION\t%s\t%s\n' "$n" "$line" >> "$viol0"
+          fi
+          ;;
+        *)
+          printf 'tests/provenance/SELF-FIXTURES\tPROV_BAD_EXCLUSION\t%s\t%s\n' "$n" "$line" >> "$viol0"
+          ;;
+      esac
+    done < "$sf"
+  fi
+
+  # marker scan over the whole tree. grep returns 1 when nothing matches; real errors reach stderr and fail closed.
+  find_err="$tmp/find.err"
+  (
+    cd "$root"
+    find . \( -type d \( -name .git -o -name target -o -name build -o -name out -o -name prefix \) -prune \) -o \
+      -type f -exec grep -I -H -o -E "$any_marker" {} +
+  ) > "$tmp/scan" 2> "$find_err" || :
+  if [ -s "$find_err" ]; then
+    echo "HARNESS_ERROR marker scan failed" >&2
+    cat "$find_err" >&2
+    exit 2
+  fi
+  # scan lines look like  ./path:   // Provenance: PROV-0001  ; reduce to  path<TAB>id
+  awk '{
+    i = index($0, "Provenance: PROV-")
+    if (i == 0) next
+    id = substr($0, i + 12, 9)
+    path = substr($0, 1, i - 1)
+    sub(/:[ \t\/#;*]*$/, "", path)
+    sub(/^\.\//, "", path)
+    printf "%s\t%s\n", path, id
+  }' "$tmp/scan" > "$tmp/markers"
+  if [ -s "$tmp/scan" ] && [ ! -s "$tmp/markers" ]; then
+    echo "HARNESS_ERROR marker scan output not understood" >&2
+    exit 2
+  fi
+  sort -u "$tmp/ids" > "$tmp/ids.sorted"
+  while IFS="$tab" read -r mpath mid; do
+    [ -n "$mpath" ] || continue
+    if grep -Fxq -e "$mpath" "$excl"; then continue; fi
+    if ! grep -Fxq -e "$mid" "$tmp/ids.sorted"; then
+      printf '%s\tPROV_UNRESOLVED_MARKER\t0\t%s\n' "$mpath" "$mid" >> "$viol0"
+    fi
+  done < "$tmp/markers"
+fi
+
+sort -u "$viol0" > "$viol"
+sort -u "$warn" > "$tmp/warn.sorted"
+
+if [ "$have_expect" -eq 1 ]; then
+  got=$(awk -F'\t' '{ print $2 }' "$viol" | sort -u | tr '\n' ',' | sed 's/,$//')
+  want=$(printf '%s\n' "$expect" | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/,$//')
+  if [ "$got" = "$want" ]; then
+    echo "EXPECT_OK"
+    exit 0
+  fi
+  echo "EXPECT_MISMATCH wanted '$want' got '${got:-<none>}'" >&2
+  cat "$viol" >&2
+  exit 1
+fi
+
+cat "$viol"
+cat "$tmp/warn.sorted"
+echo "RECORDS $nentries"
+if [ -s "$viol" ]; then
+  exit 1
+fi
+exit 0

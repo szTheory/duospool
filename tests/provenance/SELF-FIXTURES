@@ -1,0 +1,3 @@
+# Control fixtures that carry a line-start Provenance marker. They are checked under their own --root by the
+# provenance-negatives stage, so the real-root scan skips these exact paths. One root-relative path per line; no globs.
+tests/provenance/gpl-spdx/src/copied.c
