@@ -818,8 +818,29 @@ stage_inventory() {
 # inventory-negatives (FIX-04, D-58): every tests/gate/inventory/<case>/ is a mini-root (tests/conformance/REQUIRED, the cases, ledger/entries):
 # ok-<case> must pass and a case with an EXPECT must fail with exactly that code set. A control that passes without its EXPECT met means
 # the checker is broken (T-02-35).
+# Then two probes that the one-code-per-directory layout cannot hold, made at run time from ok-consistent: the second direction of the pin check (a case
+# names a ledger id whose pinning_test is not TEST:that-case) and a REQUIRED line that is not an id; each must give exactly its own code.
 stage_inventory_negatives() {
-  run_controls --ok-prefix --require-negative --need HARNESS_NO_FILE @DIR@tests/conformance/REQUIRED tests/gate/inventory tests/gate/inventory sh "$here/inventory-check" --root @DIR@ @EXPECT@
+  in_rc=0
+  run_controls --ok-prefix --require-negative --need HARNESS_NO_FILE @DIR@tests/conformance/REQUIRED tests/gate/inventory tests/gate/inventory sh "$here/inventory-check" --root @DIR@ @EXPECT@ || in_rc=$?
+  in_w="$tmp/inventory"
+  rm -rf "$in_w"
+  if mkdir -p "$in_w" && cp -R tests/gate/inventory/ok-consistent "$in_w/reverse" && cp -R tests/gate/inventory/ok-consistent "$in_w/badline" \
+    && sed 's/^pinning_test = .*/pinning_test = "PENDING:4"/' tests/gate/inventory/ok-consistent/ledger/entries/LED-LOAD-0001.toml > "$in_w/reverse/ledger/entries/LED-LOAD-0001.toml" \
+    && printf 'Not-An-Id\n' >> "$in_w/badline/tests/conformance/REQUIRED"; then :; else
+    echo "HARNESS_ERROR cannot create the inventory probe roots"
+    return 2
+  fi
+  for in_p in reverse:INV_PIN_BACKLINK badline:INV_BAD_LINE; do
+    in_n=${in_p%%:*}
+    in_c=${in_p#*:}
+    if sh "$here/inventory-check" --root "$in_w/$in_n" --expect "$in_c" > "$tmp/in.out" 2>&1 && grep -qx 'EXPECT_OK' "$tmp/in.out"; then :; else
+      echo "CONTROL BROKEN $in_n (wanted exactly $in_c)"
+      sed 's/^/  /' "$tmp/in.out"
+      [ "$in_rc" -eq 2 ] || in_rc=1
+    fi
+  done
+  return "$in_rc"
 }
 
 # ---- self-test: prove the gate is alive (not vacuous). Mutates a COPY of scripts/ only ----
@@ -1348,6 +1369,29 @@ selftest() {
       echo "SELFTEST mutation-fixture-unlisted PASS"
     else
       echo "SELFTEST mutation-fixture-unlisted FAIL"; failed=1
+    fi
+  fi
+
+  # (t) the required-missing rule of inventory-check is what turns the removed-required control red (T-02-35): the control, run with
+  # --expect INV_REQUIRED_MISSING, is met on an unmutated copy (exit 0, EXPECT_OK); with the line tagged rule-required-missing deleted from the
+  # copy of the checker the code is no longer reported, so the same run must exit 1: the control flipped to broken.
+  if st_want mutation-inventory-required-missing; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    ivr="tests/gate/inventory/removed-required"
+    if sh "$cp_dir/inventory-check" --root "$ivr" --expect INV_REQUIRED_MISSING > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c 'rule-required-missing' "$cp_dir/inventory-check" || true)
+    grep -v 'rule-required-missing' "$cp_dir/inventory-check" > "$cp_dir/inventory-check.mutated" || true
+    mv "$cp_dir/inventory-check.mutated" "$cp_dir/inventory-check"
+    after=$(grep -c 'rule-required-missing' "$cp_dir/inventory-check" || true)
+    if sh "$cp_dir/inventory-check" --root "$ivr" --expect INV_REQUIRED_MISSING > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+      echo "SELFTEST mutation-inventory-required-missing PASS"
+    else
+      echo "SELFTEST mutation-inventory-required-missing FAIL"; failed=1
     fi
   fi
 

@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# A mini-root case of the inventory controls: it is read by scripts/inventory-check and never run.
+id = "c_opt"
+kind = "refuse"
+fixture = "plain-256k"
+request = ""
+expect = "load.size_unsupported"
+meaning = "a case of an inventory control mini-root, never run"
+required = false
+control = false
+expect_outcome = "pass"
+pins = ["LED-LOAD-0001"]

@@ -11,28 +11,42 @@
 # A C or L record is always printed once, so that the wrapper can tell a dead stage from a clean file. The cross-file rules (REQUIRED, the
 # unlisted case, the pins in both directions) live in scripts/inventory-check, which sees every file; this stage owns the shape of one file.
 # If the stage-1 sentinel is missing, V NO_SENTINEL is emitted: a dead stage 1 must not read as a pass.
+# Rule of this stage:
+#   INV_CASE_FIELD   a case file that is not a well-formed case: one of the ten keys of D-58 and D-79(a) (id kind fixture request expect
+#                    meaning required control expect_outcome pins) is absent (request included, an empty value is allowed), a key is of the
+#                    wrong type or unknown, a table or a syntax error is present, the file name is not an id, or id differs from the file stem
 BEGIN {
   FS = "\t"
   fname = ENVIRON["fname"]
   what = ENVIRON["what"]
   nv = 0; sentinel = 0
+  n = split("id kind fixture request expect meaning required control expect_outcome pins", fl, " ")
+  split("s s s s s s b b s a", ft, " ")
+  for (i = 1; i <= n; i++) want[fl[i]] = ft[i]
 }
 function viol(code, line, detail) { nv++; vbuf[nv] = sprintf("V\t%s\t%s\t%s", code, line, detail) }
 $1 == "END" { sentinel = 1; next }
-$1 == "ERR" { next }                    # syntax errors of a file are the business of the checker that owns the file's format
+$1 == "ERR" { if (what == "case") viol("INV_CASE_FIELD", $3, "syntax " $2); next }   # a ledger file's syntax is the business of ledger-check
 {
-  if ($1 != "") next
   if (what == "ledger") {
+    if ($1 != "") next
     if ($2 == "id" && $3 == "s") lid = $4
     if ($2 == "pinning_test" && $3 == "s") lpin = $4
-  } else {
-    if ($2 == "required" && $3 == "b") creq = $4
-    if ($2 == "pins" && $3 == "a") cpins = $4
+    next
   }
+  if ($1 != "") { viol("INV_CASE_FIELD", $5, "table " $1); next }
+  if (!($2 in want)) { viol("INV_CASE_FIELD", $5, "unknown key " $2); next }
+  if ($3 != want[$2]) { viol("INV_CASE_FIELD", $5, "type of " $2); bad[$2] = 1; next }
+  have[$2] = 1; val[$2] = $4; ln[$2] = $5
 }
 END {
   if (!sentinel) viol("NO_SENTINEL", 0, "")
+  if (what == "case") {
+    for (i = 1; i <= n; i++) if (!(fl[i] in have) && !(fl[i] in bad)) viol("INV_CASE_FIELD", 0, "missing key " fl[i])  # rule-case-field
+    if (fname !~ /^[a-z][a-z0-9_]*$/) viol("INV_CASE_FIELD", 0, "the file name is not an id")
+    if (("id" in have) && val["id"] != fname) viol("INV_CASE_FIELD", ln["id"], "id " val["id"] " is not the file name " fname)
+  }
   for (i = 1; i <= nv; i++) print vbuf[i]
   if (what == "ledger") printf "L\t%s\t%s\n", (lid != "" ? lid : fname), lpin
-  else { gsub(/\037/, ",", cpins); printf "C\t%s\t%s\t%s\n", fname, creq, cpins }
+  else { cpins = val["pins"]; gsub(/\037/, ",", cpins); printf "C\t%s\t%s\t%s\n", fname, val["required"], cpins }
 }

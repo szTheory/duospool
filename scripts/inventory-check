@@ -9,10 +9,19 @@
 #   Reads ROOT/tests/conformance/REQUIRED (one case id per line, # comments and blank lines skipped), the case files
 #   ROOT/tests/conformance/cases/ID.toml and the ledger entries ROOT/ledger/entries/*.toml, each file through the two stages
 #   scripts/lib/toml-subset.awk and scripts/lib/inventory-rules.awk, then compares them across files.
-#   Codes:
+#   Codes (a code is one rule, so a control can show it red and a selftest mutation can remove it):
 #     INV_REQUIRED_MISSING  a REQUIRED id has no case file
 #     INV_UNLISTED_CASE     a case file says required = true and its id is not in REQUIRED
-# stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then (clean) a line  INVENTORY required=N cases=M  and  STATUS inventory ok
+#     INV_PIN_UNRESOLVED    a ledger entry whose pinning_test is TEST:ID names an ID that has no case file
+#     INV_NOT_REQUIRED      a ledger TEST pin points at a case whose required key is not true
+#     INV_PIN_BACKLINK      a pin that is not mutual: the case does not name the ledger id in its pins array, or the case names a ledger id whose
+#                           pinning_test is not TEST:that-case (both directions, D-72, ledger/SCHEMA.md)
+#     INV_CASE_FIELD        a case without all ten keys (id kind fixture request expect meaning required control expect_outcome pins), with a key of
+#                           the wrong type or an unknown key, with an id that is not its file stem; also a REQUIRED id whose case says required = false
+#     INV_REQUIRED_EMPTY    REQUIRED lists no id (an emptied list must not switch the inventory off)
+#     INV_BAD_LINE          a REQUIRED line that is not a case id [a-z][a-z0-9_]*, or an id listed twice
+#   Also NO_SENTINEL and STAGE2_DEAD (a dead stage never passes). ledger-check stays structure-only: TEST pin resolution lives only here (D-58).
+# stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then (clean) a line  INVENTORY required=N cases=M pins=P  and  STATUS inventory ok
 # stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
 # exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error
 set -eu
@@ -110,19 +119,48 @@ done
 # ---- the cross-file rules: one awk over the records of every file ----
 awk -v reqrel="tests/conformance/REQUIRED" '
   BEGIN { FS = "\t"; OFS = "\t" }
-  $1 == "R" { nreq++; rid[nreq] = $2; rln[nreq] = $3; isreq[$2] = 1; next }
-  $1 == "B" { next }
-  $1 == "C" { havecase[$2] = 1; creq[$2] = $3; cfile[$2] = $5; next }
-  $1 == "L" { haveled[$2] = 1; next }
+  $1 == "R" {
+    nreq++; rid[nreq] = $2; rln[nreq] = $3
+    if ($2 in isreq) printf "%s\tINV_BAD_LINE\t%d\t%s repeats an earlier line\n", reqrel, $3, $2
+    isreq[$2] = 1
+    next
+  }
+  $1 == "B" { printf "%s\tINV_BAD_LINE\t%d\tnot a case id: %s\n", reqrel, $2, $3; next }
+  $1 == "C" { havecase[$2] = 1; creq[$2] = $3; cpins[$2] = $4; cfile[$2] = $5; next }
+  $1 == "L" { haveled[$2] = 1; lpin[$2] = $3; lfile[$2] = $5; next }
   END {
+    if (nreq == 0) printf "%s\tINV_REQUIRED_EMPTY\t0\tno required id: an emptied list would let every check disappear\n", reqrel
     for (i = 1; i <= nreq; i++) {
       id = rid[i]
       if (!(id in havecase)) printf "%s\tINV_REQUIRED_MISSING\t%d\t%s\n", reqrel, rln[i], id  # rule-required-missing
+      if ((id in havecase) && creq[id] != "true") printf "%s\tINV_CASE_FIELD\t0\t%s is listed in REQUIRED but its required key is not true\n", cfile[id], id
     }
     for (id in havecase) {
       if (creq[id] == "true" && !(id in isreq)) printf "%s\tINV_UNLISTED_CASE\t0\t%s\n", cfile[id], id  # rule-unlisted-case
     }
-  }' "$recs" >> "$viol0" || { echo "HARNESS_AWK failed (cross-file rules)" >&2; exit 2; }
+    # ledger pins, direction one: every ledger entry whose pinning_test is TEST:ID names an existing, required case that pins it back
+    for (lid in haveled) {
+      if (lpin[lid] !~ /^TEST:/) continue
+      t = substr(lpin[lid], 6)
+      if (!(t in havecase)) { printf "%s\tINV_PIN_UNRESOLVED\t0\t%s pins TEST:%s, which no case file carries\n", lfile[lid], lid, t; continue }  # rule-pin-unresolved
+      if (creq[t] != "true") printf "%s\tINV_NOT_REQUIRED\t0\t%s pins %s, whose required key is not true\n", lfile[lid], lid, t  # rule-not-required
+      np = split(cpins[t], pl, ",")
+      found = 0
+      for (j = 1; j <= np; j++) if (pl[j] == lid) found = 1
+      if (!found) printf "%s\tINV_PIN_BACKLINK\t0\t%s pins %s but the case does not name %s in pins\n", lfile[lid], lid, t, lid  # rule-backlink-forward
+    }
+    # direction two: every ledger id a case names in pins is an entry whose pinning_test is exactly TEST:that-case
+    for (cid in havecase) {
+      np = split(cpins[cid], pl, ",")
+      for (j = 1; j <= np; j++) {
+        if (pl[j] == "") continue
+        if (!(pl[j] in haveled) || lpin[pl[j]] != "TEST:" cid) printf "%s\tINV_PIN_BACKLINK\t0\t%s names %s in pins but its pinning_test is not TEST:%s\n", cfile[cid], cid, pl[j], cid  # rule-backlink-reverse
+      }
+    }
+    for (lid in haveled) if (lpin[lid] ~ /^TEST:/) npinned++
+    print "P", npinned + 0 > "/dev/stderr"
+  }' "$recs" >> "$viol0" 2> "$tmp/pinned" || { echo "HARNESS_AWK failed (cross-file rules)" >&2; exit 2; }
+npinned=$(awk '$1 == "P" { print $2 }' "$tmp/pinned")
 
 ncases=$(awk -F'\t' '$1 == "C" { n++ } END { print n + 0 }' "$recs")
 nrequired=$(awk -F'\t' '$1 == "R" { n++ } END { print n + 0 }' "$recs")
@@ -144,6 +182,6 @@ cat "$viol"
 if [ -s "$viol" ]; then
   exit 1
 fi
-echo "INVENTORY required=$nrequired cases=$ncases"
+echo "INVENTORY required=$nrequired cases=$ncases pins=${npinned:-0}"
 echo "STATUS inventory ok"
 exit 0
