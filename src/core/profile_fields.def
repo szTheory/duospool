@@ -1,0 +1,28 @@
+/* SPDX-License-Identifier: MIT OR Apache-2.0 */
+/* SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors */
+/*
+ * profile_fields.def - the 13 fields of profile pce-hucard-2btn rev 1, in the order of profiles/pce-hucard-2btn/r1.toml (D-48).
+ * One X-macro row per field: DS_FIELD(name, kind, value, allowed)
+ *   name     the field name, also the key of its table in r1.toml
+ *   kind     OWNER  an owner-selected constant: value holds it and no run request may bind the field
+ *            OPEN   a field with no value: it has no default and every run request must bind it (D-49, D-65)
+ *   value    the constant of an OWNER field as text (empty for an OPEN field)
+ *   allowed  the permitted values separated by a vertical bar; an OPEN field accepts only these. r1.toml has no allowed list for
+ *            vdc_count, vpc and input_port1 (OWNER, never bound) nor for powerup_policy: for that one field the set below is
+ *            a core constant of D-67, because the frozen r1 cannot gain the key.
+ * Everything that depends on the field list (struct, index enum, name and allowed tables, the builtin constant) is generated
+ * from this file; no consumer keeps its own copy.
+ */
+DS_FIELD(media_slot, OWNER, "hucard", "hucard")
+DS_FIELD(expansion_port, OWNER, "absent", "absent")
+DS_FIELD(vdc_count, OWNER, "1", "")
+DS_FIELD(vpc, OWNER, "false", "")
+DS_FIELD(chip_revision, OWNER, "huc6280", "huc6280")
+DS_FIELD(input_port1, OWNER, "pad2", "")
+DS_FIELD(io_1000_d6_value, OPEN, "", "0|1")
+DS_FIELD(io_1000_d7_value, OPEN, "", "0|1")
+DS_FIELD(lines_per_frame, OPEN, "", "262|263")
+DS_FIELD(psg_tick_divisor, OPEN, "", "3|6")
+DS_FIELD(content_byte_order, OPEN, "", "pce|tg16")
+DS_FIELD(content_copier_header, OPEN, "", "refuse|declared-512")
+DS_FIELD(powerup_policy, OPEN, "", "zero|seeded-prng-v1")

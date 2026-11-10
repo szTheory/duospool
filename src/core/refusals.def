@@ -1,0 +1,28 @@
+/* SPDX-License-Identifier: MIT OR Apache-2.0 */
+/* SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors */
+/*
+ * refusals.def - the closed refusal set of ds_boot and ds_resolve (D-46, D-66, D-79(b)), defined once.
+ * One X-macro row per refusal: DS_REFUSAL(name, number). 0 is OK and has no row. The string form is load.NAME. Numbers are
+ * stable and never reused; a new refusal takes the next free number (plan 12 appends powerup_seed_required = 21 and
+ * powerup_seed_unexpected = 22). Resolve-level codes are members too (rows 5 to 8, and 6 to 8 name a profile field).
+ */
+DS_REFUSAL(memory_invalid, 1)
+DS_REFUSAL(request_invalid, 2)
+DS_REFUSAL(profile_unknown, 3)
+DS_REFUSAL(profile_mismatch, 4)
+DS_REFUSAL(rev_mismatch, 5)
+DS_REFUSAL(open_unbound, 6)
+DS_REFUSAL(bind_closed_field, 7)
+DS_REFUSAL(bind_not_allowed, 8)
+DS_REFUSAL(mapper_undeclared, 9)
+DS_REFUSAL(mapper_unsupported, 10)
+DS_REFUSAL(byte_order_undeclared, 11)
+DS_REFUSAL(byte_order_unsupported, 12)
+DS_REFUSAL(header_undeclared, 13)
+DS_REFUSAL(header_unsupported, 14)
+DS_REFUSAL(buffer_null, 15)
+DS_REFUSAL(empty, 16)
+DS_REFUSAL(too_short, 17)
+DS_REFUSAL(too_large, 18)
+DS_REFUSAL(size_not_bank_multiple, 19)
+DS_REFUSAL(size_unsupported, 20)

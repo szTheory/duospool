@@ -1,0 +1,26 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "gate-base",
+      "hidden": true,
+      "generator": "Ninja",
+      "cacheVariables": {
+        "DS_WARNING_FLAGS": "-std=c11 -pedantic -Wall -Wextra -Wconversion -Wshadow -Werror",
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "gate",
+      "inherits": "gate-base",
+      "binaryDir": "${sourceDir}/build/gate",
+      "cacheVariables": {
+        "DS_EXTRA_FLAGS": "-fwrapv"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "gate", "configurePreset": "gate" }
+  ]
+}

@@ -635,6 +635,22 @@ stage_rights_negatives() {
   return "$r"
 }
 
+# build (D-60, D-41): configure and build the gate preset, warnings as errors. The compiler output is shown only when something
+# fails, and a build that finishes without producing the runner is a harness error (the later conformance stage would judge a
+# stale binary otherwise).
+stage_build() {
+  if cmake --preset gate > "$tmp/build.out" 2>&1 && cmake --build --preset gate >> "$tmp/build.out" 2>&1; then r=0; else r=$?; fi
+  if [ "$r" -ne 0 ]; then
+    cat "$tmp/build.out"
+    return 1
+  fi
+  if [ ! -x build/gate/ds_runner ]; then
+    echo "HARNESS_ERROR build/gate/ds_runner is missing after a clean build"
+    return 2
+  fi
+  return 0
+}
+
 # ---- self-test: prove the gate is alive (not vacuous). Mutates a COPY of scripts/ only ----
 
 # st_want NAME: true when no mutation was selected (run them all) or NAME is the selected one
@@ -967,6 +983,7 @@ run_stage outcome-controls stage_outcome_controls
 run_stage rights-tree stage_rights_tree
 run_stage rights-negatives stage_rights_negatives
 run_stage audit-synthetic stage_audit_synthetic
+run_stage build stage_build
 
 if [ -n "$only_stage" ]; then
   # one stage: its own CHECK line is the whole output; the exit status is that stage's verdict
