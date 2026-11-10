@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: 8191 bytes, one byte under one bank, otherwise fully declared. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_short_8191"
+kind = "refuse"
+fixture = "plain-256k"
+request = "len=8191"
+expect = "load.too_short"
+meaning = "A request one byte under the bank size is refused as load.too_short with no instance created"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

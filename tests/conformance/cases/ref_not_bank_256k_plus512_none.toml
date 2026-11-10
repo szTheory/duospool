@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: 256 KiB plus 512 bytes declared with no header. The length is not a bank multiple and the image is not diagnosed as headered. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_not_bank_256k_plus512_none"
+kind = "refuse"
+fixture = "plain-256k"
+request = "len=262656;header=none"
+expect = "load.size_not_bank_multiple"
+meaning = "A 256 KiB plus 512 byte request declared with no header is refused as load.size_not_bank_multiple, the core never concludes that the image carries a copier header, and no byte is stripped"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

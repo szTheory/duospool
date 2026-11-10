@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: 513 bytes (512 plus one), otherwise fully declared. The length is refused as too short and no header is diagnosed. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_short_513"
+kind = "refuse"
+fixture = "plain-256k"
+request = "len=513"
+expect = "load.too_short"
+meaning = "A 513 byte request is refused as load.too_short, not as a headered image, because the short rule runs before any size rule and nothing is inferred from the length"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

@@ -53,3 +53,11 @@ ref_header_copier512
 ref_empty_null
 ref_empty_ptr
 ref_buffer_null
+ref_short_1
+ref_short_513
+ref_short_8191
+ref_not_bank_256k_minus1
+ref_not_bank_256k_plus512_none
+ref_not_bank_8192p512
+ref_not_bank_16384p512
+ref_not_bank_24576p512
