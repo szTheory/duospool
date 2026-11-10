@@ -604,6 +604,24 @@ stage_cancel_controls() {
   cancel_sequence "$here/conformance-run" "$tmp/cancel"
 }
 
+# FIX-05 (D-56, D-76): the real working tree holds no ROM-like, firmware-like, disc-image-like or save-like file, found by content
+# and never by name or .gitignore. Detection only: see the residual-risk note in scripts/rights-check.
+stage_rights_tree() {
+  checker sh "$here/rights-check"
+}
+
+# tests/rights/synthetic.sh plants ROM-like files in throwaway repositories created at run time and prints one RIGHTSTEST line per
+# case; its exit status is the verdict. The marker line keeps a dead script from passing as an empty success.
+stage_rights_negatives() {
+  if sh tests/rights/synthetic.sh > "$tmp/case.out" 2>&1; then r=0; else r=$?; fi
+  cat "$tmp/case.out"
+  if [ "$r" -eq 0 ] && ! grep -q '^RIGHTSTEST .* PASS$' "$tmp/case.out"; then
+    echo "NO_CONTROLS tests/rights"
+    return 1
+  fi
+  return "$r"
+}
+
 # ---- self-test: prove the gate is alive (not vacuous). Mutates a COPY of scripts/ only ----
 
 # st_want NAME: true when no mutation was selected (run them all) or NAME is the selected one
@@ -898,6 +916,8 @@ run_stage ingest-controls stage_ingest_controls
 run_stage flatten-controls stage_flatten_controls
 run_stage cancel-controls stage_cancel_controls
 run_stage outcome-controls stage_outcome_controls
+run_stage rights-tree stage_rights_tree
+run_stage rights-negatives stage_rights_negatives
 
 if [ -n "$only_stage" ]; then
   # one stage: its own CHECK line is the whole output; the exit status is that stage's verdict

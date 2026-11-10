@@ -1,0 +1,181 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# rights-check - default-deny scan of the working tree for ROM-like, firmware-like, disc-image-like and save-like content
+# (FIX-05, D-56, D-76). The scan reads content, never trusts a file name, and never uses .gitignore as the gate: it lists
+# `git ls-files -co --exclude-standard` (tracked, plus untracked and not ignored), so a tracked file that is also ignored is scanned.
+# usage: rights-check [--expect CODE[,CODE...]] [--root DIR]      (--root defaults to the repository root; DIR must be a git work tree)
+#   ROMLIKE_BINARY  a file hits one or more rules; the detail names the rule:
+#     NUL      the file has a NUL byte                 CTRL     a control byte below 32 other than LF, TAB, CR
+#     UTF8     a byte sequence invalid in UTF-8        EXT      a ROM, disc, save or archive extension
+#     SHAPE    size at least 4096 and a multiple of 8192, or 8192 plus 512 (copier header); applies ONLY to a file that is not
+#              valid text (a NUL, a control byte, or invalid UTF-8): shape is a binary-image heuristic (D-76)
+#   A file that is valid text is exempt from the SHAPE rule and from nothing else.
+#   No entropy rule. Reads use tr, wc, od and grep: file content is never put into a shell variable.
+# Residual risk (D-56, D-76): this is detection, not prevention. A ROM re-encoded into printable text with short lines evades the
+#   shape rule; the strict non-text default makes that costly. An add-then-delete commit still publishes the blob through
+#   refs/pull/N/head; scripts/audit-history --range BASE..HEAD and the full-history audit are the pre-release checks for that.
+# stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then one line  RECORDS n  (files scanned)
+# stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
+# exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error
+set -eu
+LC_ALL=C; export LC_ALL
+here=$(cd "$(dirname "$0")" && pwd)
+
+usage() {
+  echo "usage: rights-check [--expect CODE[,CODE...]] [--root DIR]" >&2
+  exit 2
+}
+
+expect=""
+have_expect=0
+root=$(cd "$here/.." && pwd)
+while [ $# -gt 0 ]; do
+  case $1 in
+    --expect) [ $# -ge 2 ] || usage; expect=$2; have_expect=1; shift 2 ;;
+    --root) [ $# -ge 2 ] || usage; root=$2; shift 2 ;;
+    *) usage ;;
+  esac
+done
+# an --expect that names no code would make a control assert nothing: with no violations got and want are both empty and the
+# control would pass vacuously (WR-05). Exit 2, never 0.
+if [ "$have_expect" -eq 1 ] && [ -z "$(printf '%s' "$expect" | tr -d ', \t\r\n')" ]; then
+  echo "HARNESS_EMPTY_EXPECT --expect names no code" >&2
+  exit 2
+fi
+if [ ! -d "$root" ]; then
+  echo "HARNESS_NO_FILE $root" >&2
+  exit 2
+fi
+root=$(cd "$root" && pwd)
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+viol0="$tmp/viol0"
+viol="$tmp/viol"
+: > "$viol0"
+tab=$(printf '\t')
+
+# the host's git configuration must not decide what is scanned (a global excludes file hides untracked files)
+GIT_CONFIG_NOSYSTEM=1; export GIT_CONFIG_NOSYSTEM
+GIT_CONFIG_GLOBAL=/dev/null; export GIT_CONFIG_GLOBAL
+
+cd "$root"
+if ! git rev-parse --is-inside-work-tree > "$tmp/gitout" 2> "$tmp/giterr" || [ "$(cat "$tmp/gitout")" != true ]; then
+  echo "HARNESS_NOT_GIT_WORKTREE $root" >&2
+  exit 2
+fi
+
+# hit FILE REASON : one ROMLIKE_BINARY violation
+hit() {
+  printf '%s\tROMLIKE_BINARY\t0\t%s\n' "$1" "$2" >> "$viol0"
+}
+
+# ---- enumerate: NUL-separated from git, then one name per line. A newline inside a name would split it into two bogus names that
+# do not exist on disk, so the entry count is compared with the line count and a mismatch is a violation, never a silent skip.
+if ! git ls-files -co --exclude-standard -z > "$tmp/list.z" 2> "$tmp/giterr"; then
+  echo "HARNESS_GIT_LS_FILES failed" >&2
+  sed 's/^/  /' "$tmp/giterr" >&2
+  exit 2
+fi
+nz=$(tr -cd '\000' < "$tmp/list.z" | wc -c | tr -d ' ')
+tr '\000' '\n' < "$tmp/list.z" > "$tmp/list.nl"
+nl=$(wc -l < "$tmp/list.nl" | tr -d ' ')
+if [ "$nz" -ne "$nl" ]; then
+  printf '(newline in a path)\tBAD_FILENAME\t0\t%s paths, %s lines\n' "$nz" "$nl" >> "$viol0"
+fi
+
+# keep the entries that exist on disk: a regular file is scanned; a symlink only has its name checked (never followed); a tracked
+# file deleted from the work tree, a directory (submodule) or anything else is not content to scan
+: > "$tmp/names"
+: > "$tmp/files"
+nrec=0
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  case $f in
+    *"$tab"*) printf '%s\tBAD_FILENAME\t0\ttab in name\n' "(tab in a path)" >> "$viol0"; continue ;;
+  esac
+  if [ -L "$f" ]; then
+    printf '%s\n' "$f" >> "$tmp/names"
+    nrec=$((nrec + 1))
+  elif [ -f "$f" ]; then
+    printf '%s\n' "$f" >> "$tmp/names"
+    printf '%s\n' "$f" >> "$tmp/files"
+    nrec=$((nrec + 1))
+  fi
+done < "$tmp/list.nl"
+
+# ---- name-based rule, over every scanned name
+awk '
+  { n = tolower($0) }
+  n ~ /\.(pce|sgx|bin|rom|iso|cue|chd|sav|srm|zip|7z)$/ { printf "%s\tROMLIKE_BINARY\t0\tEXT\n", $0 }   # rule-extension
+' "$tmp/names" >> "$viol0" || { echo "HARNESS_AWK failed (extension rule)" >&2; exit 2; }
+
+# ---- content rules. Fast path: a file whose every byte is printable ASCII, TAB, LF or CR is valid text. One perl process per batch
+# names the files that are not (perl reads bytes, NUL included; grep cannot be used here because BSD grep ends a line at a NUL and
+# so reports a file with a NUL as clean). Only the named files take the per-file path below (a NUL, a control byte, a high
+# byte or DEL anywhere). perl is already a declared gate tool (scripts/preflight).
+sort -u "$tmp/files" > "$tmp/files.s"
+: > "$tmp/nonpure"
+if [ -s "$tmp/files.s" ]; then
+  tr '\n' '\000' < "$tmp/files.s" > "$tmp/files.z"
+  if ! xargs -0 perl -e '
+    foreach my $f (@ARGV) {
+      open(my $fh, "<", $f) or do { print STDERR "cannot open $f\n"; exit 2 };
+      binmode($fh);
+      my $buf;
+      while (read($fh, $buf, 65536)) {
+        if ($buf =~ /[^\x20-\x7e\x09\x0a\x0d]/) { print "$f\n"; last }
+      }
+      close($fh);
+    }
+  ' -- < "$tmp/files.z" > "$tmp/nonpure.raw" 2> "$tmp/giterr"; then
+    echo "HARNESS_PERL failed (text classification)" >&2
+    sed 's/^/  /' "$tmp/giterr" >&2
+    exit 2
+  fi
+  sort -u "$tmp/nonpure.raw" > "$tmp/nonpure"
+fi
+
+# inspect FILE : the per-file path for a file that is not plain printable text
+inspect() {
+  f=$1
+  size=$(wc -c < "$f" | tr -d ' ')
+  n_nonul=$(tr -d '\000' < "$f" | wc -c | tr -d ' ')
+  n_noctl=$(tr -d '\000-\010\013\014\016-\037' < "$f" | wc -c | tr -d ' ')
+  text=1
+  if [ "$size" -ne "$n_nonul" ]; then hit "$f" NUL; text=0; fi
+  if [ "$n_nonul" -ne "$n_noctl" ]; then hit "$f" CTRL; text=0; fi
+  if ! iconv -f UTF-8 -t UTF-8 < "$f" > /dev/null 2>&1; then hit "$f" UTF8; text=0; fi
+  if [ "$text" -eq 0 ] && [ "$size" -ge 4096 ]; then
+    rem=$((size % 8192))
+    if [ "$rem" -eq 0 ] || [ "$rem" -eq 512 ]; then hit "$f" "SHAPE size $size"; fi
+  fi
+}
+
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  inspect "$f"
+done < "$tmp/nonpure"
+
+sort -u "$viol0" > "$viol"
+
+if [ "$have_expect" -eq 1 ]; then
+  got=$(awk -F'\t' '{ print $2 }' "$viol" | sort -u | tr '\n' ',' | sed 's/,$//')
+  want=$(printf '%s\n' "$expect" | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/,$//')
+  if [ "$got" = "$want" ]; then
+    echo "EXPECT_OK"
+    exit 0
+  fi
+  echo "EXPECT_MISMATCH wanted '$want' got '${got:-<none>}'" >&2
+  cat "$viol" >&2
+  exit 1
+fi
+
+cat "$viol"
+echo "RECORDS $nrec"
+if [ -s "$viol" ]; then
+  exit 1
+fi
+exit 0

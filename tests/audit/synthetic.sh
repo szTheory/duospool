@@ -15,54 +15,16 @@ here=$(cd "$(dirname "$0")" && pwd)
 audit="$here/../../scripts/audit-history"
 [ -f "$audit" ] || { echo "HARNESS_NO_FILE $audit" >&2; exit 2; }
 
-GIT_CONFIG_NOSYSTEM=1; export GIT_CONFIG_NOSYSTEM
-GIT_CONFIG_GLOBAL=/dev/null; export GIT_CONFIG_GLOBAL
-
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 failed=0
-
-# g REPO GIT-ARGS...
-g() {
-  r=$1
-  shift
-  git -c user.name=duospool-test -c user.email=test@example.invalid -c commit.gpgsign=false -C "$r" "$@"
-}
-
-# new CASE: create the repository directory and print its path
-new() {
-  d="$work/$1"
-  mkdir -p "$d"
-  g "$d" init -q
-  printf '%s\n' "$d"
-}
-
-# commit REPO MESSAGE: stage everything and commit
-commit() {
-  g "$1" add -A
-  g "$1" commit -q -m "$2"
-}
+ctl=AUDITTEST
+# the throwaway-repository helpers (g, new, commit, verdict, has) and the isolated git configuration
+. "$here/../lib/gitfix.sh"
 
 # audit REPO ALLOWFILE: run the audit; sets $out and $rc
 audit() {
   if out=$(sh "$audit" --allow "$2" "$1" 2>&1); then rc=0; else rc=$?; fi
-}
-
-# verdict CASE OK-FLAG: print the result line, count failures
-verdict() {
-  if [ "$2" = 1 ]; then
-    echo "AUDITTEST $1 PASS"
-  else
-    echo "AUDITTEST $1 FAIL"
-    printf '%s\n' "$out" | sed 's/^/  | /'
-    echo "  | exit status $rc"
-    failed=1
-  fi
-}
-
-# has TEXT: is TEXT a fixed substring of $out
-has() {
-  printf '%s\n' "$out" | grep -qF -- "$1"
 }
 
 empty_allow="$work/empty.allow"
