@@ -11,7 +11,13 @@
 #      limits.h on clang. A file that fails this rule is not compiled, so each control yields one deterministic code set on every compiler.
 #   2. freestanding compile of each remaining .c file standalone at -O0 (CB_COMPILE, with the first compiler message). Plain objects only;
 #      a sanitizer build is never scanned.
-#   Codes: CB_INCLUDE CB_COMPILE, plus the harness errors CB_NO_SOURCES (no .c file under ROOT/src/core) exit 2.
+#   3. undefined symbols of each object (nm -P -u, a leading underscore stripped on Darwin) must be a subset of scripts/core-boundary.allow
+#      plus the external symbols that the core objects themselves define (CB_UNDEF_SYMBOL); and no object may hold a writable symbol (CB_WRITABLE): Darwin reads nm -m sections __DATA data, bss, common and
+#      thread, Linux reads nm -P types B b C D d G g V v u. The exception list is empty, so a global, a function-local static and an
+#      initialised table all fail, and a static const table does not.
+#   4. a float or double token in comment-stripped, literal-stripped source (CB_FLOAT).
+#   Codes: CB_INCLUDE CB_COMPILE CB_UNDEF_SYMBOL CB_WRITABLE CB_FLOAT, plus the harness errors (exit 2) CB_NO_SOURCES (no .c file under
+#   ROOT/src/core) and CB_NO_SYMBOLS (a compiled object with no symbol at all).
 # stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then on a clean run the marker line  STATUS core-boundary ok
 # stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
 # exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error
@@ -188,6 +194,61 @@ while IFS= read -r f; do
   fi
 done < "$tmp/c.list"
 
+# ---- layer 3: undefined symbols (L2) and writable symbols (L3) of every compiled object ----
+# the allowlist: comment lines are skipped, the first TAB-separated field is the name, a second field limits the entry to that platform
+[ -f "$here/core-boundary.allow" ] || harness "HARNESS_NO_FILE $here/core-boundary.allow"
+awk -F'\t' -v os="$os" '/^[ \t]*#/ { next } $1 ~ /^[ \t\r]*$/ { next } { if (NF >= 2 && $2 != "" && $2 != os) next; print $1 }' "$here/core-boundary.allow" | sort -u > "$tmp/allow"
+command -v nm > /dev/null 2>&1 || harness "HARNESS_NO_TOOL nm"
+# the core is one unit that is compiled one source at a time: a symbol that one core object leaves undefined and another core object defines is an
+# internal reference, not a host call, so the external symbols defined by the objects are added to the allowed set. This never widens the allowlist
+# file, and a name such as clock or malloc that no core object defines is still reported.
+: > "$tmp/defined.raw"
+while IFS="$(printf '\t')" read -r rel o; do
+  nm -P -g "$o" 2> /dev/null | awk -v os="$os" '$2 != "U" { s = $1; if (os == "Darwin" && substr(s, 1, 1) == "_") s = substr(s, 2); print s }' >> "$tmp/defined.raw" || harness "HARNESS_ERROR nm -P -g failed on the object of $rel"
+done < "$tmp/objs"
+cat "$tmp/allow" "$tmp/defined.raw" | sort -u > "$tmp/allowed"
+nscan=0
+while IFS="$(printf '\t')" read -r rel o; do
+  nscan=$((nscan + 1))
+  # undefined symbols: field 1 of nm -P -u, a leading underscore stripped on Darwin, sorted in the C locale
+  nm -P -u "$o" > "$tmp/nm.u" 2> /dev/null || harness "HARNESS_ERROR nm -P -u failed on the object of $rel"
+  awk -v os="$os" '{ s = $1; if (os == "Darwin" && substr(s, 1, 1) == "_") s = substr(s, 2); print s }' "$tmp/nm.u" | sort -u > "$tmp/undef"
+  comm -23 "$tmp/undef" "$tmp/allowed" > "$tmp/undef.bad"
+  while IFS= read -r un; do
+    [ -n "$un" ] || continue
+    printf '%s\tCB_UNDEF_SYMBOL\t0\t%s\n' "$rel" "$un" >> "$viol0"
+  done < "$tmp/undef.bad"
+  # writable symbols, with an empty exception list. Darwin types const data as S or s under nm -P, so it is read with nm -m by section;
+  # Linux reads the nm -P type letters B b C D d G g V v u (S and s are not the const class there).
+  if [ "$os" = "Darwin" ]; then
+    nm -m "$o" > "$tmp/nm.all" 2> /dev/null || harness "HARNESS_ERROR nm -m failed on the object of $rel"
+  else
+    nm -P "$o" > "$tmp/nm.all" 2> /dev/null || harness "HARNESS_ERROR nm -P failed on the object of $rel"
+  fi
+  # an object with no symbols at all gives no evidence about anything: a harness error, never a pass
+  if [ -z "$(tr -d ' \t\r\n' < "$tmp/nm.all")" ]; then
+    harness "CB_NO_SYMBOLS the object of $rel has no symbols"
+  fi
+  if [ "$os" = "Darwin" ]; then
+    wr=$(awk '$2 ~ /^\(__DATA,__(data|bss|common)\)$/ || $2 ~ /^\(__DATA,__thread/ || $0 ~ /\(common\)/ { s = $NF; if (substr(s, 1, 1) == "_") s = substr(s, 2); print s }' "$tmp/nm.all" | sort -u)
+  else
+    wr=$(awk '$2 ~ /^[BbCDdGgVvu]$/ { print $1 }' "$tmp/nm.all" | sort -u)
+  fi
+  if [ -n "$wr" ]; then # rule-writable
+    printf '%s\n' "$wr" | awk -v r="$rel" '{ printf "%s\tCB_WRITABLE\t0\t%s\n", r, $0 }' >> "$viol0" # rule-writable
+  fi # rule-writable
+done < "$tmp/objs"
+
+# ---- layer 4: no floating point in the machine behaviour (comment-stripped, literal-stripped source) ----
+while IFS= read -r f; do
+  rel=${f#"$root"/}
+  awk -v mode=flt -f "$tmp/scan.awk" "$f" > "$tmp/flt.out"
+  while IFS="$(printf '\t')" read -r ln tk; do
+    [ -n "$ln" ] || continue
+    printf '%s\tCB_FLOAT\t%s\t%s\n' "$rel" "$ln" "$tk" >> "$viol0"
+  done < "$tmp/flt.out"
+done < "$tmp/all.list"
+
 sort -u "$viol0" > "$viol"
 
 if [ "$have_expect" -eq 1 ]; then
@@ -206,6 +267,6 @@ cat "$viol"
 if [ -s "$viol" ]; then
   exit 1
 fi
-echo "SCANNED sources=$nsrc objects=$nobj"
+echo "SCANNED sources=$nsrc objects=$nscan"
 echo "STATUS core-boundary ok"
 exit 0

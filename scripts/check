@@ -1157,6 +1157,52 @@ selftest() {
     fi
   fi
 
+  # (p) the allowlist of core-boundary-check must be what lets the memory builtins through (T-02-28). The ok-memset-stack control passes on an
+  # unmutated copy of scripts/ (exit 0 with the STATUS marker); with the memset line deleted from the copy of core-boundary.allow the same run
+  # must exit 1 with CB_UNDEF_SYMBOL, because the control's object leaves memset undefined.
+  if st_want mutation-core-boundary-allow; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    cbr="tests/gate/core-boundary/ok-memset-stack"
+    if sh "$cp_dir/core-boundary-check" --root "$cbr" > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'STATUS core-boundary ok' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -cx 'memset' "$cp_dir/core-boundary.allow" || true)
+    grep -vx 'memset' "$cp_dir/core-boundary.allow" > "$cp_dir/core-boundary.mutated" || true
+    mv "$cp_dir/core-boundary.mutated" "$cp_dir/core-boundary.allow"
+    after=$(grep -cx 'memset' "$cp_dir/core-boundary.allow" || true)
+    if sh "$cp_dir/core-boundary-check" --root "$cbr" > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ] && grep -q 'CB_UNDEF_SYMBOL' "$tmp/st.out"; then
+      echo "SELFTEST mutation-core-boundary-allow PASS"
+    else
+      echo "SELFTEST mutation-core-boundary-allow FAIL"; failed=1
+    fi
+  fi
+
+  # (q) the writable-symbol rule of core-boundary-check must be what turns the global-counter control red (T-02-29). The control, run with
+  # --expect CB_WRITABLE, is met on an unmutated copy (exit 0, EXPECT_OK); with the lines tagged rule-writable deleted from the copy of the
+  # checker the code is no longer reported, so the same run must exit 1, which is the control flipping to broken.
+  if st_want mutation-core-boundary-writable; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    cbr="tests/gate/core-boundary/global-counter"
+    if sh "$cp_dir/core-boundary-check" --root "$cbr" --expect CB_WRITABLE > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c 'rule-writable' "$cp_dir/core-boundary-check" || true)
+    grep -v 'rule-writable' "$cp_dir/core-boundary-check" > "$cp_dir/core-boundary.mutated" || true
+    mv "$cp_dir/core-boundary.mutated" "$cp_dir/core-boundary-check"
+    after=$(grep -c 'rule-writable' "$cp_dir/core-boundary-check" || true)
+    if sh "$cp_dir/core-boundary-check" --root "$cbr" --expect CB_WRITABLE > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -ge 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+      echo "SELFTEST mutation-core-boundary-writable PASS"
+    else
+      echo "SELFTEST mutation-core-boundary-writable FAIL"; failed=1
+    fi
+  fi
+
   # a selected NAME that matched no mutation is a usage error, never a vacuous pass
   if [ -n "$st_sel" ] && [ "$st_ran" -eq 0 ]; then usage; fi
   if [ "$failed" -eq 0 ]; then echo "SELFTEST RESULT PASS"; return 0; fi
