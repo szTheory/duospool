@@ -3,8 +3,9 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
 # check - the Phase 1 gate entry point (D-30). Phase 2 extends this script; it does not add a second one.
-# usage: sh scripts/check [--selftest | --stage NAME]
-#   --selftest mutates a temp copy of scripts/ and proves that a removed rule or a dead stage 1 turns the gate red
+# usage: sh scripts/check [--selftest [NAME] | --stage NAME]
+#   --selftest mutates a temp copy of scripts/ and proves that a removed rule or a dead stage 1 turns the gate red;
+#              with NAME it runs only the mutation printed as SELFTEST NAME (an unknown NAME exits 2)
 #   --stage NAME runs only the stage NAME (an unknown NAME exits 2) and exits with that stage's verdict
 # stdout: one line per stage  CHECK <stage> PASS|FAIL|ERROR , then  CHECK RESULT PASS|FAIL
 # exit  : 0 all stages pass | 1 a stage failed (violation or broken control) | 2 harness error in a stage
@@ -443,54 +444,106 @@ stage_results_negatives() {
 
 # ---- self-test: prove the gate is alive (not vacuous). Mutates a COPY of scripts/ only ----
 
+# st_want NAME: true when no mutation was selected (run them all) or NAME is the selected one
+st_want() {
+  [ -z "$st_sel" ] || [ "$st_sel" = "$1" ]
+}
+
 selftest() {
   cp_dir="$tmp/selftest/scripts"
   mkdir -p "$tmp/selftest"
   failed=0
+  st_ran=0
 
   # (a) delete the rule that emits SUPPORTED_NO_QUALIFYING_EVIDENCE: the e0-e4 control must now be broken (exit 1)
-  rm -rf "$cp_dir"
-  cp -R "$here" "$cp_dir"
-  grep -v 'SUPPORTED_NO_QUALIFYING_EVIDENCE' "$cp_dir/lib/ledger-rules.awk" > "$cp_dir/lib/ledger-rules.mutated"
-  mv "$cp_dir/lib/ledger-rules.mutated" "$cp_dir/lib/ledger-rules.awk"
-  if sh "$cp_dir/ledger-check" --expect SUPPORTED_NO_QUALIFYING_EVIDENCE ledger/negative/e0-e4/ > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
-  if [ "$r" -eq 1 ]; then echo "SELFTEST mutation-supported-rule PASS"; else echo "SELFTEST mutation-supported-rule FAIL"; failed=1; fi
+  if st_want mutation-supported-rule; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    grep -v 'SUPPORTED_NO_QUALIFYING_EVIDENCE' "$cp_dir/lib/ledger-rules.awk" > "$cp_dir/lib/ledger-rules.mutated"
+    mv "$cp_dir/lib/ledger-rules.mutated" "$cp_dir/lib/ledger-rules.awk"
+    if sh "$cp_dir/ledger-check" --expect SUPPORTED_NO_QUALIFYING_EVIDENCE ledger/negative/e0-e4/ > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$r" -eq 1 ]; then echo "SELFTEST mutation-supported-rule PASS"; else echo "SELFTEST mutation-supported-rule FAIL"; failed=1; fi
+  fi
 
   # (b) a stage 1 that prints nothing must give NO_SENTINEL and exit 1, never a pass
-  rm -rf "$cp_dir"
-  cp -R "$here" "$cp_dir"
-  echo 'BEGIN { exit 0 }' > "$cp_dir/lib/toml-subset.awk"
-  if sh "$cp_dir/ledger-check" ledger/entries/ > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
-  if [ "$r" -eq 1 ] && grep -q 'NO_SENTINEL' "$tmp/st.out"; then echo "SELFTEST missing-sentinel PASS"; else echo "SELFTEST missing-sentinel FAIL"; failed=1; fi
+  if st_want missing-sentinel; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    echo 'BEGIN { exit 0 }' > "$cp_dir/lib/toml-subset.awk"
+    if sh "$cp_dir/ledger-check" ledger/entries/ > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$r" -eq 1 ] && grep -q 'NO_SENTINEL' "$tmp/st.out"; then echo "SELFTEST missing-sentinel PASS"; else echo "SELFTEST missing-sentinel FAIL"; failed=1; fi
+  fi
 
   # (c) delete the rule that emits OPEN_HAS_VALUE from profile-rules.awk: the open-with-value control must now be broken (exit 1)
-  rm -rf "$cp_dir"
-  cp -R "$here" "$cp_dir"
-  grep -v 'OPEN_HAS_VALUE' "$cp_dir/lib/profile-rules.awk" > "$cp_dir/lib/profile-rules.mutated"
-  mv "$cp_dir/lib/profile-rules.mutated" "$cp_dir/lib/profile-rules.awk"
-  if sh "$cp_dir/profile-check" --expect OPEN_HAS_VALUE tests/profile/open-with-value/pce-hucard-2btn/r1.toml > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
-  if [ "$r" -eq 1 ]; then echo "SELFTEST mutation-profile-rule PASS"; else echo "SELFTEST mutation-profile-rule FAIL"; failed=1; fi
+  if st_want mutation-profile-rule; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    grep -v 'OPEN_HAS_VALUE' "$cp_dir/lib/profile-rules.awk" > "$cp_dir/lib/profile-rules.mutated"
+    mv "$cp_dir/lib/profile-rules.mutated" "$cp_dir/lib/profile-rules.awk"
+    if sh "$cp_dir/profile-check" --expect OPEN_HAS_VALUE tests/profile/open-with-value/pce-hucard-2btn/r1.toml > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$r" -eq 1 ]; then echo "SELFTEST mutation-profile-rule PASS"; else echo "SELFTEST mutation-profile-rule FAIL"; failed=1; fi
+  fi
 
   # (d) delete the rule that emits PROV_BAD_SPDX: the gpl-spdx control must now be broken (exit 1)
-  rm -rf "$cp_dir"
-  cp -R "$here" "$cp_dir"
-  grep -v 'PROV_BAD_SPDX' "$cp_dir/lib/provenance-register.awk" > "$cp_dir/lib/provenance-register.mutated"
-  mv "$cp_dir/lib/provenance-register.mutated" "$cp_dir/lib/provenance-register.awk"
-  if sh "$cp_dir/provenance-check" --root tests/provenance/gpl-spdx --expect PROV_BAD_SPDX > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
-  if [ "$r" -eq 1 ]; then echo "SELFTEST mutation-provenance-rule PASS"; else echo "SELFTEST mutation-provenance-rule FAIL"; failed=1; fi
+  if st_want mutation-provenance-rule; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    grep -v 'PROV_BAD_SPDX' "$cp_dir/lib/provenance-register.awk" > "$cp_dir/lib/provenance-register.mutated"
+    mv "$cp_dir/lib/provenance-register.mutated" "$cp_dir/lib/provenance-register.awk"
+    if sh "$cp_dir/provenance-check" --root tests/provenance/gpl-spdx --expect PROV_BAD_SPDX > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$r" -eq 1 ]; then echo "SELFTEST mutation-provenance-rule PASS"; else echo "SELFTEST mutation-provenance-rule FAIL"; failed=1; fi
+  fi
 
   # (e) delete the rule that emits margin-below-10 from score.awk: the 9.90-point control must now be broken, because
   # the scorer would pre-authorize or blame the ND rule instead of rejecting a lead under 10.00
-  rm -rf "$cp_dir"
-  cp -R "$here" "$cp_dir"
-  grep -v 'margin-below-10' "$cp_dir/lib/score.awk" > "$cp_dir/lib/score.mutated"
-  mv "$cp_dir/lib/score.mutated" "$cp_dir/lib/score.awk"
-  if awk -f "$cp_dir/lib/score.awk" tests/score/margin-9.90/scores.txt > "$tmp/st.out" 2>&1 && ! grep -qx 'REASON=margin-below-10' "$tmp/st.out"; then
-    echo "SELFTEST mutation-margin-rule PASS"
-  else
-    echo "SELFTEST mutation-margin-rule FAIL"; failed=1
+  if st_want mutation-margin-rule; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    grep -v 'margin-below-10' "$cp_dir/lib/score.awk" > "$cp_dir/lib/score.mutated"
+    mv "$cp_dir/lib/score.mutated" "$cp_dir/lib/score.awk"
+    if awk -f "$cp_dir/lib/score.awk" tests/score/margin-9.90/scores.txt > "$tmp/st.out" 2>&1 && ! grep -qx 'REASON=margin-below-10' "$tmp/st.out"; then
+      echo "SELFTEST mutation-margin-rule PASS"
+    else
+      echo "SELFTEST mutation-margin-rule FAIL"; failed=1
+    fi
   fi
 
+  # (f) run_controls must turn the gate red on a broken control, and only because of the one line that sets the failing
+  # status. A scratch mini-repo holds a copy of scripts/ and one licence control whose EXPECT names a code the checker never
+  # emits, so the control is broken by construction. Unmutated, --stage licence-negatives must exit 1 and name the case;
+  # with the single line carrying the status marker deleted, the same run must exit 0, so the mutation silenced exactly the
+  # rule under test. The marker is assembled here so that this script carries it only once, on the line being removed.
+  if st_want mutation-run-controls; then
+    st_ran=1
+    mini="$tmp/selftest/mini"
+    rm -rf "$mini"
+    mkdir -p "$mini/tests/licence/broken"
+    cp -R "$here" "$mini/scripts"
+    printf 'SELFTEST_CODE_NEVER_EMITTED\n' > "$mini/tests/licence/broken/EXPECT"
+    tok=rc-broken-
+    tok="${tok}status"
+    st_alive=0
+    if sh "$mini/scripts/check" --stage licence-negatives > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$r" -eq 1 ] && grep -qx 'CHECK licence-negatives FAIL' "$tmp/st.out" && grep -q 'CONTROL BROKEN broken' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c "$tok" "$mini/scripts/check" || true)
+    grep -v "$tok" "$mini/scripts/check" > "$mini/scripts/check.mutated" || true
+    mv "$mini/scripts/check.mutated" "$mini/scripts/check"
+    after=$(grep -c "$tok" "$mini/scripts/check" || true)
+    if sh "$mini/scripts/check" --stage licence-negatives > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 0 ] && grep -qx 'CHECK licence-negatives PASS' "$tmp/st.out"; then
+      echo "SELFTEST mutation-run-controls PASS"
+    else
+      echo "SELFTEST mutation-run-controls FAIL"; failed=1
+    fi
+  fi
+
+  # a selected NAME that matched no mutation is a usage error, never a vacuous pass
+  if [ -n "$st_sel" ] && [ "$st_ran" -eq 0 ]; then usage; fi
   if [ "$failed" -eq 0 ]; then echo "SELFTEST RESULT PASS"; return 0; fi
   echo "SELFTEST RESULT FAIL"
   return 1
@@ -520,16 +573,19 @@ run_stage() {
 }
 
 usage() {
-  echo "usage: sh scripts/check [--selftest | --stage NAME]" >&2
+  echo "usage: sh scripts/check [--selftest [NAME] | --stage NAME]" >&2
   exit 2
 }
 
 only_stage=""
 stage_ran=0
+st_sel=""
 if [ $# -gt 0 ]; then
   case $1 in
     --selftest)
-      [ $# -eq 1 ] || usage
+      [ $# -le 2 ] || usage
+      st_sel=${2-}
+      if [ $# -eq 2 ] && [ -z "$st_sel" ]; then usage; fi
       if selftest; then exit 0; else exit 1; fi
       ;;
     --stage)
