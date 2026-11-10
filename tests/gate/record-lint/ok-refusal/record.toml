@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# record-lint control ok-refusal: a clean refusal record (record, core and refusal tables and nothing after); the lint must pass it
+[record]
+format_version = 1
+
+[core]
+build_id = "unset"
+behaviour_epoch = 1
+
+[refusal]
+reason = "load.mapper_unsupported"
+requested_id = "pce-hucard-2btn"
+requested_rev = 1
