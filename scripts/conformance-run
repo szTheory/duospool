@@ -9,6 +9,7 @@
 #        conformance-run sanitize
 #        conformance-run supervise --ids FILE --out FILE [--wall N] -- CMD ARGS...
 # run mode (D-60, D-85): everything lives under build/NAME (default gate, the build directory of the preset NAME). The steps are
+#   (the runner also gets --records DIR/records, made empty on every run, and --golden-dir tests/conformance/golden: see plan 14, D-84b, D-86)
 #   flatten tests/conformance/cases into cases.tsv (the only parser of hand-edited data, D-51), derive ids.txt from it, flatten the
 #   frozen profiles/pce-hucard-2btn/r1.toml into r1.tsv and cut the 13 field names of scripts/lib/profile-rules.awk into
 #   rules-fields.txt (both handed to the runner for the profile kinds), write oracle.tsv from tests/conformance/mirror-oracle.awk
@@ -89,7 +90,7 @@ run_mode() {
     exit 2
   fi
   mkdir -p "$bd" || { echo "HARNESS_ERROR cannot create $bd" >&2; exit 2; }
-  rm -rf "$bd/exclude-ids.txt" "$bd/cases.tsv" "$bd/ids.txt" "$bd/results.txt" "$bd/evidence" "$bd/r1.tsv" "$bd/rules-fields.txt" "$bd/oracle.tsv" "$bd/oracle.err"
+  rm -rf "$bd/exclude-ids.txt" "$bd/cases.tsv" "$bd/ids.txt" "$bd/results.txt" "$bd/evidence" "$bd/records" "$bd/r1.tsv" "$bd/rules-fields.txt" "$bd/oracle.tsv" "$bd/oracle.err"
 
   if sh "$here/conformance-flatten" tests/conformance/cases > "$bd/cases.tsv" 2> "$bd/flatten.err"; then r=0; else r=$?; fi
   if [ "$r" -ne 0 ]; then
@@ -162,7 +163,11 @@ run_mode() {
   fi
 
   mkdir -p "$bd/evidence" || { echo "HARNESS_ERROR cannot create $bd/evidence" >&2; exit 2; }
-  if sh "$here/conformance-run" supervise --ids "$bd/ids.txt" --out "$bd/results.txt" --wall "$wall_secs" -- "$bd/ds_runner" --cases "$bd/cases.tsv" --evidence-dir "$bd/evidence" --profile-tsv "$bd/r1.tsv" --rules-fields "$bd/rules-fields.txt" --oracle "$bd/oracle.tsv" --marker-seed "$marker_seed" $ex_args; then sup=0; else sup=$?; fi
+  # the records of the run (D-84b, D-86): the one directory the runner writes records into. It is made here, empty, on every run (stale files were
+  # removed above), so the record-lint stage never reads a directory left by an earlier run; the runner writes DIR/ID.record.toml for every case of
+  # kind accept, record_lines, record_golden or record_refusal and creates nothing else. The goldens are read from tests/conformance/golden.
+  mkdir -p "$bd/records" || { echo "HARNESS_ERROR cannot create $bd/records" >&2; exit 2; }
+  if sh "$here/conformance-run" supervise --ids "$bd/ids.txt" --out "$bd/results.txt" --wall "$wall_secs" -- "$bd/ds_runner" --cases "$bd/cases.tsv" --evidence-dir "$bd/evidence" --profile-tsv "$bd/r1.tsv" --rules-fields "$bd/rules-fields.txt" --oracle "$bd/oracle.tsv" --marker-seed "$marker_seed" --records "$bd/records" --golden-dir tests/conformance/golden $ex_args; then sup=0; else sup=$?; fi
   if [ "$sup" -eq 2 ]; then
     exit 2
   fi
@@ -328,7 +333,7 @@ controls_mode() {
     mkdir -p "$cm_bd/controls/$cm_name/evidence" || { echo "HARNESS_ERROR cannot create the evidence directory of $cm_name" >&2; exit 2; }
     cm_out="$cm_bd/controls/$cm_name/results.txt"
     # the toy fails cases on purpose, so a runner status of 1 is expected here; only a harness status (2) stops the run
-    if sh "$here/conformance-run" supervise --ids "$cm_bd/ids.txt" --out "$cm_out" -- "$cm_bd/ds_toy_$cm_name" --cases "$cm_bd/cases.tsv" --evidence-dir "$cm_bd/controls/$cm_name/evidence" --profile-tsv "$cm_bd/r1.tsv" --rules-fields "$cm_bd/rules-fields.txt" --oracle "$cm_bd/oracle.tsv" --marker-seed "$marker_seed" > /dev/null 2> "$cm_bd/controls/$cm_name/stderr.txt"; then cm_sup=0; else cm_sup=$?; fi
+    if sh "$here/conformance-run" supervise --ids "$cm_bd/ids.txt" --out "$cm_out" -- "$cm_bd/ds_toy_$cm_name" --cases "$cm_bd/cases.tsv" --evidence-dir "$cm_bd/controls/$cm_name/evidence" --profile-tsv "$cm_bd/r1.tsv" --rules-fields "$cm_bd/rules-fields.txt" --oracle "$cm_bd/oracle.tsv" --marker-seed "$marker_seed" --golden-dir tests/conformance/golden > /dev/null 2> "$cm_bd/controls/$cm_name/stderr.txt"; then cm_sup=0; else cm_sup=$?; fi
     if [ "$cm_sup" -ge 2 ]; then
       cat "$cm_bd/controls/$cm_name/stderr.txt" >&2
       echo "HARNESS_ERROR the toy runner of $cm_name ended with a harness status ($cm_sup)" >&2

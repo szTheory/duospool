@@ -146,6 +146,17 @@ void kind_digest_region(const struct kase *k, struct ctx *c, char *got, size_t g
 void kind_profile_hash(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_nonmutation_digest(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 
+/* the record kinds and the --records / --golden-dir inputs (reckinds.c, plan 14): record_emit writes DIR/ID.record.toml when --records was
+ * given, record_for_accept does so for kind accept, set_evidence_detail puts text after the standard lines of the case's evidence file */
+extern const char *records_dir;
+extern const char *golden_dir;
+void record_emit(const struct kase *k, struct ctx *c, const char *text, size_t len);
+void record_for_accept(const struct kase *k, struct ctx *c);
+void set_evidence_detail(const char *text);
+void kind_record_golden(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_record_refusal(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_record_refuses_quote(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+
 /* the profile kinds (profkinds.c); each gets the case, the counter, and a buffer for the observed value */
 void kind_profile_equal(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_names_both_ways(const struct kase *k, struct ctx *c, char *got, size_t gotcap);

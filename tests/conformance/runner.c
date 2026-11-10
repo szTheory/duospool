@@ -17,6 +17,9 @@
  *   --oracle FILE        the bank-signature rows of tests/conformance/mirror-oracle.awk (SIZE BANK FILEBANK FIRST LAST), read by banksig
  *   --marker-seed N      the seed of the run-time unique markers of the redaction kinds (D-56); scripts/conformance-run passes the host
  *                        clock and pid. The runner never calls a clock and no marker is a constant in any source
+ *   --records DIR        every case of kind accept, record_lines, record_golden or record_refusal writes DIR/ID.record.toml (record text only);
+ *                        no other kind writes anything and nothing else is created in DIR (plan 14, D-86; the directory must exist)
+ *   --golden-dir DIR     the directory of the committed goldens (tests/conformance/golden) read by the record_golden kind
  *   --only ID            run exactly one case (the precedence mutation of scripts/check uses it); an id no case carries is a harness fault
  *   --exclude-ids FILE   one case id per line: those cases are not run and print no RESULT line (RUNNER_DONE counts the lines printed).
  *                        Only scripts/conformance-run sanitize passes it, for the exact set of tests/conformance/EXCLUDED_IN_MODE (D-78);
@@ -268,6 +271,42 @@ static const char *apply_pair(struct spec *s, const char *key, const char *val)
     return NULL;
 }
 
+/*
+ * The value prefix @hex: (plan 14): the rest of the value is lowercase hex, decoded in place to the bytes it names, so that an ASCII case
+ * file can carry a hostile string (a double quote, a backslash, a non-ASCII byte). A NUL byte cannot be carried in a C string and is a
+ * fault of the case, as is an odd length or a character that is not 0-9 a-f. NULL on success, otherwise the reason.
+ */
+static const char *decode_hex_value(char *v)
+{
+    size_t n = strlen(v + 5);
+    size_t i;
+    char *in = v + 5;
+
+    if (n % 2u != 0u) {
+        return "@hex: value has an odd number of digits";
+    }
+    for (i = 0u; i < n / 2u; i++) {
+        int d[2];
+        size_t j;
+        for (j = 0u; j < 2u; j++) {
+            char ch = in[2u * i + j];
+            if (ch >= '0' && ch <= '9') {
+                d[j] = ch - '0';
+            } else if (ch >= 'a' && ch <= 'f') {
+                d[j] = ch - 'a' + 10;
+            } else {
+                return "@hex: value has a character that is not 0-9 a-f";
+            }
+        }
+        if (d[0] == 0 && d[1] == 0) {
+            return "@hex: value holds a NUL byte";
+        }
+        v[i] = (char)(d[0] * 16 + d[1]);
+    }
+    v[n / 2u] = '\0';
+    return NULL;
+}
+
 /* fill s from a request-override string; NULL on success, otherwise the reason */
 const char *parse_spec(struct spec *s, const char *text, size_t default_len)
 {
@@ -302,6 +341,10 @@ const char *parse_spec(struct spec *s, const char *text, size_t default_len)
             return "request pair without =";
         }
         *eq = '\0';
+        err = strncmp(eq + 1, "@hex:", 5u) == 0 ? decode_hex_value(eq + 1) : NULL;
+        if (err != NULL) {
+            return err;
+        }
         err = apply_pair(s, p, eq + 1);
         if (err != NULL) {
             return err;
@@ -550,6 +593,14 @@ void evidence_text(char *buf, size_t cap, const char *id, const char *kind, cons
     snprintf(buf, cap, "id=%s\nkind=%s\nexpect=%s\ngot=%s\nassertions=%u\n", id, kind, expect, got, n);
 }
 
+/* text a kind wants after the standard lines of its evidence file (the refusal record); cleared before every case */
+static char ev_detail[1024];
+
+void set_evidence_detail(const char *text)
+{
+    snprintf(ev_detail, sizeof ev_detail, "%s", text);
+}
+
 static int write_evidence(const char *path, const char *id, const char *kind, const char *expect, const char *got, unsigned n)
 {
     char text[1024];
@@ -559,6 +610,10 @@ static int write_evidence(const char *path, const char *id, const char *kind, co
     }
     evidence_text(text, sizeof text, id, kind, expect, got, n);
     fputs(text, fp);
+    if (ev_detail[0] != '\0') {
+        fputs("record:\n", fp);
+        fputs(ev_detail, fp);
+    }
     return fclose(fp) == 0 ? 0 : -1;
 }
 
@@ -768,6 +823,8 @@ static void kind_boot(const struct kase *k, struct ctx *c, char *got, size_t got
     run_boot(fixture, &s, &e, c, got, gotcap);
     if (!e.accept) {
         observe_name(got); /* the reasons seen by refuse rows, for the deferred coverage kind (D-86) */
+    } else if (!c->harness) {
+        record_for_accept(k, c); /* --records: the record of the accepted boot is one file of the run */
     }
 }
 
@@ -888,7 +945,8 @@ struct recrow {
     const char *val;   /* the text after " = ", quotes kept */
 };
 
-/* the keys the skeleton must print, in order: table.key (D-53: record, core, profile, 13 field tables, content with the sha256 first, limits) */
+/* the keys the record must print, in order: table.key (D-53: record, core, profile with its sha256, 13 field tables, withheld, content with the
+ * sha256 first, power_on, limits, machine). The count below is pinned: a plan that adds a key or a table edits this list and the count in one commit */
 static char exp_key[REC_MAX_ROWS][KEY_MAX];
 static size_t n_exp;
 
@@ -917,6 +975,7 @@ static void build_expected_keys(void)
     exp_add("", "core", "behaviour_epoch");
     exp_add("", "profile", "id");
     exp_add("", "profile", "rev");
+    exp_add("", "profile", "sha256");
     for (i = 0u; i < (uint32_t)DS_FIELD_COUNT; i++) {
         char tab[KEY_MAX];
         size_t n = strlen(ds_field_name(i));
@@ -930,13 +989,22 @@ static void build_expected_keys(void)
         exp_add("", tab, "value");
         exp_add("", tab, "bound_by");
     }
+    exp_add("", "withheld", "ids");
     exp_add("", "content", "sha256");
     exp_add("", "content", "size");
     exp_add("", "content", "mapper");
     exp_add("", "content", "mapper_rule");
     exp_add("", "content", "byte_order");
     exp_add("", "content", "header_handling");
+    exp_add("", "power_on", "policy");
+    exp_add("", "power_on", "policy_version");
+    exp_add("", "power_on", "seed_present");
+    exp_add("", "power_on", "seed");
     exp_add("", "limits", "size_cap");
+    exp_add("", "machine", "time");
+    exp_add("", "machine", "time_unit");
+    exp_add("", "machine", "digest_algorithm");
+    exp_add("", "machine", "digest");
 }
 
 /*
@@ -1059,7 +1127,7 @@ static void kind_record_lines(const struct kase *k, struct ctx *c, char *got, si
     const struct ds_instance *inst = NULL;
     const struct ds_profile *builtin;
     struct ds_instance *tmp;
-    char want[160];
+    char want[256];
     const char *p;
     size_t len = 0u;
     size_t plen = 0u;
@@ -1100,7 +1168,7 @@ static void kind_record_lines(const struct kase *k, struct ctx *c, char *got, si
     err = parse_record(work, rows, &nrows);
     check(c, err == NULL, err != NULL ? err : "layout");
     build_expected_keys();
-    check(c, n_exp == 51u, "the expected skeleton does not hold 51 rows (format_version, 2 core, 2 profile, 39 field, 6 content, 1 limit)");
+    check(c, n_exp == 61u, "the expected record does not hold 61 rows (format_version, 2 core, 3 profile, 39 field, 1 withheld, 6 content, 4 power_on, 1 limit, 4 machine)");
     check(c, err == NULL && nrows == n_exp, "the number of rows differs from the skeleton");
     for (i = 0u; err == NULL && i < nrows && i < n_exp; i++) {
         if (strcmp(rows[i].key, exp_key[i]) != 0) {
@@ -1158,8 +1226,8 @@ static void kind_record_lines(const struct kase *k, struct ctx *c, char *got, si
     check(c, st == DS_TEXT_OK && plen == strlen(ptext), "ds_text_profile failed");
     if (st == DS_TEXT_OK) {
         const char *at = strstr(text, ptext);
-        check(c, at != NULL && at >= text + 2 && at[-1] == '\n' && at[-2] == '\n' && strncmp(at + plen, "\n[content]\n", 11u) == 0,
-              "the profile text is not an exact part of the record, after a blank line and followed by the content table");
+        check(c, at != NULL && at >= text + 2 && at[-1] == '\n' && at[-2] == '\n' && strncmp(at + plen, "\n[withheld]\n", 12u) == 0,
+              "the profile text is not an exact part of the record, after a blank line and followed by the withheld table");
         check(c, strncmp(ptext, "[profile]\n", 10u) == 0, "the profile text does not start with the profile table");
     }
 
@@ -1206,6 +1274,7 @@ static void kind_record_lines(const struct kase *k, struct ctx *c, char *got, si
         free(tmp);
     }
     snprintf(got, gotcap, "rows=%u", (unsigned)nrows);
+    record_emit(k, c, text, len); /* --records: the record of this case, text only */
     release_boot(&b);
 }
 
@@ -1439,6 +1508,9 @@ static const struct {
     {"digest_region", kind_digest_region, 0},
     {"profile_hash", kind_profile_hash, 0},
     {"nonmutation_digest", kind_nonmutation_digest, 0},
+    {"record_golden", kind_record_golden, 0},
+    {"record_refusal", kind_record_refusal, 0},
+    {"record_refuses_quote", kind_record_refuses_quote, 0},
     {"coverage", kind_coverage, 1},
 };
 
@@ -1469,6 +1541,7 @@ static int run_case(const struct kase *k, const char *evdir)
     int n;
 
     memset(&c, 0, sizeof c);
+    ev_detail[0] = '\0';
     for (j = 0; j < NKEYS; j++) {
         if (!k->has[j] && k->bad == NULL) {
             harness_error(&c, "a key is missing");
@@ -1582,6 +1655,10 @@ int main(int argc, char **argv)
             }
             set_marker_seed(seed);
             a++;
+        } else if (strcmp(argv[a], "--records") == 0 && a + 1 < argc) {
+            records_dir = argv[++a];
+        } else if (strcmp(argv[a], "--golden-dir") == 0 && a + 1 < argc) {
+            golden_dir = argv[++a];
         } else if (strcmp(argv[a], "--cases") == 0 && a + 1 < argc) {
             cases_path = argv[++a];
         } else if (strcmp(argv[a], "--evidence-dir") == 0 && a + 1 < argc) {
@@ -1599,7 +1676,7 @@ int main(int argc, char **argv)
     }
     if (cases_path == NULL || evdir == NULL) {
         emit_err("usage: ds_runner --cases FILE --evidence-dir DIR [--profile-tsv FILE] [--rules-fields FILE]\n"
-                        "                 [--oracle FILE] [--exclude-ids FILE] [--only ID] [--marker-seed N]\n"
+                        "                 [--oracle FILE] [--exclude-ids FILE] [--only ID] [--marker-seed N] [--records DIR] [--golden-dir DIR]\n"
                         "       ds_runner --sweep-lengths | --spec | --emit RECIPE | --hash RECIPE\n");
         return 2;
     }

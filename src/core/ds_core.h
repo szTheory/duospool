@@ -20,6 +20,8 @@
 #define DS_CONTENT_ID_BYTES 32u
 /* behaviour epoch (D-53): bumped by any change that can alter what a run observes; goldens compare it, never a build id */
 #define DS_BEHAVIOUR_EPOCH 1u
+/* version of the power-on policy table (D-50): the record prints it next to the policy name; both policies are version 1 */
+#define DS_POWERON_POLICY_VERSION 1u
 /* field_index of a result that names no profile field */
 #define DS_NO_FIELD 0xffffffffu
 /* power-on state (D-50): the 8 KiB work RAM, the 8 mapping registers, and the per-call limit of the placeholder stepping (D-68) */

@@ -1,0 +1,109 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# E0 repeatability record (D-53): a 384 KiB synthetic image booted under the seeded-prng-v1 power-on policy with seed 42.
+# It shows that the same inputs print the same bytes. It does not show that the machine behaviour is right. Machine time counts placeholder
+# cycles and the power-on values are modelling assumptions (LED-PROF-0002); the profile, content and digest hashes were recomputed with the host
+# sha tool over streams rebuilt without the C code. The runner skips this comment block and compares the rest byte for byte.
+[record]
+format_version = 1
+
+[core]
+build_id = "unset"
+behaviour_epoch = 1
+
+[profile]
+id = "pce-hucard-2btn"
+rev = 1
+sha256 = "aa7e8b3468c136ee2c145095ff221fb49ed1303b0e9c8815baae5fb62a83ae41"
+
+[field_media_slot]
+status = "owner-selected"
+value = "hucard"
+bound_by = "constant"
+
+[field_expansion_port]
+status = "owner-selected"
+value = "absent"
+bound_by = "constant"
+
+[field_vdc_count]
+status = "owner-selected"
+value = "1"
+bound_by = "constant"
+
+[field_vpc]
+status = "owner-selected"
+value = "false"
+bound_by = "constant"
+
+[field_chip_revision]
+status = "owner-selected"
+value = "huc6280"
+bound_by = "constant"
+
+[field_input_port1]
+status = "owner-selected"
+value = "pad2"
+bound_by = "constant"
+
+[field_io_1000_d6_value]
+status = "open"
+value = "1"
+bound_by = "run-request"
+
+[field_io_1000_d7_value]
+status = "open"
+value = "1"
+bound_by = "run-request"
+
+[field_lines_per_frame]
+status = "open"
+value = "262"
+bound_by = "run-request"
+
+[field_psg_tick_divisor]
+status = "open"
+value = "6"
+bound_by = "run-request"
+
+[field_content_byte_order]
+status = "open"
+value = "pce"
+bound_by = "run-request"
+
+[field_content_copier_header]
+status = "open"
+value = "refuse"
+bound_by = "run-request"
+
+[field_powerup_policy]
+status = "open"
+value = "seeded-prng-v1"
+bound_by = "run-request"
+
+[withheld]
+ids = ["LED-AUD-0001", "LED-IO-0001", "LED-IRQ-0001", "LED-LOAD-0001", "LED-LOAD-0002", "LED-LOAD-0003", "LED-LOAD-0005", "LED-PROF-0002", "LED-VID-0001", "LED-VID-0002", "LED-VID-0003"]
+
+[content]
+sha256 = "dea83b86f5837a056859d5cf1ff5db8612092a2855be3e5da32ed277fc5f37e0"
+size = 393216
+mapper = "plain"
+mapper_rule = "plain-v1"
+byte_order = "pce"
+header_handling = "none"
+
+[power_on]
+policy = "seeded-prng-v1"
+policy_version = 1
+seed_present = true
+seed = 42
+
+[limits]
+size_cap = 1048576
+
+[machine]
+time = 0
+time_unit = "placeholder-cycles"
+digest_algorithm = "sha256"
+digest = "8016b1cd7ef9284dc1667cd6b9b7317b88cde860b88e86ab7170bf2a10ab202d"
