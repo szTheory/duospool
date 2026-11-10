@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 2
 current_phase_name: Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate
 status: executing
-stopped_at: Completed 02-13-PLAN.md
-last_updated: "2026-11-10T06:35:54.633Z"
+stopped_at: Completed 02-14-PLAN.md
+last_updated: "2026-11-10T06:52:44.796Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 2 execution started
-state_head: 3292bde620a2e8ce238cb0662ad695da9ab56073
+state_head: 92876b5d4792bbc543486012616f5d28f1d7d6c2
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 34
-  completed_plans: 25
+  completed_plans: 26
   percent: 17
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 2 (Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate) — EXECUTING
-Plan: 14 of 22
+Plan: 15 of 22
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 2 execution started
 
@@ -81,6 +81,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 02 P11 | 18 min | 6 tasks | 62 files |
 | Phase 02 P12 | 25 min | 2 tasks | 26 files |
 | Phase 02 P13 | 14 min | 2 tasks | 21 files |
+| Phase 02 P14 | 75 min | 3 tasks | 30 files |
 
 ## Accumulated Context
 
@@ -140,6 +141,9 @@ Recent decisions affecting current work:
 - [Phase 02]: 02-12: ds_advance and ds_run use their own status enums so the refusal enum stays the 22 boot-time reasons
 - [Phase 02]: 02-12: ds_run checks stop before the first step and after every step; machine time never passes start plus budget
 - [Phase 02]: 02-13: digest stream = prefix duospool-state+NUL, version 1, eight tagged regions (PROF CONT POWR TIME RAM8 MPRS PSGN VDCP), little-endian, ROM excluded (content id stands for it); profile hash strings are u32 length plus bytes bounded by the array; digest_region flips first and last live byte per region; nonmutation_digest aims refuse rows at live instance memory
+- [Phase 02]: 02-14: the record prints the seed and machine time as unsigned decimal u64; seed_present is a TOML boolean, policy_version an integer (DS_POWERON_POLICY_VERSION); record pinned at 61 rows in runner.c
+- [Phase 02]: 02-14: a failed print wipes the buffer it wrote; the refusal record prints the requested id and a hostile id (quote, backslash, non-ASCII, 64+ chars) gives DS_TEXT_ERR_STRING and no record
+- [Phase 02]: 02-14: runner --records DIR writes DIR/ID.record.toml for kinds accept, record_lines, record_golden, record_refusal (conformance-run makes build/NAME/records empty each run); --golden-dir DIR; record-lint stage derives the expected files from the kind column of cases.tsv
 
 ### Pending Todos
 
@@ -163,6 +167,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-10T06:35:54.565Z
-Stopped at: Completed 02-13-PLAN.md
+Last session: 2026-11-10T06:52:44.626Z
+Stopped at: Completed 02-14-PLAN.md
 Resume file: None
