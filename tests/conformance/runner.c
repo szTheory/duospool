@@ -1723,6 +1723,7 @@ int main(int argc, char **argv)
                 for (i = 0u; i < ncases && strcmp(cases[i].stem, line) != 0; i++) {
                 }
                 if (i == ncases) {
+                    free(xt);
                     emit_err("HARNESS the exclusion file names an id that no case carries\n");
                     return 2;
                 }
@@ -1734,6 +1735,9 @@ int main(int argc, char **argv)
             emit_err("HARNESS cannot read the exclusion file\n");
             return 2;
         }
+        /* the ids are consumed (excluded[] holds indexes, not pointers into the text): release the buffer, which a leak-detecting
+         * sanitizer (clang with LeakSanitizer on Linux) reports as a direct leak once the pointer is out of its slot */
+        free(xt);
     }
     if (only_id != NULL) {
         size_t hit = 0u;
