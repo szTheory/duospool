@@ -73,15 +73,15 @@ E4 = differential vs another emulator (finds disagreements, decides nothing).
 - [ ] **CORE-05**: A snapshot taken at any stop point, restored into a fresh instance and continued, produces outputs identical to continuing the original (state-completeness check, E0).
 - [ ] **CORE-06**: A CPU instruction trace and a device-register write log can be enabled without changing machine behavior.
 - [ ] **RUN-01**: A headless runner loads content plus a profile and an input script, runs for a bounded machine time, and emits guest-progress markers, machine time, raw video, raw audio, and trace as separate artifacts.
-- [ ] **RUN-02**: The runner and harness report distinct outcomes: pass, guest failure, timeout, harness failure, skip, cancelled, and missing artifact. No outcome other than pass counts as passing.
+- [x] **RUN-02**: The runner and harness report distinct outcomes: pass, guest failure, timeout, harness failure, skip, cancelled, and missing artifact. No outcome other than pass counts as passing.
 
 ### Fixtures & Verification
 
 - [ ] **FIX-01**: Diagnostic fixtures are original, authored HuC6280 assembly sources with project-owned startup code. Their recorded build recipe uses an external, license-checked assembler, with a cross-assembler byte-identity check where practical.
 - [x] **FIX-02**: Every fixture has a manifest entry (source, build recipe, toolchain version, byte hash, license, notices, redistribution terms, test meaning, expected verdict source). A manifest check fails closed on any missing field or unlisted fixture.
 - [ ] **FIX-03**: Fixture verdicts come from documented behavior or an independent verdict computed in the guest, never from DuoSpool's own recorded output.
-- [ ] **FIX-04**: The required-test inventory fails closed: a missing, skipped, or evidence-free required check fails the gate, calibrated by a named negative control that is shown to fail.
-- [ ] **FIX-05**: No commercial ROMs, firmware/system cards, disc images, or private saves are committed, used in CI, or written to CI logs/artifacts, enforced by a repository check.
+- [x] **FIX-04**: The required-test inventory fails closed: a missing, skipped, or evidence-free required check fails the gate, calibrated by a named negative control that is shown to fail.
+- [x] **FIX-05**: No commercial ROMs, firmware/system cards, disc images, or private saves are committed, used in CI, or written to CI logs/artifacts, enforced by a repository check.
 
 ### Tooling, Packaging & CI
 
@@ -190,12 +190,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CORE-05 | Phase 3 | Pending |
 | CORE-06 | Phase 3 | Pending |
 | RUN-01 | Phase 6 | Pending |
-| RUN-02 | Phase 2 | Pending |
+| RUN-02 | Phase 2 | Complete |
 | FIX-01 | Phase 3 | Pending |
 | FIX-02 | Phase 2 | Complete |
 | FIX-03 | Phase 3 | Pending |
-| FIX-04 | Phase 2 | Pending |
-| FIX-05 | Phase 2 | Pending |
+| FIX-04 | Phase 2 | Complete |
+| FIX-05 | Phase 2 | Complete |
 | TOOL-01 | Phase 1 | Complete |
 | TOOL-02 | Phase 2 | Pending |
 | PKG-01 | Phase 6 | Pending |

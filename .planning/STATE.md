@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 2
 current_phase_name: Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate
 status: executing
-stopped_at: Completed 02-17-PLAN.md
-last_updated: "2026-11-10T07:30:04.637Z"
+stopped_at: Completed 02-18-PLAN.md
+last_updated: "2026-11-10T07:46:03.343Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 2 execution started
-state_head: 9e1afb87f4747475e3340b48235d99506d9bb5c3
+state_head: 25a37c2c4a4b30fb7173ebe20e8605b45aa95365
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 34
-  completed_plans: 29
+  completed_plans: 30
   percent: 17
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 2 (Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate) — EXECUTING
-Plan: 18 of 22
+Plan: 19 of 22
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 2 execution started
 
@@ -85,6 +85,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 02 P15 | 22 min | 3 tasks | 25 files |
 | Phase 02 P16 | 60 min | 3 tasks | 20 files |
 | Phase 02 P17 | 25 min | 4 tasks | 74 files |
+| Phase 02 P18 | 15 min | 3 tasks | 53 files |
 
 ## Accumulated Context
 
@@ -152,6 +153,8 @@ Recent decisions affecting current work:
 - [Phase 02]: 02-16: DET_MISSING_FILE is exit 2 and asserted directly in the determinism-negatives stage; tests/gate/determinism holds differs and ok-same
 - [Phase 02]: 02-17: a len=N override over a plain-* fixture is the recipe plain-*:N (first N bytes of the tagged image), not len:N — The bank tags of the natural size are part of the bytes a case emits, so a hash of the pure stream would not be what the case generates; ds_runner --fixtures names recipes with synth_name through the same parse_spec and synth_size the cases use, and a real run emits exactly the listed set
 - [Phase 02]: 02-17: the fixtures stage makes its own used list (conformance-run fixtures, no --only) and asserts it names every manifest file; --partial only for --only runs — A stale or partial list must never be judged; FIX_STALE and the count-and-name comparison cover an entry nothing emits (D-85); runner.c is at 65503 of 65536 bytes, so new runner logic goes in its own file
+- [Phase 02]: 02-18: live-runner controls are judged on the id and outcome fields of RESULT lines (awk, values through ENVIRON), never a whole line; a flagged timeout loses to a failed assertion — the RESULT line also carries the assertion count and the evidence path, so a whole-line match is brittle and a wrong literal could hide behind it (D-80, T-02-36)
+- [Phase 02]: 02-18: inventory-check enforces REQUIRED and the case files in both directions and the ledger TEST pins in both directions; ledger-check stays structure-only — a green gate that silently ran fewer tests is worse than a red one (D-58, T-02-35)
 
 ### Pending Todos
 
@@ -175,6 +178,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-10T07:30:04.582Z
-Stopped at: Completed 02-17-PLAN.md
+Last session: 2026-11-10T07:46:03.288Z
+Stopped at: Completed 02-18-PLAN.md
 Resume file: None
