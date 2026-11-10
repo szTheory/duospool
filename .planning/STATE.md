@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 2
 current_phase_name: Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate
 status: executing
-stopped_at: Completed 02-20-PLAN.md
-last_updated: "2026-11-10T08:37:16.595Z"
+stopped_at: Completed 02-21-PLAN.md
+last_updated: "2026-11-10T09:46:53.682Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 2 execution started
-state_head: 1f6b0d2eaeedbcca3b5f8c0c3c13d947eb889c3e
+state_head: d15a5ecb82b7c95844803079832afc7b4e048d9a
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 34
-  completed_plans: 32
+  completed_plans: 33
   percent: 17
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 2 (Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate) — EXECUTING
-Plan: 21 of 22
+Plan: 22 of 22
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 2 execution started
 
@@ -88,6 +88,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 02 P18 | 15 min | 3 tasks | 53 files |
 | Phase 02 P19 | 25 min | 2 tasks | 15 files |
 | Phase 02 P20 | 70min | 3 tasks | 49 files |
+| Phase 02 P21 | 80 min | 3 tasks | 27 files |
 
 ## Accumulated Context
 
@@ -160,6 +161,8 @@ Recent decisions affecting current work:
 - [Phase 02]: 02-19: workflow-check is a restricted block-style YAML line checker; WF_UNPARSABLE exits 2 and cannot be named by an --expect, and the ok-gate control must stay byte-equal to the real gate.yml (CONTROL_DRIFT)
 - [Phase 02]: 02-19: the Linux container run of the whole gate found record-lint failing under mawk (lvalue-first evaluation, scripts/lib/record-rules.awk line 45); logged in deferred-items.md D-19-1, not fixed in plan 19
 - [Phase 02]: 02-20: a secrets expression reports WF_FORBIDDEN_KEY only; wrong-concurrency added as a twelfth workflow control; ci-timings wall = latest job end minus run start
+- [Phase 02]: 02-21: linux-repro parts differ on purpose (default-awk mawk+gcc, mawk+clang, gawk+gcc) so no full gate repeats another; the container run is a local one-off, not CI evidence
+- [Phase 02]: 02-21: ds_runner leak (exclusion file buffer) found only by clang LeakSanitizer on Linux; fixed at the cause. CI-01 un-ticked: criterion 5 unverified-pending-push
 
 ### Pending Todos
 
@@ -183,6 +186,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-10T08:37:16.514Z
-Stopped at: Completed 02-20-PLAN.md
+Last session: 2026-11-10T09:46:53.612Z
+Stopped at: Completed 02-21-PLAN.md
 Resume file: None
