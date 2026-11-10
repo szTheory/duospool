@@ -2,17 +2,17 @@
 gsd_state_version: "1.0"
 current_phase: 2
 current_phase_name: Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate
-status: planning
-stopped_at: Phase 1 complete, ready to plan Phase 2
-last_updated: "2026-11-10T00:12:08.253Z"
+status: executing
+stopped_at: Completed 02-01-PLAN.md
+last_updated: "2026-11-10T03:37:39.598Z"
 last_activity: 2026-11-09
-last_activity_desc: Phase 1 complete, transitioned to Phase 2
-state_head: d7fd3a7adae8b686a4b1e430ce29462540114411
+last_activity_desc: Phase 2 execution started
+state_head: c9a3552872c18af36de2595cf64359448a580242
 progress:
   total_phases: 6
   completed_phases: 1
-  total_plans: 12
-  completed_plans: 12
+  total_plans: 34
+  completed_plans: 13
   percent: 17
 ---
 
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 
 ## Current Position
 
-Phase: 2 — Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-11-09 — Phase 1 complete, transitioned to Phase 2
+Phase: 2 (Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate) — EXECUTING
+Plan: 2 of 22
+Status: Ready to execute
+Last activity: 2026-11-09 — Phase 2 execution started
 
 Progress: [██░░░░░░░░] 17%
 
@@ -68,6 +68,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 1 P10 | 13 min | 3 tasks | 40 files |
 | Phase 1 P11 | 15 min | 2 tasks | 5 files |
 | Phase 1 P12 | n/a | 3 tasks | 5 files |
+| Phase 02 P01 | 22 min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -95,6 +96,8 @@ Recent decisions affecting current work:
 - [Phase 1]: 01-10: M09 line counts follow LINES.map as pre-registered, so the Rust ffi-glue count (231) includes the capi Miri test module; C4 inputs are 198 (C) and 476 (Rust); for the 01-11 scorer to weigh
 - [Phase 1]: 01-11: Record 0001 (language/build) is proposed-default: score.awk RESULT=proposed-default REASON=margin-below-10 (Rust 80.20 vs C 79.00); Phase 2 blocked pending an owner choice; leader Rust is provisional and flips under two plausible rubric readings
 - [Phase 1]: 01-12: Owner chose rewrite-history before publication; repo szTheory/duospool published public (main 8ba0bc6 plus tag spike-tool-01-evidence), secret scanning on
+- [Phase 02]: run_controls helper is the single control loop for ledger/decision/profile/provenance/licence/results negatives; stage and mutation selectable via --stage NAME and --selftest NAME
+- [Phase 02]: Gate refactors are proven by tests/check/equiv.sh transcript equivalence against a git archive of the base commit plus a selftest mutation; the harness is a one-shot proof and will DIFF once later plans change gate stdout on purpose
 
 ### Pending Todos
 
@@ -118,6 +121,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-09T23:36:37.461Z
-Stopped at: Phase 1 complete, ready to plan Phase 2
+Last session: 2026-11-10T03:37:39.551Z
+Stopped at: Completed 02-01-PLAN.md
 Resume file: None

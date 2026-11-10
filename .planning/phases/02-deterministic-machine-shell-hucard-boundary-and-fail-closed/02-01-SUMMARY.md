@@ -60,7 +60,7 @@ coverage:
     requirement: TOOL-02
     verification:
       - kind: other
-        ref: "grep -c run_controls scripts/check = 8 (one definition, one comment line, six calls); CONTROL BROKEN 12 -> 7; SAMPLE REJECTED 6 -> 2"
+        ref: "grep -c run_controls scripts/check = 9 at the end (8 after Task 2: one definition, one usage comment, six calls; Task 3 adds one selftest comment line); CONTROL BROKEN 12 -> 7; SAMPLE REJECTED 6 -> 2"
         status: pass
     human_judgment: false
   - id: D3
@@ -130,7 +130,7 @@ Plan-end (wave-end) commands:
 | `sh scripts/check --selftest` | six `SELFTEST ... PASS` lines (five `mutation-` plus `missing-sentinel`) and `SELFTEST RESULT PASS`; diff against the ff126b5 selftest output is exactly the one added `mutation-run-controls` line |
 | `dash scripts/check --selftest mutation-run-controls` | PASS |
 
-Acceptance criteria: `head -5 tests/check/equiv.sh | grep -c SPDX-License-Identifier` = 1; `grep -c run_controls scripts/check` = 8 (at least 7); `grep -c 'CONTROL BROKEN'` = 7 (at most 8); `grep -c 'SAMPLE REJECTED'` = 2 (at most 2); `grep -c rc-broken-status` = 1 (exactly 1); `sh scripts/check --stage bogus-stage` exits 2.
+Acceptance criteria: `head -5 tests/check/equiv.sh | grep -c SPDX-License-Identifier` = 1; `grep -c run_controls scripts/check` = 9 at plan end, 8 when checked after Task 2 (at least 7); `grep -c 'CONTROL BROKEN'` = 7 (at most 8); `grep -c 'SAMPLE REJECTED'` = 2 (at most 2); `grep -c rc-broken-status` = 1 (exactly 1); `sh scripts/check --stage bogus-stage` exits 2.
 
 ## Files Created/Modified
 
