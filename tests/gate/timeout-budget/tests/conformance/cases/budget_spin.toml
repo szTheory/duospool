@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# A control case of a live-runner mini-root. It is never part of the real inventory: scripts/conformance-run control runs it
+# through the real ds_runner and compares the id and outcome fields of its RESULT line with the pair in EXPECT.
+id = "budget_spin"
+kind = "budget_spin"
+fixture = "plain-256k"
+request = "bind.powerup_policy=seeded-prng-v1;seed=42"
+expect = "budget=100000,step=1000"
+meaning = "ds_run against a stop function that never fires consumes the whole machine-time budget of 100000 cycles and the case ends with the outcome timeout, deterministically"
+required = true
+control = true
+expect_outcome = "timeout"
+pins = []

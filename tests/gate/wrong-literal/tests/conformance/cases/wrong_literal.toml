@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# A control case of a live-runner mini-root. It is never part of the real inventory: scripts/conformance-run control runs it
+# through the real ds_runner and compares the id and outcome fields of its RESULT line with the pair in EXPECT.
+id = "wrong_literal"
+kind = "refuse"
+fixture = "plain-256k"
+request = "len=524288"
+expect = "load.byte_order_unsupported"
+meaning = "A 524288-byte request is refused as load.size_unsupported, so the deliberately wrong literal load.byte_order_unsupported must make the case a guest_failure through the live runner"
+required = true
+control = true
+expect_outcome = "guest_failure"
+pins = []

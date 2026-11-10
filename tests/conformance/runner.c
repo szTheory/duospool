@@ -21,9 +21,8 @@
  *                        no other kind writes anything and nothing else is created in DIR (plan 14, D-86; the directory must exist)
  *   --golden-dir DIR     the directory of the committed goldens (tests/conformance/golden) read by the record_golden kind
  *   --only ID            run exactly one case (the precedence mutation of scripts/check uses it); an id no case carries is a harness fault
- *   --exclude-ids FILE   one case id per line: those cases are not run and print no RESULT line (RUNNER_DONE counts the lines printed).
- *                        Only scripts/conformance-run sanitize passes it, for the exact set of tests/conformance/EXCLUDED_IN_MODE (D-78);
- *                        an id that no case carries is a harness fault (exit 2), so a stale exclusion cannot linger
+ *   --exclude-ids FILE   one case id per line: those cases are not run and print no RESULT line (RUNNER_DONE counts the lines printed);
+ *                        only conformance-run sanitize passes it, for EXCLUDED_IN_MODE (D-78); an id no case carries is a harness fault (exit 2)
  *        ds_runner --outcomes   prints the compiled outcome names, one per line, and exits 0 (read by scripts/outcome-sync --names)
  *        ds_runner --sweep-lengths   prints the 21 hash sweep lengths, one per line: the only definition of the list (D-59)
  *        ds_runner --emit RECIPE     writes the bytes of a synthetic recipe to stdout, nothing else (plain-256k, len:N)
@@ -1503,6 +1502,8 @@ static const struct {
     {"poweron", kind_poweron, 0},
     {"advance", kind_advance, 0},
     {"run_budget", kind_run_budget, 0},
+    {"budget_spin", kind_spin, 0},
+    {"spin_forever", kind_spin, 0},
     {"poweron_domain", kind_poweron_domain, 0},
     {"digest_stream", kind_digest_stream, 0},
     {"digest_pair", kind_digest_pair, 0},
@@ -1525,6 +1526,8 @@ static const char *outcome_of(const struct ctx *c, enum outcome *oc)
 {
     if (c->harness) {
         *oc = OUT_harness_failure;
+    } else if (c->timeout && !c->failed) {
+        *oc = OUT_timeout;
     } else if (c->failed || c->n == 0u) {
         *oc = OUT_guest_failure;
     } else {

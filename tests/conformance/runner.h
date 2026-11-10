@@ -30,6 +30,7 @@ struct ctx {
     unsigned n;
     int failed;
     int harness;
+    int timeout; /* a machine-time budget ended the case (outcome timeout, kinds budget_spin) */
     char why[160];
 };
 
@@ -169,6 +170,9 @@ void kind_liveness_shared_state_selfcheck(const struct kase *k, struct ctx *c, c
 void kind_profile_equal(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_names_both_ways(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_field_flip(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+
+/* the kinds that produce the outcomes timeout and cancelled (spinkinds.c, plan 18): one function for budget_spin and spin_forever */
+void kind_spin(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 
 /* the --fixtures list (fixlist.c, plan 17): NAME SIZE for every recipe a case materialises and every sweep length; 0, or 2 on a fault */
 int list_fixtures(const size_t *sweep, size_t nsweep);

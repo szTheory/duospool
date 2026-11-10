@@ -8,6 +8,8 @@
 # usage: conformance-run run [--preset NAME]
 #        conformance-run sanitize
 #        conformance-run fixtures [--only NAME]
+#        conformance-run control DIR
+#        conformance-run control-signal DIR SIG
 #        conformance-run supervise --ids FILE --out FILE [--wall N] -- CMD ARGS...
 # run mode (D-60, D-85): everything lives under build/NAME (default gate, the build directory of the preset NAME). The steps are
 #   (the runner also gets --records DIR/records, made empty on every run, and --golden-dir tests/conformance/golden: see plan 14, D-84b, D-86)
@@ -40,6 +42,19 @@
 #   build/gate/fixtures.used (NAME SIZE SHA256) and run scripts/fixture-check on it; see fixtures_mode below. --only NAME checks one recipe
 #   and passes --partial (no FIX_STALE verdict from a one-line list). exit 0 STATUS fixtures ok | 1 FIX_ codes or a failed build or case file
 #   | 2 harness error
+# control mode (FIX-04, RUN-02, D-58, D-77, D-80): DIR is a mini-root with tests/conformance/cases, tests/conformance/REQUIRED and an EXPECT file of
+#   pairs  ID OUTCOME  (one per line, # comments and blank lines ignored). The mode flattens DIR/tests/conformance/cases, builds the gate preset
+#   incrementally, runs the LIVE ds_runner on that TSV under the supervise mode (wall watchdog 60 s), prints the RESULT lines and RUNNER_DONE, and
+#   keeps everything under build/gate/control/NAME (NAME = the name of DIR, results.txt is the file the ingest judges). Each pair is matched on the
+#   FIELDS of the RESULT lines with awk ($1 == "RESULT" && $2 == ID && $3 == OUTCOME, the id and outcome passed through ENVIRON), never by matching a
+#   whole line, because the line also carries the assertion count and the evidence path. A pair without a match is printed as
+#   CONTROL_PAIR_MISSING ID OUTCOME got:OUTCOME and the status is 1; all pairs matched prints STATUS control ok pairs=N and the status is 0.
+#   A missing or empty EXPECT, a pair that is not  ID OUTCOME , or a missing mini-root is exit 2 (HARNESS_NO_EXPECT, HARNESS_EMPTY_EXPECT,
+#   HARNESS_BAD_EXPECT): a control that asserts nothing never passes. The mode works in the repository root of this script, or in the directory
+#   named by the environment variable CONFORMANCE_RUN_ROOT (the gate's selftest runs a mutated copy of this script against the real tree).
+# control-signal mode: the same run, started in the background under the supervise mode; the harness waits until the runner has printed its first
+#   RESULT line (at most 10 s, else exit 2), sends SIG (INT or TERM) to the supervisor, waits for it (it must exit 1 and print CANCELLED signal:SIG),
+#   reaps any runner that survived, and then checks DIR/EXPECT exactly as the control mode does (the cancelled pair is written by the supervisor).
 # supervise mode:
 #   --ids FILE  one case id per line (# comments and blank lines ignored): the ids that must have a RESULT line
 #   --out FILE  CMD's stdout is written here (truncated first); this is the file that conformance-ingest judges
@@ -59,17 +74,18 @@ LC_ALL=C; export LC_ALL
 here=$(cd "$(dirname "$0")" && pwd)
 
 usage() {
-  echo "usage: conformance-run run [--preset NAME] | sanitize | fixtures [--only NAME] | supervise --ids FILE --out FILE [--wall N] -- CMD ARGS..." >&2
+  echo "usage: conformance-run run [--preset NAME] | sanitize | fixtures [--only NAME] | control DIR | control-signal DIR SIG | supervise --ids FILE --out FILE [--wall N] -- CMD ARGS..." >&2
   exit 2
 }
 
 # flatten_cases BD (D-86): the first producing step shared by the run mode and the fixtures mode. tests/conformance/cases is flattened
-# into BD/cases.tsv by the one parser of hand-edited data (D-51); the old file is removed first and a failed or END-less flatten leaves none,
+# (or the directory named by the optional second argument, the control mode) into BD/cases.tsv by the one parser of hand-edited data (D-51); the old file is removed first and a failed or END-less flatten leaves none,
 # so a stale TSV is never read. A malformed case file gives exit 1, a harness fault exit 2.
 flatten_cases() {
   fc_bd=$1
+  fc_src=${2:-tests/conformance/cases}
   rm -f "$fc_bd/cases.tsv" "$fc_bd/flatten.err"
-  if sh "$here/conformance-flatten" tests/conformance/cases > "$fc_bd/cases.tsv" 2> "$fc_bd/flatten.err"; then fc_r=0; else fc_r=$?; fi
+  if sh "$here/conformance-flatten" "$fc_src" > "$fc_bd/cases.tsv" 2> "$fc_bd/flatten.err"; then fc_r=0; else fc_r=$?; fi
   if [ "$fc_r" -ne 0 ]; then
     cat "$fc_bd/flatten.err"
     rm -f "$fc_bd/cases.tsv"
@@ -472,6 +488,118 @@ fixtures_mode() {
   exec sh "$here/fixture-check" $fm_partial --used "$fm_bd/fixtures.used"
 }
 
+# result_outcome ID FILE: the outcome field of the RESULT line of ID in FILE, or no-result (diagnostics only; the verdict is field_match)
+result_outcome() {
+  ID=$1 awk 'BEGIN { id = ENVIRON["ID"] } $1 == "RESULT" && $2 == id { print $3; f = 1; exit } END { if (!f) print "no-result" }' "$2"
+}
+
+# field_match ID OUTCOME FILE: succeeds when FILE holds a RESULT line whose first three fields are RESULT, ID and OUTCOME (D-80). The fields are compared
+# one by one with awk, the id and the outcome passed through ENVIRON; the rest of the line (assertions, evidence path) is never part of the match.
+field_match() {
+  ID=$1 OC=$2 awk 'BEGIN { id = ENVIRON["ID"]; oc = ENVIRON["OC"] } $1 == "RESULT" && $2 == id && $3 == oc { f = 1 } END { exit !f }' "$3"
+}
+
+# ctl_reap CASES: kill any runner that still has the control's TSV on its command line (the supervisor kills it on a signal; this is the belt
+# and braces that guarantees a control never leaves a spinning process behind). pgrep is optional here: the stage that drives the mode checks too.
+ctl_reap() {
+  command -v pgrep > /dev/null 2>&1 || return 0
+  for ctl_p in $(pgrep -f "ds_runner --cases $1" 2> /dev/null || true); do
+    kill "$ctl_p" 2> /dev/null || true
+  done
+  return 0
+}
+
+# control_mode DIR [SIG]: see the header. Everything is made here (the flatten, the build, the run), so no stale file is ever judged.
+control_mode() {
+  ctl_arg=${1-}
+  ctl_sig=${2-}
+  [ -n "$ctl_arg" ] || usage
+  case $ctl_sig in
+    '' | INT | TERM) ;;
+    *) usage ;;
+  esac
+  [ -d "$ctl_arg" ] || { echo "HARNESS_NO_FILE the control directory $ctl_arg" >&2; exit 2; }
+  ctl_dir=$(cd "$ctl_arg" && pwd)
+  ctl_name=$(basename "$ctl_dir")
+  case $ctl_name in
+    '' | *[!A-Za-z0-9_-]*) echo "HARNESS_ERROR the control directory name '$ctl_name' is outside A-Z a-z 0-9 _ -" >&2; exit 2 ;;
+  esac
+  cd "${CONFORMANCE_RUN_ROOT:-$here/..}"
+  if [ ! -f "$ctl_dir/EXPECT" ]; then
+    echo "HARNESS_NO_EXPECT $ctl_name" >&2
+    exit 2
+  fi
+  if ! awk '/^[ \t]*(#.*)?$/ { next } { n++ } END { exit !(n > 0) }' "$ctl_dir/EXPECT"; then
+    echo "HARNESS_EMPTY_EXPECT $ctl_name" >&2
+    exit 2
+  fi
+  if ! awk '/^[ \t]*(#.*)?$/ { next } NF != 2 || $1 !~ /^[a-z][a-z0-9_]*$/ || $2 !~ /^[a-z_]+$/ { bad = 1 } END { exit bad ? 1 : 0 }' "$ctl_dir/EXPECT"; then
+    echo "HARNESS_BAD_EXPECT $ctl_name: every line must be  ID OUTCOME" >&2
+    exit 2
+  fi
+  ctl_wd=build/gate/control/$ctl_name
+  rm -rf "$ctl_wd"
+  mkdir -p "$ctl_wd/evidence" || { echo "HARNESS_ERROR cannot create $ctl_wd" >&2; exit 2; }
+  flatten_cases "$ctl_wd" "$ctl_dir/tests/conformance/cases"
+  awk -F'\t' '$1 == "K" { print $2 }' "$ctl_wd/cases.tsv" | sort -u > "$ctl_wd/ids.txt"
+  if [ ! -s "$ctl_wd/ids.txt" ]; then
+    echo "HARNESS_NO_CASES the control $ctl_name holds no case" >&2
+    exit 2
+  fi
+  mkdir -p build/gate || { echo "HARNESS_ERROR cannot create build/gate" >&2; exit 2; }
+  build_preset gate build/gate
+  ctl_seed=$(( $(date +%s) * 65536 + $$ % 65536 ))
+  ctl_out=$ctl_wd/results.txt
+  if [ -z "$ctl_sig" ]; then
+    if sh "$here/conformance-run" supervise --ids "$ctl_wd/ids.txt" --out "$ctl_out" --wall 60 -- build/gate/ds_runner --cases "$ctl_wd/cases.tsv" --evidence-dir "$ctl_wd/evidence" --marker-seed "$ctl_seed" > "$ctl_wd/sup.out" 2> "$ctl_wd/sup.err"; then ctl_sup=0; else ctl_sup=$?; fi
+  else
+    sh "$here/conformance-run" supervise --ids "$ctl_wd/ids.txt" --out "$ctl_out" --wall 60 -- build/gate/ds_runner --cases "$ctl_wd/cases.tsv" --evidence-dir "$ctl_wd/evidence" --marker-seed "$ctl_seed" > "$ctl_wd/sup.out" 2> "$ctl_wd/sup.err" &
+    ctl_pid=$!
+    ctl_i=0
+    while [ "$ctl_i" -lt 100 ] && ! grep -q '^RESULT ' "$ctl_out" 2> /dev/null; do
+      sleep 0.1
+      ctl_i=$((ctl_i + 1))
+    done
+    if [ "$ctl_i" -ge 100 ]; then
+      kill "$ctl_pid" 2> /dev/null || true
+      wait "$ctl_pid" 2> /dev/null || true
+      ctl_reap "$ctl_wd/cases.tsv"
+      echo "HARNESS_ERROR the runner of $ctl_name printed no RESULT line within 10 s, so it was never signalled" >&2
+      exit 2
+    fi
+    kill -s "$ctl_sig" "$ctl_pid"
+    if wait "$ctl_pid"; then ctl_sup=0; else ctl_sup=$?; fi
+    ctl_reap "$ctl_wd/cases.tsv"
+    if [ "$ctl_sup" -ne 1 ] || ! grep -q "^CANCELLED signal:$ctl_sig n=" "$ctl_wd/sup.out"; then
+      cat "$ctl_wd/sup.err" >&2
+      echo "HARNESS_ERROR the supervisor of $ctl_name did not end as cancelled by $ctl_sig (exit $ctl_sup)" >&2
+      exit 2
+    fi
+  fi
+  if [ "$ctl_sup" -ge 2 ]; then
+    cat "$ctl_wd/sup.err" >&2
+    echo "HARNESS_ERROR the runner of $ctl_name ended with a harness status ($ctl_sup)" >&2
+    exit 2
+  fi
+  grep -E '^(RESULT|RUNNER_DONE) ' "$ctl_out" || true
+  ctl_miss=0
+  ctl_pairs=0
+  while read -r ctl_id ctl_oc; do
+    case $ctl_id in '' | '#'*) continue ;; esac
+    ctl_pairs=$((ctl_pairs + 1))
+    field_match "$ctl_id" "$ctl_oc" "$ctl_out" || { ctl_miss=$((ctl_miss + 1)); echo "CONTROL_PAIR_MISSING $ctl_id $ctl_oc got:$(result_outcome "$ctl_id" "$ctl_out")"; } # rule-field-match
+  done < "$ctl_dir/EXPECT"
+  if [ "$ctl_pairs" -eq 0 ]; then
+    echo "HARNESS_EMPTY_EXPECT $ctl_name" >&2
+    exit 2
+  fi
+  if [ "$ctl_miss" -ne 0 ]; then
+    exit 1
+  fi
+  echo "STATUS control ok pairs=$ctl_pairs"
+  exit 0
+}
+
 # hash_sweep RUNNER (D-47, D-59): the independent check of the in-house SHA-256. For every length the runner prints with
 # --sweep-lengths (the one definition of the list), the bytes of the synthetic image len:N go from the runner's --emit through the
 # host sha tool (sha256sum if present, else shasum -a 256, chosen once), and the 64-hex digest field is compared with the one the
@@ -515,6 +643,8 @@ case $1 in
   run) shift; run_mode "$@" ;;
   sanitize) shift; run_mode --sanitize "$@" ;;
   fixtures) shift; fixtures_mode "$@" ;;
+  control) shift; [ $# -eq 1 ] || usage; control_mode "$1" ;;
+  control-signal) shift; [ $# -eq 2 ] || usage; control_mode "$1" "$2" ;;
   supervise) shift ;;
   *) usage ;;
 esac

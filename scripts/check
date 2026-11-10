@@ -843,6 +843,126 @@ stage_inventory_negatives() {
   return "$in_rc"
 }
 
+# named-controls (FIX-04, RUN-02, FIX-05; D-58, D-77, D-80, D-85): the five named negative controls of the success criterion and the producers of the two
+# outcomes that only a live run can show, each judged by the real checker or by the live runner, never by a re-implementation here. Registered after
+# the build and conformance stages: the live controls run the ds_runner that conformance-run builds incrementally itself, and the stage reads no
+# file that an earlier gate run left (every file it judges is written by the command it runs). One line per control, NAMED_CONTROL NAME RED_OK or
+# NOT_RED (any NOT_RED fails the stage); a missing control file is exit 2, never a skipped control.
+#   removed-required   inventory-check on tests/gate/inventory/removed-required reports INV_REQUIRED_MISSING (and exits 1 without --expect)
+#   missing-field      fixture-check on tests/gate/fixture/fix-missing-field reports FIX_MISSING_FIELD
+#   unlisted-fixture   fixture-check on tests/gate/fixture/fix-unlisted reports FIX_UNLISTED
+#   wrong-literal      the live runner on tests/gate/wrong-literal prints a RESULT line whose id and outcome fields are wrong_literal and
+#                      guest_failure (conformance-run control compares those fields with awk), and the ingest judges that file red
+#   romlike-binary     tests/rights/synthetic.sh passes its planted-pce case (RIGHTSTEST planted-pce PASS), and a ROM-like file made here
+#                      at run time in a temporary repository gives rights-check exactly ROMLIKE_BINARY (no ROM-like byte is ever committed)
+#   timeout-budget     the live runner on tests/gate/timeout-budget ends a case on its machine-time budget: RESULT budget_spin timeout, and
+#                      the ingest of that file reports exactly OUTCOME_TIMEOUT
+#   cancelled-spin     TERM sent to the supervised live runner of tests/gate/cancel-spin (a case that never ends) gives RESULT spin cancelled,
+#                      and the ingest of that file reports exactly OUTCOME_CANCELLED
+# After the last control no runner of these controls may still be running (pgrep, when the tool exists). The lines also go to
+# build/gate/named-controls.txt (a passing stage prints only its CHECK line).
+nc_report() {
+  if [ "$2" -eq 1 ]; then
+    echo "NAMED_CONTROL $1 RED_OK" | tee -a build/gate/named-controls.txt
+  else
+    echo "NAMED_CONTROL $1 NOT_RED" | tee -a build/gate/named-controls.txt
+    sed 's/^/  /' "$3"
+    [ "$nc_rc" -eq 2 ] || nc_rc=1
+  fi
+}
+
+# nc_checker_red NAME CODE CMD...: CMD (a checker command without --expect) is red with exactly CODE: EXPECT_OK with --expect CODE, exit 1 without it,
+# and CODE named in its output
+nc_checker_red() {
+  ncr_name=$1
+  ncr_code=$2
+  shift 2
+  ncr_ok=0
+  : > "$tmp/nc.b"
+  if "$@" --expect "$ncr_code" > "$tmp/nc.a" 2>&1 && grep -qx 'EXPECT_OK' "$tmp/nc.a"; then
+    if "$@" > "$tmp/nc.b" 2>&1; then ncr_b=0; else ncr_b=$?; fi
+    if [ "$ncr_b" -eq 1 ] && grep -q "$ncr_code" "$tmp/nc.b"; then ncr_ok=1; fi
+  fi
+  cat "$tmp/nc.a" "$tmp/nc.b" > "$tmp/nc.d"
+  nc_report "$ncr_name" "$ncr_ok" "$tmp/nc.d"
+}
+
+# nc_live NAME CODE DIR [SIG]: conformance-run control DIR (or control-signal DIR SIG) must exit 0 (its EXPECT pair matched on the id and outcome
+# fields of a RESULT line of the live runner), and the ingest of the results file it wrote must report exactly CODE and, without --expect, exit 1
+nc_live() {
+  ncl_name=$1
+  ncl_code=$2
+  ncl_dir=$3
+  ncl_res=build/gate/control/$(basename "$ncl_dir")/results.txt
+  if [ -n "${4-}" ]; then
+    sh "$here/conformance-run" control-signal "$ncl_dir" "$4" > "$tmp/nc.a" 2>&1 && ncl_r=0 || ncl_r=$?
+  else
+    sh "$here/conformance-run" control "$ncl_dir" > "$tmp/nc.a" 2>&1 && ncl_r=0 || ncl_r=$?
+  fi
+  if [ "$ncl_r" -ge 2 ]; then
+    echo "HARNESS_ERROR $ncl_name: conformance-run exited $ncl_r"
+    sed 's/^/  /' "$tmp/nc.a"
+    nc_rc=2
+    return 0
+  fi
+  ncl_ok=0
+  : > "$tmp/nc.b"
+  if [ "$ncl_r" -eq 0 ] && sh "$here/conformance-ingest" --root "$ncl_dir" --results "$ncl_res" --expect "$ncl_code" > "$tmp/nc.b" 2>&1 && grep -qx 'EXPECT_OK' "$tmp/nc.b"; then
+    if sh "$here/conformance-ingest" --root "$ncl_dir" --results "$ncl_res" > "$tmp/nc.c" 2>&1; then ncl_c=0; else ncl_c=$?; fi
+    [ "$ncl_c" -eq 1 ] && ncl_ok=1
+  fi
+  cat "$tmp/nc.a" "$tmp/nc.b" > "$tmp/nc.d"
+  nc_report "$ncl_name" "$ncl_ok" "$tmp/nc.d"
+}
+
+# nc_romlike: the plan 04 planted-pce case through its own script, then the same fault once more in a repository made here, with the code visible
+nc_romlike() {
+  ncm_ok=0
+  if sh tests/rights/synthetic.sh > "$tmp/nc.a" 2>&1 && grep -qx 'RIGHTSTEST planted-pce PASS' "$tmp/nc.a"; then
+    ncm_d="$tmp/nc-romlike"
+    rm -rf "$ncm_d"
+    mkdir -p "$ncm_d"
+    printf 'not a rom, only a name\n' > "$ncm_d/unlisted.pce"
+    if (GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null; export GIT_CONFIG_NOSYSTEM GIT_CONFIG_GLOBAL; git init -q "$ncm_d") > "$tmp/nc.b" 2>&1; then
+      if sh "$here/rights-check" --root "$ncm_d" --expect ROMLIKE_BINARY > "$tmp/nc.b" 2>&1 && grep -qx 'EXPECT_OK' "$tmp/nc.b"; then
+        if sh "$here/rights-check" --root "$ncm_d" > "$tmp/nc.c" 2>&1; then ncm_c=0; else ncm_c=$?; fi
+        if [ "$ncm_c" -eq 1 ] && grep -q 'ROMLIKE_BINARY' "$tmp/nc.c"; then ncm_ok=1; fi
+      fi
+    fi
+  else
+    : > "$tmp/nc.b"
+  fi
+  cat "$tmp/nc.a" "$tmp/nc.b" > "$tmp/nc.d"
+  nc_report romlike-binary "$ncm_ok" "$tmp/nc.d"
+}
+
+stage_named_controls() {
+  nc_rc=0
+  mkdir -p build/gate && : > build/gate/named-controls.txt || { echo "HARNESS_ERROR cannot write build/gate/named-controls.txt"; return 2; }
+  for nc_f in tests/gate/inventory/removed-required/EXPECT tests/gate/fixture/fix-missing-field/EXPECT tests/gate/fixture/fix-missing-field/used.txt \
+    tests/gate/fixture/fix-unlisted/EXPECT tests/gate/fixture/fix-unlisted/used.txt tests/gate/wrong-literal/EXPECT tests/gate/timeout-budget/EXPECT \
+    tests/gate/cancel-spin/EXPECT tests/rights/synthetic.sh; do
+    if [ ! -f "$nc_f" ]; then
+      echo "HARNESS_NO_FILE $nc_f"
+      nc_rc=2
+    fi
+  done
+  [ "$nc_rc" -eq 0 ] || return 2
+  nc_checker_red removed-required INV_REQUIRED_MISSING sh "$here/inventory-check" --root tests/gate/inventory/removed-required
+  nc_checker_red missing-field FIX_MISSING_FIELD sh "$here/fixture-check" --root tests/gate/fixture/fix-missing-field --used tests/gate/fixture/fix-missing-field/used.txt
+  nc_checker_red unlisted-fixture FIX_UNLISTED sh "$here/fixture-check" --root tests/gate/fixture/fix-unlisted --used tests/gate/fixture/fix-unlisted/used.txt
+  nc_live wrong-literal OUTCOME_GUEST_FAILURE tests/gate/wrong-literal
+  nc_romlike
+  nc_live timeout-budget OUTCOME_TIMEOUT tests/gate/timeout-budget
+  nc_live cancelled-spin OUTCOME_CANCELLED tests/gate/cancel-spin TERM
+  if command -v pgrep > /dev/null 2>&1 && pgrep -f 'ds_runner --cases build/gate/control' > "$tmp/nc.pids" 2> /dev/null; then
+    echo "HARNESS_ERROR a runner of the live controls is still running (pid $(tr '\n' ' ' < "$tmp/nc.pids"))"
+    for nc_p in $(cat "$tmp/nc.pids"); do kill "$nc_p" 2> /dev/null || true; done
+    nc_rc=2
+  fi
+  return "$nc_rc"
+}
+
 # ---- self-test: prove the gate is alive (not vacuous). Mutates a COPY of scripts/ only ----
 
 # st_want NAME: true when no mutation was selected (run them all) or NAME is the selected one
@@ -1395,6 +1515,32 @@ selftest() {
     fi
   fi
 
+  # (u) the field-wise comparison of conformance-run control is what makes the wrong-literal control able to fail (T-02-36). A scratch copy of the
+  # wrong-literal mini-root has its EXPECT changed to the deliberately wrong pair  wrong_literal pass  (the live runner says guest_failure). The
+  # unmutated script must exit 1 on it; with the line tagged rule-field-match deleted from the copy of the script the same run must exit 0: the
+  # control can no longer fail, which is what the mutation proves the rule prevents. The copy runs against the real tree (CONFORMANCE_RUN_ROOT).
+  if st_want mutation-wrong-literal-compare; then
+    st_ran=1
+    rm -rf "$cp_dir" "$tmp/selftest/wl_wrong"
+    cp -R "$here" "$cp_dir"
+    cp -R tests/gate/wrong-literal "$tmp/selftest/wl_wrong"
+    printf 'wrong_literal pass\n' > "$tmp/selftest/wl_wrong/EXPECT"
+    if CONFORMANCE_RUN_ROOT="$root" sh "$cp_dir/conformance-run" control "$tmp/selftest/wl_wrong" > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 1 ] && grep -q '^CONTROL_PAIR_MISSING wrong_literal pass got:guest_failure$' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c 'rule-field-match' "$cp_dir/conformance-run" || true)
+    grep -v 'rule-field-match' "$cp_dir/conformance-run" > "$cp_dir/conformance-run.mutated" || true
+    mv "$cp_dir/conformance-run.mutated" "$cp_dir/conformance-run"
+    after=$(grep -c 'rule-field-match' "$cp_dir/conformance-run" || true)
+    if CONFORMANCE_RUN_ROOT="$root" sh "$cp_dir/conformance-run" control "$tmp/selftest/wl_wrong" > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    rm -rf "build/gate/control/wl_wrong"
+    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 0 ]; then
+      echo "SELFTEST mutation-wrong-literal-compare PASS"
+    else
+      echo "SELFTEST mutation-wrong-literal-compare FAIL"; failed=1
+    fi
+  fi
+
   # a selected NAME that matched no mutation is a usage error, never a vacuous pass
   if [ -n "$st_sel" ] && [ "$st_ran" -eq 0 ]; then usage; fi
   if [ "$failed" -eq 0 ]; then echo "SELFTEST RESULT PASS"; return 0; fi
@@ -1512,6 +1658,7 @@ run_stage determinism stage_determinism
 run_stage determinism-negatives stage_determinism_negatives
 run_stage fixtures stage_fixtures
 run_stage fixture-negatives stage_fixture_negatives
+run_stage named-controls stage_named_controls
 
 if [ -n "$only_stage" ]; then
   # one stage: its own CHECK line is the whole output; the exit status is that stage's verdict

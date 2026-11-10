@@ -63,7 +63,7 @@ set(DS_RUNNER_SOURCES
   tests/conformance/runner.c tests/conformance/profkinds.c tests/conformance/allockinds.c tests/conformance/mapkinds.c
   tests/conformance/refkinds.c tests/conformance/redkinds.c tests/conformance/powkinds.c tests/conformance/stepkinds.c
   tests/conformance/digkinds.c tests/conformance/reckinds.c tests/conformance/ilvkinds.c tests/conformance/fixlist.c
-  tests/conformance/synth.c)
+  tests/conformance/spinkinds.c tests/conformance/synth.c)
 add_executable(ds_runner ${DS_RUNNER_SOURCES} ${DS_SHIM_SOURCES})
 target_link_libraries(ds_runner PRIVATE ds_text ds_core)
 target_compile_definitions(ds_runner PRIVATE ${DS_SHIM_DEFINITION})
