@@ -1,0 +1,26 @@
+/* SPDX-License-Identifier: MIT OR Apache-2.0 */
+/* SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors */
+/*
+ * boot_order.def - the fixed precedence of ds_boot as data (D-46, D-66, D-79(b), D-84(a)).
+ * One X-macro row per check, in the order they run: DS_CHECK(name) names the static function check_NAME of boot.c, which returns
+ * DS_OK or a refusal number. The first check that does not return DS_OK decides the refusal. Order is behaviour: a later plan
+ * mutates this list (swaps two rows) and requires a red refusal row, and plan 12 inserts the power-on checks directly after
+ * the binding-resolution rows.
+ * Per D-82 the 1 MiB limit row runs before the supported-size row: any length above the limit is too_large, and size_unsupported
+ * is only for lengths within the limit that are a multiple of 8 KiB and not 256K, 384K or 1M. Until plan 08 the only supported
+ * size is 256 KiB.
+ */
+DS_CHECK(memory)
+DS_CHECK(request)
+DS_CHECK(profile)
+DS_CHECK(rev)
+DS_CHECK(bindings)
+DS_CHECK(mapper)
+DS_CHECK(byte_order)
+DS_CHECK(header)
+DS_CHECK(buffer_null)
+DS_CHECK(empty)
+DS_CHECK(cap)
+DS_CHECK(short)
+DS_CHECK(bank_multiple)
+DS_CHECK(supported_size)

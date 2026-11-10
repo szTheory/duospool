@@ -63,9 +63,37 @@ static int copy_value(char *dst, const char *src)
     return 1;
 }
 
+/* is v exactly one of the values of the '|'-separated set; an empty set allows nothing */
+static int in_allowed(const char *set, const char *v)
+{
+    while (*set != '\0') {
+        const char *start = set;
+        const char *p = v;
+        while (*start != '\0' && *start != '|' && *p == *start) {
+            start++;
+            p++;
+        }
+        if ((*start == '\0' || *start == '|') && *p == '\0') {
+            return 1;
+        }
+        while (*set != '\0' && *set != '|') {
+            set++;
+        }
+        if (*set == '|') {
+            set++;
+        }
+    }
+    return 0;
+}
+
 /*
- * Tracer resolve (plan 05 task 1): only the profile id is checked, and a bound value is copied onto its open field as given.
- * The typed refusals of D-49 (rev, closed field, allowed set, unbound field) arrive in task 3.
+ * Resolve profile id and rev against the bindings (D-49). The profile is registered by id and rev, so a resolved profile is by
+ * construction equal to the built-in r1. Then every field is looked at in table order and the first fault wins:
+ *   an owner-selected field that the request binds, whatever the value      bind_closed_field
+ *   an open field that the request leaves unbound (there is no default)     open_unbound
+ *   an open field bound to a value outside its allowed set                  bind_not_allowed
+ * A refusal names the field in field_index and writes nothing else; out is written only on success. A bound open field records
+ * the run request as its binder, which keeps it out of every support claim.
  */
 uint32_t ds_resolve(const char *id, uint32_t rev, const struct ds_bindings *bindings, struct ds_profile *out,
                     uint32_t *field_index)
@@ -73,19 +101,36 @@ uint32_t ds_resolve(const char *id, uint32_t rev, const struct ds_bindings *bind
     struct ds_profile work;
     uint32_t i;
 
-    (void)rev;
     if (field_index != NULL) {
         *field_index = DS_NO_FIELD;
     }
     if (id == NULL || !ds_streq(id, ds_profile_r1.id)) {
         return DS_REFUSE_profile_unknown;
     }
+    if (rev != ds_profile_r1.rev) {
+        return DS_REFUSE_rev_mismatch;
+    }
     work = ds_profile_r1;
     for (i = 0u; i < (uint32_t)DS_FIELD_COUNT; i++) {
-        if (work.field[i].status == DS_STATUS_OPEN && bindings != NULL && bindings->value[i] != NULL) {
-            if (copy_value(work.field[i].value, bindings->value[i])) {
-                work.field[i].bound_by = DS_BOUND_RUN_REQUEST;
+        const char *bound = bindings != NULL ? bindings->value[i] : NULL;
+        uint32_t refusal = DS_OK;
+
+        if (work.field[i].status == DS_STATUS_OWNER) {
+            if (bound != NULL) {
+                refusal = DS_REFUSE_bind_closed_field;
             }
+        } else if (bound == NULL) {
+            refusal = DS_REFUSE_open_unbound;
+        } else if (!in_allowed(ds_field_alloweds[i], bound) || !copy_value(work.field[i].value, bound)) {
+            refusal = DS_REFUSE_bind_not_allowed;
+        } else {
+            work.field[i].bound_by = DS_BOUND_RUN_REQUEST;
+        }
+        if (refusal != DS_OK) {
+            if (field_index != NULL) {
+                *field_index = i;
+            }
+            return refusal;
         }
     }
     if (out != NULL) {
