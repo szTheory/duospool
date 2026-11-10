@@ -1,0 +1,212 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# conformance-ingest - the RESULT-file judge (D-57, D-58, D-79(c)). It recomputes the gate verdict from the runner's RESULT
+# lines and never trusts a runner summary. Only the outcome pass is green: skip is red and zero tests is red.
+# usage: conformance-ingest --results FILE [--required FILE] [--inventory DIR] [--outcomes FILE] [--root DIR]
+#                           [--expect CODE[,CODE...]]
+#   --root DIR       tree holding tests/conformance/REQUIRED and tests/conformance/cases/ (default: the repository root)
+#   --required FILE  default ROOT/tests/conformance/REQUIRED: one id per line, # comments and blank lines ignored
+#   --inventory DIR  default ROOT/tests/conformance/cases: every <id>.toml names a listed id
+#   --outcomes FILE  default tests/conformance/outcomes.def of the repository this script lives in; the outcome names are
+#                    read from its DS_OUTCOME rows and are never repeated in this script
+# RESULT grammar (one line each, ASCII): RESULT ID OUTCOME assertions=N evidence=REF [machine_time=N] [stop=REASON], then the
+# last line RUNNER_DONE N. ID matches [a-z][a-z0-9_]*. REF is a relative path (no leading slash, no dot-dot segment) or
+# signal:INT / signal:TERM (the supervisor source form, D-77).
+# Counting rule: a line with an unknown token, a duplicate id or an unlisted id still counts as a present RESULT line for the
+# RUNNER_DONE arithmetic and for REQUIRED presence. An empty file reports ING_EMPTY and the REQUIRED cross-check, no ING_NO_DONE.
+# stdout: sorted violations  CODE<TAB>class=NAME<TAB>DETAIL , or the single line  STATUS conformance ok  on a clean run
+# stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
+# exit  : 0 clean (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error
+# Violation codes and their classes (D-79(c)) are the table in the awk program below: OUTCOME_<NAME> for every non-pass
+# outcome (class NAME), also OUTCOME_MISSING_ARTIFACT for a REQUIRED id without a line; ING_* codes are harness_failure class.
+set -eu
+LC_ALL=C; export LC_ALL
+here=$(cd "$(dirname "$0")" && pwd)
+
+usage() {
+  echo "usage: conformance-ingest --results FILE [--required FILE] [--inventory DIR] [--outcomes FILE] [--root DIR] [--expect CODE[,CODE...]]" >&2
+  exit 2
+}
+
+expect=""
+have_expect=0
+root=$(cd "$here/.." && pwd)
+results=""
+required=""
+inventory=""
+outcomes=""
+while [ $# -gt 0 ]; do
+  case $1 in
+    --expect) [ $# -ge 2 ] || usage; expect=$2; have_expect=1; shift 2 ;;
+    --root) [ $# -ge 2 ] || usage; root=$2; shift 2 ;;
+    --results) [ $# -ge 2 ] || usage; results=$2; shift 2 ;;
+    --required) [ $# -ge 2 ] || usage; required=$2; shift 2 ;;
+    --inventory) [ $# -ge 2 ] || usage; inventory=$2; shift 2 ;;
+    --outcomes) [ $# -ge 2 ] || usage; outcomes=$2; shift 2 ;;
+    *) usage ;;
+  esac
+done
+# an --expect that names no code would make a control assert nothing: with no violations got and want are both empty and the
+# control would pass vacuously (WR-05). Exit 2, never 0.
+if [ "$have_expect" -eq 1 ] && [ -z "$(printf '%s' "$expect" | tr -d ', \t\r\n')" ]; then
+  echo "HARNESS_EMPTY_EXPECT --expect names no code" >&2
+  exit 2
+fi
+[ -n "$results" ] || usage
+if [ ! -d "$root" ]; then
+  echo "HARNESS_NO_FILE $root" >&2
+  exit 2
+fi
+root=$(cd "$root" && pwd)
+[ -n "$required" ] || required="$root/tests/conformance/REQUIRED"
+[ -n "$inventory" ] || inventory="$root/tests/conformance/cases"
+[ -n "$outcomes" ] || outcomes="$here/../tests/conformance/outcomes.def"
+for f in "$results" "$required" "$outcomes"; do
+  if [ ! -f "$f" ]; then
+    echo "HARNESS_NO_FILE $f" >&2
+    exit 2
+  fi
+done
+if [ ! -d "$inventory" ]; then
+  echo "HARNESS_NO_FILE $inventory" >&2
+  exit 2
+fi
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+viol0="$tmp/viol0"
+viol="$tmp/viol"
+
+# the closed outcome set: the names come from the DS_OUTCOME rows of outcomes.def. A malformed or duplicated row, or an
+# empty file, is a harness error: guessing the set could turn an unknown token into a pass.
+awk '/^DS_OUTCOME\([a-z][a-z0-9_]*\)[ \t]*$/ { s = $0; sub(/^DS_OUTCOME\(/, "", s); sub(/\).*$/, "", s); print s }' "$outcomes" > "$tmp/outcomes"
+nrows=$(grep -c 'DS_OUTCOME' "$outcomes" || true)
+nok=$(wc -l < "$tmp/outcomes" | tr -d ' ')
+ndup=$(sort "$tmp/outcomes" | uniq -d | wc -l | tr -d ' ')
+if [ "$nok" -eq 0 ] || [ "$nok" -ne "$nrows" ] || [ "$ndup" -ne 0 ]; then
+  echo "HARNESS_BAD_OUTCOMES $outcomes" >&2
+  exit 2
+fi
+
+# a TAB or a newline in an inventory file name could forge an id line, so such a name is refused outright
+tab=$(printf '\t')
+nl=$(printf '\n.'); nl=${nl%.}
+bad_name() {
+  case $1 in
+    *"$tab"* | *"$nl"*) return 0 ;;
+  esac
+  return 1
+}
+: > "$tmp/inv"
+for f in "$inventory"/*.toml; do
+  [ -e "$f" ] || continue
+  if bad_name "$f"; then
+    echo "HARNESS_BAD_FILENAME in $inventory" >&2
+    exit 2
+  fi
+  basename "$f" .toml >> "$tmp/inv"
+done
+
+# REQUIRED: the first word of every line that is not blank and not a comment. An id outside the id grammar is kept as it is:
+# no RESULT line can carry it, so it is reported as missing and never skipped silently.
+awk '/^[ \t]*(#.*)?$/ { next } { print $1 }' "$required" > "$tmp/req"
+
+outf="$tmp/outcomes" invf="$tmp/inv" reqf="$tmp/req" awk '
+function clean(s) { gsub(/[^ -~]/, "?", s); return s }
+function viol(code, detail) {
+  if (!(code in cls)) { print "HARNESS_NO_CLASS " code; bad = 1; return }
+  printf "%s\tclass=%s\t%s\n", code, cls[code], detail
+}
+# evidence reference: signal:INT, signal:TERM, or a relative path of [A-Za-z0-9._/-] without an empty or dot-dot segment
+function refok(r) {
+  if (r == "signal:INT" || r == "signal:TERM") return 1
+  if (r !~ "^[A-Za-z0-9._/-]+$") return 0
+  if (("/" r "/") ~ "//") return 0
+  if (("/" r "/") ~ "/[.][.]/") return 0
+  return 1
+}
+BEGIN {
+  bad = 0
+  while ((getline s < ENVIRON["outf"]) > 0) { oc[s] = 1; cls["OUTCOME_" toupper(s)] = s }
+  close(ENVIRON["outf"])
+  # the one code-to-class table (D-79(c)): OUTCOME_ codes above carry the outcome name as their class, the structural
+  # ING_ codes below are all harness_failure class. The three names used here must exist in outcomes.def.
+  hf = "harness_failure"
+  n = split("ING_EMPTY ING_NO_DONE ING_DONE_COUNT ING_BAD_LINE ING_UNKNOWN_TOKEN ING_DUPLICATE_ID ING_UNLISTED_ID ING_ASSERTIONS_ZERO ING_NO_EVIDENCE ING_REQUIRED_EMPTY", hc, " ")
+  for (i = 1; i <= n; i++) cls[hc[i]] = hf
+  if (!(hf in oc) || !("pass" in oc) || !("missing_artifact" in oc)) { print "HARNESS_BAD_OUTCOMES semantic names absent"; bad = 1 }
+  while ((getline s < ENVIRON["invf"]) > 0) inv[s] = 1
+  close(ENVIRON["invf"])
+  nreq = 0
+  while ((getline s < ENVIRON["reqf"]) > 0) req[++nreq] = s
+  close(ENVIRON["reqf"])
+  nlines = 0; nres = 0; ndone = 0; doneval = 0
+}
+{
+  nlines++
+  line = $0
+  isres = (line ~ /^RESULT /)
+  if (isres) nres++
+  if (ndone > 0) viol("ING_BAD_LINE", "line " NR ": after RUNNER_DONE")
+  if (line ~ /[^ -~]/) { viol("ING_BAD_LINE", "line " NR ": byte outside printable ASCII"); next }
+  if (line ~ /^RUNNER_DONE /) {
+    if (line ~ /^RUNNER_DONE [0-9]+$/) { ndone++; doneval = substr(line, 13) + 0 }
+    else viol("ING_BAD_LINE", "line " NR ": malformed RUNNER_DONE")
+    next
+  }
+  if (!isres) { viol("ING_BAD_LINE", "line " NR ": not a RESULT or RUNNER_DONE line"); next }
+  nf = split(line, f, "[ ]")
+  id = f[2]; tok = f[3]
+  if (nf < 4 || id !~ /^[a-z][a-z0-9_]*$/ || f[4] !~ /^assertions=[0-9]+$/) { viol("ING_BAD_LINE", "line " NR ": malformed RESULT line"); next }
+  asr = substr(f[4], 12) + 0
+  k = 5
+  hasev = 0; ev = ""
+  if (k <= nf && f[k] ~ /^evidence=/) { hasev = 1; ev = substr(f[k], 10); k++ }
+  if (k <= nf && f[k] ~ /^machine_time=[0-9]+$/) k++
+  if (k <= nf && f[k] ~ /^stop=[a-z][a-z0-9_:-]*$/) k++
+  if (k <= nf) { viol("ING_BAD_LINE", "line " NR ": unexpected field after the known ones"); next }
+  if (hasev && ev != "" && !refok(ev)) { viol("ING_BAD_LINE", "line " NR ": evidence is not a relative path or signal source"); next }
+  seen_n[id]++
+  seen[id] = 1
+  if (!hasev || ev == "") viol("ING_NO_EVIDENCE", "id " id)
+  if (!(tok in oc)) viol("ING_UNKNOWN_TOKEN", "id " id " token " tok)
+  if (tok in oc && tok != "pass") viol("OUTCOME_" toupper(tok), "id " id) # rule-non-pass
+  if (tok == "pass" && asr == 0) viol("ING_ASSERTIONS_ZERO", "id " id)
+  if (seen_n[id] > 1) viol("ING_DUPLICATE_ID", "id " id)
+  if (!(id in inv)) viol("ING_UNLISTED_ID", "id " id)
+}
+END {
+  if (nres == 0) viol("ING_EMPTY", (nlines == 0) ? "empty results" : "no RESULT lines")
+  if (nlines > 0) {
+    if (ndone == 0) viol("ING_NO_DONE", "no RUNNER_DONE line")
+    else if (ndone > 1 || doneval != nres) viol("ING_DONE_COUNT", "RUNNER_DONE " doneval " against " nres " RESULT lines")
+  }
+  if (nreq == 0) viol("ING_REQUIRED_EMPTY", "no requirement lines")
+  for (i = 1; i <= nreq; i++) {
+    if (!(req[i] in seen)) viol("OUTCOME_MISSING_ARTIFACT", "required " clean(req[i]) " has no RESULT line")
+  }
+  exit (bad ? 2 : 0)
+}' "$results" > "$viol0" || { cat "$viol0" >&2; echo "HARNESS_AWK_FAILED" >&2; exit 2; }
+
+sort -u "$viol0" > "$viol"
+
+if [ "$have_expect" -eq 1 ]; then
+  got=$(awk -F'\t' '{ print $1 }' "$viol" | sort -u | tr '\n' ',' | sed 's/,$//')
+  want=$(printf '%s\n' "$expect" | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/,$//')
+  if [ "$got" = "$want" ]; then
+    echo "EXPECT_OK"
+    exit 0
+  fi
+  echo "EXPECT_MISMATCH wanted '$want' got '${got:-<none>}'" >&2
+  cat "$viol" >&2
+  exit 1
+fi
+
+if [ -s "$viol" ]; then
+  cat "$viol"
+  exit 1
+fi
+echo "STATUS conformance ok"
+exit 0

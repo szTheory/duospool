@@ -1,0 +1,15 @@
+/* SPDX-License-Identifier: MIT OR Apache-2.0 */
+/* SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors */
+/*
+ * outcomes.def - the closed set of conformance outcomes (D-57), defined once.
+ * One X-macro row per outcome, lower snake case, one per line. C code includes this file for its enum and name table;
+ * sh and awk checkers extract the same names by reading these rows, so no consumer keeps its own copy.
+ * Only the first row is green. Any other outcome, an unknown token or a missing token makes the gate red.
+ */
+DS_OUTCOME(pass)
+DS_OUTCOME(guest_failure)
+DS_OUTCOME(timeout)
+DS_OUTCOME(harness_failure)
+DS_OUTCOME(skip)
+DS_OUTCOME(cancelled)
+DS_OUTCOME(missing_artifact)

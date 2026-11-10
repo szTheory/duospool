@@ -1,0 +1,3 @@
+RESULT alpha pass assertions=3 evidence=out/alpha.txt
+RESULT beta pass assertions=1 evidence=out/beta.txt machine_time=120 stop=program_end
+RUNNER_DONE 2
