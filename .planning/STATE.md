@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 2
 current_phase_name: Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate
 status: executing
-stopped_at: Completed 02-12-PLAN.md
-last_updated: "2026-11-10T06:23:05.590Z"
+stopped_at: Completed 02-13-PLAN.md
+last_updated: "2026-11-10T06:35:54.633Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 2 execution started
-state_head: b6630127f7e968b90223daa79033d4fb60f28cbf
+state_head: 3292bde620a2e8ce238cb0662ad695da9ab56073
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 34
-  completed_plans: 24
+  completed_plans: 25
   percent: 17
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 2 (Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate) — EXECUTING
-Plan: 13 of 22
+Plan: 14 of 22
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 2 execution started
 
@@ -80,6 +80,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 02 P10 | 13 min | 3 tasks | 50 files |
 | Phase 02 P11 | 18 min | 6 tasks | 62 files |
 | Phase 02 P12 | 25 min | 2 tasks | 26 files |
+| Phase 02 P13 | 14 min | 2 tasks | 21 files |
 
 ## Accumulated Context
 
@@ -138,6 +139,7 @@ Recent decisions affecting current work:
 - [Phase 02]: 02-12: seed is a u64 plus a has_seed flag; seed 0 is a valid seed, distinct from no seed
 - [Phase 02]: 02-12: ds_advance and ds_run use their own status enums so the refusal enum stays the 22 boot-time reasons
 - [Phase 02]: 02-12: ds_run checks stop before the first step and after every step; machine time never passes start plus budget
+- [Phase 02]: 02-13: digest stream = prefix duospool-state+NUL, version 1, eight tagged regions (PROF CONT POWR TIME RAM8 MPRS PSGN VDCP), little-endian, ROM excluded (content id stands for it); profile hash strings are u32 length plus bytes bounded by the array; digest_region flips first and last live byte per region; nonmutation_digest aims refuse rows at live instance memory
 
 ### Pending Todos
 
@@ -161,6 +163,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-10T06:23:05.488Z
-Stopped at: Completed 02-12-PLAN.md
+Last session: 2026-11-10T06:35:54.565Z
+Stopped at: Completed 02-13-PLAN.md
 Resume file: None
