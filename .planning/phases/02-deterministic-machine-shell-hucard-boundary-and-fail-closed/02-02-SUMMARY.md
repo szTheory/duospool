@@ -200,6 +200,6 @@ Plan 02-03 can feed real runner stdout to `sh scripts/conformance-ingest --resul
 
 ## Self-Check: PASSED
 
-- FOUND: `/Users/jon/projects/duospool/tests/conformance/outcomes.def`, `/Users/jon/projects/duospool/scripts/conformance-ingest`, `/Users/jon/projects/duospool/scripts/conformance-flatten`, `/Users/jon/projects/duospool/tests/gate/ingest` (18 directories), `/Users/jon/projects/duospool/tests/gate/flatten` (6 directories)
+- FOUND: `tests/conformance/outcomes.def`, `scripts/conformance-ingest`, `scripts/conformance-flatten`, `tests/gate/ingest` (18 directories), `tests/gate/flatten` (6 directories)
 - FOUND commits (ancestors of HEAD): 748ae6f, 03f97ea, de72eda
 - `git rev-list --count d33de3b6087560cee188f4d944559677d0302d35..de72eda4b0597e9fd253324a04292036c94ff3eb` = 3

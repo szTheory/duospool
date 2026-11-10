@@ -178,6 +178,6 @@ Plan 02-02 can add a control family with one `run_controls` line, verify a singl
 
 ## Self-Check: PASSED
 
-- FOUND: `/Users/jon/projects/duospool/tests/check/equiv.sh`, `/Users/jon/projects/duospool/scripts/check`
+- FOUND: `tests/check/equiv.sh`, `scripts/check`
 - FOUND commits (ancestors of HEAD): 892c408, 4fe4145, bb72264
 - `git rev-list --count 25c3999dc43d82371d857939b3d5501bcabee086..bb722648714182099961c3c5d05e95cb71182969` = 3
