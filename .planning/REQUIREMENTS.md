@@ -78,7 +78,7 @@ E4 = differential vs another emulator (finds disagreements, decides nothing).
 ### Fixtures & Verification
 
 - [ ] **FIX-01**: Diagnostic fixtures are original, authored HuC6280 assembly sources with project-owned startup code. Their recorded build recipe uses an external, license-checked assembler, with a cross-assembler byte-identity check where practical.
-- [ ] **FIX-02**: Every fixture has a manifest entry (source, build recipe, toolchain version, byte hash, license, notices, redistribution terms, test meaning, expected verdict source). A manifest check fails closed on any missing field or unlisted fixture.
+- [x] **FIX-02**: Every fixture has a manifest entry (source, build recipe, toolchain version, byte hash, license, notices, redistribution terms, test meaning, expected verdict source). A manifest check fails closed on any missing field or unlisted fixture.
 - [ ] **FIX-03**: Fixture verdicts come from documented behavior or an independent verdict computed in the guest, never from DuoSpool's own recorded output.
 - [ ] **FIX-04**: The required-test inventory fails closed: a missing, skipped, or evidence-free required check fails the gate, calibrated by a named negative control that is shown to fail.
 - [ ] **FIX-05**: No commercial ROMs, firmware/system cards, disc images, or private saves are committed, used in CI, or written to CI logs/artifacts, enforced by a repository check.
@@ -192,7 +192,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | RUN-01 | Phase 6 | Pending |
 | RUN-02 | Phase 2 | Pending |
 | FIX-01 | Phase 3 | Pending |
-| FIX-02 | Phase 2 | Pending |
+| FIX-02 | Phase 2 | Complete |
 | FIX-03 | Phase 3 | Pending |
 | FIX-04 | Phase 2 | Pending |
 | FIX-05 | Phase 2 | Pending |
