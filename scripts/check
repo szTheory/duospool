@@ -513,6 +513,13 @@ stage_flatten_controls() {
   return "$fc_rc"
 }
 
+# every tests/gate/outcome-sync/<case>/ is a mini-root holding tests/conformance/outcomes.def: a case with an EXPECT file must
+# fail on exactly that code set and ok-<case> must pass. Mini-roots only (D-85): the real-repository assertion with the runner's
+# compiled names needs the build and is a later stage that runs after it.
+stage_outcome_controls() {
+  run_controls --ok-prefix --require-negative --need HARNESS_NO_FILE @DIR@tests/conformance/outcomes.def tests/gate/outcome-sync tests/gate/outcome-sync sh "$here/outcome-sync" --root @DIR@ @EXPECT@
+}
+
 # cancel_reap PIDFILE: the stub records its pid; kill it when it is still the sleeping stub (the process the supervisor was
 # meant to kill), so that no run of the controls, mutated or not, leaves a spinning process behind. The command line is
 # checked first so that a recycled pid is never signalled.
@@ -767,6 +774,31 @@ selftest() {
     fi
   fi
 
+  # (j) outcome-sync must be red on an extra row, and only because of the rule that counts rows. A scratch copy of scripts/ is
+  # run on the extra-row control with --expect OUTSYNC_ROWS: unmutated that expectation is met (exit 0); with every line that
+  # emits OUTSYNC_ROWS deleted the check reports nothing on the same control, so the expectation is no longer met (exit 1), which
+  # is the extra-row control flipping to broken in the outcome-controls stage. The code name is the marker here, as in (d).
+  if st_want mutation-outcome-sync; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    er="tests/gate/outcome-sync/extra-row"
+    if sh "$cp_dir/outcome-sync" --root "$er" --expect OUTSYNC_ROWS > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+    tok=OUTSYNC_ROWS
+    before=$(grep -c "$tok" "$cp_dir/outcome-sync" || true)
+    grep -v "$tok" "$cp_dir/outcome-sync" > "$cp_dir/outcome-sync.mutated" || true
+    mv "$cp_dir/outcome-sync.mutated" "$cp_dir/outcome-sync"
+    after=$(grep -c "$tok" "$cp_dir/outcome-sync" || true)
+    if sh "$cp_dir/outcome-sync" --root "$er" --expect OUTSYNC_ROWS > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -ge 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ] && grep -q "^EXPECT_MISMATCH wanted 'OUTSYNC_ROWS' got '<none>'" "$tmp/st.out"; then
+      echo "SELFTEST mutation-outcome-sync PASS"
+    else
+      echo "SELFTEST mutation-outcome-sync FAIL"; failed=1
+    fi
+  fi
+
   # a selected NAME that matched no mutation is a usage error, never a vacuous pass
   if [ -n "$st_sel" ] && [ "$st_ran" -eq 0 ]; then usage; fi
   if [ "$failed" -eq 0 ]; then echo "SELFTEST RESULT PASS"; return 0; fi
@@ -865,6 +897,7 @@ run_stage results-negatives stage_results_negatives
 run_stage ingest-controls stage_ingest_controls
 run_stage flatten-controls stage_flatten_controls
 run_stage cancel-controls stage_cancel_controls
+run_stage outcome-controls stage_outcome_controls
 
 if [ -n "$only_stage" ]; then
   # one stage: its own CHECK line is the whole output; the exit status is that stage's verdict
