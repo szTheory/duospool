@@ -12,7 +12,11 @@
 # A key is [A-Za-z_][A-Za-z0-9_.-]* and may not repeat inside one mapping. A list item sits two spaces under its key.
 # Output records, one per line:  V TAB CODE TAB LINE TAB DETAIL   and a single last  E TAB LINES  (a run that prints no E line is dead).
 # Codes owned here: WF_NO_PERMISSIONS WF_EXCESS_PERMISSION WF_UNPINNED_ACTION WF_UNEXPECTED_ACTION WF_FORBIDDEN_TRIGGER
-#   WF_MISSING_FETCH_DEPTH WF_PERSIST_CREDENTIALS WF_SHELL WF_RUNNER WF_NO_GATE_STEP WF_UNPARSABLE.
+#   WF_MISSING_FETCH_DEPTH WF_PERSIST_CREDENTIALS WF_SHELL WF_RUNNER WF_NO_GATE_STEP WF_EXPR_IN_RUN WF_UNTRUSTED_EXPR WF_UNPARSABLE.
+# The expression rules read every ${{ }} on every line that is not a YAML comment (the content of a run block included, a shell comment
+# in it too: the runner expands it before the shell sees the text). An expression inside a run value or run block is WF_EXPR_IN_RUN;
+# an expression anywhere that is not on the allowlist is WF_UNTRUSTED_EXPR (D-62, T-02-38). Allowed: github.event.pull_request.base.sha,
+# github.event_name, github.workflow, github.ref, github.sha, and one of those compared with == to a quoted lowercase word.
 # Every rule is one self-contained statement ending in a tag comment (rule-NAME), so a selftest can delete the line and show the
 # control that depends on it flip. Awk dialect: no regex intervals, no gensub, no length of an array (BWK, mawk and gawk all read it).
 
@@ -38,6 +42,30 @@ function clear_from(k,   j) {
   for (j = k; j <= maxind; j += 2) {
     delete par[j]
     delete dsh[j]
+  }
+}
+
+# expr_ok: an expression body this checker allows: an allowlisted context, or one compared with == to a quoted lowercase word
+function expr_ok(e,   n) {
+  if (e in allow) return 1
+  n = index(e, " == ")
+  if (n == 0) return 0
+  return ((substr(e, 1, n - 1) in allow) && substr(e, n + 4) ~ /^'[a-z_]+'$/)
+}
+
+# scan_exprs: every ${{ }} on one line. inrun is 1 when the line is a run value or the content of a run block.
+function scan_exprs(s, ln, inrun,   p, q, e) {
+  while ((p = index(s, "${{")) > 0) {
+    if (inrun) viol("WF_EXPR_IN_RUN", ln, "an expression inside a run block (pass it through env instead)")  # rule-expr-in-run
+    s = substr(s, p + 3)
+    q = index(s, "}}")
+    if (q == 0) {
+      viol("WF_UNTRUSTED_EXPR", ln, "expression not closed on its line")  # rule-untrusted-open
+      return
+    }
+    e = trim(substr(s, 1, q - 1))
+    s = substr(s, q + 2)
+    if (!expr_ok(e)) viol("WF_UNTRUSTED_EXPR", ln, "expression is not on the allowlist: " e)  # rule-untrusted
   }
 }
 
@@ -80,6 +108,11 @@ BEGIN {
   maxind = 0
   nsc = 0
   cid[0] = 0
+  allow["github.event.pull_request.base.sha"] = 1
+  allow["github.event_name"] = 1
+  allow["github.workflow"] = 1
+  allow["github.ref"] = 1
+  allow["github.sha"] = 1
 }
 
 {
@@ -93,7 +126,10 @@ BEGIN {
   text = substr(line, ind + 1)
   # the content of a block scalar is not read as structure
   if (bs) {
-    if (ind > bsk) next
+    if (ind > bsk) {
+      scan_exprs(text, ln, bskey == "run")
+      next
+    }
     bs = 0
   }
   if (substr(text, 1, 1) == "\t") bad(ln, "tab in indentation")
@@ -149,7 +185,11 @@ BEGIN {
     if (!haskey) bad(ln, "block scalar as a list item")
     bs = 1
     bsk = ki
+    bskey = key
   } else check_scalar(val, ln)
+
+  # expressions on this line (a run value on one line is a run block for the expression rules)
+  scan_exprs(text, ln, haskey && key == "run" && !kopen && !bs)
 
   # leaving a permissions block or the steps list
   if (inperm && ind <= pind) inperm = 0
