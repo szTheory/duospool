@@ -933,6 +933,53 @@ selftest() {
     fi
   fi
 
+  # (l) a toy control rule whose anchor stops matching exactly once must be a harness error, never a control that mutated
+  # nothing (D-85). For every tests/controls/NAME/RULE: a scratch root holds a copy of the live source the rule names. First the
+  # rule is run on the untouched copy and must succeed (so the later exit 2 cannot come from a missing file or a bad rule). Then
+  # the first character of the anchor is changed in the scratch copy only, and control-mutate must exit 2 with
+  # CONTROL_ANCHOR_COUNT TAG n=0; then the line holding the anchor is duplicated and it must exit 2 with n=2. The live source is
+  # never written. One line per rule: SELFTEST mutation-control-anchor NAME PASS|FAIL. No rule at all is a failure.
+  if st_want mutation-control-anchor; then
+    st_ran=1
+    ca_n=0
+    for ca_rule in tests/controls/*/RULE; do
+      [ -f "$ca_rule" ] || continue
+      ca_n=$((ca_n + 1))
+      ca_name=$(basename "$(dirname "$ca_rule")")
+      ca_root="$tmp/selftest/ctl-root"
+      ca_file=$(sed -n 's/^file=//p' "$ca_rule")
+      ca_anchor=$(sed -n 's/^anchor=//p' "$ca_rule")
+      ca_tag=$(sed -n 's/^tag=//p' "$ca_rule")
+      ca_ok=1
+      rm -rf "$ca_root"
+      mkdir -p "$ca_root/$(dirname "$ca_file")"
+      cp "$ca_file" "$ca_root/$ca_file"
+      if sh "$here/control-mutate" "$ca_rule" "$ca_root/out.c" --root "$ca_root" > "$tmp/st.out" 2>&1; then :; else ca_ok=0; fi
+      # break the anchor: its first character becomes @ (or ~ when it is @), on its one occurrence, in the scratch copy
+      CA_ANCHOR=$ca_anchor awk '
+        BEGIN { a = ENVIRON["CA_ANCHOR"]; c = substr(a, 1, 1); b = (c == "@" ? "~" : "@") substr(a, 2); done = 0 }
+        { if (!done && (i = index($0, a)) > 0) { $0 = substr($0, 1, i - 1) b substr($0, i + length(a)); done = 1 } print }
+      ' "$ca_file" > "$ca_root/$ca_file"
+      if sh "$here/control-mutate" "$ca_rule" "$ca_root/out.c" --root "$ca_root" > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+      if [ "$r" -ne 2 ] || ! grep -qx "CONTROL_ANCHOR_COUNT $ca_tag n=0" "$tmp/st.out"; then ca_ok=0; fi
+      # duplicate the line that holds the anchor
+      CA_ANCHOR=$ca_anchor awk '
+        BEGIN { a = ENVIRON["CA_ANCHOR"]; done = 0 }
+        { print; if (!done && index($0, a) > 0) { print; done = 1 } }
+      ' "$ca_file" > "$ca_root/$ca_file"
+      if sh "$here/control-mutate" "$ca_rule" "$ca_root/out.c" --root "$ca_root" > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+      if [ "$r" -ne 2 ] || ! grep -qx "CONTROL_ANCHOR_COUNT $ca_tag n=2" "$tmp/st.out"; then ca_ok=0; fi
+      if [ "$ca_ok" -eq 1 ]; then
+        echo "SELFTEST mutation-control-anchor $ca_name PASS"
+      else
+        echo "SELFTEST mutation-control-anchor $ca_name FAIL"; failed=1
+      fi
+    done
+    if [ "$ca_n" -eq 0 ]; then
+      echo "SELFTEST mutation-control-anchor FAIL (no rule under tests/controls)"; failed=1
+    fi
+  fi
+
   # a selected NAME that matched no mutation is a usage error, never a vacuous pass
   if [ -n "$st_sel" ] && [ "$st_ran" -eq 0 ]; then usage; fi
   if [ "$failed" -eq 0 ]; then echo "SELFTEST RESULT PASS"; return 0; fi

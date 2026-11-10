@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Toy control (D-85): a library whose 384K mirror is wrong, made from the live src/core/mapper.c by scripts/control-mutate. The
+# anchor is the one live line of the 384K rule (file bank = b and 0x1F below 0x40, else 0x20 plus (b and 0x0F)); the replacement
+# makes it b and 0x3F. The case in EXPECT must come out guest_failure on the toy, or the mirror case proves nothing.
+tag=rule-wrong-mirror-384k
+file=src/core/mapper.c
+anchor=return b < 0x40 ? (b & 0x1F) : (0x20 + (b & 0x0F));
+replace=return b & 0x3F;

@@ -36,3 +36,37 @@ target_compile_definitions(ds_text PRIVATE "DS_BUILD_ID=\"${DS_BUILD_ID}\"")
 
 add_executable(ds_runner tests/conformance/runner.c tests/conformance/profkinds.c tests/conformance/synth.c)
 target_link_libraries(ds_runner PRIVATE ds_text ds_core)
+
+# Toy control libraries (D-85, D-55): one runner per tests/controls/NAME/RULE, each built from the ds_core sources with the one file
+# named by the rule's file= line replaced by a generated variant of the live file. scripts/control-mutate writes that variant to
+# ${CMAKE_BINARY_DIR}/controls/NAME/ before the build, so the source is marked GENERATED and need not exist at configure time. A
+# toy is its own executable target (ds_toy_NAME), excluded from the default build, and never touches ds_core: it compiles the core
+# sources again into its own objects. The headers still resolve through the private include directories of the toy.
+file(GLOB DS_CONTROL_RULES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tests/controls/*/RULE)
+foreach(rule IN LISTS DS_CONTROL_RULES)
+  get_filename_component(rule_dir "${rule}" DIRECTORY)
+  get_filename_component(name "${rule_dir}" NAME)
+  # an edit of a rule (the file= line may change) reconfigures; the glob alone only sees a rule added or removed
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${rule}")
+  file(STRINGS "${rule}" rule_file_lines REGEX "^file=")
+  list(LENGTH rule_file_lines rule_file_count)
+  if(NOT rule_file_count EQUAL 1)
+    message(FATAL_ERROR "tests/controls/${name}/RULE must have exactly one file= line, found ${rule_file_count}")
+  endif()
+  string(REGEX REPLACE "^file=" "" rule_file "${rule_file_lines}")
+  set(live_source "${CMAKE_CURRENT_SOURCE_DIR}/${rule_file}")
+  if(NOT live_source IN_LIST DS_CORE_SOURCES)
+    message(FATAL_ERROR "tests/controls/${name}/RULE names ${rule_file}, which is not a source of ds_core")
+  endif()
+  get_filename_component(rule_base "${rule_file}" NAME)
+  set(toy_source "${CMAKE_BINARY_DIR}/controls/${name}/${rule_base}")
+  set_source_files_properties("${toy_source}" PROPERTIES GENERATED TRUE)
+  set(toy_core_sources ${DS_CORE_SOURCES})
+  list(REMOVE_ITEM toy_core_sources "${live_source}")
+  add_executable(ds_toy_${name} EXCLUDE_FROM_ALL
+    tests/conformance/runner.c tests/conformance/profkinds.c tests/conformance/synth.c
+    ${DS_TEXT_SOURCES} ${toy_core_sources} "${toy_source}")
+  target_include_directories(ds_toy_${name} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core ${CMAKE_CURRENT_SOURCE_DIR}/src/text)
+  target_compile_definitions(ds_toy_${name} PRIVATE "DS_BUILD_ID=\"${DS_BUILD_ID}\"")
+endforeach()

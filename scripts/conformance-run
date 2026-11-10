@@ -15,7 +15,9 @@
 #   and build the preset incrementally (so a stale binary is never judged), run ds_runner under the supervise mode below with
 #   its stdout in results.txt, judge results.txt with conformance-ingest against tests/conformance/REQUIRED and the case
 #   inventory, run the hash sweep (hash_sweep below: the core SHA-256 against the host sha tool for every length of the runner's
-#   --sweep-lengths, HASH_SWEEP_MISMATCH on a difference), and print the RESULT lines then  STATUS conformance ok n=COUNT .
+#   --sweep-lengths, HASH_SWEEP_MISMATCH on a difference), run the toy controls (controls_mode below: every tests/controls/NAME
+#   is a deliberately wrong core, generated from the live source by scripts/control-mutate, that the named cases must show red;
+#   CONTROL NAME RED_OK, or CONTROL NAME NOT_RED and status 1), and print the RESULT lines then  STATUS conformance ok n=COUNT .
 #   Violations are printed instead of the STATUS line.
 #   exit 0 judged green | 1 judged red, a malformed case file or a failed build | 2 harness error (also wall expiry)
 # supervise mode:
@@ -132,9 +134,116 @@ run_mode() {
     exit 1
   fi
   hash_sweep "$bd/ds_runner"
+  controls_mode "$preset" "$bd"
   n=$(grep -c '^RESULT ' "$bd/results.txt" || true)
   echo "STATUS conformance ok n=$n"
   exit 0
+}
+
+# controls_mode PRESET BD (D-85, D-55): the liveness controls of the matrix, run after it. Every tests/controls/NAME/ holds a RULE
+# and an EXPECT. For each one: scripts/control-mutate makes the toy source from the LIVE file named by the rule (an anchor count
+# other than one is a harness error, exit 2), the toy target ds_toy_NAME is built from it (a toy that does not compile is a harness
+# error, never red), the toy runner runs the same cases TSV, oracle and profile inputs as the real one, and every case id of EXPECT
+# must have a RESULT line whose id and outcome FIELDS are that id and guest_failure (awk field match, never a whole-line match) and
+# the toy's RUNNER_DONE must be present. Printed: CONTROL NAME RED_OK, or CONTROL NAME NOT_RED (the stage then ends with status 1,
+# after every control has run). The toy runner prints only RESULT and RUNNER_DONE lines; these lines are this script's (D-80).
+# A missing or empty EXPECT, an id that no case carries, or no control at all is a harness error or a dead gate, never a pass.
+# The lines also go to BD/controls.txt.
+controls_mode() {
+  cm_preset=$1
+  cm_bd=$2
+  cm_red=0
+  cm_n=0
+  rm -rf "$cm_bd/controls" "$cm_bd/controls.txt"
+  mkdir -p "$cm_bd/controls" || { echo "HARNESS_ERROR cannot create $cm_bd/controls" >&2; exit 2; }
+  : > "$cm_bd/controls.txt"
+  # first the inputs of every control, so that a bad one is reported before any build starts
+  for cm_dir in tests/controls/*/; do
+    [ -d "$cm_dir" ] || continue
+    cm_name=$(basename "$cm_dir")
+    cm_n=$((cm_n + 1))
+    case $cm_name in
+      '' | *[!A-Za-z0-9_-]*) echo "HARNESS_ERROR the control directory name '$cm_name' is outside A-Z a-z 0-9 _ -" >&2; exit 2 ;;
+    esac
+    if [ ! -f "${cm_dir}RULE" ]; then
+      echo "HARNESS_NO_RULE $cm_name" >&2
+      exit 2
+    fi
+    if [ ! -f "${cm_dir}EXPECT" ]; then
+      echo "HARNESS_NO_EXPECT $cm_name" >&2
+      exit 2
+    fi
+    awk '/^[ \t]*(#.*)?$/ { next } { print $1 }' "${cm_dir}EXPECT" > "$cm_bd/controls/$cm_name.ids"
+    if [ ! -s "$cm_bd/controls/$cm_name.ids" ]; then
+      echo "HARNESS_EMPTY_EXPECT $cm_name" >&2
+      exit 2
+    fi
+    while IFS= read -r cm_id; do
+      case $cm_id in
+        '' | *[!A-Za-z0-9_]*) echo "HARNESS_ERROR $cm_name: EXPECT id '$cm_id' is outside A-Z a-z 0-9 _" >&2; exit 2 ;;
+      esac
+      if ! grep -Fxq -e "$cm_id" "$cm_bd/ids.txt"; then
+        echo "HARNESS_ERROR $cm_name: EXPECT names '$cm_id', which no case carries" >&2
+        exit 2
+      fi
+    done < "$cm_bd/controls/$cm_name.ids"
+  done
+  if [ "$cm_n" -eq 0 ]; then
+    echo "NO_CONTROLS tests/controls"
+    exit 1
+  fi
+  for cm_dir in tests/controls/*/; do
+    [ -d "$cm_dir" ] || continue
+    cm_name=$(basename "$cm_dir")
+    cm_file=$(sed -n 's/^file=//p' "${cm_dir}RULE")
+    cm_src="$cm_bd/controls/$cm_name/$(basename "$cm_file")"
+    if sh "$here/control-mutate" "${cm_dir}RULE" "$cm_src" > "$cm_bd/controls/$cm_name.mutate" 2>&1; then :; else
+      cm_r=$?
+      cat "$cm_bd/controls/$cm_name.mutate"
+      [ "$cm_r" -eq 2 ] || cm_r=2
+      exit "$cm_r"
+    fi
+    if cmake --build --preset "$cm_preset" --target "ds_toy_$cm_name" > "$cm_bd/controls/$cm_name.build" 2>&1; then :; else
+      cat "$cm_bd/controls/$cm_name.build"
+      echo "HARNESS_ERROR CONTROL_BUILD_FAILED $cm_name: the toy does not compile, which is a broken control and not a red one" >&2
+      exit 2
+    fi
+    if [ ! -x "$cm_bd/ds_toy_$cm_name" ]; then
+      echo "HARNESS_ERROR $cm_bd/ds_toy_$cm_name is missing after its build" >&2
+      exit 2
+    fi
+    mkdir -p "$cm_bd/controls/$cm_name/evidence" || { echo "HARNESS_ERROR cannot create the evidence directory of $cm_name" >&2; exit 2; }
+    cm_out="$cm_bd/controls/$cm_name/results.txt"
+    # the toy fails cases on purpose, so a runner status of 1 is expected here; only a harness status (2) stops the run
+    if sh "$here/conformance-run" supervise --ids "$cm_bd/ids.txt" --out "$cm_out" -- "$cm_bd/ds_toy_$cm_name" --cases "$cm_bd/cases.tsv" --evidence-dir "$cm_bd/controls/$cm_name/evidence" --profile-tsv "$cm_bd/r1.tsv" --rules-fields "$cm_bd/rules-fields.txt" --oracle "$cm_bd/oracle.tsv" > /dev/null 2> "$cm_bd/controls/$cm_name/stderr.txt"; then cm_sup=0; else cm_sup=$?; fi
+    if [ "$cm_sup" -ge 2 ]; then
+      cat "$cm_bd/controls/$cm_name/stderr.txt" >&2
+      echo "HARNESS_ERROR the toy runner of $cm_name ended with a harness status ($cm_sup)" >&2
+      exit 2
+    fi
+    cm_ok=1
+    cm_why=""
+    if ! awk '$1 == "RUNNER_DONE" { f = 1 } END { exit !f }' "$cm_out"; then
+      cm_ok=0
+      cm_why="no RUNNER_DONE line"
+    fi
+    while IFS= read -r cm_id; do
+      if ! awk -v id="$cm_id" '$1 == "RESULT" && $2 == id && $3 == "guest_failure" { f = 1 } END { exit !f }' "$cm_out"; then
+        cm_ok=0
+        cm_why="$cm_why $cm_id:$(awk -v id="$cm_id" '$1 == "RESULT" && $2 == id { print $3; f = 1; exit } END { if (!f) print "no-result" }' "$cm_out")"
+      fi
+    done < "$cm_bd/controls/$cm_name.ids"
+    if [ "$cm_ok" -eq 1 ]; then
+      echo "CONTROL $cm_name RED_OK" | tee -a "$cm_bd/controls.txt"
+    else
+      echo "CONTROL $cm_name NOT_RED" | tee -a "$cm_bd/controls.txt"
+      echo "  expected guest_failure; got:$cm_why"
+      cm_red=1
+    fi
+  done
+  if [ "$cm_red" -ne 0 ]; then
+    exit 1
+  fi
 }
 
 # hash_sweep RUNNER (D-47, D-59): the independent check of the in-house SHA-256. For every length the runner prints with
