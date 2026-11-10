@@ -23,7 +23,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-09)
 
 **Core value:** For every hardware/content profile DuoSpool claims to support, a fresh, deterministic, headless run can reproduce the machine's behavior and show the evidence (guest progress, machine time, raw video, raw audio) that backs the claim.
-**Current focus:** Phase 1 — Owner Decisions, Claim Ledger and Toolchain Spike
+**Current focus:** Phase 2 — Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate
 
 ## Current Position
 

@@ -124,7 +124,7 @@ system card + CD tracks, PC Engine palette/geometry/variable timing, audio
 cadence.
 
 **Project state.** Greenfield. At initialization the repository contained only
-planning configuration, the bootstrap pack, and `AGENTS.md`.
+planning configuration, the bootstrap pack, and `AGENTS.md`. After Phase 1 it also holds the claim ledger (`ledger/`), the first-profile record (`profiles/`), decision records (`docs/decisions/`), licence files, and a fail-closed shell gate (`scripts/check`). The core language is C11 with CMake and Ninja (record 0001). The repository is public at github.com/szTheory/duospool.
 
 ## Constraints
 
@@ -197,4 +197,4 @@ This document evolves at phase transitions and milestone boundaries.
 5. Refresh only the sibling/LibFuturo evidence that could change the live decision
 
 ---
-*Last updated: 2026-11-09 after initialization*
+*Last updated: 2026-11-09 after Phase 1 (owner decisions recorded; claim ledger, profile record and C11/CMake toolchain decision in place; repository public)*
