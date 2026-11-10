@@ -89,7 +89,7 @@ Plans:
   3. Every run record contains the full profile identity (every guest-visible setting) and the power-on policy and seed. Two instances run interleaved in one process produce the same digests as each instance run alone. The same inputs in a fresh process produce identical records. A build- or test-time check rejects core use of host clocks, filesystem, threads, environment, device, or UI APIs, and a deliberately violating negative control is shown to fail it.
   4. One documented local command runs the fast gate. Pass, guest failure, timeout, harness failure, skip, cancelled, and missing artifact are reported as distinct outcomes, and only pass is green. Each named negative control fails the gate: a removed required test, a missing manifest field, an unlisted fixture, a deliberately wrong literal, and an unlisted ROM/firmware-like binary added to the tree.
   5. CI on the owner-selected provider runs the same fast gate on every change. Each job is tied to a named failure class, and its critical-path time is recorded. If the CI provider is still undecided, this criterion is reported as blocked, not satisfied.
-**Plans**: 18/22 plans executed
+**Plans**: 19/22 plans executed
 - [x] 02-01-PLAN.md
 - [x] 02-02-PLAN.md
 - [x] 02-03-PLAN.md
@@ -108,7 +108,7 @@ Plans:
 - [x] 02-16-PLAN.md
 - [x] 02-17-PLAN.md
 - [x] 02-18-PLAN.md
-- [ ] 02-19-PLAN.md
+- [x] 02-19-PLAN.md
 - [ ] 02-20-PLAN.md
 - [ ] 02-21-PLAN.md
 - [ ] 02-22-PLAN.md
@@ -197,7 +197,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phases 4 and 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Owner Decisions, Claim Ledger and Toolchain Spike | 12/12 | Complete    | 2026-11-09 |
-| 2. Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate | 18/22 | In Progress | - |
+| 2. Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate | 19/22 | In Progress | - |
 | 3. HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad | 0/TBD | Not started | - |
 | 4. VCE/VDC Raw Video | 0/TBD | Not started | - |
 | 5. PSG Raw Audio | 0/TBD | Not started | - |

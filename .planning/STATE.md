@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 2
 current_phase_name: Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate
 status: executing
-stopped_at: Completed 02-18-PLAN.md
-last_updated: "2026-11-10T07:46:03.343Z"
+stopped_at: Completed 02-19-PLAN.md
+last_updated: "2026-11-10T08:13:09.072Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 2 execution started
-state_head: 25a37c2c4a4b30fb7173ebe20e8605b45aa95365
+state_head: b750c5addb9a343876ac3a72152d2dedad2c97f6
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 34
-  completed_plans: 30
+  completed_plans: 31
   percent: 17
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 2 (Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate) — EXECUTING
-Plan: 19 of 22
+Plan: 20 of 22
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 2 execution started
 
@@ -86,6 +86,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 02 P16 | 60 min | 3 tasks | 20 files |
 | Phase 02 P17 | 25 min | 4 tasks | 74 files |
 | Phase 02 P18 | 15 min | 3 tasks | 53 files |
+| Phase 02 P19 | 25 min | 2 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -155,6 +156,8 @@ Recent decisions affecting current work:
 - [Phase 02]: 02-17: the fixtures stage makes its own used list (conformance-run fixtures, no --only) and asserts it names every manifest file; --partial only for --only runs — A stale or partial list must never be judged; FIX_STALE and the count-and-name comparison cover an entry nothing emits (D-85); runner.c is at 65503 of 65536 bytes, so new runner logic goes in its own file
 - [Phase 02]: 02-18: live-runner controls are judged on the id and outcome fields of RESULT lines (awk, values through ENVIRON), never a whole line; a flagged timeout loses to a failed assertion — the RESULT line also carries the assertion count and the evidence path, so a whole-line match is brittle and a wrong literal could hide behind it (D-80, T-02-36)
 - [Phase 02]: 02-18: inventory-check enforces REQUIRED and the case files in both directions and the ledger TEST pins in both directions; ledger-check stays structure-only — a green gate that silently ran fewer tests is worse than a red one (D-58, T-02-35)
+- [Phase 02]: 02-19: workflow-check is a restricted block-style YAML line checker; WF_UNPARSABLE exits 2 and cannot be named by an --expect, and the ok-gate control must stay byte-equal to the real gate.yml (CONTROL_DRIFT)
+- [Phase 02]: 02-19: the Linux container run of the whole gate found record-lint failing under mawk (lvalue-first evaluation, scripts/lib/record-rules.awk line 45); logged in deferred-items.md D-19-1, not fixed in plan 19
 
 ### Pending Todos
 
@@ -178,6 +181,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-10T07:46:03.288Z
-Stopped at: Completed 02-18-PLAN.md
+Last session: 2026-11-10T08:13:08.970Z
+Stopped at: Completed 02-19-PLAN.md
 Resume file: None
