@@ -5,3 +5,7 @@
 # missing_artifact (scripts/conformance-ingest). Add an id here in the same change that adds its case file.
 ref_profile_unknown
 accept_tracer_256k
+resolve_open_unbound
+resolve_bind_closed
+resolve_bind_not_allowed
+resolve_rev_mismatch

@@ -375,6 +375,19 @@ static int canary_intact(const unsigned char *p, size_t n)
     return 1;
 }
 
+/* every open field of a resolved profile records the run request as its binder, every owner-selected field the constant (D-49) */
+static int bound_by_ok(const struct ds_profile *p)
+{
+    uint32_t i;
+    for (i = 0u; i < (uint32_t)DS_FIELD_COUNT; i++) {
+        uint8_t want = p->field[i].status == DS_STATUS_OPEN ? (uint8_t)DS_BOUND_RUN_REQUEST : (uint8_t)DS_BOUND_CONSTANT;
+        if (p->field[i].bound_by != want) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 /* boot one case from the fixture recipe and check the outcome against the expectation; got receives the observed reason name */
 static void run_boot(const char *fixture, const struct spec *s, const struct expect *e, struct ctx *c, char *got, size_t gotcap)
 {
@@ -455,6 +468,7 @@ static void run_boot(const char *fixture, const struct spec *s, const struct exp
                 check(c, strcmp(inst->profile.id, "pce-hucard-2btn") == 0 && inst->profile.rev == 1u,
                       "the resolved profile is not recorded");
                 check(c, inst->machine_time == 0u, "machine time is not zero at power-on");
+                check(c, bound_by_ok(&inst->profile), "a resolved field has the wrong bound_by (open: run-request, owner: constant)");
             }
             check(c, canary_intact(base + isize, CANARY_TAIL), "the core wrote past the instance");
         }
@@ -683,6 +697,58 @@ static void kind_boot(const struct kase *k, struct ctx *c, char *got, size_t got
     run_boot(fixture, &s, &e, c, got, gotcap);
 }
 
+/*
+ * kind resolve: no content and no boot; the profile id, rev and bindings of the request go to ds_resolve and the result code
+ * (and the field it names) is compared with the expectation. accept means the profile resolved: every open field then carries
+ * its bound value and the run request as binder.
+ */
+static void kind_resolve(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    struct spec s;
+    struct expect e;
+    struct ds_bindings b;
+    struct ds_profile out;
+    const char *err;
+    uint32_t field = 0xfffffff0u;
+    uint32_t ret;
+    uint32_t i;
+
+    if (strcmp(k->val[K_FIXTURE], "none") != 0) {
+        harness_error(c, "a resolve case has no content: its fixture must be none");
+        return;
+    }
+    err = parse_spec(&s, k->val[K_REQUEST], 0u);
+    if (err == NULL) {
+        err = parse_expect(&e, k->val[K_EXPECT]);
+    }
+    if (err != NULL) {
+        harness_error(c, err);
+        return;
+    }
+    for (i = 0u; i < (uint32_t)DS_FIELD_COUNT; i++) {
+        b.value[i] = s.bind[i];
+    }
+    memset(&out, 0, sizeof out);
+    ret = ds_resolve(s.profile, s.rev, &b, &out, &field);
+    snprintf(got, gotcap, "%s", ds_refusal_name(ret) != NULL ? (ret == 0u ? "accept" : ds_refusal_name(ret)) : "unknown");
+    if (e.accept) {
+        check(c, ret == 0u, "expected the profile to resolve, got a refusal");
+        if (ret == 0u) {
+            check(c, field == DS_NO_FIELD, "a resolved profile names a field");
+            check(c, bound_by_ok(&out), "a resolved field has the wrong bound_by (open: run-request, owner: constant)");
+            for (i = 0u; i < (uint32_t)DS_FIELD_COUNT; i++) {
+                if (out.field[i].status == DS_STATUS_OPEN) {
+                    check(c, s.bind[i] != NULL && strcmp(out.field[i].value, s.bind[i]) == 0,
+                          "an open field does not carry the bound value");
+                }
+            }
+        }
+    } else {
+        check(c, ret == e.reason, "resolve result differs from the expected one");
+        check(c, !e.has_field || field == e.field, "the named field differs");
+    }
+}
+
 static const struct {
     const char *name;
     kind_fn fn;
@@ -690,6 +756,7 @@ static const struct {
 } kinds[] = {
     {"refuse", kind_boot, 0},
     {"accept", kind_boot, 0},
+    {"resolve", kind_resolve, 0},
 };
 
 static const char *outcome_of(const struct ctx *c, enum outcome *oc)
