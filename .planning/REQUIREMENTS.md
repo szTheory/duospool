@@ -66,7 +66,7 @@ E4 = differential vs another emulator (finds disagreements, decides nothing).
 
 ### Determinism, Core Boundary & Runner
 
-- [ ] **CORE-01**: Machine state is explicit and per instance. Two instances in one process do not share mutable state, verified by a multi-instance test.
+- [x] **CORE-01**: Machine state is explicit and per instance. Two instances in one process do not share mutable state, verified by a multi-instance test.
 - [x] **CORE-02**: The core has no dependency on host clocks, filesystems, device discovery, threads, UI, or audio/video devices, enforced by a build- or test-time check.
 - [x] **CORE-03**: Power-on state is defined by a documented, seeded policy (RAM, MPRs, PSG noise, VDC phase), so a fresh run is reproducible and the policy is recorded with each run.
 - [ ] **CORE-04**: Execution is bounded in master-clock time with an explicit stop reason and overshoot. A bounded run may stop mid-frame or mid-instruction-sequence and resume with results identical to an uninterrupted run.
@@ -183,7 +183,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CONT-02 | Phase 2 | Complete |
 | CONT-03 | Phase 2 | Complete |
 | CONT-04 | Phase 2 | Complete |
-| CORE-01 | Phase 2 | Pending |
+| CORE-01 | Phase 2 | Complete |
 | CORE-02 | Phase 2 | Complete |
 | CORE-03 | Phase 2 | Complete |
 | CORE-04 | Phase 3 | Pending |

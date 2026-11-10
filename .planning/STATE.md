@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 2
 current_phase_name: Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate
 status: executing
-stopped_at: Completed 02-15-PLAN.md
-last_updated: "2026-11-10T07:01:17.516Z"
+stopped_at: Completed 02-16-PLAN.md
+last_updated: "2026-11-10T07:15:43.725Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 2 execution started
-state_head: e70edfee5a60fea6731cde753d0e20b5b359e8c5
+state_head: 045dc329799f36b682ce4b706cbbad677647b9fa
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 34
-  completed_plans: 27
+  completed_plans: 28
   percent: 17
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 2 (Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate) — EXECUTING
-Plan: 16 of 22
+Plan: 17 of 22
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 2 execution started
 
@@ -83,6 +83,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 02 P13 | 14 min | 2 tasks | 21 files |
 | Phase 02 P14 | 75 min | 3 tasks | 30 files |
 | Phase 02 P15 | 22 min | 3 tasks | 25 files |
+| Phase 02 P16 | 60 min | 3 tasks | 20 files |
 
 ## Accumulated Context
 
@@ -146,6 +147,8 @@ Recent decisions affecting current work:
 - [Phase 02]: 02-14: a failed print wipes the buffer it wrote; the refusal record prints the requested id and a hostile id (quote, backslash, non-ASCII, 64+ chars) gives DS_TEXT_ERR_STRING and no record
 - [Phase 02]: 02-14: runner --records DIR writes DIR/ID.record.toml for kinds accept, record_lines, record_golden, record_refusal (conformance-run makes build/NAME/records empty each run); --golden-dir DIR; record-lint stage derives the expected files from the kind column of cases.tsv
 - [Phase 02]: 02-15: core-boundary undefined-symbol rule allows the allowlist plus external symbols defined by the core objects themselves (cross-module ds_* calls), never a widened allowlist file
+- [Phase 02]: 02-16: the shared-state toy folds the full hidden counter value (^ ++shared_n) into the psg_noise update; a parity-only fold would not move the digest on even-length calls
+- [Phase 02]: 02-16: DET_MISSING_FILE is exit 2 and asserted directly in the determinism-negatives stage; tests/gate/determinism holds differs and ok-same
 
 ### Pending Todos
 
@@ -169,6 +172,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-10T07:01:17.429Z
-Stopped at: Completed 02-15-PLAN.md
+Last session: 2026-11-10T07:15:43.641Z
+Stopped at: Completed 02-16-PLAN.md
 Resume file: None
