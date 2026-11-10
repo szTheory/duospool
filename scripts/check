@@ -774,6 +774,13 @@ stage_determinism_negatives() {
   return "$dn_rc"
 }
 
+# fixture-negatives (FIX-02, D-59): every tests/gate/fixture/<case>/ is a mini-root: fixtures/manifest/*.toml (the entries), used.txt (the used
+# list in the NAME SIZE SHA256 form that conformance-run fixtures writes) and, for a control, an EXPECT. ok-<case> must pass; a case with an
+# EXPECT must fail with exactly that code set. A control that passes without its EXPECT met means the checker is broken (T-02-34, T-02-37).
+stage_fixture_negatives() {
+  run_controls --ok-prefix --require-negative --need HARNESS_NO_FILE @DIR@used.txt tests/gate/fixture tests/gate/fixture sh "$here/fixture-check" --root @DIR@ --used @DIR@used.txt @EXPECT@
+}
+
 # ---- self-test: prove the gate is alive (not vacuous). Mutates a COPY of scripts/ only ----
 
 # st_want NAME: true when no mutation was selected (run them all) or NAME is the selected one
@@ -1371,6 +1378,7 @@ run_stage core-boundary stage_core_boundary
 run_stage core-boundary-negatives stage_core_boundary_negatives
 run_stage determinism stage_determinism
 run_stage determinism-negatives stage_determinism_negatives
+run_stage fixture-negatives stage_fixture_negatives
 
 if [ -n "$only_stage" ]; then
   # one stage: its own CHECK line is the whole output; the exit status is that stage's verdict

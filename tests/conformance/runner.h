@@ -170,4 +170,7 @@ void kind_profile_equal(const struct kase *k, struct ctx *c, char *got, size_t g
 void kind_names_both_ways(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_field_flip(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 
+/* the --fixtures list (fixlist.c, plan 17): NAME SIZE for every recipe a case materialises and every sweep length; 0, or 2 on a fault */
+int list_fixtures(const size_t *sweep, size_t nsweep);
+
 #endif

@@ -7,6 +7,7 @@
 # line so that they can do so without changing this contract.
 # usage: conformance-run run [--preset NAME]
 #        conformance-run sanitize
+#        conformance-run fixtures [--only NAME]
 #        conformance-run supervise --ids FILE --out FILE [--wall N] -- CMD ARGS...
 # run mode (D-60, D-85): everything lives under build/NAME (default gate, the build directory of the preset NAME). The steps are
 #   (the runner also gets --records DIR/records, made empty on every run, and --golden-dir tests/conformance/golden: see plan 14, D-84b, D-86)
@@ -34,6 +35,11 @@
 #   Then the runner runs under the supervise mode with the wall watchdog at about 3 times the default (900 s), the hash sweep runs
 #   on the sanitized runner, and the toy controls do not (they were judged in the gate preset). ASAN_OPTIONS detect_leaks=1 is exported on
 #   Linux only (Apple ASan has no leak detector). The final line is STATUS sanitize ok n=COUNT.
+# fixtures mode (FIX-02, D-59, D-85): flatten the cases and build the gate preset (the two producing steps of the run mode, one shared
+#   function each), list the recipes the gate emits (ds_runner --fixtures), hash and measure ds_runner --emit NAME with host tools into
+#   build/gate/fixtures.used (NAME SIZE SHA256) and run scripts/fixture-check on it; see fixtures_mode below. --only NAME checks one recipe
+#   and passes --partial (no FIX_STALE verdict from a one-line list). exit 0 STATUS fixtures ok | 1 FIX_ codes or a failed build or case file
+#   | 2 harness error
 # supervise mode:
 #   --ids FILE  one case id per line (# comments and blank lines ignored): the ids that must have a RESULT line
 #   --out FILE  CMD's stdout is written here (truncated first); this is the file that conformance-ingest judges
@@ -53,8 +59,39 @@ LC_ALL=C; export LC_ALL
 here=$(cd "$(dirname "$0")" && pwd)
 
 usage() {
-  echo "usage: conformance-run run [--preset NAME] | sanitize | supervise --ids FILE --out FILE [--wall N] -- CMD ARGS..." >&2
+  echo "usage: conformance-run run [--preset NAME] | sanitize | fixtures [--only NAME] | supervise --ids FILE --out FILE [--wall N] -- CMD ARGS..." >&2
   exit 2
+}
+
+# flatten_cases BD (D-86): the first producing step shared by the run mode and the fixtures mode. tests/conformance/cases is flattened
+# into BD/cases.tsv by the one parser of hand-edited data (D-51); the old file is removed first and a failed or END-less flatten leaves none,
+# so a stale TSV is never read. A malformed case file gives exit 1, a harness fault exit 2.
+flatten_cases() {
+  fc_bd=$1
+  rm -f "$fc_bd/cases.tsv" "$fc_bd/flatten.err"
+  if sh "$here/conformance-flatten" tests/conformance/cases > "$fc_bd/cases.tsv" 2> "$fc_bd/flatten.err"; then fc_r=0; else fc_r=$?; fi
+  if [ "$fc_r" -ne 0 ]; then
+    cat "$fc_bd/flatten.err"
+    rm -f "$fc_bd/cases.tsv"
+    [ "$fc_r" -eq 1 ] || fc_r=2
+    exit "$fc_r"
+  fi
+}
+
+# build_preset PRESET BD (D-86): the second producing step shared by the run mode and the fixtures mode: configure and build the preset
+# incrementally, so that a stale binary is never read, and require the runner afterwards (a build that fails is BUILD_FAILED and status 1).
+build_preset() {
+  bp_preset=$1
+  bp_bd=$2
+  if cmake --preset "$bp_preset" > "$bp_bd/build.log" 2>&1 && cmake --build --preset "$bp_preset" >> "$bp_bd/build.log" 2>&1; then :; else
+    cat "$bp_bd/build.log"
+    echo "BUILD_FAILED preset $bp_preset"
+    exit 1
+  fi
+  if [ ! -x "$bp_bd/ds_runner" ]; then
+    echo "HARNESS_ERROR $bp_bd/ds_runner is missing after a clean build" >&2
+    exit 2
+  fi
 }
 
 # run_mode [--preset NAME]: the whole conformance step for one preset. Every file it produces is first removed, so that a step
@@ -92,13 +129,7 @@ run_mode() {
   mkdir -p "$bd" || { echo "HARNESS_ERROR cannot create $bd" >&2; exit 2; }
   rm -rf "$bd/exclude-ids.txt" "$bd/cases.tsv" "$bd/ids.txt" "$bd/results.txt" "$bd/evidence" "$bd/records" "$bd/r1.tsv" "$bd/rules-fields.txt" "$bd/oracle.tsv" "$bd/oracle.err"
 
-  if sh "$here/conformance-flatten" tests/conformance/cases > "$bd/cases.tsv" 2> "$bd/flatten.err"; then r=0; else r=$?; fi
-  if [ "$r" -ne 0 ]; then
-    cat "$bd/flatten.err"
-    rm -f "$bd/cases.tsv"
-    [ "$r" -eq 1 ] || r=2
-    exit "$r"
-  fi
+  flatten_cases "$bd"
   awk -F'\t' '$1 == "K" { print $2 }' "$bd/cases.tsv" | sort -u > "$bd/ids.txt"
   if [ ! -s "$bd/ids.txt" ]; then
     echo "HARNESS_NO_CASES the flattened inventory holds no case" >&2
@@ -149,15 +180,7 @@ run_mode() {
   if [ "$mode" = sanitize ]; then
     sanitize_compiler "$bd"
   fi
-  if cmake --preset "$preset" > "$bd/build.log" 2>&1 && cmake --build --preset "$preset" >> "$bd/build.log" 2>&1; then :; else
-    cat "$bd/build.log"
-    echo "BUILD_FAILED preset $preset"
-    exit 1
-  fi
-  if [ ! -x "$bd/ds_runner" ]; then
-    echo "HARNESS_ERROR $bd/ds_runner is missing after a clean build" >&2
-    exit 2
-  fi
+  build_preset "$preset" "$bd"
   if [ "$mode" = sanitize ]; then
     canary_check "$bd"
   fi
@@ -364,6 +387,91 @@ controls_mode() {
   fi
 }
 
+# pick_sha_tool: choose the host SHA-256 tool once and set sha_tool: sha256sum if present, else shasum -a 256 (D-60). The tool shares no
+# code, language or author with the core. Neither present is a harness error (exit 2).
+pick_sha_tool() {
+  if command -v sha256sum > /dev/null 2>&1; then
+    sha_tool=sha256sum
+  elif command -v shasum > /dev/null 2>&1; then
+    sha_tool="shasum -a 256"
+  else
+    echo "HARNESS_ERROR neither sha256sum nor shasum is available" >&2
+    exit 2
+  fi
+}
+
+# fixtures_mode [--only NAME] (FIX-02, D-59, D-85, D-86): make the used list of the fixture manifest and run scripts/fixture-check on it.
+# It performs the same two producing steps as the run mode (flatten_cases, build_preset on the gate preset), so it never reads a stale
+# TSV or binary and needs no earlier stage. Then, for every line of  ds_runner --cases build/gate/cases.tsv --fixtures  (or only NAME), it
+# measures the bytes of  ds_runner --emit NAME  with host tools only: the SHA-256 from the sha tool chosen once, the size from wc -c; the
+# runner's own size column must agree with the measured one. The lines  NAME SIZE SHA256  go to build/gate/fixtures.used, which is removed
+# first and never read from an earlier run. An --only run is a partial list: fixture-check gets --partial, so the one-recipe list is not
+# read as a verdict on the other entries (FIX_STALE); a run without --only never passes it. The exit status and the output are the
+# checker's (0 STATUS fixtures ok, 1 FIX_ codes, 2 harness error).
+fixtures_mode() {
+  fm_only=""
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --only) [ $# -ge 2 ] || usage; fm_only=$2; shift 2 ;;
+      *) usage ;;
+    esac
+  done
+  case $fm_only in
+    *[!a-z0-9:-]*) usage ;;
+  esac
+  cd "$here/.."
+  fm_bd=build/gate
+  mkdir -p "$fm_bd" || { echo "HARNESS_ERROR cannot create $fm_bd" >&2; exit 2; }
+  rm -f "$fm_bd/fixtures.used" "$fm_bd/fixtures.list"
+  flatten_cases "$fm_bd"
+  build_preset gate "$fm_bd"
+  pick_sha_tool
+  if "$fm_bd/ds_runner" --cases "$fm_bd/cases.tsv" --fixtures > "$fm_bd/fixtures.list" 2> "$fm_bd/fixtures.err"; then :; else
+    cat "$fm_bd/fixtures.err" >&2
+    echo "HARNESS_ERROR the runner could not list its fixtures" >&2
+    exit 2
+  fi
+  if [ ! -s "$fm_bd/fixtures.list" ]; then
+    echo "HARNESS_ERROR the runner listed no fixture" >&2
+    exit 2
+  fi
+  : > "$fm_bd/fixtures.used"
+  fm_partial=""
+  if [ -n "$fm_only" ]; then
+    fm_partial=--partial
+    if ! awk -v n="$fm_only" '$1 == n { f = 1 } END { exit !f }' "$fm_bd/fixtures.list"; then
+      echo "HARNESS_ERROR --only names a recipe that the runner does not list: $fm_only" >&2
+      exit 2
+    fi
+  fi
+  while read -r fm_name fm_size; do
+    if [ -n "$fm_only" ] && [ "$fm_name" != "$fm_only" ]; then
+      continue
+    fi
+    # the emit must succeed on its own: a failure inside a pipeline would read as the digest of an empty image
+    "$fm_bd/ds_runner" --emit "$fm_name" > /dev/null || { echo "HARNESS_ERROR ds_runner --emit $fm_name failed" >&2; exit 2; }
+    fm_sha=$("$fm_bd/ds_runner" --emit "$fm_name" | $sha_tool | awk '{ print $1 }')
+    fm_bytes=$("$fm_bd/ds_runner" --emit "$fm_name" | wc -c | tr -d ' ')
+    case $fm_sha in
+      '' | *[!0-9a-f]*) echo "HARNESS_ERROR the host sha tool gave no digest for $fm_name" >&2; exit 2 ;;
+    esac
+    if [ "${#fm_sha}" -ne 64 ]; then
+      echo "HARNESS_ERROR the host sha tool gave a digest of the wrong length for $fm_name" >&2
+      exit 2
+    fi
+    if [ "$fm_bytes" != "$fm_size" ]; then
+      echo "HARNESS_ERROR the runner lists $fm_name at $fm_size bytes but --emit wrote $fm_bytes" >&2
+      exit 2
+    fi
+    printf '%s %s %s\n' "$fm_name" "$fm_bytes" "$fm_sha" >> "$fm_bd/fixtures.used"
+  done < "$fm_bd/fixtures.list"
+  if [ ! -s "$fm_bd/fixtures.used" ]; then
+    echo "HARNESS_ERROR the used list is empty" >&2
+    exit 2
+  fi
+  exec sh "$here/fixture-check" $fm_partial --used "$fm_bd/fixtures.used"
+}
+
 # hash_sweep RUNNER (D-47, D-59): the independent check of the in-house SHA-256. For every length the runner prints with
 # --sweep-lengths (the one definition of the list), the bytes of the synthetic image len:N go from the runner's --emit through the
 # host sha tool (sha256sum if present, else shasum -a 256, chosen once), and the 64-hex digest field is compared with the one the
@@ -371,14 +479,8 @@ controls_mode() {
 # HASH_SWEEP_MISMATCH with the length and ends the stage with status 1. A missing tool or an unusable answer is a harness error.
 hash_sweep() {
   hs_runner=$1
-  if command -v sha256sum > /dev/null 2>&1; then
-    hs_tool=sha256sum
-  elif command -v shasum > /dev/null 2>&1; then
-    hs_tool="shasum -a 256"
-  else
-    echo "HARNESS_ERROR neither sha256sum nor shasum is available for the hash sweep" >&2
-    exit 2
-  fi
+  pick_sha_tool
+  hs_tool=$sha_tool
   hs_lens=$("$hs_runner" --sweep-lengths) || { echo "HARNESS_ERROR the runner gave no sweep lengths" >&2; exit 2; }
   hs_n=0
   hs_bad=0
@@ -412,6 +514,7 @@ hash_sweep() {
 case $1 in
   run) shift; run_mode "$@" ;;
   sanitize) shift; run_mode --sanitize "$@" ;;
+  fixtures) shift; fixtures_mode "$@" ;;
   supervise) shift ;;
   *) usage ;;
 esac

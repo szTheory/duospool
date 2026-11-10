@@ -29,6 +29,7 @@
  *        ds_runner --emit RECIPE     writes the bytes of a synthetic recipe to stdout, nothing else (plain-256k, len:N)
  *        ds_runner --hash RECIPE     prints the SHA-256 of a recipe's bytes computed by the core, 64 lowercase hex characters
  *        ds_runner --spec            prints the generator spec string that is part of every recipe
+ *        ds_runner --cases FILE --fixtures   prints NAME SIZE for every recipe the gate emits, cases and sweep (fixlist.c, plan 17)
  *   scripts/conformance-run compares --hash with the host sha tool over --emit for every sweep length (HASH_SWEEP_MISMATCH).
  * exit : 0 every case ran and RUNNER_DONE was printed (the verdict is the ingest's), 2 usage or harness error (no case ran)
  */
@@ -1599,6 +1600,7 @@ int main(int argc, char **argv)
     size_t printed = 0u;
     int pass;
     int a;
+    int list_fx = 0;
 
     if (argc == 2 && strcmp(argv[1], "--outcomes") == 0) {
         /* the outcome names compiled into this binary from outcomes.def, one per line: scripts/outcome-sync compares them with the
@@ -1665,6 +1667,8 @@ int main(int argc, char **argv)
             records_dir = argv[++a];
         } else if (strcmp(argv[a], "--golden-dir") == 0 && a + 1 < argc) {
             golden_dir = argv[++a];
+        } else if (strcmp(argv[a], "--fixtures") == 0) {
+            list_fx = 1;
         } else if (strcmp(argv[a], "--cases") == 0 && a + 1 < argc) {
             cases_path = argv[++a];
         } else if (strcmp(argv[a], "--evidence-dir") == 0 && a + 1 < argc) {
@@ -1680,7 +1684,7 @@ int main(int argc, char **argv)
             break;
         }
     }
-    if (cases_path == NULL || evdir == NULL) {
+    if (cases_path == NULL || (evdir == NULL && !list_fx)) {
         emit_err("usage: ds_runner --cases FILE --evidence-dir DIR [--profile-tsv FILE] [--rules-fields FILE]\n"
                         "                 [--oracle FILE] [--exclude-ids FILE] [--only ID] [--marker-seed N] [--records DIR] [--golden-dir DIR]\n"
                         "       ds_runner --sweep-lengths | --spec | --emit RECIPE | --hash RECIPE\n");
@@ -1700,6 +1704,9 @@ int main(int argc, char **argv)
             emit_err("HARNESS a case file name is not an id\n");
             return 2;
         }
+    }
+    if (list_fx) {
+        return list_fixtures(sweep_len, sizeof sweep_len / sizeof sweep_len[0]);
     }
     if (exclude_path != NULL) {
         char *xt = read_file(exclude_path);
