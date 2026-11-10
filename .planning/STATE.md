@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 2
 current_phase_name: Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate
 status: executing
-stopped_at: Completed 02-11-PLAN.md
-last_updated: "2026-11-10T06:07:33.997Z"
+stopped_at: Completed 02-12-PLAN.md
+last_updated: "2026-11-10T06:23:05.590Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 2 execution started
-state_head: c38f047290473f2f41deb032f5762cb49c07b270
+state_head: b6630127f7e968b90223daa79033d4fb60f28cbf
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 34
-  completed_plans: 23
+  completed_plans: 24
   percent: 17
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 2 (Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate) — EXECUTING
-Plan: 12 of 22
+Plan: 13 of 22
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 2 execution started
 
@@ -79,6 +79,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 02 P09 | 9 min | 2 tasks | 11 files |
 | Phase 02 P10 | 13 min | 3 tasks | 50 files |
 | Phase 02 P11 | 18 min | 6 tasks | 62 files |
+| Phase 02 P12 | 25 min | 2 tasks | 26 files |
 
 ## Accumulated Context
 
@@ -134,6 +135,9 @@ Recent decisions affecting current work:
 - [Phase 02]: Plan 11: reason coverage is a deferred kind judged against the refusal enum itself (no hard-coded count), so adding a refusal needs only a refuse row
 - [Phase 02]: Plan 11: every runner line goes through emit_out/emit_err and an in-process log read by the redaction scan; redaction markers come only from --marker-seed and a missing seed is a harness failure
 - [Phase 02]: Plan 11: runner.c split, banksig and unmapped moved to mapkinds.c; new kinds in refkinds.c and redkinds.c (runner.c 59967 bytes, limit 65536)
+- [Phase 02]: 02-12: seed is a u64 plus a has_seed flag; seed 0 is a valid seed, distinct from no seed
+- [Phase 02]: 02-12: ds_advance and ds_run use their own status enums so the refusal enum stays the 22 boot-time reasons
+- [Phase 02]: 02-12: ds_run checks stop before the first step and after every step; machine time never passes start plus budget
 
 ### Pending Todos
 
@@ -157,6 +161,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-10T06:07:33.915Z
-Stopped at: Completed 02-11-PLAN.md
+Last session: 2026-11-10T06:23:05.488Z
+Stopped at: Completed 02-12-PLAN.md
 Resume file: None
