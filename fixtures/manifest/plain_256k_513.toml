@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Fixture manifest entry (FIX-02, D-59): one synthetic recipe of tests/conformance/synth.c. The bytes are generated at test time and are
+# never committed. scripts/fixture-check compares size and sha256 below with the bytes that ds_runner --emit plain-256k:513 wrote, as hashed by
+# the host sha tool, so a changed generator or an undocumented image turns the gate red.
+id = "plain_256k_513"
+kind = "synthetic"
+source = "tests/conformance/synth.c"
+recipe = "plain-256k:513: the first 513 bytes of the plain-256k image (a length above 262144 bytes continues the stream; lcg32 seed=12345 x=x*1664525+1013904223 mod 2^32 byte=(x>>16)&255; bank tags of the natural size only: the first byte of file bank k (k = 0 to natural size / 8192 - 1, 8192 bytes each) is (k*37+11) mod 256 and the last byte is (k*91+5) mod 256)"
+toolchain = "ds_runner --emit plain-256k:513 (tests/conformance/synth.c, ISO C11, integer arithmetic only), hashed by sha256sum or shasum -a 256"
+size = 513
+sha256 = "91e285a52d614d3f6506748acff709f71156fa177794d6cdc2eefa73fb117ecc"
+licence = "0BSD"
+notices = "none: generated at test time from an integer generator; no third-party material and no game content"
+redistribution = "generated-not-committed"
+meaning = "Case-local length override of plain-256k: 513 bytes (a request with len=513), the image of ref_precedence_table, ref_short_513. Whether the loader accepts or refuses it is the expectation written in the case itself (a spec literal), never a hash of core output."
+verdict_source = "independent-script"
