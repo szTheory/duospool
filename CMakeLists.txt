@@ -57,7 +57,12 @@ if(DS_ALLOC_SHIM)
   set(DS_SHIM_DEFINITION "DS_ALLOC_SHIM=1")
 endif()
 
-add_executable(ds_runner tests/conformance/runner.c tests/conformance/profkinds.c tests/conformance/allockinds.c tests/conformance/synth.c ${DS_SHIM_SOURCES})
+# The runner sources: runner.c (reader, boot kinds, main) and one file per family of case kinds; synth.c holds the image recipes.
+# Plan 11 added mapkinds.c (moved out of runner.c) and refkinds.c; the toy runners below use the same list.
+set(DS_RUNNER_SOURCES
+  tests/conformance/runner.c tests/conformance/profkinds.c tests/conformance/allockinds.c tests/conformance/mapkinds.c
+  tests/conformance/synth.c)
+add_executable(ds_runner ${DS_RUNNER_SOURCES} ${DS_SHIM_SOURCES})
 target_link_libraries(ds_runner PRIVATE ds_text ds_core)
 target_compile_definitions(ds_runner PRIVATE ${DS_SHIM_DEFINITION})
 
@@ -88,7 +93,7 @@ foreach(rule IN LISTS DS_CONTROL_RULES)
   set(toy_core_sources ${DS_CORE_SOURCES})
   list(REMOVE_ITEM toy_core_sources "${live_source}")
   add_executable(ds_toy_${name} EXCLUDE_FROM_ALL
-    tests/conformance/runner.c tests/conformance/profkinds.c tests/conformance/allockinds.c tests/conformance/synth.c ${DS_SHIM_SOURCES}
+    ${DS_RUNNER_SOURCES} ${DS_SHIM_SOURCES}
     ${DS_TEXT_SOURCES} ${toy_core_sources} "${toy_source}")
   target_include_directories(ds_toy_${name} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/core ${CMAKE_CURRENT_SOURCE_DIR}/src/text)
