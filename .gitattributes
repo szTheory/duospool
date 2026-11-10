@@ -1,0 +1,17 @@
+# Line endings: every text file is LF in the repository and in the working tree (D-61). The gate is POSIX sh and awk; a CRLF would
+# change what the checkers read on one machine and not on another.
+* text=auto eol=lf
+
+# Binary patterns are never normalised or diffed. No ROM, disc image or save is ever committed (record 0005, rights-check); these
+# lines only keep git from touching one that is present by accident, such as a synthetic fixture built at run time.
+*.pce binary
+*.sgx binary
+*.bin binary
+*.img binary
+*.iso binary
+*.cue binary
+*.chd binary
+*.sav binary
+*.srm binary
+*.a binary
+*.o binary

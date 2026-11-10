@@ -1,0 +1,3 @@
+# Default owner for every path. This only names a reviewer to request: review is not enforced, and no branch protection is set here
+# (a branch ruleset on main is an owner decision, D-64). The handle comes from the local git config and is awaiting owner confirmation.
+* @szTheory
