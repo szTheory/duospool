@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 2
 current_phase_name: Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate
 status: executing
-stopped_at: Completed 02-04-PLAN.md
-last_updated: "2026-11-10T04:21:49.470Z"
+stopped_at: Completed 02-05-PLAN.md
+last_updated: "2026-11-10T04:41:39.771Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 2 execution started
-state_head: 4b0a8e5e8b5bdd76e611f521d98acc2e29daa680
+state_head: d3cd7e00c5a44cb77a0bb5617cdcec2dbd74ea6f
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 34
-  completed_plans: 16
+  completed_plans: 17
   percent: 17
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 2 (Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate) — EXECUTING
-Plan: 5 of 22
+Plan: 6 of 22
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 2 execution started
 
@@ -72,6 +72,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 02 P02 | 5 min | 3 tasks | 88 files |
 | Phase 02 P03 | 9 min | 3 tasks | 19 files |
 | Phase 02 P04 | 23 min | 3 tasks | 25 files |
+| Phase 02 P05 | 14 min | 3 tasks | 20 files |
 
 ## Accumulated Context
 
@@ -107,6 +108,9 @@ Recent decisions affecting current work:
 - [Phase 02]: 02-03: outcome-sync codes partition faults minimally: ROWS (count), NAME (set), ORDER only when both are clear — each mini-root control then has an exact, small expected code set and a mutation flips exactly one control
 - [Phase 02]: 02-04: rights-check applies every rule to every file except SHAPE (non-text only, D-76); BLOB is an in-line run; archive magics are real headers; a NUL file is never excused by the manifest allowlist — Bulk text classification uses perl because BSD grep ends a line at a NUL; an excuse must not cover a file with a NUL byte (T-02-16)
 - [Phase 02]: 02-04: full-history audit-history left red on two pre-existing home-path hits in the 02-01 and 02-02 summary history; not allowlisted, owner decides before publication — An allowlist entry would silently hide a finding that is an owner decision; PR range mode is clean; recorded in WINDOWS.md
+- [Phase 02]: 02-05: flags reach the build through two preset cache variables (DS_WARNING_FLAGS in the hidden base, DS_EXTRA_FLAGS per preset) — a child preset that sets CMAKE_C_FLAGS replaces the parent's value, so the gate preset could not add -fwrapv to the base; later presets add DS_EXTRA_FLAGS
+- [Phase 02]: 02-05: a load.NAME expectation that no refusal carries is a guest_failure (wrong literal), only a token that is neither accept nor load.* is a harness fault; field= in an expectation is asserted only when present
+- [Phase 02]: 02-05: resolve runs once per boot and the profile, rev and bindings rows surface their own codes; every boot_order row guards its own request use so a later plan can swap rows and get a wrong refusal, never a NULL read
 
 ### Pending Todos
 
@@ -130,6 +134,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-10T04:21:49.073Z
-Stopped at: Completed 02-04-PLAN.md
+Last session: 2026-11-10T04:41:39.704Z
+Stopped at: Completed 02-05-PLAN.md
 Resume file: None
