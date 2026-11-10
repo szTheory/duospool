@@ -6,6 +6,8 @@ Out-of-scope discoveries logged by executors (scope boundary: only issues caused
 
 ### D-19-1. record-lint fails under mawk: lvalue-first evaluation in `scripts/lib/record-rules.awk` line 45
 
+- **Status: FIXED in plan 02-20 (commit da17509, Rule 1).** The proposed `if/else` form is applied. An audit of every awk program under `scripts/` and `scripts/lib/` found no other statement that tests `(x in a)` and assigns the same `a[x]`. A one-off local run of the whole gate in an Ubuntu 24.04 container passed under mawk 1.3.4 and under gawk 5.2.1 (not a CI claim; see the 02-20 SUMMARY). The WINDOWS.md fixme is marked fixed.
+
 - **What:** `sh scripts/check` on Ubuntu 24.04 (container, default awk mawk 1.3.4) gives `CHECK record-lint FAIL` with `REC_FIELDS` and `REC_TABLES` lines such as `record keys are ' format_version', want 'format_version'` (a leading space on every first key). macOS (BWK awk 20200816) and gawk 5.2.1 do not show it.
 - **Cause:** `kseq[t] = (t in kseq) ? kseq[t] " " k : k` (line 45). mawk evaluates the assignment target `kseq[t]` first, which creates the element, so `(t in kseq)` is already true for the first key of every table. Which operand an awk evaluates first is not defined by POSIX, so this is an awk dialect trap, exactly the class that the CI job's second awk run exists to catch (D-61, D-74).
 - **Owner of the fix:** the plan that wrote `record-lint` (earlier in this phase), not plan 19. Plan 19 only wraps the gate.

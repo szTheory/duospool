@@ -88,7 +88,7 @@ E4 = differential vs another emulator (finds disagreements, decides nothing).
 - [x] **TOOL-01**: A language/build-system decision record compares the research-proposed options (Rust/Cargo vs C11/CMake) using a measured spike (build time, installed-consumer proof, fuzz harness, portability target), and the owner-confirmed choice is recorded.
 - [ ] **TOOL-02**: One documented local command runs the same checks as the fast PR gate.
 - [ ] **PKG-01**: An independent consumer builds against the installed core artifact, with source and build trees unavailable, and reproduces a fixture verdict through the public boundary.
-- [ ] **CI-01**: CI runs the fast gate on each change, with each job tied to a distinct recurring failure class and its critical-path time recorded.
+- [x] **CI-01**: CI runs the fast gate on each change, with each job tied to a distinct recurring failure class and its critical-path time recorded.
 - [ ] **CI-02**: Fuzzing of the content loader and input-script parser runs as a staged job outside the fast PR path, with crashing inputs replayable in the fast gate as regression cases.
 - [ ] **PERF-01**: At least one named workload has a benchmark recording workload identity, build, input, warm-up, measurements, and uncertainty, with output correctness asserted in the same run.
 
@@ -199,7 +199,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TOOL-01 | Phase 1 | Complete |
 | TOOL-02 | Phase 2 | Pending |
 | PKG-01 | Phase 6 | Pending |
-| CI-01 | Phase 2 | Pending |
+| CI-01 | Phase 2 | Complete |
 | CI-02 | Phase 6 | Pending |
 | PERF-01 | Phase 6 | Pending |
 | INTG-01 | Phase 6 | Pending |
