@@ -66,11 +66,11 @@ Per-task commands run at stage granularity (D-81); full-gate, `--selftest`, equi
 | 08-T3 | 08 | 8 | CONT-01 | `--stage conformance`, `--stage ledger-entries` | ORACLE_RULE_TEXT_DRIFT | pending |
 | 09-T1 | 09 | 9 | CONT-01 | `--stage conformance` (controls mode) | tests/controls/wrong-mirror (CONTROL RED_OK) | pending |
 | 09-T2 | 09 | 9 | CONT-01 | `--stage conformance`, `--stage ledger-entries` | ref_size_8192, ref_size_512k rows | pending |
-| 10-T1 | 10 | 10 | CONT-03 | `--stage conformance`, `--stage sanitizers` | heap and shift canaries (SANITIZER_DEAD) | pending |
+| 10-T1 | 10 | 10 | CONT-03 | `--stage conformance`, `--stage sanitizers`; sanitize preset flags lack `-fwrapv`, gate presets have it (D-83) | heap, signed-overflow and signed-shift canaries (SANITIZER_DEAD) | pending |
 | 10-T2 | 10 | 10 | CONT-03 | `--stage conformance` (alloc_*) | alloc_shim_selfcheck | pending |
 | 10-T3 | 10 | 10 | CONT-03 | `--stage excluded-mode-controls`, `--stage sanitizers`, `--selftest mutation-excluded-gate-pass` | five exclusion controls, mutation-excluded-gate-pass | pending |
-| 11-T1 | 11 | 11 | CONT-01, CONT-02, PROF-02 | `--stage conformance`, `--stage ledger-entries` | per-row expectation edit | pending |
-| 11-T2 | 11 | 11 | CONT-02, CONT-03 | `--stage conformance`, `--selftest mutation-drop-precedence` | mutation-drop-precedence, nonmutation_matrix | pending |
+| 11-T1 | 11 | 11 | CONT-01, CONT-02, PROF-02 | `--stage conformance`, `--stage ledger-entries` (ref_size_2m_too_large expects load.too_large, D-82) | per-row expectation edit | pending |
+| 11-T2 | 11 | 11 | CONT-02, CONT-03 | `--stage conformance` (ref_precedence_table incl. cap-before-size rows), `--selftest mutation-drop-precedence` | mutation-drop-precedence, nonmutation_matrix | pending |
 | 11-T3 | 11 | 11 | CONT-02, CONT-03, FIX-05 | `--stage conformance`, `--stage sanitizers` | tests/controls/heuristic-reverse, redaction_seeded_leak_flagged | pending |
 | 12-T1 | 12 | 12 | CORE-03 | `--stage conformance`, `--stage sanitizers` | bare-XOR derivation mutant | pending |
 | 12-T2 | 12 | 12 | CORE-03 | `--stage conformance`, `--stage ledger-entries` | advance_rules literals | pending |
@@ -78,7 +78,7 @@ Per-task commands run at stage granularity (D-81); full-gate, `--selftest`, equi
 | 13-T2 | 13 | 13 | CORE-01 | `--stage conformance`, `--stage sanitizers` | tests/controls/drop-region | pending |
 | 14-T1 | 14 | 14 | PROF-03, CORE-03, CONT-04 | `--stage conformance` (record_golden_384k_seeded) | golden digit edit | pending |
 | 14-T2 | 14 | 14 | PROF-03 | `--stage conformance` (second golden, refusal record, quote) | record_refuses_quote | pending |
-| 14-T3 | 14 | 14 | PROF-03 | `--stage record-lint`, `--stage record-lint-negatives`, `--selftest mutation-record-lint-pointer` | path/pointer/timestamp controls | pending |
+| 14-T3 | 14 | 14 | PROF-03 | `--stage record-lint` (input build/gate/records written by conformance-run `--records`), `--stage record-lint-negatives`, `--selftest mutation-record-lint-pointer` | path/pointer/timestamp controls | pending |
 | 15-T1 | 15 | 15 | CORE-02 | `--stage core-boundary-negatives` | time-include | pending |
 | 15-T2 | 15 | 15 | CORE-02 | `--stage core-boundary-negatives`, two `--selftest` mutations | ten negative controls, allowlist and writable mutations | pending |
 | 15-T3 | 15 | 15 | CORE-02 | `--stage core-boundary` | rule mutations | pending |
@@ -99,7 +99,7 @@ Per-task commands run at stage granularity (D-81); full-gate, `--selftest`, equi
 | 21-T2 | 21 | 21 | TOOL-02, CI-01 | phase-end: full gate, `--selftest`, dash, `sh scripts/audit-history`, `sh scripts/linux-repro` | container run labelled one-off (first real gcc, mawk, gawk evidence on this Mac) | pending |
 | 21-T3 | 21 | 21 | TOOL-02 | grep of docs/ci-timings.md and this file | not applicable | pending |
 | 22-T1 | 22 | 22 | CI-01 | owner decision (blocking-human checkpoint, one-way) | not applicable | pending |
-| 22-T2 | 22 | 22 | CI-01 | recorded outcome in docs/ci-timings.md | no remote write unless authorised | pending |
+| 22-T2 | 22 | 22 | CI-01 | exact `CI-CHECKPOINT:` line in docs/ci-timings.md | no remote write unless authorised | pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
