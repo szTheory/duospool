@@ -1,0 +1,149 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# inventory-check - the required-test inventory checker (FIX-04, D-58). This check enforces that the set of tests the gate must run is
+# the set that exists: it fails closed when a required test disappears, when a case claims to be required without being listed, and
+# (from the pin rules) when a ledger claim points at a test that is not there. It does not judge what a test asserts.
+# usage: inventory-check [--expect CODE[,CODE...]] [--root DIR]      (--root defaults to the repository root)
+#   Reads ROOT/tests/conformance/REQUIRED (one case id per line, # comments and blank lines skipped), the case files
+#   ROOT/tests/conformance/cases/ID.toml and the ledger entries ROOT/ledger/entries/*.toml, each file through the two stages
+#   scripts/lib/toml-subset.awk and scripts/lib/inventory-rules.awk, then compares them across files.
+#   Codes:
+#     INV_REQUIRED_MISSING  a REQUIRED id has no case file
+#     INV_UNLISTED_CASE     a case file says required = true and its id is not in REQUIRED
+# stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then (clean) a line  INVENTORY required=N cases=M  and  STATUS inventory ok
+# stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
+# exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error
+set -eu
+LC_ALL=C; export LC_ALL
+here=$(cd "$(dirname "$0")" && pwd)
+
+usage() {
+  echo "usage: inventory-check [--expect CODE[,CODE...]] [--root DIR]" >&2
+  exit 2
+}
+
+expect=""
+have_expect=0
+root=$(cd "$here/.." && pwd)
+while [ $# -gt 0 ]; do
+  case $1 in
+    --expect) [ $# -ge 2 ] || usage; expect=$2; have_expect=1; shift 2 ;;
+    --root) [ $# -ge 2 ] || usage; root=$2; shift 2 ;;
+    *) usage ;;
+  esac
+done
+# an --expect that names no code would make a control assert nothing (WR-05): exit 2, never 0
+if [ "$have_expect" -eq 1 ] && [ -z "$(printf '%s' "$expect" | tr -d ', \t\r\n')" ]; then
+  echo "HARNESS_EMPTY_EXPECT --expect names no code" >&2
+  exit 2
+fi
+if [ ! -d "$root" ]; then
+  echo "HARNESS_NO_FILE $root" >&2
+  exit 2
+fi
+root=$(cd "$root" && pwd)
+reqfile="$root/tests/conformance/REQUIRED"
+casedir="$root/tests/conformance/cases"
+ledgerdir="$root/ledger/entries"
+[ -f "$reqfile" ] || { echo "HARNESS_NO_FILE tests/conformance/REQUIRED" >&2; exit 2; }
+[ -d "$casedir" ] || { echo "HARNESS_NO_FILE tests/conformance/cases" >&2; exit 2; }
+[ -d "$ledgerdir" ] || { echo "HARNESS_NO_FILE ledger/entries" >&2; exit 2; }
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+tab=$(printf '\t')
+nl=$(printf '\n.'); nl=${nl%.}
+viol0="$tmp/viol0"
+viol="$tmp/viol"
+recs="$tmp/recs"
+: > "$viol0"
+: > "$recs"
+
+# the REQUIRED list: R records for ids, B records for lines that are not an id
+awk 'BEGIN { FS = "\n" }
+  /^[ \t]*(#.*)?$/ { next }
+  $0 ~ /^[a-z][a-z0-9_]*[ \t]*$/ { id = $0; sub(/[ \t]+$/, "", id); printf "R\t%s\t%d\n", id, NR; next }
+  { printf "B\t%d\t%s\n", NR, $0 }' "$reqfile" >> "$recs" || { echo "HARNESS_AWK failed (REQUIRED)" >&2; exit 2; }
+
+# file_stage KIND FILE REL: the two stages over one file. A name with a TAB or a newline would forge a record, so it is refused here.
+file_stage() {
+  fs_kind=$1
+  fs_f=$2
+  fs_rel=$3
+  case $fs_f in
+    *"$tab"* | *"$nl"*)
+      printf '%s\tNO_SENTINEL\t0\tfile name holds a TAB or a newline\n' "<bad-filename>" >> "$viol0"
+      return 0
+      ;;
+  esac
+  fs_stem=$(basename "$fs_f" .toml)
+  fs_size=$(wc -c < "$fs_f" | tr -d ' ')
+  if [ "$fs_size" -eq 0 ] || [ "$fs_size" -gt 16384 ]; then
+    printf '%s\tNO_SENTINEL\t0\tfile is empty or above 16384 bytes\n' "$fs_rel" >> "$viol0"
+    return 0
+  fi
+  # no pipeline: a failing stage 1 must not read as no violations
+  awk -f "$here/lib/toml-subset.awk" "$fs_f" > "$tmp/stage1" 2> /dev/null || : > "$tmp/stage1"
+  # stage 2 always prints at least one record; an empty or failed stage 2 is a dead checker, not a pass
+  if fname="$fs_stem" what="$fs_kind" awk -f "$here/lib/inventory-rules.awk" "$tmp/stage1" > "$tmp/stage2" 2> /dev/null && [ -s "$tmp/stage2" ]; then :; else
+    printf '%s\tSTAGE2_DEAD\t0\t\n' "$fs_rel" >> "$viol0"
+    return 0
+  fi
+  # awk, not read: a TAB is IFS white space for read, which would collapse an empty field (an empty required or pins value)
+  rel="$fs_rel" viol0="$viol0" recs="$recs" awk 'BEGIN { FS = "\t"; rel = ENVIRON["rel"]; vf = ENVIRON["viol0"]; rf = ENVIRON["recs"] }
+    $1 == "V" { printf "%s\t%s\t%s\t%s\n", rel, $2, $3, $4 >> vf; next }
+    $1 == "C" || $1 == "L" { printf "%s\t%s\t%s\t%s\t%s\n", $1, $2, $3, $4, rel >> rf; next }
+    { printf "%s\tSTAGE2_DEAD\t0\tunknown record %s\n", rel, $1 >> vf }' "$tmp/stage2" || { echo "HARNESS_AWK failed (stage 2 records)" >&2; exit 2; }
+}
+
+for f in "$casedir"/*.toml; do
+  [ -f "$f" ] || continue
+  file_stage case "$f" "tests/conformance/cases/$(basename "$f")"
+done
+for f in "$ledgerdir"/*.toml; do
+  [ -f "$f" ] || continue
+  file_stage ledger "$f" "ledger/entries/$(basename "$f")"
+done
+
+# ---- the cross-file rules: one awk over the records of every file ----
+awk -v reqrel="tests/conformance/REQUIRED" '
+  BEGIN { FS = "\t"; OFS = "\t" }
+  $1 == "R" { nreq++; rid[nreq] = $2; rln[nreq] = $3; isreq[$2] = 1; next }
+  $1 == "B" { next }
+  $1 == "C" { havecase[$2] = 1; creq[$2] = $3; cfile[$2] = $5; next }
+  $1 == "L" { haveled[$2] = 1; next }
+  END {
+    for (i = 1; i <= nreq; i++) {
+      id = rid[i]
+      if (!(id in havecase)) printf "%s\tINV_REQUIRED_MISSING\t%d\t%s\n", reqrel, rln[i], id  # rule-required-missing
+    }
+    for (id in havecase) {
+      if (creq[id] == "true" && !(id in isreq)) printf "%s\tINV_UNLISTED_CASE\t0\t%s\n", cfile[id], id  # rule-unlisted-case
+    }
+  }' "$recs" >> "$viol0" || { echo "HARNESS_AWK failed (cross-file rules)" >&2; exit 2; }
+
+ncases=$(awk -F'\t' '$1 == "C" { n++ } END { print n + 0 }' "$recs")
+nrequired=$(awk -F'\t' '$1 == "R" { n++ } END { print n + 0 }' "$recs")
+sort -u "$viol0" > "$viol"
+
+if [ "$have_expect" -eq 1 ]; then
+  got=$(awk -F'\t' '{ print $2 }' "$viol" | sort -u | tr '\n' ',' | sed 's/,$//')
+  want=$(printf '%s\n' "$expect" | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/,$//')
+  if [ "$got" = "$want" ]; then
+    echo "EXPECT_OK"
+    exit 0
+  fi
+  echo "EXPECT_MISMATCH wanted '$want' got '${got:-<none>}'" >&2
+  cat "$viol" >&2
+  exit 1
+fi
+
+cat "$viol"
+if [ -s "$viol" ]; then
+  exit 1
+fi
+echo "INVENTORY required=$nrequired cases=$ncases"
+echo "STATUS inventory ok"
+exit 0
