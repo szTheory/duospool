@@ -70,3 +70,9 @@ ref_too_large_2_5m_plain
 ref_precedence_table
 ref_reason_coverage
 nonmutation_matrix
+noheur_populous_string
+noheur_mcgenjin_string
+noheur_reverse_vector
+boot_copy_in_isolated
+redaction_synthetic_rom
+redaction_seeded_leak_flagged

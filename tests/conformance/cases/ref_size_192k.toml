@@ -11,4 +11,4 @@ meaning = "A fully declared request of 196608 bytes is refused as load.size_unsu
 required = true
 control = false
 expect_outcome = "pass"
-pins = ["LED-LOAD-0004"]
+pins = []

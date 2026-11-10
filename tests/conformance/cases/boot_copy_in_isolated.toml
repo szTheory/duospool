@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Copy-in row (T-02-20): after a 256 KiB image is booted, every byte of the host buffer is overwritten, and every bank read back through the mapper must still return the original bytes. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "boot_copy_in_isolated"
+kind = "copy_in"
+fixture = "plain-256k"
+request = "mapper=plain;order=pce;header=none"
+expect = "unchanged"
+meaning = "The instance holds its own copy of the image: overwriting every byte of the host buffer after boot changes no byte read through the mapper, so the core never borrows the host pointer"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

@@ -81,6 +81,9 @@ run_mode() {
   cd "$here/.."
   root=$(pwd)
   bd=build/$preset
+  # the seed of the run-time unique markers of the redaction cases (D-56): the host clock and this process id, so that no marker is a
+  # constant in any source or output; the runner takes it as --marker-seed and never calls a clock itself
+  marker_seed=$(( $(date +%s) * 65536 + $$ % 65536 ))
   if [ "$mode" = sanitize ] && [ ! -f build/gate/results.txt ]; then
     echo "HARNESS_NO_GATE_RESULTS build/gate/results.txt is missing: the conformance step produces it and the sanitize mode reads it (D-78)" >&2
     exit 2
@@ -159,7 +162,7 @@ run_mode() {
   fi
 
   mkdir -p "$bd/evidence" || { echo "HARNESS_ERROR cannot create $bd/evidence" >&2; exit 2; }
-  if sh "$here/conformance-run" supervise --ids "$bd/ids.txt" --out "$bd/results.txt" --wall "$wall_secs" -- "$bd/ds_runner" --cases "$bd/cases.tsv" --evidence-dir "$bd/evidence" --profile-tsv "$bd/r1.tsv" --rules-fields "$bd/rules-fields.txt" --oracle "$bd/oracle.tsv" $ex_args; then sup=0; else sup=$?; fi
+  if sh "$here/conformance-run" supervise --ids "$bd/ids.txt" --out "$bd/results.txt" --wall "$wall_secs" -- "$bd/ds_runner" --cases "$bd/cases.tsv" --evidence-dir "$bd/evidence" --profile-tsv "$bd/r1.tsv" --rules-fields "$bd/rules-fields.txt" --oracle "$bd/oracle.tsv" --marker-seed "$marker_seed" $ex_args; then sup=0; else sup=$?; fi
   if [ "$sup" -eq 2 ]; then
     exit 2
   fi
@@ -325,7 +328,7 @@ controls_mode() {
     mkdir -p "$cm_bd/controls/$cm_name/evidence" || { echo "HARNESS_ERROR cannot create the evidence directory of $cm_name" >&2; exit 2; }
     cm_out="$cm_bd/controls/$cm_name/results.txt"
     # the toy fails cases on purpose, so a runner status of 1 is expected here; only a harness status (2) stops the run
-    if sh "$here/conformance-run" supervise --ids "$cm_bd/ids.txt" --out "$cm_out" -- "$cm_bd/ds_toy_$cm_name" --cases "$cm_bd/cases.tsv" --evidence-dir "$cm_bd/controls/$cm_name/evidence" --profile-tsv "$cm_bd/r1.tsv" --rules-fields "$cm_bd/rules-fields.txt" --oracle "$cm_bd/oracle.tsv" > /dev/null 2> "$cm_bd/controls/$cm_name/stderr.txt"; then cm_sup=0; else cm_sup=$?; fi
+    if sh "$here/conformance-run" supervise --ids "$cm_bd/ids.txt" --out "$cm_out" -- "$cm_bd/ds_toy_$cm_name" --cases "$cm_bd/cases.tsv" --evidence-dir "$cm_bd/controls/$cm_name/evidence" --profile-tsv "$cm_bd/r1.tsv" --rules-fields "$cm_bd/rules-fields.txt" --oracle "$cm_bd/oracle.tsv" --marker-seed "$marker_seed" > /dev/null 2> "$cm_bd/controls/$cm_name/stderr.txt"; then cm_sup=0; else cm_sup=$?; fi
     if [ "$cm_sup" -ge 2 ]; then
       cat "$cm_bd/controls/$cm_name/stderr.txt" >&2
       echo "HARNESS_ERROR the toy runner of $cm_name ended with a harness status ($cm_sup)" >&2

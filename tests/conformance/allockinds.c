@@ -68,7 +68,7 @@ void kind_alloc_zero(const struct kase *k, struct ctx *c, char *got, size_t gotc
             }
             check(c, allocs == 0ul, "ds_boot allocated on a refuse row");
             if (allocs != 0ul) {
-                fprintf(stderr, "alloc_zero_matrix: row %s made %lu allocator calls\n", r->stem, allocs);
+                emit_err("alloc_zero_matrix: row %s made %lu allocator calls\n", r->stem, allocs);
             }
             rows++;
         }

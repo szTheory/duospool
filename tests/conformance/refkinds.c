@@ -12,6 +12,10 @@
  *   nonmutation  boots a live instance in one block, then boots every refuse row of the cases TSV into a fresh block that is filled
  *                with a fixed byte pattern and carries guard canaries on both sides; the block, the guards and the live block must be
  *                byte-identical afterwards. One assertion per refuse row plus one for the live block.
+ *   noheur       (D-70) the request is declared plain, pce, none; the recipe bytes are edited as the expect key says, the image is booted
+ *                and must load exactly as supplied: no bit reversal, no mapper or header guess. The edits are items separated by a
+ *                semicolon: str@0xOFFSET=TEXT puts letters and digits at an offset, byte@0xOFFSET=0xVV sets one byte.
+ *   copy_in      (T-02-20) the host buffer is overwritten after boot; every byte read back through the mapper must still be the original.
  * Test code only, never installed. Nothing here prints bytes found inside content; only ids, counts and reason names.
  */
 #include <stdint.h>
@@ -20,6 +24,8 @@
 #include <string.h>
 
 #include "ds_core.h"
+#include "ds_mapper.h"
+#include "ds_sha256.h"
 #include "runner.h"
 #include "synth.h"
 
@@ -57,7 +63,7 @@ void kind_coverage(const struct kase *k, struct ctx *c, char *got, size_t gotcap
         seen += observed[n] != 0u ? 1u : 0u;
         check(c, observed[n] != 0u, "a refusal enum member was never observed by a refuse row");
         if (observed[n] == 0u) {
-            fprintf(stderr, "coverage: %s was not observed by any refuse row\n", name);
+            emit_err("coverage: %s was not observed by any refuse row\n", name);
         }
     }
     check(c, members > 0u, "the refusal enum has no member");
@@ -284,7 +290,7 @@ void kind_nonmutation(const struct kase *k, struct ctx *c, char *got, size_t got
         }
         check(c, same, "a refuse row was not refused as expected, or it changed its block or a guard canary");
         if (!same) {
-            fprintf(stderr, "nonmutation_matrix: row %s changed memory or was not refused as expected\n", r->stem);
+            emit_err("nonmutation_matrix: row %s changed memory or was not refused as expected\n", r->stem);
         }
         rows++;
     }
@@ -295,4 +301,269 @@ void kind_nonmutation(const struct kase *k, struct ctx *c, char *got, size_t got
     }
     free(snap);
     release_boot(&live);
+}
+
+/* ---- kinds noheur and copy_in ---- */
+
+/* parse 0x followed by hex digits; 0 on success */
+static int parse_hex(const char *v, size_t *out)
+{
+    size_t acc = 0u;
+
+    if (v[0] != '0' || v[1] != 'x' || v[2] == '\0') {
+        return -1;
+    }
+    for (v += 2; *v != '\0'; v++) {
+        unsigned d;
+
+        if (*v >= '0' && *v <= '9') {
+            d = (unsigned)(*v - '0');
+        } else if (*v >= 'A' && *v <= 'F') {
+            d = (unsigned)(*v - 'A') + 10u;
+        } else if (*v >= 'a' && *v <= 'f') {
+            d = (unsigned)(*v - 'a') + 10u;
+        } else {
+            return -1;
+        }
+        if (acc > (SIZE_MAX >> 4)) {
+            return -1;
+        }
+        acc = (acc << 4) | d;
+    }
+    *out = acc;
+    return 0;
+}
+
+#define EDITS_MAX 8u
+
+struct edit {
+    size_t at;
+    size_t n;
+    unsigned char bytes[32];
+};
+
+/* the edits of a noheur expect key into e[]; NULL on success, otherwise why not. Every edit must lie inside len bytes. */
+static const char *parse_edits(const char *text, size_t len, struct edit *e, unsigned *count)
+{
+    char buf[256];
+    char *p;
+
+    *count = 0u;
+    if (strlen(text) >= sizeof buf) {
+        return "the noheur edit list is too long";
+    }
+    memcpy(buf, text, strlen(text) + 1u);
+    for (p = buf; *p != '\0';) {
+        char *end = strchr(p, ';');
+        char *eq;
+        int is_str;
+        struct edit *ed;
+
+        if (end != NULL) {
+            *end = '\0';
+        }
+        eq = strchr(p, '=');
+        is_str = strncmp(p, "str@", 4u) == 0;
+        if (eq == NULL || (!is_str && strncmp(p, "byte@", 5u) != 0) || *count == EDITS_MAX) {
+            return "a noheur edit is not str@0xOFFSET=TEXT or byte@0xOFFSET=0xVV, or there are too many";
+        }
+        *eq = '\0';
+        ed = &e[*count];
+        if (parse_hex(p + (is_str ? 4 : 5), &ed->at) != 0) {
+            return "a noheur edit offset is not 0x followed by hex digits";
+        }
+        if (is_str) {
+            size_t i;
+
+            ed->n = strlen(eq + 1);
+            if (ed->n == 0u || ed->n >= sizeof ed->bytes) {
+                return "a noheur edit text is empty or too long";
+            }
+            for (i = 0u; i < ed->n; i++) {
+                char ch = eq[1 + i];
+
+                if (!((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9'))) {
+                    return "a noheur edit text holds a character outside letters and digits";
+                }
+                ed->bytes[i] = (unsigned char)ch;
+            }
+        } else {
+            size_t v;
+
+            if (parse_hex(eq + 1, &v) != 0 || v > 255u) {
+                return "a noheur byte value is not 0x00 to 0xFF";
+            }
+            ed->n = 1u;
+            ed->bytes[0] = (unsigned char)v;
+        }
+        if (ed->at > len || ed->n > len - ed->at) {
+            return "a noheur edit lies outside the image";
+        }
+        (*count)++;
+        if (end == NULL) {
+            break;
+        }
+        p = end + 1;
+    }
+    return *count == 0u ? "a noheur case has no edit" : NULL;
+}
+
+/* the window banks whose bytes are the file banks of the same index: all 128 for 1 MiB, the first 32 for the mirrored sizes (plain mapper rules) */
+static uint32_t identity_banks(size_t natural)
+{
+    return natural == 1048576u ? 128u : 32u;
+}
+
+void kind_noheur(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    struct spec s;
+    struct edit ed[EDITS_MAX];
+    struct ds_boot_request rq;
+    struct ds_boot_result res;
+    const struct ds_instance *inst;
+    unsigned char *content;
+    unsigned char *mem;
+    size_t natural = synth_size(k->val[K_FIXTURE]);
+    const char *err;
+    unsigned edits = 0u;
+    unsigned e;
+    uint32_t bank;
+    uint32_t limit;
+
+    err = natural == 0u ? "unknown fixture recipe" : parse_spec(&s, k->val[K_REQUEST], natural);
+    if (err == NULL && (s.ptr != PTR_OK || s.len != natural || s.len > CONTENT_LIMIT)) {
+        err = "a noheur case needs ptr=ok and the natural length of the recipe";
+    }
+    if (err == NULL) {
+        err = parse_edits(k->val[K_EXPECT], s.len, ed, &edits);
+    }
+    if (err == NULL && !(strcmp(s.mapper != NULL ? s.mapper : "", "plain") == 0 && s.order == 1u && s.header == 1u)) {
+        err = "a noheur request must declare plain, pce and none exactly";
+    }
+    if (err != NULL) {
+        harness_error(c, err);
+        return;
+    }
+    content = (unsigned char *)malloc(s.len);
+    mem = (unsigned char *)malloc(ds_instance_size());
+    if (content == NULL || mem == NULL || synth_fill(k->val[K_FIXTURE], content, s.len) != 0) {
+        free(content);
+        free(mem);
+        harness_error(c, "out of memory or unknown recipe");
+        return;
+    }
+    for (e = 0u; e < edits; e++) {
+        memcpy(content + ed[e].at, ed[e].bytes, ed[e].n);
+    }
+    fill_request(&rq, &s, content);
+    memset(&res, 0xff, sizeof res);
+    check(c, ds_boot(mem, ds_instance_size(), &rq, &res) == 0u && res.instance != NULL, "an image declared plain, pce and none was refused or altered the boot");
+    inst = res.instance;
+    if (c->failed || inst == NULL) {
+        snprintf(got, gotcap, "refused");
+        free(content);
+        free(mem);
+        return;
+    }
+    check(c, strcmp(inst->mapper, "plain") == 0 && inst->byte_order == 1u && inst->header == 1u, "the instance does not record the declared plain, pce and none");
+    check(c, memcmp(inst->rom, content, s.len) == 0, "the ROM copy differs from the supplied bytes: a content heuristic changed them");
+    for (e = 0u; e < edits; e++) {
+        size_t i;
+
+        for (i = 0u; i < ed[e].n; i++) {
+            size_t at = ed[e].at + i;
+            uint8_t v = 0u;
+
+            check(c, ds_mapper_read(inst, (uint32_t)(at / DS_BANK_BYTES), (uint32_t)(at % DS_BANK_BYTES), &v) == (uint32_t)DS_MAP_OK && v == ed[e].bytes[i],
+                  "a byte of the edited image reads back differently through the mapper");
+        }
+    }
+    limit = identity_banks(natural);
+    for (bank = 0u; bank < limit; bank++) {
+        uint8_t lo = 0u;
+        uint8_t hi = 0u;
+        uint32_t st_lo = ds_mapper_read(inst, bank, 0u, &lo);
+        uint32_t st_hi = ds_mapper_read(inst, bank, DS_BANK_BYTES - 1u, &hi);
+
+        check(c, st_lo == (uint32_t)DS_MAP_OK && lo == content[(size_t)bank * DS_BANK_BYTES], "the first byte of a bank differs from the supplied buffer");
+        check(c, st_hi == (uint32_t)DS_MAP_OK && hi == content[(size_t)bank * DS_BANK_BYTES + DS_BANK_BYTES - 1u],
+              "the last byte of a bank differs from the supplied buffer");
+    }
+    snprintf(got, gotcap, "edits=%u banks=%u", edits, (unsigned)limit);
+    free(content);
+    free(mem);
+}
+
+void kind_copy_in(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    struct spec s;
+    struct ds_boot_request rq;
+    struct ds_boot_result res;
+    const struct ds_instance *inst;
+    unsigned char *content;
+    unsigned char *orig;
+    unsigned char *mem;
+    unsigned char digest[DS_SHA256_BYTES];
+    size_t natural = synth_size(k->val[K_FIXTURE]);
+    size_t i;
+    size_t differ = 0u;
+    uint32_t bank;
+    const char *err;
+
+    err = natural == 0u ? "unknown fixture recipe" : parse_spec(&s, k->val[K_REQUEST], natural);
+    if (err == NULL && (s.ptr != PTR_OK || s.len > CONTENT_LIMIT || s.len == 0u)) {
+        err = "a copy_in case needs ptr=ok and a non-empty len";
+    }
+    if (err != NULL) {
+        harness_error(c, err);
+        return;
+    }
+    content = (unsigned char *)malloc(s.len);
+    orig = (unsigned char *)malloc(s.len);
+    mem = (unsigned char *)malloc(ds_instance_size());
+    if (content == NULL || orig == NULL || mem == NULL || synth_fill(k->val[K_FIXTURE], content, s.len) != 0) {
+        free(content);
+        free(orig);
+        free(mem);
+        harness_error(c, "out of memory or unknown recipe");
+        return;
+    }
+    memcpy(orig, content, s.len);
+    fill_request(&rq, &s, content);
+    memset(&res, 0xff, sizeof res);
+    check(c, ds_boot(mem, ds_instance_size(), &rq, &res) == 0u && res.instance != NULL, "the request was refused: copy_in needs an accepted boot");
+    inst = res.instance;
+    if (c->failed || inst == NULL) {
+        free(content);
+        free(orig);
+        free(mem);
+        return;
+    }
+    /* the instance holds its own copy: its ROM array is not the host buffer */
+    check(c, (const void *)inst->rom != (const void *)content, "the instance ROM array is the host buffer");
+    /* overwrite every byte of the host buffer with a value that differs from the original at every offset */
+    for (i = 0u; i < s.len; i++) {
+        content[i] = (unsigned char)~orig[i];
+        differ += content[i] != orig[i] ? 1u : 0u;
+    }
+    check(c, differ == s.len, "the host buffer was not overwritten at every byte");
+    check(c, memcmp(inst->rom, orig, s.len) == 0, "the instance ROM changed when the host buffer was overwritten");
+    for (bank = 0u; bank < identity_banks(natural) && (size_t)bank * DS_BANK_BYTES + DS_BANK_BYTES <= s.len; bank++) {
+        uint8_t lo = 0u;
+        uint8_t mid = 0u;
+        uint8_t hi = 0u;
+        size_t base = (size_t)bank * DS_BANK_BYTES;
+
+        check(c, ds_mapper_read(inst, bank, 0u, &lo) == (uint32_t)DS_MAP_OK && lo == orig[base], "a bank start read back differently after the host buffer changed");
+        check(c, ds_mapper_read(inst, bank, DS_BANK_BYTES / 2u, &mid) == (uint32_t)DS_MAP_OK && mid == orig[base + DS_BANK_BYTES / 2u],
+              "a bank middle read back differently after the host buffer changed");
+        check(c, ds_mapper_read(inst, bank, DS_BANK_BYTES - 1u, &hi) == (uint32_t)DS_MAP_OK && hi == orig[base + DS_BANK_BYTES - 1u],
+              "a bank end read back differently after the host buffer changed");
+    }
+    ds_sha256(inst->rom, s.len, digest);
+    check(c, memcmp(digest, inst->content_id, DS_SHA256_BYTES) == 0, "the content id no longer matches the instance ROM");
+    snprintf(got, gotcap, "overwritten=%lu", (unsigned long)differ);
+    free(content);
+    free(orig);
+    free(mem);
 }

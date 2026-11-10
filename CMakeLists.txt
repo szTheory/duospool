@@ -61,7 +61,7 @@ endif()
 # Plan 11 added mapkinds.c (moved out of runner.c) and refkinds.c; the toy runners below use the same list.
 set(DS_RUNNER_SOURCES
   tests/conformance/runner.c tests/conformance/profkinds.c tests/conformance/allockinds.c tests/conformance/mapkinds.c
-  tests/conformance/refkinds.c
+  tests/conformance/refkinds.c tests/conformance/redkinds.c
   tests/conformance/synth.c)
 add_executable(ds_runner ${DS_RUNNER_SOURCES} ${DS_SHIM_SOURCES})
 target_link_libraries(ds_runner PRIVATE ds_text ds_core)

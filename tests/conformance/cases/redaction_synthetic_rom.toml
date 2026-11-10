@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Redaction row (D-47, D-56): a synthetic ROM is generated at run time with markers derived from the marker seed of this run and embedded at four offsets. It is booted and its record printed. None of the markers may appear, as bytes or hex, in anything the runner printed, the record or the evidence text. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "redaction_synthetic_rom"
+kind = "redaction"
+fixture = "plain-256k"
+request = "mapper=plain;order=pce;header=none"
+expect = "no-marker-in-output"
+meaning = "A synthetic commercial-like ROM with run-time unique markers leaves no marker in the runner stdout and stderr, the run record or the evidence text, so ROM-internal strings never leave the process"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

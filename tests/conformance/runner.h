@@ -114,6 +114,18 @@ void kind_precedence(const struct kase *k, struct ctx *c, char *got, size_t gotc
 void kind_coverage(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_nonmutation(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 
+void kind_noheur(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_copy_in(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+
+/* the one output function (redkinds.c): every line of stdout and stderr goes through it and into an in-process log that the no-leak
+ * kinds scan; evidence_text is the text of an evidence file (runner.c), set_marker_seed takes --marker-seed */
+void emit_out(const char *fmt, ...);
+void emit_err(const char *fmt, ...);
+void evidence_text(char *buf, size_t cap, const char *id, const char *kind, const char *expect, const char *got, unsigned n);
+void set_marker_seed(size_t v);
+void kind_redaction(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_redaction_leak_control(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+
 /* the profile kinds (profkinds.c); each gets the case, the counter, and a buffer for the observed value */
 void kind_profile_equal(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_names_both_ways(const struct kase *k, struct ctx *c, char *got, size_t gotcap);

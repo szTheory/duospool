@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Redaction control (D-56): the scanner used by redaction_synthetic_rom must see a leak. A marker is appended to a scratch copy of the runner log as bytes and as hex and must be flagged, while the clean copy must not be. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "redaction_seeded_leak_flagged"
+kind = "redaction_leak_control"
+fixture = "none"
+request = "scratch-log-copy"
+expect = "flagged"
+meaning = "The no-leak scanner flags a marker appended to a scratch copy of the log, both as bytes and as lowercase hex, and does not flag the clean copy, so a zero in redaction_synthetic_rom is not a blind scan"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

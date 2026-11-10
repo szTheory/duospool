@@ -15,6 +15,8 @@
  *   --profile-tsv FILE   the flattened profiles/pce-hucard-2btn/r1.toml (scripts/conformance-flatten), read by the r1 kinds
  *   --rules-fields FILE  the 13 field names of scripts/lib/profile-rules.awk, one per line, read by the names kind
  *   --oracle FILE        the bank-signature rows of tests/conformance/mirror-oracle.awk (SIZE BANK FILEBANK FIRST LAST), read by banksig
+ *   --marker-seed N      the seed of the run-time unique markers of the redaction kinds (D-56); scripts/conformance-run passes the host
+ *                        clock and pid. The runner never calls a clock and no marker is a constant in any source
  *   --only ID            run exactly one case (the precedence mutation of scripts/check uses it); an id no case carries is a harness fault
  *   --exclude-ids FILE   one case id per line: those cases are not run and print no RESULT line (RUNNER_DONE counts the lines printed).
  *                        Only scripts/conformance-run sanitize passes it, for the exact set of tests/conformance/EXCLUDED_IN_MODE (D-78);
@@ -503,14 +505,21 @@ void boot_row(const struct kase *r, struct ctx *c, unsigned long *allocs)
     *allocs = boot_allocs;
 }
 
-/* write the evidence file: ids, reason names, sizes and assertion counts only, never content bytes */
+/* the text of an evidence file: ids, reason names, sizes and assertion counts only, never content bytes */
+void evidence_text(char *buf, size_t cap, const char *id, const char *kind, const char *expect, const char *got, unsigned n)
+{
+    snprintf(buf, cap, "id=%s\nkind=%s\nexpect=%s\ngot=%s\nassertions=%u\n", id, kind, expect, got, n);
+}
+
 static int write_evidence(const char *path, const char *id, const char *kind, const char *expect, const char *got, unsigned n)
 {
+    char text[1024];
     FILE *fp = fopen(path, "w");
     if (fp == NULL) {
         return -1;
     }
-    fprintf(fp, "id=%s\nkind=%s\nexpect=%s\ngot=%s\nassertions=%u\n", id, kind, expect, got, n);
+    evidence_text(text, sizeof text, id, kind, expect, got, n);
+    fputs(text, fp);
     return fclose(fp) == 0 ? 0 : -1;
 }
 
@@ -1377,6 +1386,10 @@ static const struct {
     {"alloc_zero", kind_alloc_zero, 0},
     {"precedence", kind_precedence, 0},
     {"nonmutation", kind_nonmutation, 0},
+    {"noheur", kind_noheur, 0},
+    {"copy_in", kind_copy_in, 0},
+    {"redaction", kind_redaction, 0},
+    {"redaction_leak_control", kind_redaction_leak_control, 0},
     {"coverage", kind_coverage, 1},
 };
 
@@ -1439,10 +1452,9 @@ static int run_case(const struct kase *k, const char *evdir)
     }
     diag = outcome_of(&c, &oc);
     if (diag != NULL) {
-        fprintf(stderr, "case %s: %s\n", k->stem, diag);
+        emit_err("case %s: %s\n", k->stem, diag);
     }
-    printf("RESULT %s %s assertions=%u evidence=%s\n", k->stem, outcome_name[oc], c.n, evid);
-    fflush(stdout);
+    emit_out("RESULT %s %s assertions=%u evidence=%s\n", k->stem, outcome_name[oc], c.n, evid);
     return 0;
 }
 
@@ -1513,6 +1525,14 @@ int main(int argc, char **argv)
             exclude_path = argv[++a];
         } else if (strcmp(argv[a], "--only") == 0 && a + 1 < argc) {
             only_id = argv[++a];
+        } else if (strcmp(argv[a], "--marker-seed") == 0 && a + 1 < argc) {
+            size_t seed;
+            if (parse_size(argv[a + 1], &seed) != 0) {
+                emit_err("HARNESS --marker-seed is not a number\n");
+                return 2;
+            }
+            set_marker_seed(seed);
+            a++;
         } else if (strcmp(argv[a], "--cases") == 0 && a + 1 < argc) {
             cases_path = argv[++a];
         } else if (strcmp(argv[a], "--evidence-dir") == 0 && a + 1 < argc) {
@@ -1529,23 +1549,23 @@ int main(int argc, char **argv)
         }
     }
     if (cases_path == NULL || evdir == NULL) {
-        fprintf(stderr, "usage: ds_runner --cases FILE --evidence-dir DIR [--profile-tsv FILE] [--rules-fields FILE]\n"
-                        "                 [--oracle FILE] [--exclude-ids FILE] [--only ID]\n"
+        emit_err("usage: ds_runner --cases FILE --evidence-dir DIR [--profile-tsv FILE] [--rules-fields FILE]\n"
+                        "                 [--oracle FILE] [--exclude-ids FILE] [--only ID] [--marker-seed N]\n"
                         "       ds_runner --sweep-lengths | --spec | --emit RECIPE | --hash RECIPE\n");
         return 2;
     }
     text = read_file(cases_path);
     if (text == NULL) {
-        fprintf(stderr, "HARNESS cannot read the cases file\n");
+        emit_err("HARNESS cannot read the cases file\n");
         return 2;
     }
     if (load_cases(text, &why) != 0) {
-        fprintf(stderr, "HARNESS cases file: %s\n", why);
+        emit_err("HARNESS cases file: %s\n", why);
         return 2;
     }
     for (i = 0u; i < ncases; i++) {
         if (!valid_id(cases[i].stem)) {
-            fprintf(stderr, "HARNESS a case file name is not an id\n");
+            emit_err("HARNESS a case file name is not an id\n");
             return 2;
         }
     }
@@ -1561,7 +1581,7 @@ int main(int argc, char **argv)
                 for (i = 0u; i < ncases && strcmp(cases[i].stem, line) != 0; i++) {
                 }
                 if (i == ncases) {
-                    fprintf(stderr, "HARNESS the exclusion file names an id that no case carries\n");
+                    emit_err("HARNESS the exclusion file names an id that no case carries\n");
                     return 2;
                 }
                 excluded[i] = 1;
@@ -1569,7 +1589,7 @@ int main(int argc, char **argv)
             line = nl != NULL ? nl + 1 : line + strlen(line);
         }
         if (xt == NULL) {
-            fprintf(stderr, "HARNESS cannot read the exclusion file\n");
+            emit_err("HARNESS cannot read the exclusion file\n");
             return 2;
         }
     }
@@ -1580,7 +1600,7 @@ int main(int argc, char **argv)
             hit += excluded[i] ? 0u : 1u;
         }
         if (hit != 1u) {
-            fprintf(stderr, "HARNESS --only names an id that no case carries\n");
+            emit_err("HARNESS --only names an id that no case carries\n");
             return 2;
         }
     }
@@ -1601,12 +1621,12 @@ int main(int argc, char **argv)
                 continue;
             }
             if (run_case(k, evdir) != 0) {
-                fprintf(stderr, "HARNESS cannot form an evidence path\n");
+                emit_err("HARNESS cannot form an evidence path\n");
                 return 2;
             }
             printed++;
         }
     }
-    printf("RUNNER_DONE %u\n", (unsigned)printed);
+    emit_out("RUNNER_DONE %u\n", (unsigned)printed);
     return 0;
 }
