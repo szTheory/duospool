@@ -15,6 +15,10 @@
 #   FIX_BAD_ENUM                 kind or redistribution outside its set, a value of the wrong type, a sha256 that is not 64 lowercase hex
 #                                digits, a negative size, or a source path that is absolute or has a parent step
 #   FIX_ID_FILENAME_MISMATCH     id differs from the file stem
+#   FIX_BAD_LICENCE              licence is not one of 0BSD MIT Apache-2.0 BSD-2-Clause BSD-3-Clause ISC Zlib CC0-1.0 (the SPDX ids that
+#                                docs/decisions/0007-copied-code-provenance.md allows)
+#   FIX_BAD_VERDICT_SOURCE       verdict_source is not spec-literal:LED-AREA-NNNN, guest-computed or independent-script; the literal
+#                                duospool-output (the emulator judging itself, FIX-03) is rejected, as is any other value
 # This check enforces structure, not truth: the bytes are judged by the hash comparison in scripts/fixture-check.
 BEGIN {
   FS = "\t"
@@ -23,6 +27,8 @@ BEGIN {
   n = split("id kind source recipe toolchain size sha256 licence notices redistribution meaning verdict_source", fl, " ")
   for (i = 1; i <= n; i++) ftype[fl[i]] = "s"
   ftype["size"] = "i"
+  na = split("0BSD MIT Apache-2.0 BSD-2-Clause BSD-3-Clause ISC Zlib CC0-1.0", al, " ")
+  for (i = 1; i <= na; i++) okl[al[i]] = 1
 }
 function viol(code, line, detail) { nv++; vbuf[nv] = sprintf("V\t%s\t%s\t%s", code, line, detail) }
 $1 == "END" { sentinel = 1; next }
@@ -42,6 +48,10 @@ END {
   if (v != "" && v != "synthetic" && v != "authored" && v != "exception") viol("FIX_BAD_ENUM", ln["kind"], "kind " v)
   v = val["redistribution"]
   if (v != "" && v != "generated-not-committed" && v != "committed") viol("FIX_BAD_ENUM", ln["redistribution"], "redistribution " v)
+  v = val["licence"]
+  if (v != "" && !(v in okl)) viol("FIX_BAD_LICENCE", ln["licence"], "licence " v)
+  v = val["verdict_source"]
+  if (v != "" && v != "guest-computed" && v != "independent-script" && v !~ /^spec-literal:LED-(PROF|CPU|VID|AUD|IRQ|LOAD|IO|TOOL)-[0-9][0-9][0-9][0-9]$/) viol("FIX_BAD_VERDICT_SOURCE", ln["verdict_source"], "verdict_source " v)
   v = val["sha256"]
   if (v != "" && (length(v) != 64 || v !~ /^[0-9a-f]+$/)) viol("FIX_BAD_ENUM", ln["sha256"], "sha256 is not 64 lowercase hex digits")
   if (("size" in val) && val["size"] + 0 < 0) viol("FIX_BAD_ENUM", ln["size"], "size is negative")

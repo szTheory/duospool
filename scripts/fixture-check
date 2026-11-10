@@ -13,7 +13,11 @@
 #   Manifest: every ROOT/fixtures/manifest/ID.toml, two stages (scripts/lib/toml-subset.awk, then scripts/lib/fixture-rules.awk). The ID
 #   of a recipe NAME is NAME with each hyphen and colon replaced by an underscore (plain-256k is plain_256k, len:513 is len_513).
 #   Codes: FIX_MISSING_FIELD FIX_UNKNOWN_KEY FIX_BAD_ENUM FIX_ID_FILENAME_MISMATCH (per entry, scripts/lib/fixture-rules.awk) and, from the
-#   comparison of the used list with the manifest, FIX_UNLISTED (a used recipe with no entry) FIX_HASH_MISMATCH FIX_SIZE_MISMATCH.
+#   comparison of the used list with the manifest, FIX_UNLISTED (a used recipe with no entry) FIX_HASH_MISMATCH FIX_SIZE_MISMATCH and
+#   FIX_STALE (an entry that no used line names). Also per entry, FIX_BAD_LICENCE and FIX_BAD_VERDICT_SOURCE (the literal duospool-output
+#   is rejected: the emulator never judges itself, FIX-03).
+#   --partial    the used list holds only some recipes (conformance-run fixtures --only passes it): FIX_STALE is not evaluated. The real
+#                stage never passes it, so a manifest entry that nothing emits is always caught there (D-85).
 # stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then (clean) a line  FIXTURES manifest=N used=M  and  STATUS fixtures ok
 # stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
 # exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error
@@ -109,7 +113,7 @@ fi
 
 # ---- the comparison: every used image needs its entry, and the entry's size and hash must be what the host tools measured ----
 # The key of an entry is its file stem; the key of a used NAME is NAME with hyphens and colons turned into underscores. Output: violation lines.
-awk -F'\t' -v mf="$tmp/manifest.tsv" -v usedf="$used" '
+awk -v mf="$tmp/manifest.tsv" -v usedf="$used" -v partial="$partial" '
   BEGIN {
     while ((getline line < mf) > 0) { split(line, f, "\t"); msize[f[1]] = f[2]; msha[f[1]] = f[3]; inman[f[1]] = 1 }
     while ((getline line < usedf) > 0) {
@@ -122,6 +126,7 @@ awk -F'\t' -v mf="$tmp/manifest.tsv" -v usedf="$used" '
       if (msha[key] != f[3]) printf "fixtures/manifest/%s.toml\tFIX_HASH_MISMATCH\t0\t%s: emitted %s, listed %s\n", key, f[1], f[3], msha[key]
       if (msize[key] != f[2]) printf "fixtures/manifest/%s.toml\tFIX_SIZE_MISMATCH\t0\t%s: emitted %s, listed %s\n", key, f[1], f[2], msize[key]
     }
+    if (partial != 1) for (key in inman) if (!(key in seen)) printf "fixtures/manifest/%s.toml\tFIX_STALE\t0\tno used line names this entry\n", key  # rule-stale
   }' >> "$viol0" || { echo "HARNESS_AWK failed (comparison)" >&2; exit 2; }
 
 nused=$(awk '/^[ \t]*$/ { next } { n++ } END { print n + 0 }' "$used")

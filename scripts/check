@@ -774,6 +774,32 @@ stage_determinism_negatives() {
   return "$dn_rc"
 }
 
+# fixtures (FIX-02, D-59, D-60, D-85): the real manifest against the bytes the gate emits. The stage makes its own input: it removes any used list
+# left by an earlier run, then runs the whole  sh scripts/conformance-run fixtures  (no --only, so no --partial): that mode flattens the cases,
+# builds the gate preset, hashes and measures ds_runner --emit for every recipe of ds_runner --fixtures with host tools, writes
+# build/gate/fixtures.used and runs fixture-check on it (a used recipe without an entry, a changed hash or size, a stale entry and every field
+# rule are codes there). Then it asserts independently that the used list names every file of fixtures/manifest, by count and by name (the
+# manifest stems against the used names with hyphens and colons turned into underscores): any gap is a harness error, so a manifest entry
+# can never go unchecked because a partial or stale list was judged.
+stage_fixtures() {
+  rm -f build/gate/fixtures.used
+  checker sh "$here/conformance-run" fixtures || return $?
+  if [ ! -s build/gate/fixtures.used ]; then
+    echo "HARNESS_ERROR build/gate/fixtures.used is missing or empty after the fixtures mode"
+    return 2
+  fi
+  ls fixtures/manifest | sed -n 's/\.toml$//p' | sort > "$tmp/fx.man"
+  awk '{ print $1 }' build/gate/fixtures.used | tr ':-' '__' | sort > "$tmp/fx.used"
+  fx_man=$(sed -n '$=' "$tmp/fx.man")
+  fx_used=$(sed -n '$=' "$tmp/fx.used")
+  if [ -z "$fx_man" ] || [ "$fx_man" != "$fx_used" ] || ! cmp -s "$tmp/fx.man" "$tmp/fx.used"; then
+    echo "HARNESS_ERROR the used list does not cover the manifest: manifest files=${fx_man:-0} used lines=${fx_used:-0}"
+    diff "$tmp/fx.man" "$tmp/fx.used" | sed 's/^/  /'
+    return 2
+  fi
+  return 0
+}
+
 # fixture-negatives (FIX-02, D-59): every tests/gate/fixture/<case>/ is a mini-root: fixtures/manifest/*.toml (the entries), used.txt (the used
 # list in the NAME SIZE SHA256 form that conformance-run fixtures writes) and, for a control, an EXPECT. ok-<case> must pass; a case with an
 # EXPECT must fail with exactly that code set. A control that passes without its EXPECT met means the checker is broken (T-02-34, T-02-37).
@@ -1265,6 +1291,51 @@ selftest() {
     fi
   fi
 
+  # (r) the missing-field rule of fixture-rules.awk is what turns the fix-missing-field control red (T-02-34). The control, run with
+  # --expect FIX_MISSING_FIELD, is met on an unmutated copy (exit 0, EXPECT_OK); with the lines tagged rule-missing-field deleted from the
+  # copy of the rules the code is no longer reported, so the same run must exit 1: the control flipped to broken.
+  if st_want mutation-fixture-missing-field; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    fxr="tests/gate/fixture/fix-missing-field"
+    if sh "$cp_dir/fixture-check" --root "$fxr" --used "$fxr/used.txt" --expect FIX_MISSING_FIELD > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c 'rule-missing-field' "$cp_dir/lib/fixture-rules.awk" || true)
+    grep -v 'rule-missing-field' "$cp_dir/lib/fixture-rules.awk" > "$cp_dir/lib/fixture-rules.mutated" || true
+    mv "$cp_dir/lib/fixture-rules.mutated" "$cp_dir/lib/fixture-rules.awk"
+    after=$(grep -c 'rule-missing-field' "$cp_dir/lib/fixture-rules.awk" || true)
+    if sh "$cp_dir/fixture-check" --root "$fxr" --used "$fxr/used.txt" --expect FIX_MISSING_FIELD > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -ge 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+      echo "SELFTEST mutation-fixture-missing-field PASS"
+    else
+      echo "SELFTEST mutation-fixture-missing-field FAIL"; failed=1
+    fi
+  fi
+
+  # (s) the unlisted rule of fixture-check is what turns the fix-unlisted control red (T-02-34): same shape as (r), the line tagged
+  # rule-unlisted is deleted from the copy of the checker, and the fix-unlisted control must flip to broken.
+  if st_want mutation-fixture-unlisted; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    fxr="tests/gate/fixture/fix-unlisted"
+    if sh "$cp_dir/fixture-check" --root "$fxr" --used "$fxr/used.txt" --expect FIX_UNLISTED > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c 'rule-unlisted' "$cp_dir/fixture-check" || true)
+    grep -v 'rule-unlisted' "$cp_dir/fixture-check" > "$cp_dir/fixture-check.mutated" || true
+    mv "$cp_dir/fixture-check.mutated" "$cp_dir/fixture-check"
+    after=$(grep -c 'rule-unlisted' "$cp_dir/fixture-check" || true)
+    if sh "$cp_dir/fixture-check" --root "$fxr" --used "$fxr/used.txt" --expect FIX_UNLISTED > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+      echo "SELFTEST mutation-fixture-unlisted PASS"
+    else
+      echo "SELFTEST mutation-fixture-unlisted FAIL"; failed=1
+    fi
+  fi
+
   # a selected NAME that matched no mutation is a usage error, never a vacuous pass
   if [ -n "$st_sel" ] && [ "$st_ran" -eq 0 ]; then usage; fi
   if [ "$failed" -eq 0 ]; then echo "SELFTEST RESULT PASS"; return 0; fi
@@ -1378,6 +1449,7 @@ run_stage core-boundary stage_core_boundary
 run_stage core-boundary-negatives stage_core_boundary_negatives
 run_stage determinism stage_determinism
 run_stage determinism-negatives stage_determinism_negatives
+run_stage fixtures stage_fixtures
 run_stage fixture-negatives stage_fixture_negatives
 
 if [ -n "$only_stage" ]; then
