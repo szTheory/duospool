@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: 768 KiB, within the 1 MiB cap and a multiple of the bank size but not one of the three supported sizes (LED-LOAD-0004). Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_size_768k"
+kind = "refuse"
+fixture = "plain-256k"
+request = "len=786432"
+expect = "load.size_unsupported"
+meaning = "A fully declared request of 786432 bytes is refused as load.size_unsupported by the exact three-size rule and no instance is created; no claim is made about a 768 KiB card"
+required = true
+control = false
+expect_outcome = "pass"
+pins = ["LED-LOAD-0004"]

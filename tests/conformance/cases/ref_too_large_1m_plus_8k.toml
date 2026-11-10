@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: 1 MiB plus one bank, the smallest bank multiple over the cap. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_too_large_1m_plus_8k"
+kind = "refuse"
+fixture = "plain-1m"
+request = "len=1056768"
+expect = "load.too_large"
+meaning = "A fully declared request of 1056768 bytes is refused as load.too_large, one bank over the cap, and no instance is created"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

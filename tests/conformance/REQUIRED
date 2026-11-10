@@ -61,3 +61,12 @@ ref_not_bank_256k_plus512_none
 ref_not_bank_8192p512
 ref_not_bank_16384p512
 ref_not_bank_24576p512
+ref_size_128k
+ref_size_192k
+ref_size_768k
+ref_size_2m_too_large
+ref_too_large_1m_plus_8k
+ref_too_large_2_5m_plain
+ref_precedence_table
+ref_reason_coverage
+nonmutation_matrix

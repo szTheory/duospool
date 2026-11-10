@@ -108,6 +108,12 @@ extern const char *oracle_path;
 void kind_banksig(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_unmapped(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 
+/* the refusal-matrix kinds (refkinds.c); observe_name records the reason a refuse row returned, for the deferred kind coverage */
+void observe_name(const char *reason_name);
+void kind_precedence(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_coverage(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_nonmutation(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+
 /* the profile kinds (profkinds.c); each gets the case, the counter, and a buffer for the observed value */
 void kind_profile_equal(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_names_both_ways(const struct kase *k, struct ctx *c, char *got, size_t gotcap);

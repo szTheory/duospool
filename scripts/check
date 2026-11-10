@@ -1023,6 +1023,62 @@ selftest() {
     fi
   fi
 
+  # (n) the fixed check order is behaviour, so the precedence table must be red when two rows of boot_order.def are swapped (D-46,
+  # D-79(b)). A scratch tree holds the sources needed to build the runner (CMake files, src, the runner sources and headers; no
+  # controls, so no toy is built). The unmutated copy is built first and ref_precedence_table must pass on it (--only), so the later
+  # red cannot come from a broken build or a harness fault. Then the two adjacent rows mapper and byte_order of the scratch copy of
+  # src/core/boot_order.def are swapped (a list in which they are not adjacent in that order is a failure of the selftest, never a
+  # silent pass), the scratch tree is rebuilt, and the same case against the real cases TSV must give RESULT guest_failure. The live
+  # tree is never written.
+  if st_want mutation-drop-precedence; then
+    st_ran=1
+    dp_root="$tmp/selftest/prec-root"
+    dp_ok=1
+    dp_why=""
+    rm -rf "$dp_root"
+    mkdir -p "$dp_root/tests/conformance" "$dp_root/ev"
+    cp CMakeLists.txt CMakePresets.json "$dp_root/"
+    cp -R src "$dp_root/src"
+    cp tests/conformance/*.c tests/conformance/*.h tests/conformance/*.def "$dp_root/tests/conformance/"
+    if sh "$here/conformance-flatten" tests/conformance/cases > "$dp_root/cases.tsv" 2> "$tmp/st.err"; then :; else dp_ok=0; dp_why="cannot flatten the cases"; fi
+    if [ "$dp_ok" -eq 1 ]; then
+      if (cd "$dp_root" && cmake --preset gate > build.log 2>&1 && cmake --build --preset gate >> build.log 2>&1); then :; else dp_ok=0; dp_why="the unmutated scratch tree does not build"; fi
+    fi
+    if [ "$dp_ok" -eq 1 ]; then
+      "$dp_root/build/gate/ds_runner" --cases "$dp_root/cases.tsv" --evidence-dir "$dp_root/ev" --only ref_precedence_table > "$dp_root/before.txt" 2> /dev/null || true
+      if ! awk '$1 == "RESULT" && $2 == "ref_precedence_table" && $3 == "pass" { f = 1 } END { exit !f }' "$dp_root/before.txt"; then
+        dp_ok=0
+        dp_why="ref_precedence_table does not pass on the unmutated scratch tree"
+      fi
+    fi
+    if [ "$dp_ok" -eq 1 ]; then
+      awk '
+        { line[NR] = $0 }
+        END {
+          for (i = 1; i < NR; i++) if (line[i] == "DS_CHECK(mapper)" && line[i + 1] == "DS_CHECK(byte_order)") { t = line[i]; line[i] = line[i + 1]; line[i + 1] = t; swapped = 1; break }
+          for (i = 1; i <= NR; i++) print line[i]
+          exit swapped ? 0 : 3
+        }
+      ' "$dp_root/src/core/boot_order.def" > "$dp_root/boot_order.mutated" || { dp_ok=0; dp_why="the rows mapper and byte_order are not adjacent in boot_order.def"; }
+    fi
+    if [ "$dp_ok" -eq 1 ]; then
+      mv "$dp_root/boot_order.mutated" "$dp_root/src/core/boot_order.def"
+      if (cd "$dp_root" && cmake --build --preset gate >> build.log 2>&1); then :; else dp_ok=0; dp_why="the mutated scratch tree does not build"; fi
+    fi
+    if [ "$dp_ok" -eq 1 ]; then
+      "$dp_root/build/gate/ds_runner" --cases "$dp_root/cases.tsv" --evidence-dir "$dp_root/ev" --only ref_precedence_table > "$dp_root/after.txt" 2> /dev/null || true
+      if ! awk '$1 == "RESULT" && $2 == "ref_precedence_table" && $3 == "guest_failure" { f = 1 } END { exit !f }' "$dp_root/after.txt"; then
+        dp_ok=0
+        dp_why="ref_precedence_table is not guest_failure with two rows swapped"
+      fi
+    fi
+    if [ "$dp_ok" -eq 1 ]; then
+      echo "SELFTEST mutation-drop-precedence PASS"
+    else
+      echo "SELFTEST mutation-drop-precedence FAIL ($dp_why)"; failed=1
+    fi
+  fi
+
   # a selected NAME that matched no mutation is a usage error, never a vacuous pass
   if [ -n "$st_sel" ] && [ "$st_ran" -eq 0 ]; then usage; fi
   if [ "$failed" -eq 0 ]; then echo "SELFTEST RESULT PASS"; return 0; fi

@@ -10,11 +10,12 @@
  * Cases come from the TSV that scripts/conformance-flatten prints (D-51): the one parser of hand-edited data stays in sh and
  * awk, and this reader refuses a TSV without its closing END row, because a truncated file must never read as a smaller suite.
  * Cases run in two passes (D-86): pass one runs every ordinary case in TSV order; pass two runs the deferred kinds, which
- * aggregate over other rows and so can only be evaluated after the loop (none exist yet). RESULT lines are matched by id.
+ * aggregate over other rows and so can only be evaluated after the loop (kind coverage). RESULT lines are matched by id.
  * usage: ds_runner --cases FILE --evidence-dir DIR [--profile-tsv FILE] [--rules-fields FILE] [--oracle FILE]
  *   --profile-tsv FILE   the flattened profiles/pce-hucard-2btn/r1.toml (scripts/conformance-flatten), read by the r1 kinds
  *   --rules-fields FILE  the 13 field names of scripts/lib/profile-rules.awk, one per line, read by the names kind
  *   --oracle FILE        the bank-signature rows of tests/conformance/mirror-oracle.awk (SIZE BANK FILEBANK FIRST LAST), read by banksig
+ *   --only ID            run exactly one case (the precedence mutation of scripts/check uses it); an id no case carries is a harness fault
  *   --exclude-ids FILE   one case id per line: those cases are not run and print no RESULT line (RUNNER_DONE counts the lines printed).
  *                        Only scripts/conformance-run sanitize passes it, for the exact set of tests/conformance/EXCLUDED_IN_MODE (D-78);
  *                        an id that no case carries is a harness fault (exit 2), so a stale exclusion cannot linger
@@ -717,6 +718,9 @@ static void kind_boot(const struct kase *k, struct ctx *c, char *got, size_t got
         return;
     }
     run_boot(fixture, &s, &e, c, got, gotcap);
+    if (!e.accept) {
+        observe_name(got); /* the reasons seen by refuse rows, for the deferred coverage kind (D-86) */
+    }
 }
 
 /*
@@ -1371,6 +1375,9 @@ static const struct {
     {"banksig", kind_banksig, 0},
     {"unmapped", kind_unmapped, 0},
     {"alloc_zero", kind_alloc_zero, 0},
+    {"precedence", kind_precedence, 0},
+    {"nonmutation", kind_nonmutation, 0},
+    {"coverage", kind_coverage, 1},
 };
 
 static const char *outcome_of(const struct ctx *c, enum outcome *oc)
@@ -1445,6 +1452,7 @@ int main(int argc, char **argv)
     const char *evdir = NULL;
     const char *why = NULL;
     const char *exclude_path = NULL;
+    const char *only_id = NULL;
     static char excluded[MAX_CASES];
     char *text;
     size_t i;
@@ -1503,6 +1511,8 @@ int main(int argc, char **argv)
     for (a = 1; a < argc; a++) {
         if (strcmp(argv[a], "--exclude-ids") == 0 && a + 1 < argc) {
             exclude_path = argv[++a];
+        } else if (strcmp(argv[a], "--only") == 0 && a + 1 < argc) {
+            only_id = argv[++a];
         } else if (strcmp(argv[a], "--cases") == 0 && a + 1 < argc) {
             cases_path = argv[++a];
         } else if (strcmp(argv[a], "--evidence-dir") == 0 && a + 1 < argc) {
@@ -1520,7 +1530,7 @@ int main(int argc, char **argv)
     }
     if (cases_path == NULL || evdir == NULL) {
         fprintf(stderr, "usage: ds_runner --cases FILE --evidence-dir DIR [--profile-tsv FILE] [--rules-fields FILE]\n"
-                        "                 [--oracle FILE] [--exclude-ids FILE]\n"
+                        "                 [--oracle FILE] [--exclude-ids FILE] [--only ID]\n"
                         "       ds_runner --sweep-lengths | --spec | --emit RECIPE | --hash RECIPE\n");
         return 2;
     }
@@ -1560,6 +1570,17 @@ int main(int argc, char **argv)
         }
         if (xt == NULL) {
             fprintf(stderr, "HARNESS cannot read the exclusion file\n");
+            return 2;
+        }
+    }
+    if (only_id != NULL) {
+        size_t hit = 0u;
+        for (i = 0u; i < ncases; i++) {
+            excluded[i] = strcmp(cases[i].stem, only_id) != 0;
+            hit += excluded[i] ? 0u : 1u;
+        }
+        if (hit != 1u) {
+            fprintf(stderr, "HARNESS --only names an id that no case carries\n");
             return 2;
         }
     }
