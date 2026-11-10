@@ -188,11 +188,18 @@ static const char *core_allowed_without_r1(const char *field)
     return strcmp(field, "powerup_policy") == 0 ? "zero|seeded-prng-v1" : "";
 }
 
+/* the ledger ids of a field that r1 gives no ledger key: none, except powerup_policy, whose entry LED-PROF-0002 came after the frozen record */
+static const char *core_ledger_without_r1(const char *field)
+{
+    return strcmp(field, "powerup_policy") == 0 ? "LED-PROF-0002" : "";
+}
+
 /*
  * kind profile_equal: the built-in r1 constant against the flattened r1.toml, field by field (D-48, T-02-48). Compared per field:
  * status, the value of an owner-selected field, the allowed list where r1 has one (and the documented core list where it has
- * none), the absence of any value on an open field, and that the proposal of an open field is one of the allowed values. Not
- * compared: label, decision and ledger keys, which the core does not carry. Root keys: profile_id, rev and the
+ * none), the absence of any value on an open field, that the proposal of an open field is one of the allowed values, and the ledger
+ * ids of each field (plan 13: the ledger key of r1, joined with a vertical bar; the core constant LED-PROF-0002 for powerup_policy,
+ * where r1 has none). Not compared: label and decision keys, which the core does not carry. Root keys: profile_id, rev and the
  * unresolved_behaviours ids, which must be exactly the ones the constant lists.
  */
 void kind_profile_equal(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
@@ -253,6 +260,7 @@ void kind_profile_equal(const struct kase *k, struct ctx *c, char *got, size_t g
         const struct prow *val = ptsv_get(name, "value");
         const struct prow *al = ptsv_get(name, "allowed");
         const struct prow *pr = ptsv_get(name, "proposal");
+        const struct prow *led = ptsv_get(name, "ledger");
         const char *core_allowed = ds_field_allowed(f);
         char msg[160];
         int owner;
@@ -289,6 +297,9 @@ void kind_profile_equal(const struct kase *k, struct ctx *c, char *got, size_t g
         snprintf(msg, sizeof msg, "field %s: the allowed list differs from r1 (or from the documented core list where r1 has none)",
                  name);
         check(c, strcmp(core_allowed, al != NULL ? al->value : core_allowed_without_r1(name)) == 0, msg);
+        snprintf(msg, sizeof msg, "field %s: the ledger ids differ from the ledger key of r1 (or from the documented core id where r1 has none)",
+                 name);
+        check(c, strcmp(ds_field_ledger(f), led != NULL ? led->value : core_ledger_without_r1(name)) == 0, msg);
     }
     check(c, n_owner == 6u && n_open == 7u && core_open == 7u, "r1 and the constant do not both have 6 owner-selected and 7 open fields");
     snprintf(got, gotcap, "fields=%u", (unsigned)DS_FIELD_COUNT);

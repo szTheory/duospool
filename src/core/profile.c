@@ -10,7 +10,7 @@
 
 #include "ds_core.h"
 
-#define DS_FIELD(name, kind, value, allowed) {DS_STATUS_##kind, DS_BOUNDINIT_##kind, value},
+#define DS_FIELD(name, kind, value, allowed, ledger) {DS_STATUS_##kind, DS_BOUNDINIT_##kind, value},
 static const struct ds_profile ds_profile_r1 = {"pce-hucard-2btn",
                                                 1u,
                                                 {
@@ -18,14 +18,20 @@ static const struct ds_profile ds_profile_r1 = {"pce-hucard-2btn",
                                                 }};
 #undef DS_FIELD
 
-#define DS_FIELD(name, kind, value, allowed) #name,
+#define DS_FIELD(name, kind, value, allowed, ledger) #name,
 static const char *const ds_field_names[DS_FIELD_COUNT] = {
 #include "profile_fields.def"
 };
 #undef DS_FIELD
 
-#define DS_FIELD(name, kind, value, allowed) allowed,
+#define DS_FIELD(name, kind, value, allowed, ledger) allowed,
 static const char *const ds_field_alloweds[DS_FIELD_COUNT] = {
+#include "profile_fields.def"
+};
+#undef DS_FIELD
+
+#define DS_FIELD(name, kind, value, allowed, ledger) ledger,
+static const char *const ds_field_ledgers[DS_FIELD_COUNT] = {
 #include "profile_fields.def"
 };
 #undef DS_FIELD
@@ -38,6 +44,11 @@ const char *ds_field_name(uint32_t field)
 const char *ds_field_allowed(uint32_t field)
 {
     return field < (uint32_t)DS_FIELD_COUNT ? ds_field_alloweds[field] : NULL;
+}
+
+const char *ds_field_ledger(uint32_t field)
+{
+    return field < (uint32_t)DS_FIELD_COUNT ? ds_field_ledgers[field] : NULL;
 }
 
 const struct ds_profile *ds_profile_builtin(const char *id, uint32_t rev)

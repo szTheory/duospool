@@ -139,6 +139,11 @@ void kind_advance(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
 void kind_run_budget(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_poweron_domain(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 
+/* the digest and profile-hash kinds (digkinds.c, plan 13) */
+void kind_digest_stream(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_digest_pair(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_profile_hash(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+
 /* the profile kinds (profkinds.c); each gets the case, the counter, and a buffer for the observed value */
 void kind_profile_equal(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_names_both_ways(const struct kase *k, struct ctx *c, char *got, size_t gotcap);

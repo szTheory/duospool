@@ -1434,6 +1434,9 @@ static const struct {
     {"advance", kind_advance, 0},
     {"run_budget", kind_run_budget, 0},
     {"poweron_domain", kind_poweron_domain, 0},
+    {"digest_stream", kind_digest_stream, 0},
+    {"digest_pair", kind_digest_pair, 0},
+    {"profile_hash", kind_profile_hash, 0},
     {"coverage", kind_coverage, 1},
 };
 

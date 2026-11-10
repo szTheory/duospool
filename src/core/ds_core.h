@@ -43,7 +43,7 @@ const char *ds_refusal_name(uint32_t number);
 /* ---- profile (profile_fields.def) ---- */
 
 enum ds_field_index {
-#define DS_FIELD(name, kind, value, allowed) DS_FIELD_##name,
+#define DS_FIELD(name, kind, value, allowed, ledger) DS_FIELD_##name,
 #include "profile_fields.def"
 #undef DS_FIELD
     DS_FIELD_COUNT
@@ -87,6 +87,7 @@ struct ds_bindings {
 
 const char *ds_field_name(uint32_t field);    /* NULL for an index at or above DS_FIELD_COUNT */
 const char *ds_field_allowed(uint32_t field); /* values separated by '|', empty when the profile lists none */
+const char *ds_field_ledger(uint32_t field);  /* ledger ids separated by '|', empty when none; NULL for an index at or above DS_FIELD_COUNT */
 
 /* the registered r1 constant for id and rev, NULL when either does not match */
 const struct ds_profile *ds_profile_builtin(const char *id, uint32_t rev);
