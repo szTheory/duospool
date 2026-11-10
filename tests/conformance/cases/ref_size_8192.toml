@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: a request of one bank (8192 bytes), otherwise fully declared (plain, pce, none). It passes the length, cap, short and bank-multiple checks and is refused by the supported-size rule alone. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_size_8192"
+kind = "refuse"
+fixture = "plain-256k"
+request = "len=8192"
+expect = "load.size_unsupported"
+meaning = "A fully declared request of 8192 bytes, one 8 KiB bank, is a multiple of the bank size and within the cap, is not one of the three supported sizes, and is refused as load.size_unsupported with no instance created and caller memory untouched"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
