@@ -1,0 +1,102 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# conformance-run - the sh harness that drives the conformance runner (D-57, D-77). The only mode so far is supervise; later
+# plans add modes, and an unknown mode exits 2 with the usage line so that they can do so without changing this contract.
+# usage: conformance-run supervise --ids FILE --out FILE [--wall N] -- CMD ARGS...
+#   --ids FILE  one case id per line (# comments and blank lines ignored): the ids that must have a RESULT line
+#   --out FILE  CMD's stdout is written here (truncated first); this is the file that conformance-ingest judges
+#   --wall N    wall-clock watchdog in whole seconds, default 300 (D-57: the watchdog lives in this harness, not in the runner)
+# Normal end: the exit status of CMD (a status above 2 is reported as HARNESS_CMD_STATUS and becomes 2).
+# SIGINT or SIGTERM (D-77): CMD is killed, every id in the ids file that has no RESULT line in OUT gets
+#   RESULT ID cancelled assertions=0 evidence=signal:INT|TERM , then RUNNER_DONE n is appended (n = RESULT lines in OUT),
+#   CANCELLED signal:NAME n=COUNT is printed on stdout and the exit status is 1. The ingest judges that file non-green.
+# Wall expiry: the alarm kills CMD, HARNESS_WALL seconds=N is printed on stderr and the exit status is 2. That is a harness
+#   error, never guest evidence and never a cancelled line, and it is not retried. The alarm is armed with perl because macOS
+#   has no timeout(1); a CMD that itself dies of SIGALRM is indistinguishable from expiry and is treated the same way.
+# stdout: CANCELLED signal:NAME n=COUNT on a cancelled run, otherwise nothing of its own (CMD's output goes to OUT)
+# exit  : 0 CMD exited 0 | 1 CMD exited 1, or the run was cancelled | 2 usage or harness error, or wall expiry
+set -eu
+LC_ALL=C; export LC_ALL
+
+usage() {
+  echo "usage: conformance-run supervise --ids FILE --out FILE [--wall N] -- CMD ARGS..." >&2
+  exit 2
+}
+
+[ $# -ge 1 ] || usage
+case $1 in
+  supervise) shift ;;
+  *) usage ;;
+esac
+
+ids=""
+out=""
+wall=300
+while [ $# -gt 0 ]; do
+  case $1 in
+    --ids) [ $# -ge 2 ] || usage; ids=$2; shift 2 ;;
+    --out) [ $# -ge 2 ] || usage; out=$2; shift 2 ;;
+    --wall) [ $# -ge 2 ] || usage; wall=$2; shift 2 ;;
+    --) shift; break ;;
+    *) usage ;;
+  esac
+done
+[ -n "$ids" ] && [ -n "$out" ] && [ $# -ge 1 ] || usage
+case $wall in
+  '' | *[!0-9]*) usage ;;
+esac
+[ "$wall" -gt 0 ] || usage
+if [ ! -f "$ids" ]; then
+  echo "HARNESS_NO_FILE $ids" >&2
+  exit 2
+fi
+
+pid=""
+
+# on_signal NAME: the cancelled producer. Kill CMD, then give every id that has no RESULT line a cancelled line whose evidence
+# names the signal, close the file with RUNNER_DONE and exit 1. It is installed for INT and TERM by the two trap lines below.
+on_signal() {
+  sig=$1
+  trap '' INT TERM
+  if [ -n "$pid" ]; then
+    kill "$pid" 2> /dev/null || true
+    wait "$pid" 2> /dev/null || true
+  fi
+  # CMD may have been killed mid-line: close the partial line so that what follows starts on its own line
+  if [ -s "$out" ] && [ "$(tail -c 1 "$out" | wc -l | tr -d ' ')" -eq 0 ]; then
+    printf '\n' >> "$out"
+  fi
+  awk '/^[ \t]*(#.*)?$/ { next } { print $1 }' "$ids" > "$out.ids"
+  awk '$1 == "RESULT" { print $2 }' "$out" > "$out.have"
+  while IFS= read -r id; do
+    if ! grep -Fxq -e "$id" "$out.have"; then
+      printf 'RESULT %s cancelled assertions=0 evidence=signal:%s\n' "$id" "$sig" >> "$out"
+    fi
+  done < "$out.ids"
+  n=$(grep -c '^RESULT ' "$out" || true)
+  printf 'RUNNER_DONE %s\n' "$n" >> "$out"
+  rm -f "$out.ids" "$out.have"
+  echo "CANCELLED signal:$sig n=$n"
+  exit 1
+}
+
+: > "$out"
+trap 'on_signal TERM' TERM # rule-cancel-trap
+trap 'on_signal INT' INT # rule-cancel-trap
+
+perl -e 'alarm shift; exec @ARGV' "$wall" "$@" > "$out" &
+pid=$!
+if wait "$pid"; then r=0; else r=$?; fi
+pid=""
+
+if [ "$r" -eq 142 ]; then
+  echo "HARNESS_WALL seconds=$wall" >&2
+  exit 2
+fi
+if [ "$r" -gt 2 ]; then
+  echo "HARNESS_CMD_STATUS $r" >&2
+  exit 2
+fi
+exit "$r"

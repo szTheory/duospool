@@ -489,6 +489,90 @@ stage_flatten_controls() {
   return "$fc_rc"
 }
 
+# cancel_reap PIDFILE: the stub records its pid; kill it when it is still the sleeping stub (the process the supervisor was
+# meant to kill), so that no run of the controls, mutated or not, leaves a spinning process behind. The command line is
+# checked first so that a recycled pid is never signalled.
+cancel_reap() {
+  [ -f "$1" ] || return 0
+  cr_pid=$(cat "$1")
+  case $cr_pid in '' | *[!0-9]*) return 0 ;; esac
+  if ps -o command= -p "$cr_pid" 2> /dev/null | grep -q 'sleep 600'; then
+    kill "$cr_pid" 2> /dev/null || true
+  fi
+  return 0
+}
+
+# cancel_sequence RUN WORKDIR: the D-77 controls against the conformance-run script RUN, files under WORKDIR. First a SIGTERM
+# to a supervisor whose stub has finished case a and then spins: the file must end up with the a line unchanged, a cancelled
+# line for b and for c naming the signal, and RUNNER_DONE 3, the supervisor must exit 1 and say CANCELLED, and the judge must
+# call the result non-green with exactly the cancelled class. Then a wall expiry (no signal): exit 2, HARNESS_WALL, and no
+# cancelled line, because the watchdog is a different outcome. Returns 0 pass, 1 broken control, 2 harness error.
+cancel_sequence() {
+  cs_run=$1
+  cs_w=$2
+  cs_c=tests/gate/cancel
+  cs_rc=0
+  rm -rf "$cs_w"
+  mkdir -p "$cs_w" || { echo "HARNESS_ERROR cannot create $cs_w"; return 2; }
+  sh "$cs_run" supervise --ids "$cs_c/ids.txt" --out "$cs_w/out.txt" -- sh "$cs_c/spin.sh" "$cs_w/pid" > "$cs_w/sup.out" 2> "$cs_w/sup.err" &
+  cs_sup=$!
+  cs_i=0
+  while [ "$cs_i" -lt 50 ] && ! grep -q '^RESULT a pass ' "$cs_w/out.txt" 2> /dev/null; do
+    sleep 0.1
+    cs_i=$((cs_i + 1))
+  done
+  if [ "$cs_i" -ge 50 ]; then
+    echo "HARNESS_ERROR the stub never produced its a line within 5 s"
+    kill "$cs_sup" 2> /dev/null || true
+    wait "$cs_sup" 2> /dev/null || true
+    cancel_reap "$cs_w/pid"
+    return 2
+  fi
+  kill -TERM "$cs_sup"
+  if wait "$cs_sup"; then cs_r=0; else cs_r=$?; fi
+  cancel_reap "$cs_w/pid"
+  if [ "$cs_r" -ne 1 ]; then
+    echo "CONTROL BROKEN cancel-exit (supervisor exit $cs_r after SIGTERM, wanted 1)"
+    cs_rc=1
+  fi
+  if ! grep -qx 'CANCELLED signal:TERM n=3' "$cs_w/sup.out"; then
+    echo "CONTROL BROKEN cancel-message (no 'CANCELLED signal:TERM n=3' on stdout)"
+    cs_rc=1
+  fi
+  cs_n=$(wc -l < "$cs_w/out.txt" | tr -d ' ')
+  if [ "$cs_n" -ne 4 ] \
+    || ! sed -n 1p "$cs_w/out.txt" | awk '$1 == "RESULT" && $2 == "a" && $3 == "pass" { f = 1 } END { exit !f }' \
+    || [ "$(sed -n 2p "$cs_w/out.txt")" != 'RESULT b cancelled assertions=0 evidence=signal:TERM' ] \
+    || [ "$(sed -n 3p "$cs_w/out.txt")" != 'RESULT c cancelled assertions=0 evidence=signal:TERM' ] \
+    || [ "$(sed -n 4p "$cs_w/out.txt")" != 'RUNNER_DONE 3' ]; then
+    echo "CONTROL BROKEN cancel-lines (the results file after SIGTERM is not a, b cancelled, c cancelled, RUNNER_DONE 3)"
+    sed 's/^/  /' "$cs_w/out.txt"
+    cs_rc=1
+  fi
+  if sh "$here/conformance-ingest" --root "$cs_c" --results "$cs_w/out.txt" --expect OUTCOME_CANCELLED > "$cs_w/ing.out" 2>&1 && grep -qx 'EXPECT_OK' "$cs_w/ing.out"; then :; else
+    echo "CONTROL BROKEN cancel-judged (the judge did not report exactly OUTCOME_CANCELLED)"
+    sed 's/^/  /' "$cs_w/ing.out"
+    cs_rc=1
+  fi
+  if sh "$here/conformance-ingest" --root "$cs_c" --results "$cs_w/out.txt" > "$cs_w/ing2.out" 2>&1; then cs_r=0; else cs_r=$?; fi
+  if [ "$cs_r" -ne 1 ]; then
+    echo "CONTROL BROKEN cancel-not-green (the judge exited $cs_r on a cancelled result, wanted 1)"
+    cs_rc=1
+  fi
+  if sh "$cs_run" supervise --wall 1 --ids "$cs_c/ids.txt" --out "$cs_w/wall.txt" -- sh "$cs_c/spin.sh" "$cs_w/wpid" > "$cs_w/wall.out" 2> "$cs_w/wall.err"; then cs_r=0; else cs_r=$?; fi
+  cancel_reap "$cs_w/wpid"
+  if [ "$cs_r" -ne 2 ] || ! grep -q '^HARNESS_WALL seconds=1$' "$cs_w/wall.err" || grep -q 'cancelled' "$cs_w/wall.txt" "$cs_w/wall.out"; then
+    echo "CONTROL BROKEN wall-not-cancelled (exit $cs_r, wanted 2 with HARNESS_WALL and no cancelled line)"
+    sed 's/^/  /' "$cs_w/wall.err"
+    cs_rc=1
+  fi
+  return "$cs_rc"
+}
+
+stage_cancel_controls() {
+  cancel_sequence "$here/conformance-run" "$tmp/cancel"
+}
+
 # ---- self-test: prove the gate is alive (not vacuous). Mutates a COPY of scripts/ only ----
 
 # st_want NAME: true when no mutation was selected (run them all) or NAME is the selected one
@@ -636,6 +720,29 @@ selftest() {
     fi
   fi
 
+  # (i) the cancelled outcome has a producer, and the producer is the trap (D-77). The control sequence is run twice against
+  # scratch copies of scripts/: the unmutated copy must pass it; with the lines carrying the trap marker deleted the same
+  # sequence must be broken, because SIGTERM then kills the supervisor before it writes anything. The marker is assembled
+  # here so that this script never carries it, and conformance-run carries it on exactly two lines (the INT and TERM traps).
+  if st_want mutation-cancel-trap; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    tok=rule-cancel-
+    tok="${tok}trap"
+    if cancel_sequence "$cp_dir/conformance-run" "$tmp/st-cancel" > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    before=$(grep -c "$tok" "$cp_dir/conformance-run" || true)
+    grep -v "$tok" "$cp_dir/conformance-run" > "$cp_dir/conformance-run.mutated" || true
+    mv "$cp_dir/conformance-run.mutated" "$cp_dir/conformance-run"
+    after=$(grep -c "$tok" "$cp_dir/conformance-run" || true)
+    if cancel_sequence "$cp_dir/conformance-run" "$tmp/st-cancel" > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$r0" -eq 0 ] && [ "$before" -eq 2 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+      echo "SELFTEST mutation-cancel-trap PASS"
+    else
+      echo "SELFTEST mutation-cancel-trap FAIL"; failed=1
+    fi
+  fi
+
   # a selected NAME that matched no mutation is a usage error, never a vacuous pass
   if [ -n "$st_sel" ] && [ "$st_ran" -eq 0 ]; then usage; fi
   if [ "$failed" -eq 0 ]; then echo "SELFTEST RESULT PASS"; return 0; fi
@@ -710,6 +817,7 @@ run_stage results stage_results
 run_stage results-negatives stage_results_negatives
 run_stage ingest-controls stage_ingest_controls
 run_stage flatten-controls stage_flatten_controls
+run_stage cancel-controls stage_cancel_controls
 
 if [ -n "$only_stage" ]; then
   # one stage: its own CHECK line is the whole output; the exit status is that stage's verdict
