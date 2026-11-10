@@ -8,7 +8,9 @@
 # usage: conformance-run run [--preset NAME]
 #        conformance-run supervise --ids FILE --out FILE [--wall N] -- CMD ARGS...
 # run mode (D-60, D-85): everything lives under build/NAME (default gate, the build directory of the preset NAME). The steps are
-#   flatten tests/conformance/cases into cases.tsv (the only parser of hand-edited data, D-51), derive ids.txt from it, configure
+#   flatten tests/conformance/cases into cases.tsv (the only parser of hand-edited data, D-51), derive ids.txt from it, flatten the
+#   frozen profiles/pce-hucard-2btn/r1.toml into r1.tsv and cut the 13 field names of scripts/lib/profile-rules.awk into
+#   rules-fields.txt (both handed to the runner for the profile kinds), configure
 #   and build the preset incrementally (so a stale binary is never judged), run ds_runner under the supervise mode below with
 #   its stdout in results.txt, judge results.txt with conformance-ingest against tests/conformance/REQUIRED and the case
 #   inventory, and print the RESULT lines then  STATUS conformance ok n=COUNT . Violations are printed instead of the STATUS line.
@@ -53,7 +55,7 @@ run_mode() {
   root=$(pwd)
   bd=build/$preset
   mkdir -p "$bd" || { echo "HARNESS_ERROR cannot create $bd" >&2; exit 2; }
-  rm -rf "$bd/cases.tsv" "$bd/ids.txt" "$bd/results.txt" "$bd/evidence"
+  rm -rf "$bd/cases.tsv" "$bd/ids.txt" "$bd/results.txt" "$bd/evidence" "$bd/r1.tsv" "$bd/rules-fields.txt"
 
   if sh "$here/conformance-flatten" tests/conformance/cases > "$bd/cases.tsv" 2> "$bd/flatten.err"; then r=0; else r=$?; fi
   if [ "$r" -ne 0 ]; then
@@ -68,6 +70,22 @@ run_mode() {
     exit 2
   fi
 
+  # the two inputs of the profile kinds (D-48, D-51): the frozen r1 record flattened by the same parser as the cases, and the
+  # field-name list of the profile rules cut out of scripts/lib/profile-rules.awk; the runner reads lines, never TOML or awk
+  if sh "$here/conformance-flatten" profiles/pce-hucard-2btn/r1.toml > "$bd/r1.tsv" 2> "$bd/r1.err"; then r=0; else r=$?; fi
+  if [ "$r" -ne 0 ] || [ "$(tail -n 1 "$bd/r1.tsv" | cut -c 1-3)" != "END" ]; then
+    cat "$bd/r1.err"
+    rm -f "$bd/r1.tsv"
+    echo "HARNESS_ERROR the flattened r1 record is missing or has no END row" >&2
+    [ "$r" -eq 1 ] || r=2
+    exit "$r"
+  fi
+  sed -n 's/^.*split("\([a-z0-9_ ]*\)", fl, " ").*$/\1/p' scripts/lib/profile-rules.awk | tr ' ' '\n' > "$bd/rules-fields.txt"
+  if [ "$(sed -n '$=' "$bd/rules-fields.txt")" != 13 ] || [ "$(sed -n '/^$/p' "$bd/rules-fields.txt" | wc -l | tr -d ' ')" -ne 0 ]; then
+    echo "HARNESS_ERROR the field list of scripts/lib/profile-rules.awk did not give exactly 13 names" >&2
+    exit 2
+  fi
+
   if cmake --preset "$preset" > "$bd/build.log" 2>&1 && cmake --build --preset "$preset" >> "$bd/build.log" 2>&1; then :; else
     cat "$bd/build.log"
     echo "BUILD_FAILED preset $preset"
@@ -79,7 +97,7 @@ run_mode() {
   fi
 
   mkdir -p "$bd/evidence" || { echo "HARNESS_ERROR cannot create $bd/evidence" >&2; exit 2; }
-  if sh "$here/conformance-run" supervise --ids "$bd/ids.txt" --out "$bd/results.txt" -- "$bd/ds_runner" --cases "$bd/cases.tsv" --evidence-dir "$bd/evidence"; then sup=0; else sup=$?; fi
+  if sh "$here/conformance-run" supervise --ids "$bd/ids.txt" --out "$bd/results.txt" -- "$bd/ds_runner" --cases "$bd/cases.tsv" --evidence-dir "$bd/evidence" --profile-tsv "$bd/r1.tsv" --rules-fields "$bd/rules-fields.txt"; then sup=0; else sup=$?; fi
   if [ "$sup" -eq 2 ]; then
     exit 2
   fi

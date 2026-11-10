@@ -10,3 +10,6 @@ resolve_bind_closed
 resolve_bind_not_allowed
 resolve_rev_mismatch
 record_skeleton_256k
+profile_r1_equal
+profile_names_both_ways
+field_flip

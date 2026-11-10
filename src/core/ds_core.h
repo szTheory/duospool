@@ -88,6 +88,13 @@ const char *ds_field_allowed(uint32_t field); /* values separated by '|', empty 
 const struct ds_profile *ds_profile_builtin(const char *id, uint32_t rev);
 
 /*
+ * The unresolved behaviours of the built-in profile: ledger ids, in sorted order, the root key unresolved_behaviours of r1.toml.
+ * They are part of the profile identity text of a later plan; label text never is.
+ */
+uint32_t ds_profile_unresolved_count(void);
+const char *ds_profile_unresolved(uint32_t index); /* NULL for an index at or above the count */
+
+/*
  * Resolve profile id and rev against the bindings. Returns DS_OK and fills out (when not NULL), or a refusal; field_index (when
  * not NULL) is the offending field or DS_NO_FIELD. Nothing but field_index is written on a refusal.
  */

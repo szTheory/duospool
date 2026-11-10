@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Profile equality row: the built-in r1 constant against the flattened frozen record. Evidence tier E0: it shows the C constant
+# equals the TOML record, not that either states a hardware fact.
+# Documented gaps of the frozen record, handled by the case and not skipped silently: r1 has no allowed list for vdc_count, vpc
+# and input_port1 (the core has none either, checked) and none for powerup_policy (the core holds the D-67 set zero and
+# seeded-prng-v1, checked). The core does not carry label, decision or ledger keys, so those are not compared.
+id = "profile_r1_equal"
+kind = "profile_equal"
+fixture = "none"
+request = ""
+expect = "equal"
+meaning = "The built-in r1 constant equals profiles/pce-hucard-2btn/r1.toml field by field (13 fields, 6 owner-selected, 7 open): status, owner values, allowed lists, no value on any open field, and the unresolved behaviour ids"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
