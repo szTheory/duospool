@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Digest-based non-mutation (D-43; the byte comparison of nonmutation_matrix is the earlier form): a live seed-42 instance is booted, and then
+# every refuse row of the matrix is booted into the memory of that live instance. The digest before and after each row must be equal, and the
+# digest of the whole run must equal the first. One assertion per refuse row plus one. Evidence tier E0.
+id = "nonmutation_digest"
+kind = "nonmutation_digest"
+fixture = "none"
+request = "bind.powerup_policy=seeded-prng-v1;seed=42"
+expect = "unchanged"
+meaning = "No refuse row, aimed at the memory of a live instance, changes the digest of that instance"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

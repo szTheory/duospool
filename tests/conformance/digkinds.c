@@ -10,9 +10,15 @@
  *                   ds_digest. expect items, separated by ';': version=N, frames=TAG:LEN,TAG:LEN,..., size=N, enum=N, digest=HEX64
  *   digest_pair     request is two requests separated by "||"; the first is booted twice, into blocks prefilled with different bytes, and
  *                   the second once; the two boots of the first must agree, and expect is same (the second agrees too) or differ
+ *   digest_region   boots the request, and for every region reached through ds_region_info flips one byte of live state, the first and the
+ *                   last byte of its live span: each flip must change the digest, and restoring the byte must restore it. One assertion per
+ *                   region. expect tags=A,B,...: the region count and order; TAG:first says that only the first byte of the live span is
+ *                   text of the stream (the PROF span is the whole profile struct, whose tail is the padding of the last value, not hashed)
  *   profile_hash    expect fields: each of the 13 fields flipped (value, status, bound_by) changes ds_profile_hash, one assertion per field;
  *                   expect identity;unbound=HEX;resolved=HEX: literals, id and revision flips, bytes after a NUL are not hashed, the sorted
  *                   unresolved ids; the resolved literal is the profile of the request bound as the default request binds
+ *   nonmutation_digest   boots a live instance, then boots every refuse row of the cases into the memory of that live instance and takes the
+ *                   digest before and after each: one assertion per refuse row plus one for the whole run
  */
 #include <stdint.h>
 #include <stdio.h>
@@ -355,6 +361,111 @@ void kind_digest_pair(const struct kase *k, struct ctx *c, char *got, size_t got
     block_free(&bb);
 }
 
+/* ---- kind digest_region ---- */
+
+void kind_digest_region(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    struct booted b;
+    struct spec s;
+    const struct ds_instance *cinst = NULL;
+    const char *err = boot_accepted(k->val[K_FIXTURE], k->val[K_REQUEST], &b, &s, &cinst);
+    char list[PK_LIST_MAX];
+    char *rest = list;
+    char *item;
+    const char *want[DS_REGIONS_MAX];
+    unsigned nwant = 0u;
+    unsigned index;
+    uint8_t before[DS_DIGEST_BYTES];
+
+    if (err != NULL) {
+        harness_error(c, err);
+        return;
+    }
+    if (strncmp(k->val[K_EXPECT], "tags=", 5) != 0 || pk_copy_text(k->val[K_EXPECT] + 5, list, sizeof list) != 0) {
+        release_boot(&b);
+        harness_error(c, "a digest_region expect is tags=A,B,...");
+        return;
+    }
+    while ((item = pk_next_item(&rest, ',')) != NULL && nwant < DS_REGIONS_MAX) {
+        want[nwant++] = item;
+    }
+    if (nwant == 0u) {
+        release_boot(&b);
+        harness_error(c, "a digest_region expect lists no tag");
+        return;
+    }
+    /* the instance is the caller's own writable block: the accessor takes it non-const, so a test can reach the live storage */
+    {
+        struct ds_instance *inst = (struct ds_instance *)b.mem;
+        unsigned count = 0u;
+        const char *tag;
+        uint8_t *ptr;
+        size_t len;
+
+        while (ds_region_info(inst, count, &tag, &ptr, &len) != 0u) {
+            count++;
+        }
+        if (count != nwant) {
+            /* the region count is the number of assertions: a different number fails the case here, once */
+            check(c, 0, "the region table does not have the number of regions the case lists");
+            release_boot(&b);
+            snprintf(got, gotcap, "regions=%u", count);
+            return;
+        }
+        if (ds_digest(inst, before) != 0u) {
+            check(c, 0, "ds_digest refused a booted instance");
+            release_boot(&b);
+            return;
+        }
+        for (index = 0u; index < count; index++) {
+            uint8_t flipped[DS_DIGEST_BYTES];
+            uint8_t restored[DS_DIGEST_BYTES];
+            const char *why = NULL;
+            int in_block = 0;
+            int first_only = 0;
+            char want_tag[5];
+            size_t wl;
+            unsigned pass;
+
+            if (ds_region_info(inst, index, &tag, &ptr, &len) == 0u || tag == NULL || ptr == NULL) {
+                check(c, 0, "ds_region_info does not answer for an index below the count");
+                break;
+            }
+            in_block = len > 0u && ptr >= b.mem && len <= ds_instance_size() && (size_t)(ptr - b.mem) <= ds_instance_size() - len;
+            wl = strlen(want[index]);
+            memset(want_tag, 0, sizeof want_tag);
+            memcpy(want_tag, want[index], wl < 4u ? wl : 4u);
+            first_only = wl == 10u && strcmp(want[index] + 4, ":first") == 0;
+            if ((wl != 4u && !first_only) || strcmp(tag, want_tag) != 0) {
+                why = "a region has another tag than the case lists at its place";
+            } else if (!in_block) {
+                why = "the live span of a region is empty or outside the instance";
+            }
+            for (pass = 0u; why == NULL && pass < (first_only ? 1u : 2u); pass++) {
+                uint8_t *at = pass == 0u ? ptr : ptr + (len - 1u);
+                uint8_t saved = *at;
+
+                *at = (uint8_t)(saved ^ 0x01u);
+                (void)ds_digest(inst, flipped);
+                *at = saved;
+                (void)ds_digest(inst, restored);
+                if (memcmp(flipped, before, DS_DIGEST_BYTES) == 0) {
+                    why = pass == 0u ? "flipping the first byte of the live state of a region did not change the digest"
+                                     : "flipping the last byte of the live state of a region did not change the digest";
+                } else if (memcmp(restored, before, DS_DIGEST_BYTES) != 0) {
+                    why = "restoring the flipped byte did not restore the digest";
+                }
+            }
+            check(c, why == NULL, why != NULL ? why : "");
+            if (why != NULL) {
+                emit_err("digest_region: region %u (%s): %s\n", index, tag, why);
+            }
+        }
+        snprintf(got, gotcap, "regions=%u", count);
+    }
+    release_boot(&b);
+}
+
 /* ---- kind profile_hash ---- */
 
 static int hash_differs(const struct ds_profile *a, const uint8_t base[DS_DIGEST_BYTES])
@@ -490,4 +601,101 @@ void kind_profile_hash(const struct kase *k, struct ctx *c, char *got, size_t go
     } else {
         harness_error(c, "a profile_hash expect is fields or identity;unbound=HEX;resolved=HEX");
     }
+}
+
+/* ---- kind nonmutation_digest ---- */
+
+void kind_nonmutation_digest(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    struct booted live;
+    struct spec s0;
+    const struct ds_instance *inst = NULL;
+    const char *err = boot_accepted("plain-256k", k->val[K_REQUEST], &live, &s0, &inst);
+    uint8_t first[DS_DIGEST_BYTES];
+    size_t isize = ds_instance_size();
+    size_t i;
+    unsigned rows = 0u;
+
+    if (err != NULL) {
+        harness_error(c, err);
+        return;
+    }
+    snprintf(got, gotcap, "rows=0");
+    if (ds_digest(inst, first) != 0u) {
+        check(c, 0, "ds_digest refused a booted instance");
+        release_boot(&live);
+        return;
+    }
+    for (i = 0u; i < case_count(); i++) {
+        const struct kase *r = case_get(i);
+        static const unsigned char dummy[1] = {0u};
+        struct spec s;
+        struct expect e;
+        struct ds_boot_request rq;
+        struct ds_boot_result res;
+        uint8_t d0[DS_DIGEST_BYTES];
+        uint8_t d1[DS_DIGEST_BYTES];
+        unsigned char *content = NULL;
+        const unsigned char *cptr = NULL;
+        size_t natural;
+        void *mem;
+        size_t cap;
+        uint32_t ret;
+        const char *rerr;
+
+        if (!r->has[K_KIND] || strcmp(r->val[K_KIND], "refuse") != 0) {
+            continue;
+        }
+        if (r->bad != NULL || !r->has[K_FIXTURE] || !r->has[K_REQUEST] || !r->has[K_EXPECT]) {
+            harness_error(c, "a refuse row is malformed");
+            break;
+        }
+        natural = synth_size(r->val[K_FIXTURE]);
+        rerr = natural == 0u ? "unknown fixture recipe" : parse_spec(&s, r->val[K_REQUEST], natural);
+        if (rerr == NULL) {
+            rerr = parse_expect(&e, r->val[K_EXPECT]);
+        }
+        if (rerr == NULL && s.ptr == PTR_OK && s.len > CONTENT_LIMIT) {
+            rerr = "len above the content limit needs ptr=dummy or ptr=null";
+        }
+        if (rerr != NULL) {
+            harness_error(c, rerr);
+            break;
+        }
+        if (s.ptr == PTR_OK) {
+            content = (unsigned char *)malloc(s.len != 0u ? s.len : 1u);
+            if (content == NULL || synth_fill(r->val[K_FIXTURE], content, s.len) != 0) {
+                free(content);
+                harness_error(c, "out of memory or unknown recipe in the digest non-mutation matrix");
+                break;
+            }
+        }
+        cptr = s.ptr == PTR_OK ? content : (s.ptr == PTR_DUMMY ? dummy : NULL);
+        fill_request(&rq, &s, cptr);
+        memset(&res, 0xff, sizeof res);
+        /* the refused boot is aimed at the memory of the live instance: a refusal must leave a live machine untouched */
+        mem = s.mem == MEM_NULL ? NULL : (s.mem == MEM_MISALIGNED ? (void *)(live.mem + 1) : (void *)live.mem);
+        cap = s.cap == CAP_SHORT ? isize - 1u : isize;
+        (void)ds_digest(inst, d0);
+        ret = ds_boot(mem, cap, s.req == REQ_NULL ? NULL : &rq, &res);
+        (void)ds_digest(inst, d1);
+        free(content);
+        check(c, ret == e.reason && !e.accept && memcmp(d0, d1, DS_DIGEST_BYTES) == 0,
+              "a refuse row was not refused as expected, or it changed the digest of a live instance");
+        if (ret != e.reason || memcmp(d0, d1, DS_DIGEST_BYTES) != 0) {
+            emit_err("nonmutation_digest: row %s changed the live digest or was not refused as expected\n", r->stem);
+        }
+        rows++;
+    }
+    if (!c->harness) {
+        uint8_t last[DS_DIGEST_BYTES];
+
+        (void)ds_digest(inst, last);
+        check(c, memcmp(first, last, DS_DIGEST_BYTES) == 0, "the digest of the live instance differs after the whole matrix");
+        if (rows == 0u) {
+            check(c, 0, "the cases hold no refuse row");
+        }
+        snprintf(got, gotcap, "rows=%u", rows);
+    }
+    release_boot(&live);
 }

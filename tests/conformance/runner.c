@@ -1436,7 +1436,9 @@ static const struct {
     {"poweron_domain", kind_poweron_domain, 0},
     {"digest_stream", kind_digest_stream, 0},
     {"digest_pair", kind_digest_pair, 0},
+    {"digest_region", kind_digest_region, 0},
     {"profile_hash", kind_profile_hash, 0},
+    {"nonmutation_digest", kind_nonmutation_digest, 0},
     {"coverage", kind_coverage, 1},
 };
 

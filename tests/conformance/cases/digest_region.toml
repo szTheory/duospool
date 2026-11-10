@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Per-region perturbation (D-52, D-55): every region the accessor reports is reached through the same table the digest walks. The first and the
+# last byte of the live span of each region are flipped in turn (PROF:first marks the one span whose tail, the padding of the last value, is
+# not hashed): the digest must change, and putting the byte back must put the digest back. One assertion per region, so a region that is listed but dropped from the stream (the toy tests/controls/drop-region) fails here, and so does a table that changed
+# length. A seeded boot is used so that no region is all zero. Evidence tier E0.
+id = "digest_region"
+kind = "digest_region"
+fixture = "plain-256k"
+request = "bind.powerup_policy=seeded-prng-v1;seed=42"
+expect = "tags=PROF:first,CONT,POWR,TIME,RAM8,MPRS,PSGN,VDCP"
+meaning = "Flipping the first and the last byte of the live state of each of the 8 regions (the first only for PROF) changes the digest and restoring it restores the digest, in the table order PROF CONT POWR TIME RAM8 MPRS PSGN VDCP"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

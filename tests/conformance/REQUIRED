@@ -91,3 +91,5 @@ poweron_same_seed_same_digest
 poweron_diff_seed_diff_digest
 profile_hash_fields
 profile_hash_identity
+digest_region
+nonmutation_digest
