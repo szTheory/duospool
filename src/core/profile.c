@@ -48,16 +48,20 @@ const struct ds_profile *ds_profile_builtin(const char *id, uint32_t rev)
     return &ds_profile_r1;
 }
 
-/* RED stub of plan 06: the r1 constant does not carry its unresolved behaviours yet */
+/*
+ * The unresolved behaviours of profile pce-hucard-2btn rev 1: the root key unresolved_behaviours of r1.toml, ledger ids in sorted
+ * order. The conformance case profile_r1_equal proves this list equals the frozen record in both directions.
+ */
+static const char *const ds_unresolved_r1[] = {"LED-IRQ-0001", "LED-VID-0002", "LED-VID-0003"};
+
 uint32_t ds_profile_unresolved_count(void)
 {
-    return 0u;
+    return (uint32_t)(sizeof ds_unresolved_r1 / sizeof ds_unresolved_r1[0]);
 }
 
 const char *ds_profile_unresolved(uint32_t index)
 {
-    (void)index;
-    return NULL;
+    return index < ds_profile_unresolved_count() ? ds_unresolved_r1[index] : NULL;
 }
 
 /* copy a binding into a field value; 0 when it does not fit with its terminator */
