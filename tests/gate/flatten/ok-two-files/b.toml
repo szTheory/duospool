@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+id = "beta"
+required = false
+
+[expect]
+pins = []
+outcome = "pass"
+
+[request]
+profile = "pce-hucard-2btn"

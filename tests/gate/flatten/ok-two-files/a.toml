@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+id = "alpha"
+required = true
+len = 512
+
+[expect]
+pins = ["TEST:alpha", "TEST:beta"]
+outcome = "pass"
