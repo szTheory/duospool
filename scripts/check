@@ -658,6 +658,24 @@ stage_conformance() {
   checker sh "$here/conformance-run" run
 }
 
+# outcome-sync (D-57, D-60, D-85): the outcome names compiled into the runner are the rows of outcomes.def, which in turn are the
+# seven names of the success criterion. Registered after the build stage and never reading a binary it did not just make: the
+# stage builds the gate preset itself (incremental, a no-op when the build stage just ran), asks the fresh build/gate/ds_runner for
+# its compiled names, and judges them on the real repository. The mini-root controls of tests/gate/outcome-names (an equal list
+# must pass, a list with one renamed outcome must give exactly OUTSYNC_NAME) run last; plan 03's controls stay in outcome-controls.
+stage_outcome_sync() {
+  stage_build || return $?
+  rm -f build/gate/outcome-names.txt
+  if build/gate/ds_runner --outcomes > build/gate/outcome-names.txt 2> "$tmp/on.err"; then r=0; else r=$?; fi
+  if [ "$r" -ne 0 ] || [ ! -s build/gate/outcome-names.txt ]; then
+    echo "HARNESS_ERROR build/gate/ds_runner --outcomes exited $r or printed no name"
+    cat "$tmp/on.err"
+    return 2
+  fi
+  checker sh "$here/outcome-sync" --names build/gate/outcome-names.txt || return $?
+  run_controls --ok-prefix --require-negative --need HARNESS_NO_FILE @DIR@tests/conformance/outcomes.def --need HARNESS_NO_FILE @DIR@names.txt tests/gate/outcome-names tests/gate/outcome-names sh "$here/outcome-sync" --root @DIR@ --names @DIR@names.txt @EXPECT@
+}
+
 # ---- self-test: prove the gate is alive (not vacuous). Mutates a COPY of scripts/ only ----
 
 # st_want NAME: true when no mutation was selected (run them all) or NAME is the selected one
@@ -853,6 +871,33 @@ selftest() {
     fi
   fi
 
+  # (k2) outcome-sync must be red on a compiled list that differs from outcomes.def, and only because of the rule that compares
+  # the list (D-57). A scratch copy of scripts/ is run on the compiled-list-differs control with --expect OUTSYNC_NAME: unmutated
+  # that expectation is met (exit 0); with every line carrying the comparison marker deleted the check reports nothing on the same
+  # control, so the expectation is no longer met (exit 1), which is the control flipping to broken in the outcome-sync stage.
+  # The marker is assembled here so that this script never carries it, and outcome-sync carries it on exactly two lines.
+  if st_want mutation-outcome-names; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    cd_="tests/gate/outcome-names/compiled-list-differs"
+    tok=rule-compiled-
+    tok="${tok}names"
+    if sh "$cp_dir/outcome-sync" --root "$cd_" --names "$cd_/names.txt" --expect OUTSYNC_NAME > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c "$tok" "$cp_dir/outcome-sync" || true)
+    grep -v "$tok" "$cp_dir/outcome-sync" > "$cp_dir/outcome-sync.mutated" || true
+    mv "$cp_dir/outcome-sync.mutated" "$cp_dir/outcome-sync"
+    after=$(grep -c "$tok" "$cp_dir/outcome-sync" || true)
+    if sh "$cp_dir/outcome-sync" --root "$cd_" --names "$cd_/names.txt" --expect OUTSYNC_NAME > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 2 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ] && grep -q "^EXPECT_MISMATCH wanted 'OUTSYNC_NAME' got '<none>'" "$tmp/st.out"; then
+      echo "SELFTEST mutation-outcome-names PASS"
+    else
+      echo "SELFTEST mutation-outcome-names FAIL"; failed=1
+    fi
+  fi
+
   # (k) the rights check must flag a ROM-like extension, and only because of the extension rule (D-56, T-02-18). The planted-pce
   # control holds a printable text file whose only fault is its name. A scratch copy of scripts/ with the one line carrying the
   # extension-rule marker deleted must no longer flag it: the suite run against that copy (RIGHTS_CHECK) must exit non-zero and
@@ -991,6 +1036,7 @@ run_stage rights-tree stage_rights_tree
 run_stage rights-negatives stage_rights_negatives
 run_stage audit-synthetic stage_audit_synthetic
 run_stage build stage_build
+run_stage outcome-sync stage_outcome_sync
 run_stage conformance stage_conformance
 
 if [ -n "$only_stage" ]; then

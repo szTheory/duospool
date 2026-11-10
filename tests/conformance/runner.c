@@ -14,6 +14,7 @@
  * usage: ds_runner --cases FILE --evidence-dir DIR [--profile-tsv FILE] [--rules-fields FILE]
  *   --profile-tsv FILE   the flattened profiles/pce-hucard-2btn/r1.toml (scripts/conformance-flatten), read by the r1 kinds
  *   --rules-fields FILE  the 13 field names of scripts/lib/profile-rules.awk, one per line, read by the names kind
+ *        ds_runner --outcomes   prints the compiled outcome names, one per line, and exits 0 (read by scripts/outcome-sync --names)
  * exit : 0 every case ran and RUNNER_DONE was printed (the verdict is the ingest's), 2 usage or harness error (no case ran)
  */
 #include <stdint.h>
@@ -1648,6 +1649,15 @@ int main(int argc, char **argv)
     int pass;
     int a;
 
+    if (argc == 2 && strcmp(argv[1], "--outcomes") == 0) {
+        /* the outcome names compiled into this binary from outcomes.def, one per line: scripts/outcome-sync compares them with the
+         * def file itself, so a binary built from another list is caught (D-57) */
+        size_t o;
+        for (o = 0u; o < (size_t)OUT_COUNT; o++) {
+            printf("%s\n", outcome_name[o]);
+        }
+        return 0;
+    }
     for (a = 1; a < argc; a++) {
         if (strcmp(argv[a], "--cases") == 0 && a + 1 < argc) {
             cases_path = argv[++a];

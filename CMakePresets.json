@@ -1,6 +1,10 @@
 {
   "version": 6,
-  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
   "configurePresets": [
     {
       "name": "gate-base",
@@ -18,9 +22,38 @@
       "cacheVariables": {
         "DS_EXTRA_FLAGS": "-fwrapv"
       }
+    },
+    {
+      "name": "gate-gcc",
+      "inherits": "gate-base",
+      "binaryDir": "${sourceDir}/build/gate-gcc",
+      "cacheVariables": {
+        "DS_EXTRA_FLAGS": "-fwrapv",
+        "CMAKE_C_COMPILER": "gcc"
+      }
+    },
+    {
+      "name": "gate-clang",
+      "inherits": "gate-base",
+      "binaryDir": "${sourceDir}/build/gate-clang",
+      "cacheVariables": {
+        "DS_EXTRA_FLAGS": "-fwrapv",
+        "CMAKE_C_COMPILER": "clang"
+      }
     }
   ],
   "buildPresets": [
-    { "name": "gate", "configurePreset": "gate" }
+    {
+      "name": "gate",
+      "configurePreset": "gate"
+    },
+    {
+      "name": "gate-gcc",
+      "configurePreset": "gate-gcc"
+    },
+    {
+      "name": "gate-clang",
+      "configurePreset": "gate-clang"
+    }
   ]
 }
