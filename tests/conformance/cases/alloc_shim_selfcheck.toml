@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Self-check of the allocation shim: the test itself calls the allocator once and the counter must read exactly 1, so a shim that is
+# not linked, or does not count, cannot make the zero-allocation matrix pass. Gate presets only: the sanitizer runtime owns the
+# allocator, so this case is excluded from the sanitize mode through tests/conformance/EXCLUDED_IN_MODE and stays required here.
+# Evidence tier E0 (repeatability), a witness about the test build and not about hardware.
+id = "alloc_shim_selfcheck"
+kind = "alloc_zero"
+fixture = "none"
+request = "selfcheck"
+expect = "calls=1"
+meaning = "One allocator call made by the test moves the allocation counter by exactly one, so the counter that the zero-allocation matrix reads is alive"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

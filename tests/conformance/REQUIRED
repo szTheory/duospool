@@ -26,3 +26,5 @@ accept_unmapped_banks
 ref_size_8192
 ref_size_512k
 ref_too_large_size_max
+alloc_shim_selfcheck
+alloc_zero_matrix

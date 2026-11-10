@@ -47,6 +47,7 @@ target_compile_definitions(ds_text PRIVATE "DS_BUILD_ID=\"${DS_BUILD_ID}\"")
 
 add_executable(ds_runner tests/conformance/runner.c tests/conformance/profkinds.c tests/conformance/synth.c)
 target_link_libraries(ds_runner PRIVATE ds_text ds_core)
+target_compile_definitions(ds_runner PRIVATE DS_ALLOC_SHIM=0)
 
 # Toy control libraries (D-85, D-55): one runner per tests/controls/NAME/RULE, each built from the ds_core sources with the one file
 # named by the rule's file= line replaced by a generated variant of the live file. scripts/control-mutate writes that variant to
