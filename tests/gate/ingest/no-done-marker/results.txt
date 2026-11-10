@@ -1,0 +1,1 @@
+RESULT alpha pass assertions=2 evidence=out/alpha.txt

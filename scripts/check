@@ -549,6 +549,32 @@ selftest() {
     fi
   fi
 
+  # (g) conformance-ingest must be red on a skip, and only because of the rule that flags a non-pass outcome (D-57). A scratch
+  # copy of scripts/ is run on the outcome-skip control with --expect OUTCOME_SKIP: unmutated that expectation is met (exit 0);
+  # with the lines carrying the rule marker deleted the judge no longer reports the skip, so the same run must exit 1. The
+  # marker is assembled here so that this script never carries it, and the ingest script carries it on exactly one line.
+  if st_want mutation-ingest-skip-red; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    tok=rule-non-
+    tok="${tok}pass"
+    sk="tests/gate/ingest/outcome-skip"
+    if sh "$cp_dir/conformance-ingest" --outcomes tests/conformance/outcomes.def --root "$sk" --results "$sk/results.txt" --expect OUTCOME_SKIP > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c "$tok" "$cp_dir/conformance-ingest" || true)
+    grep -v "$tok" "$cp_dir/conformance-ingest" > "$cp_dir/conformance-ingest.mutated" || true
+    mv "$cp_dir/conformance-ingest.mutated" "$cp_dir/conformance-ingest"
+    after=$(grep -c "$tok" "$cp_dir/conformance-ingest" || true)
+    if sh "$cp_dir/conformance-ingest" --outcomes tests/conformance/outcomes.def --root "$sk" --results "$sk/results.txt" --expect OUTCOME_SKIP > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+      echo "SELFTEST mutation-ingest-skip-red PASS"
+    else
+      echo "SELFTEST mutation-ingest-skip-red FAIL"; failed=1
+    fi
+  fi
+
   # a selected NAME that matched no mutation is a usage error, never a vacuous pass
   if [ -n "$st_sel" ] && [ "$st_ran" -eq 0 ]; then usage; fi
   if [ "$failed" -eq 0 ]; then echo "SELFTEST RESULT PASS"; return 0; fi
