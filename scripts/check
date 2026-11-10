@@ -3,8 +3,9 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
 # check - the Phase 1 gate entry point (D-30). Phase 2 extends this script; it does not add a second one.
-# usage: sh scripts/check [--selftest]
+# usage: sh scripts/check [--selftest | --stage NAME]
 #   --selftest mutates a temp copy of scripts/ and proves that a removed rule or a dead stage 1 turns the gate red
+#   --stage NAME runs only the stage NAME (an unknown NAME exits 2) and exits with that stage's verdict
 # stdout: one line per stage  CHECK <stage> PASS|FAIL|ERROR , then  CHECK RESULT PASS|FAIL
 # exit  : 0 all stages pass | 1 a stage failed (violation or broken control) | 2 harness error in a stage
 set -eu
@@ -40,6 +41,133 @@ checker() {
 read_expect() {
   exp=$(cat "$1")
   [ -n "$(printf '%s' "$exp" | tr -d ', \t\r\n')" ]
+}
+
+# rc_expand WORD: set $rc_out to WORD with the first @DIR@ replaced by the current case directory $d (trailing slash kept).
+rc_expand() {
+  rc_out=$1
+  case $rc_out in
+    *@DIR@*) rc_out="${rc_out%%@DIR@*}$d${rc_out#*@DIR@}" ;;
+  esac
+}
+
+# run_controls [OPTIONS] GLOBDIR NOCTRL_LABEL CHECKER_WORD...
+# The one control loop (D-58): every GLOBDIR/<case>/ is a control run through the checker command. Options, before GLOBDIR:
+#   --ok-prefix         cases named ok-* must pass and run without --expect; every other case needs an EXPECT file
+#   --expect-selects    a case with an EXPECT file must fail on it; one without runs as a must-pass sample when named ok-*,
+#                       and is HARNESS_NO_EXPECT otherwise (the profile stage)
+#   --need LABEL PATH   PATH (may hold @DIR@) must be a file, else LABEL is reported and the case skipped (harness error 2)
+#   --opt-file PATH FLAG  when PATH exists, @OPT@ expands to FLAG PATH, else to nothing
+#   --require-negative  NO_CONTROLS also when no case is a must-fail control
+# CHECKER_WORD words (one per argument, no newline inside): @DIR@ is the case directory, @EXPECT@ expands to the two words
+# --expect TEXT for a must-fail case and to nothing for a must-pass one, @OPT@ is described above. Exit 1 from the checker
+# on a must-fail case means the control is broken; on a must-pass case, the sample was rejected. rc stays a global, exactly
+# as in the loops this replaced.
+run_controls() {
+  rc_okpfx=0
+  rc_exsel=0
+  rc_negreq=0
+  rc_optpath=
+  rc_optflag=
+  : > "$tmp/rc.need"
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --ok-prefix) rc_okpfx=1; shift ;;
+      --expect-selects) rc_exsel=1; shift ;;
+      --require-negative) rc_negreq=1; shift ;;
+      --need) printf '%s\n%s\n' "$2" "$3" >> "$tmp/rc.need"; shift 3 ;;
+      --opt-file) rc_optpath=$2; rc_optflag=$3; shift 3 ;;
+      *) break ;;
+    esac
+  done
+  rc_glob=$1
+  rc_noctl=$2
+  shift 2
+  : > "$tmp/rc.tpl"
+  for rc_w in "$@"; do
+    printf '%s\n' "$rc_w" >> "$tmp/rc.tpl"
+  done
+  rc=0
+  n=0
+  neg=0
+  for d in "$rc_glob"/*/; do
+    [ -d "$d" ] || continue
+    n=$((n + 1))
+    case_name=$(basename "$d")
+    case $case_name in
+      ok-*) rc_isok=1 ;;
+      *) rc_isok=0; neg=$((neg + 1)) ;;
+    esac
+    rc_miss=
+    while IFS= read -r rc_lab && IFS= read -r rc_np; do
+      rc_expand "$rc_np"
+      if [ ! -f "$rc_out" ]; then rc_miss=$rc_lab; break; fi
+    done < "$tmp/rc.need"
+    if [ -n "$rc_miss" ]; then
+      echo "$rc_miss $case_name"
+      rc=2
+      continue
+    fi
+    rc_mustfail=1
+    if [ "$rc_exsel" -eq 1 ]; then
+      if [ ! -f "${d}EXPECT" ]; then
+        if [ "$rc_isok" -eq 1 ]; then
+          rc_mustfail=0
+        else
+          echo "HARNESS_NO_EXPECT $case_name"
+          rc=2
+          continue
+        fi
+      fi
+    elif [ "$rc_okpfx" -eq 1 ] && [ "$rc_isok" -eq 1 ]; then
+      rc_mustfail=0
+    fi
+    if [ "$rc_mustfail" -eq 1 ]; then
+      if [ ! -f "${d}EXPECT" ]; then
+        echo "HARNESS_NO_EXPECT $case_name"
+        rc=2
+        continue
+      fi
+      if ! read_expect "${d}EXPECT"; then
+        echo "HARNESS_EMPTY_EXPECT $case_name"
+        rc=2
+        continue
+      fi
+    fi
+    set --
+    while IFS= read -r rc_w; do
+      case $rc_w in
+        @EXPECT@)
+          if [ "$rc_mustfail" -eq 1 ]; then set -- "$@" --expect "$exp"; fi
+          ;;
+        @OPT@)
+          if [ -n "$rc_optpath" ]; then
+            rc_expand "$rc_optpath"
+            if [ -f "$rc_out" ]; then set -- "$@" "$rc_optflag" "$rc_out"; fi
+          fi
+          ;;
+        *)
+          rc_expand "$rc_w"
+          set -- "$@" "$rc_out"
+          ;;
+      esac
+    done < "$tmp/rc.tpl"
+    if checker "$@" > "$tmp/case.out"; then r=0; else r=$?; fi
+    if [ "$r" -eq 1 ]; then
+      if [ "$rc_mustfail" -eq 1 ]; then echo "CONTROL BROKEN $case_name"; else echo "SAMPLE REJECTED $case_name"; fi
+      sed 's/^/  /' "$tmp/case.out"
+      [ "$rc" -eq 2 ] || rc=1 # rc-broken-status
+    elif [ "$r" -ne 0 ]; then
+      echo "HARNESS_ERROR $case_name"
+      sed 's/^/  /' "$tmp/case.out"
+      rc=2
+    fi
+  done
+  if [ "$n" -eq 0 ] || { [ "$rc_negreq" -eq 1 ] && [ "$neg" -eq 0 ]; }; then
+    echo "NO_CONTROLS $rc_noctl"
+    [ "$rc" -eq 2 ] || rc=1
+  fi
+  return "$rc"
 }
 
 # ---- stages: each is a function that prints details and returns 0 pass, 1 fail, 2 harness error ----
@@ -414,54 +542,7 @@ stage_licence_files() {
 # every tests/licence/<case>/ with an EXPECT is a must-fail control run under its own --root; every
 # tests/licence/ok-<case>/ must pass. Exit 1 from the checker means the control is broken.
 stage_licence_negatives() {
-  rc=0
-  n=0
-  for d in tests/licence/*/; do
-    [ -d "$d" ] || continue
-    n=$((n + 1))
-    case_name=$(basename "$d")
-    case $case_name in
-      ok-*)
-        if checker sh "$here/licence-check" --root "$d" > "$tmp/case.out"; then r=0; else r=$?; fi
-        if [ "$r" -eq 1 ]; then
-          echo "SAMPLE REJECTED $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          [ "$rc" -eq 2 ] || rc=1
-        elif [ "$r" -ne 0 ]; then
-          echo "HARNESS_ERROR $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          rc=2
-        fi
-        ;;
-      *)
-        if [ ! -f "$d/EXPECT" ]; then
-          echo "HARNESS_NO_EXPECT $case_name"
-          rc=2
-          continue
-        fi
-        if ! read_expect "$d/EXPECT"; then
-          echo "HARNESS_EMPTY_EXPECT $case_name"
-          rc=2
-          continue
-        fi
-        if checker sh "$here/licence-check" --root "$d" --expect "$exp" > "$tmp/case.out"; then r=0; else r=$?; fi
-        if [ "$r" -eq 1 ]; then
-          echo "CONTROL BROKEN $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          [ "$rc" -eq 2 ] || rc=1
-        elif [ "$r" -ne 0 ]; then
-          echo "HARNESS_ERROR $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          rc=2
-        fi
-        ;;
-    esac
-  done
-  if [ "$n" -eq 0 ]; then
-    echo "NO_CONTROLS tests/licence"
-    [ "$rc" -eq 2 ] || rc=1
-  fi
-  return "$rc"
+  run_controls --ok-prefix tests/licence tests/licence sh "$here/licence-check" --root @DIR@ @EXPECT@
 }
 
 stage_protocol_order() {
@@ -653,10 +734,15 @@ selftest() {
 
 # ---- runner ----
 
-# run_stage NAME FUNCTION : prints the verdict line, then any detail output indented
+# run_stage NAME FUNCTION : prints the verdict line, then any detail output indented. With --stage NAME every other stage is
+# skipped and the one match is remembered, so an unknown NAME can be refused after the list instead of passing vacuously.
 run_stage() {
   name=$1
   fn=$2
+  if [ -n "$only_stage" ] && [ "$only_stage" != "$name" ]; then
+    return 0
+  fi
+  stage_ran=1
   if "$fn" > "$tmp/out" 2>&1; then rc=0; else rc=$?; fi
   case $rc in
     0) verdict=PASS ;;
@@ -669,12 +755,25 @@ run_stage() {
   fi
 }
 
-if [ $# -gt 0 ]; then
-  if [ "$1" = "--selftest" ] && [ $# -eq 1 ]; then
-    if selftest; then exit 0; else exit 1; fi
-  fi
-  echo "usage: sh scripts/check [--selftest]" >&2
+usage() {
+  echo "usage: sh scripts/check [--selftest | --stage NAME]" >&2
   exit 2
+}
+
+only_stage=""
+stage_ran=0
+if [ $# -gt 0 ]; then
+  case $1 in
+    --selftest)
+      [ $# -eq 1 ] || usage
+      if selftest; then exit 0; else exit 1; fi
+      ;;
+    --stage)
+      [ $# -eq 2 ] && [ -n "$2" ] || usage
+      only_stage=$2
+      ;;
+    *) usage ;;
+  esac
 fi
 
 run_stage ledger-entries stage_ledger_entries
@@ -696,6 +795,13 @@ run_stage score-controls stage_score_controls
 run_stage results stage_results
 run_stage results-negatives stage_results_negatives
 
+if [ -n "$only_stage" ]; then
+  # one stage: its own CHECK line is the whole output; the exit status is that stage's verdict
+  [ "$stage_ran" -eq 1 ] || usage
+  if [ "$errs" -gt 0 ]; then exit 2; fi
+  if [ "$fails" -gt 0 ]; then exit 1; fi
+  exit 0
+fi
 if [ "$errs" -gt 0 ]; then
   echo "CHECK RESULT FAIL"
   exit 2
