@@ -42,7 +42,8 @@ $1 == "ERR" { viol($2, $3, $4); next }     # syntax-stage errors pass straight t
   t = $1; k = $2; v = $4; ln = $5
   if (t == "") { viol("REC_TABLES", ln, "root key " k " outside any table"); next }
   if (!(t in seen)) { seen[t] = ln; nt++; order[nt] = t }
-  kseq[t] = (t in kseq) ? kseq[t] " " k : k
+  # not `kseq[t] = (t in kseq) ? ...`: mawk evaluates the target first, creating the element
+  if (t in kseq) kseq[t] = kseq[t] " " k; else kseq[t] = k
   # hygiene: every value, all types (an array is its elements joined by a unit separator)
   if (index(v, "/") > 0 || index(v, "\\") > 0) viol("REC_PATH", ln, t "." k " holds a slash or a backslash")
   if (v ~ /0[xX][0-9a-fA-F]/) viol("REC_POINTER", ln, t "." k " holds 0x and a hex digit")   # rule-pointer
