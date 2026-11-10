@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Destroy and recreate (CORE-01, D-55): during the interleave of A and B the block of B is filled with a stale pattern at call 32 and B is booted
+# again over it. The reboot must give B's fresh digest; B's earlier calls are then applied again and B must equal its solo copy, and the schedule
+# continues to the end with A and B equal to their uninterrupted solo copies. Stale state surviving a boot would show here. Evidence tier E0.
+id = "interleave_destroy_recreate"
+kind = "interleave_destroy_recreate"
+fixture = "plain-256k"
+request = "bind.powerup_policy=seeded-prng-v1;seed=1||bind.powerup_policy=seeded-prng-v1;seed=2;len=393216"
+expect = "lcg=31337;steps=64;at=32"
+meaning = "An instance discarded and booted again into the same block mid-run equals its fresh boot, then its uninterrupted solo run, and its neighbour is unchanged"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

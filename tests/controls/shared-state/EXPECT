@@ -3,3 +3,5 @@
 #
 # Case ids that must come out guest_failure on the toy, one per line.
 interleave_ab
+interleave_twins
+interleave_aba_order

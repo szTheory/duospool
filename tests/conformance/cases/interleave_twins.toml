@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Twins (CORE-01, D-55): two instances with identical inputs (256K content, seed 1) are stepped interleaved on the LCG schedule, each in calls of
+# its own sizes but both for the same total of 30000 cycles; they must end equal to each other and to a third instance that took the whole total in
+# one call (the result does not depend on how cycles are split, and no state moves between the twins). Evidence tier E0 (repeatability only).
+id = "interleave_twins"
+kind = "interleave_twins"
+fixture = "plain-256k"
+request = "bind.powerup_policy=seeded-prng-v1;seed=1"
+expect = "lcg=8675309;total=30000"
+meaning = "Identical-input twins stepped interleaved with different call sizes and the same total end equal to each other and to a one-call solo run"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

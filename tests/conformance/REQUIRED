@@ -98,3 +98,8 @@ record_golden_256k_zero
 record_refusal_text
 record_refuses_quote
 interleave_ab
+interleave_twins
+interleave_destroy_recreate
+interleave_aba_order
+interleave_canaries
+liveness_shared_state_selfcheck
