@@ -36,7 +36,9 @@ Exit codes: 0 every stage passed, 1 a stage failed or a control was broken, 2 a 
 mutation name, a dead checker, a missing tool).
 
 Tool prerequisites: a POSIX `sh`, cmake, ninja, a C11 compiler reachable as `cc` (clang or gcc), `nm`, perl, iconv, awk,
-git, and a sha256 tool (`sha256sum` or `shasum`). The stage `preflight` reports a missing one by name.
+git, and a sha256 tool (`sha256sum` or `shasum`). The stage `preflight` reports a missing one by name. The `sanitizers` stage
+also links the compiler's AddressSanitizer and UndefinedBehaviorSanitizer runtimes: gcc ships them with its libraries, while
+Ubuntu's clang needs the separate package `libclang-rt-18-dev` (a link error naming `libclang_rt.asan` means it is missing).
 
 ## Where things are
 
