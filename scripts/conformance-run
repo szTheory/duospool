@@ -6,6 +6,7 @@
 # cancelled producer) and run (the whole conformance step). Later plans add modes, and an unknown mode exits 2 with the usage
 # line so that they can do so without changing this contract.
 # usage: conformance-run run [--preset NAME]
+#        conformance-run sanitize
 #        conformance-run supervise --ids FILE --out FILE [--wall N] -- CMD ARGS...
 # run mode (D-60, D-85): everything lives under build/NAME (default gate, the build directory of the preset NAME). The steps are
 #   flatten tests/conformance/cases into cases.tsv (the only parser of hand-edited data, D-51), derive ids.txt from it, flatten the
@@ -20,6 +21,14 @@
 #   CONTROL NAME RED_OK, or CONTROL NAME NOT_RED and status 1), and print the RESULT lines then  STATUS conformance ok n=COUNT .
 #   Violations are printed instead of the STATUS line.
 #   exit 0 judged green | 1 judged red, a malformed case file or a failed build | 2 harness error (also wall expiry)
+# sanitize mode (D-41, D-55, D-83): the same steps as run mode on the preset sanitize (ASan and UBSan, no recover, no -fwrapv; build/sanitize),
+#   with these differences. The compiler is /usr/bin/clang on Darwin (Homebrew LLVM hangs and is never used) and cc elsewhere, passed to cmake
+#   through CC; a build directory that was configured with another compiler is removed first. After the build the three planted canaries
+#   (ds_canary heap, overflow, shift) are run: each must exit non-zero and print the sanitizer's own message (AddressSanitizer for heap,
+#   runtime error for the two UBSan ones), printed as CANARY NAME reported; otherwise SANITIZER_DEAD NAME is printed and the status is 1.
+#   Then the runner runs under the supervise mode with the wall watchdog at about 3 times the default (900 s), the hash sweep runs
+#   on the sanitized runner, and the toy controls do not (they were judged in the gate preset). ASAN_OPTIONS detect_leaks=1 is exported on
+#   Linux only (Apple ASan has no leak detector). The final line is STATUS sanitize ok n=COUNT.
 # supervise mode:
 #   --ids FILE  one case id per line (# comments and blank lines ignored): the ids that must have a RESULT line
 #   --out FILE  CMD's stdout is written here (truncated first); this is the file that conformance-ingest judges
@@ -39,14 +48,23 @@ LC_ALL=C; export LC_ALL
 here=$(cd "$(dirname "$0")" && pwd)
 
 usage() {
-  echo "usage: conformance-run run [--preset NAME] | supervise --ids FILE --out FILE [--wall N] -- CMD ARGS..." >&2
+  echo "usage: conformance-run run [--preset NAME] | sanitize | supervise --ids FILE --out FILE [--wall N] -- CMD ARGS..." >&2
   exit 2
 }
 
 # run_mode [--preset NAME]: the whole conformance step for one preset. Every file it produces is first removed, so that a step
 # that fails can never leave an earlier good file to be judged.
 run_mode() {
+  mode=gate
   preset=gate
+  wall_secs=300
+  if [ "${1-}" = --sanitize ]; then
+    mode=sanitize
+    preset=sanitize
+    wall_secs=900
+    shift
+    [ $# -eq 0 ] || usage
+  fi
   while [ $# -gt 0 ]; do
     case $1 in
       --preset) [ $# -ge 2 ] || usage; preset=$2; shift 2 ;;
@@ -107,6 +125,9 @@ run_mode() {
     exit 2
   fi
 
+  if [ "$mode" = sanitize ]; then
+    sanitize_compiler "$bd"
+  fi
   if cmake --preset "$preset" > "$bd/build.log" 2>&1 && cmake --build --preset "$preset" >> "$bd/build.log" 2>&1; then :; else
     cat "$bd/build.log"
     echo "BUILD_FAILED preset $preset"
@@ -116,9 +137,12 @@ run_mode() {
     echo "HARNESS_ERROR $bd/ds_runner is missing after a clean build" >&2
     exit 2
   fi
+  if [ "$mode" = sanitize ]; then
+    canary_check "$bd"
+  fi
 
   mkdir -p "$bd/evidence" || { echo "HARNESS_ERROR cannot create $bd/evidence" >&2; exit 2; }
-  if sh "$here/conformance-run" supervise --ids "$bd/ids.txt" --out "$bd/results.txt" -- "$bd/ds_runner" --cases "$bd/cases.tsv" --evidence-dir "$bd/evidence" --profile-tsv "$bd/r1.tsv" --rules-fields "$bd/rules-fields.txt" --oracle "$bd/oracle.tsv"; then sup=0; else sup=$?; fi
+  if sh "$here/conformance-run" supervise --ids "$bd/ids.txt" --out "$bd/results.txt" --wall "$wall_secs" -- "$bd/ds_runner" --cases "$bd/cases.tsv" --evidence-dir "$bd/evidence" --profile-tsv "$bd/r1.tsv" --rules-fields "$bd/rules-fields.txt" --oracle "$bd/oracle.tsv"; then sup=0; else sup=$?; fi
   if [ "$sup" -eq 2 ]; then
     exit 2
   fi
@@ -134,10 +158,70 @@ run_mode() {
     exit 1
   fi
   hash_sweep "$bd/ds_runner"
-  controls_mode "$preset" "$bd"
   n=$(grep -c '^RESULT ' "$bd/results.txt" || true)
+  if [ "$mode" = sanitize ]; then
+    echo "STATUS sanitize ok n=$n"
+    exit 0
+  fi
+  controls_mode "$preset" "$bd"
   echo "STATUS conformance ok n=$n"
   exit 0
+}
+
+# sanitize_compiler BD (D-55): choose the compiler of the sanitize preset and export it as CC. Darwin: /usr/bin/clang, because Homebrew
+# LLVM hangs with ASan on this macOS. Elsewhere: cc. A build directory that was configured with another compiler is removed first
+# (cmake keeps the compiler of an existing cache), and on Linux ASAN_OPTIONS gets detect_leaks=1 (Apple ASan has no leak detector).
+sanitize_compiler() {
+  sc_bd=$1
+  case $(uname -s) in
+    Darwin) CC=/usr/bin/clang ;;
+    *) CC=cc ;;
+  esac
+  if ! command -v "$CC" > /dev/null 2>&1; then
+    echo "HARNESS_ERROR the sanitizer compiler $CC is not available" >&2
+    exit 2
+  fi
+  export CC
+  if [ -f "$sc_bd/CMakeCache.txt" ] && [ "$CC" = /usr/bin/clang ] && ! grep -Fxq "CMAKE_C_COMPILER:FILEPATH=/usr/bin/clang" "$sc_bd/CMakeCache.txt"; then
+    rm -rf "$sc_bd"
+    mkdir -p "$sc_bd" || { echo "HARNESS_ERROR cannot create $sc_bd" >&2; exit 2; }
+  fi
+  if [ "$(uname -s)" = Linux ]; then
+    ASAN_OPTIONS=detect_leaks=1
+    export ASAN_OPTIONS
+  fi
+  echo "SANITIZER_COMPILER $CC"
+}
+
+# canary_check BD (D-55, D-83): the sanitizers are shown alive before the runner is judged under them. Each of the three planted
+# defects of ds_canary must end non-zero with the sanitizer's own message: heap -> AddressSanitizer, overflow and shift -> runtime
+# error (UBSan, which can only see the signed overflow because the sanitize preset carries no -fwrapv). The first runtime error line
+# is shown, cut to a repository-relative path. A canary that does not report is SANITIZER_DEAD NAME, and the status is 1 after all three ran.
+canary_check() {
+  cc_bd=$1
+  cc_dead=0
+  if [ ! -x "$cc_bd/ds_canary" ]; then
+    echo "HARNESS_ERROR $cc_bd/ds_canary is missing after the build" >&2
+    exit 2
+  fi
+  for cc_spec in heap:AddressSanitizer overflow:'runtime error' shift:'runtime error'; do
+    cc_name=${cc_spec%%:*}
+    cc_want=${cc_spec#*:}
+    # an inner sh runs the canary, so that the shell's own "Abort trap" notice of the aborted child stays out of the output
+    cc_r=$(sh -c '"$0" "$1" > "$2" 2>&1; echo $?' "$cc_bd/ds_canary" "$cc_name" "$cc_bd/canary-$cc_name.txt" 2> /dev/null) || cc_r=2
+    if [ "$cc_r" -ne 0 ] && grep -Fq -e "$cc_want" "$cc_bd/canary-$cc_name.txt"; then
+      echo "CANARY $cc_name reported exit=$cc_r"
+      if [ "$cc_name" != heap ]; then
+        grep -F -m 1 -e "runtime error" "$cc_bd/canary-$cc_name.txt" | sed 's|^.*/tests/|tests/|; s/^/  /'
+      fi
+    else
+      echo "SANITIZER_DEAD $cc_name"
+      cc_dead=1
+    fi
+  done
+  if [ "$cc_dead" -ne 0 ]; then
+    exit 1
+  fi
 }
 
 # controls_mode PRESET BD (D-85, D-55): the liveness controls of the matrix, run after it. Every tests/controls/NAME/ holds a RULE
@@ -293,6 +377,7 @@ hash_sweep() {
 [ $# -ge 1 ] || usage
 case $1 in
   run) shift; run_mode "$@" ;;
+  sanitize) shift; run_mode --sanitize "$@" ;;
   supervise) shift ;;
   *) usage ;;
 esac

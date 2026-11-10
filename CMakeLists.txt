@@ -21,6 +21,17 @@ set(DS_EXTRA_FLAGS "" CACHE STRING "Per-preset flags (wrap semantics, sanitizers
 separate_arguments(DS_FLAG_LIST NATIVE_COMMAND "${DS_WARNING_FLAGS} ${DS_EXTRA_FLAGS}")
 add_compile_options(${DS_FLAG_LIST})
 
+# The sanitize preset (D-41, D-83): the -fsanitize flags must reach the link line as well as the compile line, or the runtime is
+# not linked. Only those flags are repeated at link time (a warning flag there would only draw unused-argument noise).
+# DS_SANITIZE says that sanitizers are on: it adds the canary executable below, which exists to prove the sanitizers report.
+set(DS_SANITIZE OFF CACHE BOOL "Sanitizers are on: build the planted canaries (ds_canary)")
+separate_arguments(DS_EXTRA_LIST NATIVE_COMMAND "${DS_EXTRA_FLAGS}")
+foreach(flag IN LISTS DS_EXTRA_LIST)
+  if(flag MATCHES "^-fsanitize")
+    add_link_options("${flag}")
+  endif()
+endforeach()
+
 # the build id printed in the [core] table of a record; a build that does not set it prints the literal "unset" (D-53)
 set(DS_BUILD_ID "unset" CACHE STRING "Build id printed in the run record")
 
@@ -70,3 +81,10 @@ foreach(rule IN LISTS DS_CONTROL_RULES)
     ${CMAKE_CURRENT_SOURCE_DIR}/src/core ${CMAKE_CURRENT_SOURCE_DIR}/src/text)
   target_compile_definitions(ds_toy_${name} PRIVATE "DS_BUILD_ID=\"${DS_BUILD_ID}\"")
 endforeach()
+
+# Planted canaries (D-55, D-83): ds_canary has three modes, each a defect that a live sanitizer must report (a heap overflow, a signed
+# overflow, a signed left shift). It is built only when DS_SANITIZE is on, never links the core, and is run by conformance-run
+# sanitize, which requires a non-zero exit and the sanitizer's own message from each mode.
+if(DS_SANITIZE)
+  add_executable(ds_canary tests/conformance/canary.c)
+endif()

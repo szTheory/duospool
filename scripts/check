@@ -658,6 +658,13 @@ stage_conformance() {
   checker sh "$here/conformance-run" run
 }
 
+# sanitizers (D-41, D-55, D-83): the conformance matrix again under the sanitize preset (ASan and UBSan, no recover, no -fwrapv),
+# after proving with three planted canaries (heap overflow, signed overflow, signed left shift) that the sanitizers report. The
+# stage runs its own build and its own runner; it never judges a results file that an earlier run left behind.
+stage_sanitizers() {
+  checker sh "$here/conformance-run" sanitize
+}
+
 # outcome-sync (D-57, D-60, D-85): the outcome names compiled into the runner are the rows of outcomes.def, which in turn are the
 # seven names of the success criterion. Registered after the build stage and never reading a binary it did not just make: the
 # stage builds the gate preset itself (incremental, a no-op when the build stage just ran), asks the fresh build/gate/ds_runner for
@@ -1085,6 +1092,7 @@ run_stage audit-synthetic stage_audit_synthetic
 run_stage build stage_build
 run_stage outcome-sync stage_outcome_sync
 run_stage conformance stage_conformance
+run_stage sanitizers stage_sanitizers
 
 if [ -n "$only_stage" ]; then
   # one stage: its own CHECK line is the whole output; the exit status is that stage's verdict

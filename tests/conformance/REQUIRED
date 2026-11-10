@@ -25,3 +25,4 @@ accept_1m_banksig
 accept_unmapped_banks
 ref_size_8192
 ref_size_512k
+ref_too_large_size_max

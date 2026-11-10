@@ -24,6 +24,16 @@
       }
     },
     {
+      "name": "sanitize",
+      "inherits": "gate-base",
+      "binaryDir": "${sourceDir}/build/sanitize",
+      "cacheVariables": {
+        "DS_EXTRA_FLAGS": "-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer",
+        "DS_SANITIZE": "ON",
+        "DS_ALLOC_SHIM": "OFF"
+      }
+    },
+    {
       "name": "gate-gcc",
       "inherits": "gate-base",
       "binaryDir": "${sourceDir}/build/gate-gcc",
@@ -46,6 +56,10 @@
     {
       "name": "gate",
       "configurePreset": "gate"
+    },
+    {
+      "name": "sanitize",
+      "configurePreset": "sanitize"
     },
     {
       "name": "gate-gcc",
