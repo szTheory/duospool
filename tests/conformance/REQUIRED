@@ -14,3 +14,8 @@ profile_r1_equal
 profile_names_both_ways
 field_flip
 content_id_vs_shasum
+content_id_nist_empty
+content_id_nist_abc
+content_id_nist_448bit
+content_id_nist_million_a
+record_content_fields

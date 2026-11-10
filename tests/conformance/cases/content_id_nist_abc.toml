@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# NIST FIPS 180-4 example value, a spec literal re-derived with printf and shasum -a 256 while authoring: the three
+# bytes abc. The input is built inside the runner and fed to the in-house SHA-256 in uneven chunks of 1 to 7 bytes and
+# in one call. Evidence tier E0: it shows the hash function agrees with the published value, not that any content is
+# genuine.
+id = "content_id_nist_abc"
+kind = "hash_literal"
+fixture = "none"
+request = "abc"
+expect = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+meaning = "The in-house SHA-256 of the three bytes abc equals the FIPS 180-4 example value, chunked and in one call"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Record content row: the content table of a printed record, each field checked as an exact line. The image is the pure
+# LCG stream len:262144, whose recipe no later plan changes (plain-256k will gain bank tag bytes in plan 08), so the
+# sha256 literal here is the host shasum -a 256 of that stream, taken while authoring. Evidence tier E0: repeatability
+# of the identity, not proof that content is genuine.
+id = "record_content_fields"
+kind = "record_lines"
+fixture = "len:262144"
+request = ""
+expect = "content.sha256=985d45f244cc3f4fe49fbe09c9d2e5ca5cb90410d110b220d61f50d423a2ec47;content.size=262144;content.mapper=plain;content.mapper_rule=plain-v1;content.byte_order=pce;content.header_handling=none;limits.size_cap=1048576"
+meaning = "The printed record of a 256 KiB synthetic image carries the content sha256 (64 lowercase hex characters), the size, mapper plain, mapper_rule plain-v1, byte order pce, header handling none and the size cap 1048576, each as an exact line, and no ROM-internal string"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
