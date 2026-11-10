@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Fixture manifest entry (FIX-02, D-59): one synthetic recipe of tests/conformance/synth.c. The bytes are generated at test time and are
+# never committed. scripts/fixture-check compares size and sha256 below with the bytes that ds_runner --emit len:64 wrote, as hashed by
+# the host sha tool, so a changed generator or an undocumented image turns the gate red.
+id = "len_64"
+kind = "synthetic"
+source = "tests/conformance/synth.c"
+recipe = "len:64: 64 bytes of the pure stream, lcg32 seed=12345 x=x*1664525+1013904223 mod 2^32 byte=(x>>16)&255; no bank tags"
+toolchain = "ds_runner --emit len:64 (tests/conformance/synth.c, ISO C11, integer arithmetic only), hashed by sha256sum or shasum -a 256"
+size = 64
+sha256 = "ade5ef7a0098e656242efa6e649f191020c3c829db102ce3ee2616771bef090b"
+licence = "0BSD"
+notices = "none: generated at test time from an integer generator; no third-party material and no game content"
+redistribution = "generated-not-committed"
+meaning = "Hash sweep image: 64 bytes of the pure LCG stream, hashed by the host tool against the core SHA-256 (hash_sweep)."
+verdict_source = "independent-script"
