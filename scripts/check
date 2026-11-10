@@ -880,6 +880,19 @@ stage_workflow_negatives() {
   return "$wn_rc"
 }
 
+# docs-claims (TOOL-02, D-60): the documented gate command is true. scripts/docs-check reads README.md, AGENTS.md and the usage line of this script:
+# the command is stated in both files, the retired Phase 1 status sentence is gone, and every flag of the usage line is documented. Static, so it is
+# registered before the build.
+stage_docs_claims() {
+  checker sh "$here/docs-check"
+}
+
+# docs-claims-negatives (TOOL-02): every tests/docs/<case>/ is a mini-root (README.md, AGENTS.md, a stub scripts/check usage line): ok-<case> must pass and
+# a case with an EXPECT must fail with exactly that code set.
+stage_docs_claims_negatives() {
+  run_controls --ok-prefix --require-negative --need HARNESS_NO_FILE @DIR@scripts/check tests/docs tests/docs sh "$here/docs-check" --root @DIR@ @EXPECT@
+}
+
 # ci-timings-controls (CI-01, D-63, D-64): scripts/ci-timings judged offline against a canned run. Nothing here touches a network: the --tsv mode is run with
 # a stub gh first on PATH that records any call (it must record none), and the RUN_ID mode is run against the same stub, which prints the canned record
 # instead of contacting GitHub, so the exact gh arguments (read-only: run view ID --json ... --jq ...) are asserted too. The row must be the one line of
@@ -1677,6 +1690,29 @@ selftest() {
     fi
   fi
 
+  # (w) the stale-status rule of docs-check is what turns the stale-status control red (TOOL-02): the control, run with --expect DOC_STALE_STATUS, is met
+  # on an unmutated copy of scripts/ (exit 0, EXPECT_OK); with the one line tagged rule-stale deleted from the copy of the checker the code is no longer
+  # reported, so the same run must exit 1: the control flipped to broken.
+  if st_want mutation-docs-stale; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    dsr="tests/docs/stale-status"
+    if sh "$cp_dir/docs-check" --root "$dsr" --expect DOC_STALE_STATUS > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c 'rule-stale' "$cp_dir/docs-check" || true)
+    grep -v 'rule-stale' "$cp_dir/docs-check" > "$cp_dir/docs-check.mutated" || true
+    mv "$cp_dir/docs-check.mutated" "$cp_dir/docs-check"
+    after=$(grep -c 'rule-stale' "$cp_dir/docs-check" || true)
+    if sh "$cp_dir/docs-check" --root "$dsr" --expect DOC_STALE_STATUS > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+      echo "SELFTEST mutation-docs-stale PASS"
+    else
+      echo "SELFTEST mutation-docs-stale FAIL"; failed=1
+    fi
+  fi
+
   # a selected NAME that matched no mutation is a usage error, never a vacuous pass
   if [ -n "$st_sel" ] && [ "$st_ran" -eq 0 ]; then usage; fi
   if [ "$failed" -eq 0 ]; then echo "SELFTEST RESULT PASS"; return 0; fi
@@ -1783,6 +1819,8 @@ run_stage inventory stage_inventory
 run_stage inventory-negatives stage_inventory_negatives
 run_stage workflow stage_workflow
 run_stage workflow-negatives stage_workflow_negatives
+run_stage docs-claims stage_docs_claims
+run_stage docs-claims-negatives stage_docs_claims_negatives
 run_stage ci-timings-controls stage_ci_timings_controls
 run_stage build stage_build
 run_stage outcome-sync stage_outcome_sync

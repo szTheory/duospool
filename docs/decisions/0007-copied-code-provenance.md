@@ -40,11 +40,11 @@ This principle is owner-recorded (CONTEXT.md D-08). It is the only owner-recorde
 
 PR checklist: No code copied from another project without a Provenance marker and a PROVENANCE.md entry.
 
-That line lives in this record now, and in `PROVENANCE.md` when that register ships (plan 01-04). It moves into the pull-request template that arrives with the Phase 2 CI workflow (CI-01, record 0006). Phase 1 has no remote and no pull-request template yet.
+That line lives in this record and in `PROVENANCE.md`. The pull-request template ships with the Phase 2 CI workflow (CI-01, record 0006) as `.github/pull_request_template.md`, and `scripts/workflow-check` asserts that the line is present there as a whole line.
 
 ## Consequences and what is not decided here
 
 - Every new dependency still needs a written justification and a licence and maintenance record (AGENTS.md).
 - Not decided here: any specific copy. Each one needs its own `PROVENANCE.md` entry and a licence decision.
-- Not decided here: the exact enforcement of the checklist line, which waits for a remote and a pull-request template.
+- Not decided here: enforcement of the checklist line beyond its presence in the template. A reviewer ticks it; no remote exists yet to host a review.
 - The mechanism may be changed by a later record without reopening the owner's principle.

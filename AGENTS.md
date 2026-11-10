@@ -63,6 +63,13 @@ examples are engineering evidence, not PC Engine hardware facts or an
 instruction to inherit another project's release, security, CI, or execution
 stop. Do not rely on another private workspace for project context.
 
+## Local gate
+
+The single local verification command is `sh scripts/check`. CI runs the same command (record 0006), so a green local
+gate predicts a green CI gate. A green gate precedes any commit. `--stage NAME`, `--selftest [NAME]` and `--timing`
+narrow or time a run; they do not replace the full run before a commit. README.md documents the flags, exit codes and
+tool prerequisites, and `scripts/docs-check` keeps those claims true.
+
 ## Standing process protocols (owner preferences; apply by default)
 
 These apply to every phase, including autonomous runs. They record the owner's
