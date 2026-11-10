@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 2
 current_phase_name: Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate
 status: executing
-stopped_at: Completed 02-05-PLAN.md
-last_updated: "2026-11-10T04:41:39.771Z"
+stopped_at: Completed 02-06-PLAN.md
+last_updated: "2026-11-10T04:57:44.929Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 2 execution started
-state_head: d3cd7e00c5a44cb77a0bb5617cdcec2dbd74ea6f
+state_head: 7bfaf6acb8bfca586c1d4c067c6b6576f5a3a113
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 34
-  completed_plans: 17
+  completed_plans: 18
   percent: 17
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 2 (Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate) — EXECUTING
-Plan: 6 of 22
+Plan: 7 of 22
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 2 execution started
 
@@ -73,6 +73,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 02 P03 | 9 min | 3 tasks | 19 files |
 | Phase 02 P04 | 23 min | 3 tasks | 25 files |
 | Phase 02 P05 | 14 min | 3 tasks | 20 files |
+| Phase 02 P06 | 11 min | 3 tasks | 20 files |
 
 ## Accumulated Context
 
@@ -111,6 +112,10 @@ Recent decisions affecting current work:
 - [Phase 02]: 02-05: flags reach the build through two preset cache variables (DS_WARNING_FLAGS in the hidden base, DS_EXTRA_FLAGS per preset) — a child preset that sets CMAKE_C_FLAGS replaces the parent's value, so the gate preset could not add -fwrapv to the base; later presets add DS_EXTRA_FLAGS
 - [Phase 02]: 02-05: a load.NAME expectation that no refusal carries is a guest_failure (wrong literal), only a token that is neither accept nor load.* is a harness fault; field= in an expectation is asserted only when present
 - [Phase 02]: 02-05: resolve runs once per boot and the profile, rev and bindings rows surface their own codes; every boot_order row guards its own request use so a later plan can swap rows and get a wrong refusal, never a NULL read
+- [Phase 02]: 02-06: the r1 constant carries unresolved_behaviours through ds_profile_unresolved(_count) in profile.c, not through struct ds_profile; plan 13 hashes the ids through the same accessor
+- [Phase 02]: 02-06: ds_text prints with no library call; a quote, backslash, non-ASCII byte or unterminated string is DS_TEXT_ERR_STRING and an empty text (D-69); ds_text_profile prints the identity tables and is an exact part of the record
+- [Phase 02]: 02-06: record skeleton row count is pinned at 50 in runner.c build_expected_keys; plans 07, 12 and 14 that add keys or tables must edit that list in the same commit
+- [Phase 02]: 02-06: gate-gcc resolves to Apple clang on this Mac and is not a real gcc check; real gcc runs in plan 21 and CI. Stage outcome-sync builds the gate preset itself before reading build/gate/ds_runner
 
 ### Pending Todos
 
@@ -134,6 +139,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-10T04:41:39.704Z
-Stopped at: Completed 02-05-PLAN.md
+Last session: 2026-11-10T04:57:44.868Z
+Stopped at: Completed 02-06-PLAN.md
 Resume file: None
