@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: the request declares a mapper name the core has never heard of. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_mapper_unknown_name"
+kind = "refuse"
+fixture = "plain-256k"
+request = "mapper=bogus"
+expect = "load.mapper_unsupported"
+meaning = "A request that declares a mapper name outside the supported set is refused as load.mapper_unsupported with no hint about what the name might mean"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

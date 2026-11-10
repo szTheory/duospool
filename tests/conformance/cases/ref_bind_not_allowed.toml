@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: the request binds lines_per_frame to 264, a value outside the allowed set 262 and 263. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_bind_not_allowed"
+kind = "refuse"
+fixture = "plain-256k"
+request = "bind.lines_per_frame=264"
+expect = "load.bind_not_allowed;field=lines_per_frame"
+meaning = "A request that binds the open field lines_per_frame to a value outside its allowed set is refused as load.bind_not_allowed naming that field, and the value is not rounded or clamped"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

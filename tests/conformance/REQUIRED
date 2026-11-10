@@ -37,3 +37,12 @@ ref_request_reserved
 ref_profile_rev_mismatch
 ref_profile_mismatch
 ref_open_unbound
+ref_bind_closed
+ref_bind_not_allowed
+ref_mapper_undeclared
+ref_mapper_unknown_name
+ref_mapper_sf2
+ref_mapper_populous
+ref_mapper_tennokoe
+ref_mapper_arcade_card
+ref_mapper_mcgenjin
