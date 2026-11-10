@@ -179,42 +179,7 @@ stage_ledger_entries() {
 # every ledger/negative/<case>/ is a control; its EXPECT file holds the exact code set, an optional
 # REQUIRED file is passed through. Exit 1 from the checker means the control is broken.
 stage_ledger_negatives() {
-  rc=0
-  n=0
-  for d in ledger/negative/*/; do
-    [ -d "$d" ] || continue
-    n=$((n + 1))
-    case_name=$(basename "$d")
-    if [ ! -f "$d/EXPECT" ]; then
-      echo "HARNESS_NO_EXPECT $case_name"
-      rc=2
-      continue
-    fi
-    if ! read_expect "$d/EXPECT"; then
-      echo "HARNESS_EMPTY_EXPECT $case_name"
-      rc=2
-      continue
-    fi
-    if [ -f "$d/REQUIRED" ]; then
-      if checker sh "$here/ledger-check" --expect "$exp" --required "$d/REQUIRED" "$d" > "$tmp/case.out"; then r=0; else r=$?; fi
-    else
-      if checker sh "$here/ledger-check" --expect "$exp" "$d" > "$tmp/case.out"; then r=0; else r=$?; fi
-    fi
-    if [ "$r" -eq 1 ]; then
-      echo "CONTROL BROKEN $case_name"
-      sed 's/^/  /' "$tmp/case.out"
-      [ "$rc" -eq 2 ] || rc=1
-    elif [ "$r" -ne 0 ]; then
-      echo "HARNESS_ERROR $case_name"
-      sed 's/^/  /' "$tmp/case.out"
-      rc=2
-    fi
-  done
-  if [ "$n" -eq 0 ]; then
-    echo "NO_CONTROLS ledger/negative"
-    [ "$rc" -eq 2 ] || rc=1
-  fi
-  return "$rc"
+  run_controls --opt-file @DIR@/REQUIRED --required ledger/negative ledger/negative sh "$here/ledger-check" @EXPECT@ @OPT@ @DIR@
 }
 
 # every ledger/samples/ok-<case>/ is a must-pass control
@@ -249,54 +214,7 @@ stage_decision_records() {
 
 # every tests/decision/<case>/ is a control with an EXPECT file; every tests/decision/ok-<case>/ must pass
 stage_decision_negatives() {
-  rc=0
-  n=0
-  for d in tests/decision/*/; do
-    [ -d "$d" ] || continue
-    n=$((n + 1))
-    case_name=$(basename "$d")
-    case $case_name in
-      ok-*)
-        if checker sh "$here/decision-check" "$d" > "$tmp/case.out"; then r=0; else r=$?; fi
-        if [ "$r" -eq 1 ]; then
-          echo "SAMPLE REJECTED $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          [ "$rc" -eq 2 ] || rc=1
-        elif [ "$r" -ne 0 ]; then
-          echo "HARNESS_ERROR $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          rc=2
-        fi
-        ;;
-      *)
-        if [ ! -f "$d/EXPECT" ]; then
-          echo "HARNESS_NO_EXPECT $case_name"
-          rc=2
-          continue
-        fi
-        if ! read_expect "$d/EXPECT"; then
-          echo "HARNESS_EMPTY_EXPECT $case_name"
-          rc=2
-          continue
-        fi
-        if checker sh "$here/decision-check" --expect "$exp" "$d" > "$tmp/case.out"; then r=0; else r=$?; fi
-        if [ "$r" -eq 1 ]; then
-          echo "CONTROL BROKEN $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          [ "$rc" -eq 2 ] || rc=1
-        elif [ "$r" -ne 0 ]; then
-          echo "HARNESS_ERROR $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          rc=2
-        fi
-        ;;
-    esac
-  done
-  if [ "$n" -eq 0 ]; then
-    echo "NO_CONTROLS tests/decision"
-    [ "$rc" -eq 2 ] || rc=1
-  fi
-  return "$rc"
+  run_controls --ok-prefix tests/decision tests/decision sh "$here/decision-check" @EXPECT@ @DIR@
 }
 
 # every profiles/<id>/rN.toml must pass; no record at all is a dead gate, not a pass
@@ -316,60 +234,7 @@ stage_profile_records() {
 # every tests/profile/<case>/ with an EXPECT is a must-fail control on <case>/pce-hucard-2btn/r1.toml; every
 # tests/profile/ok-<case>/ without one must pass. Exit 1 from the checker means the control is broken.
 stage_profile_negatives() {
-  rc=0
-  n=0
-  for d in tests/profile/*/; do
-    [ -d "$d" ] || continue
-    n=$((n + 1))
-    case_name=$(basename "$d")
-    rec="${d}pce-hucard-2btn/r1.toml"
-    if [ ! -f "$rec" ]; then
-      echo "HARNESS_NO_RECORD $case_name"
-      rc=2
-      continue
-    fi
-    if [ -f "${d}EXPECT" ]; then
-      if ! read_expect "${d}EXPECT"; then
-        echo "HARNESS_EMPTY_EXPECT $case_name"
-        rc=2
-        continue
-      fi
-      if checker sh "$here/profile-check" --expect "$exp" "$rec" > "$tmp/case.out"; then r=0; else r=$?; fi
-      if [ "$r" -eq 1 ]; then
-        echo "CONTROL BROKEN $case_name"
-        sed 's/^/  /' "$tmp/case.out"
-        [ "$rc" -eq 2 ] || rc=1
-      elif [ "$r" -ne 0 ]; then
-        echo "HARNESS_ERROR $case_name"
-        sed 's/^/  /' "$tmp/case.out"
-        rc=2
-      fi
-    else
-      case $case_name in
-        ok-*)
-          if checker sh "$here/profile-check" "$rec" > "$tmp/case.out"; then r=0; else r=$?; fi
-          if [ "$r" -eq 1 ]; then
-            echo "SAMPLE REJECTED $case_name"
-            sed 's/^/  /' "$tmp/case.out"
-            [ "$rc" -eq 2 ] || rc=1
-          elif [ "$r" -ne 0 ]; then
-            echo "HARNESS_ERROR $case_name"
-            sed 's/^/  /' "$tmp/case.out"
-            rc=2
-          fi
-          ;;
-        *)
-          echo "HARNESS_NO_EXPECT $case_name"
-          rc=2
-          ;;
-      esac
-    fi
-  done
-  if [ "$n" -eq 0 ]; then
-    echo "NO_CONTROLS tests/profile"
-    [ "$rc" -eq 2 ] || rc=1
-  fi
-  return "$rc"
+  run_controls --expect-selects --need HARNESS_NO_RECORD @DIR@pce-hucard-2btn/r1.toml tests/profile tests/profile sh "$here/profile-check" @EXPECT@ @DIR@pce-hucard-2btn/r1.toml
 }
 
 # a TAB or a newline in an input path must be refused as BAD_FILENAME (CR-01): those bytes are the record separators of
@@ -485,54 +350,7 @@ stage_provenance_register() {
 # every tests/provenance/<case>/ with an EXPECT is a must-fail control run under its own --root; every
 # tests/provenance/ok-<case>/ must pass. Exit 1 from the checker means the control is broken.
 stage_provenance_negatives() {
-  rc=0
-  n=0
-  for d in tests/provenance/*/; do
-    [ -d "$d" ] || continue
-    n=$((n + 1))
-    case_name=$(basename "$d")
-    case $case_name in
-      ok-*)
-        if checker sh "$here/provenance-check" --root "$d" > "$tmp/case.out"; then r=0; else r=$?; fi
-        if [ "$r" -eq 1 ]; then
-          echo "SAMPLE REJECTED $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          [ "$rc" -eq 2 ] || rc=1
-        elif [ "$r" -ne 0 ]; then
-          echo "HARNESS_ERROR $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          rc=2
-        fi
-        ;;
-      *)
-        if [ ! -f "$d/EXPECT" ]; then
-          echo "HARNESS_NO_EXPECT $case_name"
-          rc=2
-          continue
-        fi
-        if ! read_expect "$d/EXPECT"; then
-          echo "HARNESS_EMPTY_EXPECT $case_name"
-          rc=2
-          continue
-        fi
-        if checker sh "$here/provenance-check" --root "$d" --expect "$exp" > "$tmp/case.out"; then r=0; else r=$?; fi
-        if [ "$r" -eq 1 ]; then
-          echo "CONTROL BROKEN $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          [ "$rc" -eq 2 ] || rc=1
-        elif [ "$r" -ne 0 ]; then
-          echo "HARNESS_ERROR $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          rc=2
-        fi
-        ;;
-    esac
-  done
-  if [ "$n" -eq 0 ]; then
-    echo "NO_CONTROLS tests/provenance"
-    [ "$rc" -eq 2 ] || rc=1
-  fi
-  return "$rc"
+  run_controls --ok-prefix tests/provenance tests/provenance sh "$here/provenance-check" --root @DIR@ @EXPECT@
 }
 
 stage_licence_files() {
@@ -620,61 +438,7 @@ stage_results() {
 # every tests/results/<case>/ is a control on its own protocol.md and record.md: a case with an EXPECT file is a must-fail
 # control run in --record mode, and every tests/results/ok-<case>/ must pass. Exit 1 from the checker means the control is broken.
 stage_results_negatives() {
-  rc=0
-  n=0
-  neg=0
-  for d in tests/results/*/; do
-    [ -d "$d" ] || continue
-    n=$((n + 1))
-    case_name=$(basename "$d")
-    case $case_name in ok-*) ;; *) neg=$((neg + 1)) ;; esac
-    if [ ! -f "${d}protocol.md" ] || [ ! -f "${d}record.md" ]; then
-      echo "HARNESS_NO_FILE $case_name"
-      rc=2
-      continue
-    fi
-    case $case_name in
-      ok-*)
-        if checker sh "$here/check-results" "${d}protocol.md" --record "${d}record.md" > "$tmp/case.out"; then r=0; else r=$?; fi
-        if [ "$r" -eq 1 ]; then
-          echo "SAMPLE REJECTED $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          [ "$rc" -eq 2 ] || rc=1
-        elif [ "$r" -ne 0 ]; then
-          echo "HARNESS_ERROR $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          rc=2
-        fi
-        ;;
-      *)
-        if [ ! -f "${d}EXPECT" ]; then
-          echo "HARNESS_NO_EXPECT $case_name"
-          rc=2
-          continue
-        fi
-        if ! read_expect "${d}EXPECT"; then
-          echo "HARNESS_EMPTY_EXPECT $case_name"
-          rc=2
-          continue
-        fi
-        if checker sh "$here/check-results" --expect "$exp" "${d}protocol.md" --record "${d}record.md" > "$tmp/case.out"; then r=0; else r=$?; fi
-        if [ "$r" -eq 1 ]; then
-          echo "CONTROL BROKEN $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          [ "$rc" -eq 2 ] || rc=1
-        elif [ "$r" -ne 0 ]; then
-          echo "HARNESS_ERROR $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          rc=2
-        fi
-        ;;
-    esac
-  done
-  if [ "$n" -eq 0 ] || [ "$neg" -eq 0 ]; then
-    echo "NO_CONTROLS tests/results"
-    [ "$rc" -eq 2 ] || rc=1
-  fi
-  return "$rc"
+  run_controls --ok-prefix --require-negative --need HARNESS_NO_FILE @DIR@protocol.md --need HARNESS_NO_FILE @DIR@record.md tests/results tests/results sh "$here/check-results" @EXPECT@ @DIR@protocol.md --record @DIR@record.md
 }
 
 # ---- self-test: prove the gate is alive (not vacuous). Mutates a COPY of scripts/ only ----
