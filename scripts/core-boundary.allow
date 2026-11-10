@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# Undefined symbols the core objects may reference (D-54, D-65). One name per line, leading underscore stripped; NAME then TAB then Darwin limits an entry to that platform.
+# The core has no allocator and no host call: the four memory builtins below are the whole list. Any other entry needs a one-line justification comment.
+memcpy
+memmove
+memset
+memcmp
+bzero	Darwin
+__chkstk_darwin	Darwin
