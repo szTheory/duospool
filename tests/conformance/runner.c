@@ -21,6 +21,7 @@
 #include <string.h>
 
 #include "ds_core.h"
+#include "ds_text.h"
 #include "synth.h"
 
 enum outcome {
@@ -388,6 +389,26 @@ static int bound_by_ok(const struct ds_profile *p)
     return 1;
 }
 
+/* the boot request of a spec over a content pointer */
+static void fill_request(struct ds_boot_request *rq, const struct spec *s, const unsigned char *content)
+{
+    uint32_t i;
+
+    memset(rq, 0, sizeof *rq);
+    rq->struct_size = (uint32_t)sizeof *rq + (s->bad_size ? 1u : 0u);
+    rq->reserved = s->reserved;
+    rq->profile_id = s->profile;
+    rq->profile_rev = s->rev;
+    for (i = 0u; i < (uint32_t)DS_FIELD_COUNT; i++) {
+        rq->bindings.value[i] = s->bind[i];
+    }
+    rq->mapper = s->mapper;
+    rq->byte_order = s->order;
+    rq->header = s->header;
+    rq->content = content;
+    rq->len = s->len;
+}
+
 /* boot one case from the fixture recipe and check the outcome against the expectation; got receives the observed reason name */
 static void run_boot(const char *fixture, const struct spec *s, const struct expect *e, struct ctx *c, char *got, size_t gotcap)
 {
@@ -402,7 +423,6 @@ static void run_boot(const char *fixture, const struct spec *s, const struct exp
     void *mem;
     size_t cap;
     uint32_t ret;
-    uint32_t i;
 
     if (base == NULL) {
         harness_error(c, "out of memory for the instance buffer");
@@ -431,19 +451,7 @@ static void run_boot(const char *fixture, const struct spec *s, const struct exp
     } else if (s->ptr == PTR_DUMMY) {
         cptr = dummy;
     }
-    memset(&rq, 0, sizeof rq);
-    rq.struct_size = (uint32_t)sizeof rq + (s->bad_size ? 1u : 0u);
-    rq.reserved = s->reserved;
-    rq.profile_id = s->profile;
-    rq.profile_rev = s->rev;
-    for (i = 0u; i < (uint32_t)DS_FIELD_COUNT; i++) {
-        rq.bindings.value[i] = s->bind[i];
-    }
-    rq.mapper = s->mapper;
-    rq.byte_order = s->order;
-    rq.header = s->header;
-    rq.content = cptr;
-    rq.len = s->len;
+    fill_request(&rq, s, cptr);
     memset(&res, 0xff, sizeof res);
     mem = s->mem == MEM_NULL ? NULL : (s->mem == MEM_MISALIGNED ? (void *)(base + 1) : (void *)base);
     cap = s->cap == CAP_SHORT ? isize - 1u : isize;
@@ -749,6 +757,397 @@ static void kind_resolve(const struct kase *k, struct ctx *c, char *got, size_t 
     }
 }
 
+/* ---- booted instance for the kinds that print or compare after an accepted boot ---- */
+
+struct booted {
+    unsigned char *mem;
+    unsigned char *content;
+};
+
+static void release_boot(struct booted *b)
+{
+    free(b->content);
+    free(b->mem);
+    b->content = NULL;
+    b->mem = NULL;
+}
+
+/*
+ * Boot the request text over the fixture's natural size and hand back the accepted instance and the parsed request. NULL on
+ * success, otherwise why not: a kind that uses this is about what follows an accepted boot, so a refused request is a harness
+ * fault of the case, never a verdict on the guest.
+ */
+static const char *boot_accepted(const char *fixture, const char *request, struct booted *b, struct spec *s,
+                                 const struct ds_instance **inst)
+{
+    struct ds_boot_request rq;
+    struct ds_boot_result res;
+    size_t natural = synth_size(fixture);
+    const char *err;
+
+    b->mem = NULL;
+    b->content = NULL;
+    if (natural == 0u) {
+        return "unknown fixture recipe";
+    }
+    err = parse_spec(s, request, natural);
+    if (err != NULL) {
+        return err;
+    }
+    if (s->ptr != PTR_OK || s->len > CONTENT_LIMIT) {
+        return "a booted-instance case needs ptr=ok and a len within the content limit";
+    }
+    b->mem = (unsigned char *)malloc(ds_instance_size());
+    b->content = (unsigned char *)malloc(s->len != 0u ? s->len : 1u);
+    if (b->mem == NULL || b->content == NULL) {
+        release_boot(b);
+        return "out of memory for the instance or the content";
+    }
+    if (synth_fill(fixture, b->content, s->len) != 0) {
+        release_boot(b);
+        return "unknown fixture recipe";
+    }
+    fill_request(&rq, s, b->content);
+    memset(&res, 0xff, sizeof res);
+    if (ds_boot(b->mem, ds_instance_size(), &rq, &res) != 0u || res.instance == NULL) {
+        release_boot(b);
+        return "the request was refused: this kind needs an accepted boot";
+    }
+    *inst = res.instance;
+    return NULL;
+}
+
+/* ---- kind record_lines: the canonical record skeleton, line by line (D-53, D-69) ---- */
+
+#define REC_CAP 16384u
+#define REC_MAX_ROWS 128u
+#define KEY_MAX 72u
+
+struct recrow {
+    char key[KEY_MAX]; /* TABLE.KEY */
+    const char *val;   /* the text after " = ", quotes kept */
+};
+
+/* the keys the skeleton must print, in order: table.key (D-53: record, core, profile, 13 field tables, content, limits) */
+static char exp_key[REC_MAX_ROWS][KEY_MAX];
+static size_t n_exp;
+
+static void exp_add(const char *prefix, const char *table, const char *key)
+{
+    size_t a = strlen(prefix);
+    size_t b = strlen(table);
+    size_t d = strlen(key);
+
+    if (n_exp < REC_MAX_ROWS && a + b + 1u + d < KEY_MAX) {
+        memcpy(exp_key[n_exp], prefix, a);
+        memcpy(exp_key[n_exp] + a, table, b);
+        exp_key[n_exp][a + b] = '.';
+        memcpy(exp_key[n_exp] + a + b + 1u, key, d + 1u);
+        n_exp++;
+    }
+}
+
+static void build_expected_keys(void)
+{
+    uint32_t i;
+
+    n_exp = 0u;
+    exp_add("", "record", "format_version");
+    exp_add("", "core", "build_id");
+    exp_add("", "core", "behaviour_epoch");
+    exp_add("", "profile", "id");
+    exp_add("", "profile", "rev");
+    for (i = 0u; i < (uint32_t)DS_FIELD_COUNT; i++) {
+        char tab[KEY_MAX];
+        size_t n = strlen(ds_field_name(i));
+
+        if (n + 7u >= sizeof tab) {
+            break;
+        }
+        memcpy(tab, "field_", 6u);
+        memcpy(tab + 6, ds_field_name(i), n + 1u);
+        exp_add("", tab, "status");
+        exp_add("", tab, "value");
+        exp_add("", tab, "bound_by");
+    }
+    exp_add("", "content", "size");
+    exp_add("", "content", "mapper");
+    exp_add("", "content", "mapper_rule");
+    exp_add("", "content", "byte_order");
+    exp_add("", "content", "header_handling");
+    exp_add("", "limits", "size_cap");
+}
+
+/*
+ * Split canonical text (in place) into TABLE.KEY rows. Layout rules: every line ends in LF, a table header is `[name]`, a key line
+ * is `key = value` inside a table, one blank line sits before every table but the first, and nowhere else. NULL on success,
+ * otherwise the first fault.
+ */
+static const char *parse_record(char *text, struct recrow *rows, size_t *nrows)
+{
+    char table[48];
+    int have_table = 0;
+    int prev_blank = 0;
+    int first_line = 1;
+    char *line = text;
+
+    table[0] = '\0';
+    *nrows = 0u;
+    while (*line != '\0') {
+        char *nl = strchr(line, '\n');
+        size_t n;
+        if (nl == NULL) {
+            return "the text does not end in a newline";
+        }
+        *nl = '\0';
+        n = strlen(line);
+        if (n == 0u) {
+            if (prev_blank || first_line) {
+                return "a blank line where none belongs";
+            }
+            prev_blank = 1;
+        } else if (line[0] == '[') {
+            if (line[n - 1u] != ']' || n < 3u || n - 2u >= sizeof table) {
+                return "a malformed table header";
+            }
+            if (!first_line && !prev_blank) {
+                return "a table header without a blank line before it";
+            }
+            memcpy(table, line + 1, n - 2u);
+            table[n - 2u] = '\0';
+            have_table = 1;
+            prev_blank = 0;
+        } else {
+            char *eq = strstr(line, " = ");
+            size_t tl = strlen(table);
+            if (eq == NULL || !have_table || prev_blank) {
+                return "a key line outside a table or after a blank line";
+            }
+            *eq = '\0';
+            if (*nrows == REC_MAX_ROWS || tl + 1u + strlen(line) >= KEY_MAX) {
+                return "too many rows or a key too long";
+            }
+            memcpy(rows[*nrows].key, table, tl);
+            rows[*nrows].key[tl] = '.';
+            memcpy(rows[*nrows].key + tl + 1u, line, strlen(line) + 1u);
+            rows[*nrows].val = eq + 3;
+            (*nrows)++;
+            prev_blank = 0;
+        }
+        first_line = 0;
+        line = nl + 1;
+    }
+    if (prev_blank) {
+        return "a blank line at the end";
+    }
+    return NULL;
+}
+
+/* is the raw value text the string want: a quoted string without its quotes, or a bare integer */
+static int value_is(const char *raw, const char *want)
+{
+    size_t n = strlen(raw);
+
+    if (n >= 2u && raw[0] == '"' && raw[n - 1u] == '"') {
+        return strlen(want) == n - 2u && memcmp(raw + 1, want, n - 2u) == 0;
+    }
+    return strcmp(raw, want) == 0;
+}
+
+static const struct recrow *find_row(const struct recrow *rows, size_t n, const char *key)
+{
+    size_t i;
+
+    for (i = 0u; i < n; i++) {
+        if (strcmp(rows[i].key, key) == 0) {
+            return &rows[i];
+        }
+    }
+    return NULL;
+}
+
+/* does the printer refuse (error status, empty text, zero length) the instance copy as it stands; garbage is pre-filled */
+static int refuses_with(const struct ds_instance *t, enum ds_text_status want, char *buf, size_t cap)
+{
+    size_t len = 12345u;
+    enum ds_text_status st;
+
+    memset(buf, 0x7f, cap);
+    st = ds_text_record(t, buf, cap, &len);
+    return st == want && len == 0u && buf[0] == '\0';
+}
+
+/*
+ * kind record_lines: boot the request (an accepted one), print the record into a buffer (nothing goes to stdout, D-80) and require
+ *   the exact table and key order of the skeleton, LF and printable ASCII only, one blank line between tables and nowhere else,
+ *   the scalar lines listed in the case expect (TABLE.KEY=VALUE separated by semicolons), the status, value and binder of each of
+ *   the 13 field tables from the built-in profile and the request, the profile text as an exact part of the record, and, as
+ *   controls on the printer, the refusal of a double quote, a backslash, a non-ASCII byte, an unknown enumeration and a buffer
+ *   that is one byte short.
+ */
+static void kind_record_lines(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    static char text[REC_CAP];
+    static char work[REC_CAP];
+    static char ptext[REC_CAP];
+    static char again[REC_CAP];
+    static char scratch[REC_CAP];
+    struct recrow rows[REC_MAX_ROWS];
+    struct booted b;
+    struct spec s;
+    const struct ds_instance *inst = NULL;
+    const struct ds_profile *builtin;
+    struct ds_instance *tmp;
+    char want[160];
+    const char *p;
+    size_t len = 0u;
+    size_t plen = 0u;
+    size_t nrows = 0u;
+    size_t i;
+    uint32_t f;
+    const char *err;
+    enum ds_text_status st;
+
+    err = boot_accepted(k->val[K_FIXTURE], k->val[K_REQUEST], &b, &s, &inst);
+    if (err != NULL) {
+        harness_error(c, err);
+        return;
+    }
+    builtin = ds_profile_builtin(inst->profile.id, inst->profile.rev);
+    check(c, builtin != NULL, "the booted profile is not the built-in r1");
+    if (builtin == NULL) {
+        release_boot(&b);
+        return;
+    }
+    st = ds_text_record(inst, text, sizeof text, &len);
+    check(c, st == DS_TEXT_OK, "ds_text_record failed on an accepted instance");
+    if (st != DS_TEXT_OK) {
+        release_boot(&b);
+        return;
+    }
+    check(c, len == strlen(text) && len > 0u, "outlen differs from the length of the text");
+    for (i = 0u; i < len; i++) {
+        unsigned char ch = (unsigned char)text[i];
+        if (!(ch == 0x0au || (ch >= 0x20u && ch <= 0x7eu))) {
+            break;
+        }
+    }
+    check(c, i == len, "the record holds a byte that is neither LF nor printable ASCII (CR, TAB and non-ASCII are refused)");
+    check(c, strchr(text, '\\') == NULL, "the record holds a backslash");
+
+    memcpy(work, text, len + 1u);
+    err = parse_record(work, rows, &nrows);
+    check(c, err == NULL, err != NULL ? err : "layout");
+    build_expected_keys();
+    check(c, n_exp == 50u, "the expected skeleton does not hold 50 rows (format_version, 2 core, 2 profile, 39 field, 5 content, 1 limit)");
+    check(c, err == NULL && nrows == n_exp, "the number of rows differs from the skeleton");
+    for (i = 0u; err == NULL && i < nrows && i < n_exp; i++) {
+        if (strcmp(rows[i].key, exp_key[i]) != 0) {
+            break;
+        }
+    }
+    check(c, err == NULL && i == n_exp, "a row is missing, extra or out of order against the skeleton");
+
+    /* the scalar lines of the case */
+    for (p = k->val[K_EXPECT]; err == NULL && !c->harness && *p != '\0';) {
+        const char *end = strchr(p, ';');
+        size_t n = end != NULL ? (size_t)(end - p) : strlen(p);
+        char *eq;
+        const struct recrow *row;
+        if (n == 0u || n >= sizeof want) {
+            harness_error(c, "an expect item is empty or too long");
+            break;
+        }
+        memcpy(want, p, n);
+        want[n] = '\0';
+        eq = strchr(want, '=');
+        if (eq == NULL) {
+            harness_error(c, "an expect item has no =");
+            break;
+        }
+        *eq = '\0';
+        row = find_row(rows, nrows, want);
+        check(c, row != NULL && value_is(row->val, eq + 1), "a scalar line of the record differs from the case expectation");
+        p += n + (end != NULL ? 1u : 0u);
+    }
+
+    /* every field table: status, value and binder follow from the built-in profile and the request */
+    for (f = 0u; f < (uint32_t)DS_FIELD_COUNT && nrows == n_exp; f++) {
+        char key[KEY_MAX];
+        const char *name = ds_field_name(f);
+        int open = builtin->field[f].status == (uint8_t)DS_STATUS_OPEN;
+        const struct recrow *rs;
+        const struct recrow *rv;
+        const struct recrow *rb;
+
+        snprintf(key, sizeof key, "field_%s.status", name);
+        rs = find_row(rows, nrows, key);
+        snprintf(key, sizeof key, "field_%s.value", name);
+        rv = find_row(rows, nrows, key);
+        snprintf(key, sizeof key, "field_%s.bound_by", name);
+        rb = find_row(rows, nrows, key);
+        check(c, rs != NULL && value_is(rs->val, open ? "open" : "owner-selected"), "a field status line differs");
+        check(c, rv != NULL && value_is(rv->val, open ? (s.bind[f] != NULL ? s.bind[f] : "") : builtin->field[f].value),
+              "a field value line differs from the constant or the bound value");
+        check(c, rb != NULL && value_is(rb->val, open ? "run-request" : "constant"), "a field bound_by line differs");
+    }
+
+    /* the profile text is an exact part of the record, followed by the content table */
+    st = ds_text_profile(&inst->profile, ptext, sizeof ptext, &plen);
+    check(c, st == DS_TEXT_OK && plen == strlen(ptext), "ds_text_profile failed");
+    if (st == DS_TEXT_OK) {
+        const char *at = strstr(text, ptext);
+        check(c, at != NULL && at >= text + 2 && at[-1] == '\n' && at[-2] == '\n' && strncmp(at + plen, "\n[content]\n", 11u) == 0,
+              "the profile text is not an exact part of the record, after a blank line and followed by the content table");
+        check(c, strncmp(ptext, "[profile]\n", 10u) == 0, "the profile text does not start with the profile table");
+    }
+
+    /* printing twice gives the same bytes */
+    st = ds_text_record(inst, again, sizeof again, &plen);
+    check(c, st == DS_TEXT_OK && plen == len && memcmp(again, text, len + 1u) == 0, "a second print differs from the first");
+
+    /* the capacity edge: len + 1 bytes fit, len bytes do not, and the failed print leaves nothing */
+    st = ds_text_record(inst, scratch, len + 1u, &plen);
+    check(c, st == DS_TEXT_OK && plen == len && memcmp(scratch, text, len + 1u) == 0, "a buffer of exactly len + 1 bytes did not fit the record");
+    check(c, refuses_with(inst, DS_TEXT_ERR_CAPACITY, scratch, len), "a buffer one byte short did not give capacity and an empty text");
+    plen = 99u;
+    check(c, ds_text_record(inst, NULL, 0u, &plen) == DS_TEXT_ERR_ARGUMENT && plen == 0u, "a NULL buffer is not an argument error");
+
+    /* D-69: a quote, a backslash or a byte outside printable ASCII is refused, never escaped */
+    tmp = (struct ds_instance *)malloc(sizeof *tmp);
+    if (tmp == NULL) {
+        harness_error(c, "out of memory for the instance copy");
+    } else {
+        memcpy(tmp, inst, sizeof *tmp);
+        tmp->profile.field[DS_FIELD_media_slot].value[0] = '"';
+        check(c, refuses_with(tmp, DS_TEXT_ERR_STRING, scratch, sizeof scratch), "a double quote in a field value was not refused");
+        memcpy(tmp, inst, sizeof *tmp);
+        tmp->profile.field[DS_FIELD_lines_per_frame].value[0] = '\\';
+        check(c, refuses_with(tmp, DS_TEXT_ERR_STRING, scratch, sizeof scratch), "a backslash in a field value was not refused");
+        memcpy(tmp, inst, sizeof *tmp);
+        tmp->mapper[1] = '"';
+        check(c, refuses_with(tmp, DS_TEXT_ERR_STRING, scratch, sizeof scratch), "a double quote in the mapper name was not refused");
+        memcpy(tmp, inst, sizeof *tmp);
+        tmp->profile.id[2] = '\\';
+        check(c, refuses_with(tmp, DS_TEXT_ERR_STRING, scratch, sizeof scratch), "a backslash in the profile id was not refused");
+        memcpy(tmp, inst, sizeof *tmp);
+        tmp->profile.field[DS_FIELD_vpc].value[0] = (char)0x80;
+        check(c, refuses_with(tmp, DS_TEXT_ERR_STRING, scratch, sizeof scratch), "a non-ASCII byte in a field value was not refused");
+        memcpy(tmp, inst, sizeof *tmp);
+        memset(tmp->mapper, 'x', sizeof tmp->mapper);
+        check(c, refuses_with(tmp, DS_TEXT_ERR_STRING, scratch, sizeof scratch), "an unterminated mapper name was not refused");
+        memcpy(tmp, inst, sizeof *tmp);
+        tmp->profile.field[DS_FIELD_chip_revision].status = 9u;
+        check(c, refuses_with(tmp, DS_TEXT_ERR_STATE, scratch, sizeof scratch), "an unknown field status was not refused");
+        memcpy(tmp, inst, sizeof *tmp);
+        tmp->byte_order = 7u;
+        check(c, refuses_with(tmp, DS_TEXT_ERR_STATE, scratch, sizeof scratch), "an unknown byte order was not refused");
+        free(tmp);
+    }
+    snprintf(got, gotcap, "rows=%u", (unsigned)nrows);
+    release_boot(&b);
+}
+
 static const struct {
     const char *name;
     kind_fn fn;
@@ -757,6 +1156,7 @@ static const struct {
     {"refuse", kind_boot, 0},
     {"accept", kind_boot, 0},
     {"resolve", kind_resolve, 0},
+    {"record_lines", kind_record_lines, 0},
 };
 
 static const char *outcome_of(const struct ctx *c, enum outcome *oc)

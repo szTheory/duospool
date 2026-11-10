@@ -9,3 +9,4 @@ resolve_open_unbound
 resolve_bind_closed
 resolve_bind_not_allowed
 resolve_rev_mismatch
+record_skeleton_256k
