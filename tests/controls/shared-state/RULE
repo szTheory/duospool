@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Toy control (D-85, D-55): a stepping library with state shared by every instance, made from the live src/core/advance.c by
+# scripts/control-mutate. The anchor is the one live line that updates the psg_noise register; the replacement folds a hidden function-local
+# static counter into that update, so the register of a machine depends on how many cycles every machine in the process has stepped. A
+# deliberately aliased toy lives in build/ only, never in src/core (the boundary check of plan 15 bans exactly this in the real core, and no
+# copy of advance.c is committed). The interleave cases in EXPECT must come out guest_failure on the toy, or they prove nothing about sharing.
+tag=rule-shared-counter
+file=src/core/advance.c
+anchor=inst->psg_noise = noise_step(inst->psg_noise);
+replace={ static uint32_t shared_n = 0u; inst->psg_noise = noise_step(inst->psg_noise) ^ ++shared_n; }

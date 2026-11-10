@@ -1511,6 +1511,12 @@ static const struct {
     {"record_golden", kind_record_golden, 0},
     {"record_refusal", kind_record_refusal, 0},
     {"record_refuses_quote", kind_record_refuses_quote, 0},
+    {"interleave", kind_interleave, 0},
+    {"interleave_twins", kind_interleave_twins, 0},
+    {"interleave_destroy_recreate", kind_interleave_destroy_recreate, 0},
+    {"interleave_aba_order", kind_interleave_aba_order, 0},
+    {"interleave_canaries", kind_interleave_canaries, 0},
+    {"liveness_shared_state_selfcheck", kind_liveness_shared_state_selfcheck, 0},
     {"coverage", kind_coverage, 1},
 };
 

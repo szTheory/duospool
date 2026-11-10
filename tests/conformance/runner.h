@@ -157,6 +157,14 @@ void kind_record_golden(const struct kase *k, struct ctx *c, char *got, size_t g
 void kind_record_refusal(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_record_refuses_quote(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 
+/* the interleave kinds (ilvkinds.c, plan 16) */
+void kind_interleave(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_interleave_twins(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_interleave_destroy_recreate(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_interleave_aba_order(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_interleave_canaries(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_liveness_shared_state_selfcheck(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+
 /* the profile kinds (profkinds.c); each gets the case, the counter, and a buffer for the observed value */
 void kind_profile_equal(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_names_both_ways(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
