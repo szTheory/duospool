@@ -20,12 +20,26 @@ static uint32_t mirror_256k(uint32_t b)
     return b % 32u;
 }
 
+/* 384K: the one-line rule of LED-LOAD-0003, kept on a single line so that a control can mutate exactly this expression */
+static uint32_t mirror_384k(uint32_t b)
+{
+    return b < 0x40 ? (b & 0x1F) : (0x20 + (b & 0x0F));
+}
+
+/* 1M: file bank = b */
+static uint32_t mirror_1m(uint32_t b)
+{
+    return b;
+}
+
 /* the table, indexed by the size enum; a row that is not filled stays zero and is never mapped */
 static const struct {
     uint32_t bytes;
     mirror_fn mirror;
 } size_row[DS_SIZE_COUNT] = {
     [DS_SIZE_256K] = {262144u, mirror_256k},
+    [DS_SIZE_384K] = {393216u, mirror_384k},
+    [DS_SIZE_1M] = {1048576u, mirror_1m},
 };
 
 uint32_t ds_size_classify(size_t len)

@@ -7,8 +7,8 @@
  * mutates this list (swaps two rows) and requires a red refusal row, and plan 12 inserts the power-on checks directly after
  * the binding-resolution rows.
  * Per D-82 the 1 MiB limit row runs before the supported-size row: any length above the limit is too_large, and size_unsupported
- * is only for lengths within the limit that are a multiple of 8 KiB and not 256K, 384K or 1M. Until plan 08 the only supported
- * size is 256 KiB.
+ * is only for lengths within the limit that are a multiple of 8 KiB and not 256K, 384K or 1M (the size enum of ds_mapper.h:
+ * the supported set is exactly its three members).
  */
 DS_CHECK(memory)
 DS_CHECK(request)
