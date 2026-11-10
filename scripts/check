@@ -738,6 +738,12 @@ stage_record_lint_negatives() {
   run_controls --ok-prefix --require-negative --need HARNESS_NO_FILE @DIR@record.toml tests/gate/record-lint tests/gate/record-lint sh "$here/record-lint" @EXPECT@ @DIR@record.toml
 }
 
+# core-boundary (D-54, D-65): the real core. Each src/core/*.c is compiled standalone at -O0 and inspected; the stage passes only on the STATUS marker.
+# The checker, the allowlist and the rules are shown able to fail by the stage core-boundary-negatives and by the selftest mutations.
+stage_core_boundary() {
+  checker sh "$here/core-boundary-check"
+}
+
 # core-boundary-negatives (D-54, D-65): every tests/gate/core-boundary/<case>/ is a mini-root holding src/core/*.c. A case with an EXPECT must fail
 # with exactly that code set, ok-<case> must pass; the controls are never part of the CMake build, so only this checker reads them.
 stage_core_boundary_negatives() {
@@ -1312,6 +1318,7 @@ run_stage sanitizers stage_sanitizers
 run_stage excluded-mode-controls stage_excluded_mode_controls
 run_stage record-lint stage_record_lint
 run_stage record-lint-negatives stage_record_lint_negatives
+run_stage core-boundary stage_core_boundary
 run_stage core-boundary-negatives stage_core_boundary_negatives
 
 if [ -n "$only_stage" ]; then
