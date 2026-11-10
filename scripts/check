@@ -658,6 +658,15 @@ stage_conformance() {
   checker sh "$here/conformance-run" run
 }
 
+# every tests/gate/excluded/<case>/ is a mini-root for the sanitize mode (D-78): results.txt is the sanitize run, gate-results.txt the
+# gate-mode run, EXCLUDED_IN_MODE the exclusion file, tests/conformance/ holds REQUIRED and the case inventory. A case with an EXPECT
+# file must fail on exactly that code set (an unlisted exclusion, an excluded id that does not pass in the gate run, one that is not
+# REQUIRED, one that ran in the mode it is excluded from); ok-excl must pass. A control that passes without its EXPECT met means the
+# exclusion judge is broken (T-02-50).
+stage_excluded_mode_controls() {
+  run_controls --ok-prefix --require-negative --need HARNESS_NO_FILE @DIR@results.txt --need HARNESS_NO_FILE @DIR@gate-results.txt tests/gate/excluded tests/gate/excluded sh "$here/conformance-ingest" --root @DIR@ --results @DIR@results.txt --mode sanitize --excluded @DIR@EXCLUDED_IN_MODE --gate-results @DIR@gate-results.txt @EXPECT@
+}
+
 # sanitizers (D-41, D-55, D-83): the conformance matrix again under the sanitize preset (ASan and UBSan, no recover, no -fwrapv),
 # after proving with three planted canaries (heap overflow, signed overflow, signed left shift) that the sanitizers report. The
 # stage runs its own build and its own runner; it never judges a results file that an earlier run left behind.
@@ -987,6 +996,33 @@ selftest() {
     fi
   fi
 
+  # (m) the exclusion judge must be red on an excluded case that does not pass in the gate run, and only because of the one rule that
+  # says so (D-78, T-02-50). The excl-not-pass-in-gate control is run on a scratch copy of scripts/ with --expect EXCL_NOT_PASS_IN_GATE:
+  # unmutated that expectation is met (exit 0, EXPECT_OK); with the lines carrying the rule marker deleted the code is no longer
+  # reported, so the same run must exit 1. The marker is assembled here so that this script never carries it, and the ingest script
+  # carries it on exactly one line.
+  if st_want mutation-excluded-gate-pass; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    tok=rule-excl-
+    tok="${tok}gate-pass"
+    xc="tests/gate/excluded/excl-not-pass-in-gate"
+    if sh "$cp_dir/conformance-ingest" --outcomes tests/conformance/outcomes.def --root "$xc" --results "$xc/results.txt" --mode sanitize --excluded "$xc/EXCLUDED_IN_MODE" --gate-results "$xc/gate-results.txt" --expect EXCL_NOT_PASS_IN_GATE > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c "$tok" "$cp_dir/conformance-ingest" || true)
+    grep -v "$tok" "$cp_dir/conformance-ingest" > "$cp_dir/conformance-ingest.mutated" || true
+    mv "$cp_dir/conformance-ingest.mutated" "$cp_dir/conformance-ingest"
+    after=$(grep -c "$tok" "$cp_dir/conformance-ingest" || true)
+    if sh "$cp_dir/conformance-ingest" --outcomes tests/conformance/outcomes.def --root "$xc" --results "$xc/results.txt" --mode sanitize --excluded "$xc/EXCLUDED_IN_MODE" --gate-results "$xc/gate-results.txt" --expect EXCL_NOT_PASS_IN_GATE > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+      echo "SELFTEST mutation-excluded-gate-pass PASS"
+    else
+      echo "SELFTEST mutation-excluded-gate-pass FAIL"; failed=1
+    fi
+  fi
+
   # a selected NAME that matched no mutation is a usage error, never a vacuous pass
   if [ -n "$st_sel" ] && [ "$st_ran" -eq 0 ]; then usage; fi
   if [ "$failed" -eq 0 ]; then echo "SELFTEST RESULT PASS"; return 0; fi
@@ -1093,6 +1129,7 @@ run_stage build stage_build
 run_stage outcome-sync stage_outcome_sync
 run_stage conformance stage_conformance
 run_stage sanitizers stage_sanitizers
+run_stage excluded-mode-controls stage_excluded_mode_controls
 
 if [ -n "$only_stage" ]; then
   # one stage: its own CHECK line is the whole output; the exit status is that stage's verdict

@@ -15,6 +15,9 @@
  *   --profile-tsv FILE   the flattened profiles/pce-hucard-2btn/r1.toml (scripts/conformance-flatten), read by the r1 kinds
  *   --rules-fields FILE  the 13 field names of scripts/lib/profile-rules.awk, one per line, read by the names kind
  *   --oracle FILE        the bank-signature rows of tests/conformance/mirror-oracle.awk (SIZE BANK FILEBANK FIRST LAST), read by banksig
+ *   --exclude-ids FILE   one case id per line: those cases are not run and print no RESULT line (RUNNER_DONE counts the lines printed).
+ *                        Only scripts/conformance-run sanitize passes it, for the exact set of tests/conformance/EXCLUDED_IN_MODE (D-78);
+ *                        an id that no case carries is a harness fault (exit 2), so a stale exclusion cannot linger
  *        ds_runner --outcomes   prints the compiled outcome names, one per line, and exits 0 (read by scripts/outcome-sync --names)
  *        ds_runner --sweep-lengths   prints the 21 hash sweep lengths, one per line: the only definition of the list (D-59)
  *        ds_runner --emit RECIPE     writes the bytes of a synthetic recipe to stdout, nothing else (plain-256k, len:N)
@@ -1593,6 +1596,8 @@ int main(int argc, char **argv)
     const char *cases_path = NULL;
     const char *evdir = NULL;
     const char *why = NULL;
+    const char *exclude_path = NULL;
+    static char excluded[MAX_CASES];
     char *text;
     size_t i;
     size_t printed = 0u;
@@ -1648,7 +1653,9 @@ int main(int argc, char **argv)
         return ok ? 0 : 2;
     }
     for (a = 1; a < argc; a++) {
-        if (strcmp(argv[a], "--cases") == 0 && a + 1 < argc) {
+        if (strcmp(argv[a], "--exclude-ids") == 0 && a + 1 < argc) {
+            exclude_path = argv[++a];
+        } else if (strcmp(argv[a], "--cases") == 0 && a + 1 < argc) {
             cases_path = argv[++a];
         } else if (strcmp(argv[a], "--evidence-dir") == 0 && a + 1 < argc) {
             evdir = argv[++a];
@@ -1665,7 +1672,7 @@ int main(int argc, char **argv)
     }
     if (cases_path == NULL || evdir == NULL) {
         fprintf(stderr, "usage: ds_runner --cases FILE --evidence-dir DIR [--profile-tsv FILE] [--rules-fields FILE]\n"
-                        "                 [--oracle FILE]\n"
+                        "                 [--oracle FILE] [--exclude-ids FILE]\n"
                         "       ds_runner --sweep-lengths | --spec | --emit RECIPE | --hash RECIPE\n");
         return 2;
     }
@@ -1684,11 +1691,38 @@ int main(int argc, char **argv)
             return 2;
         }
     }
+    if (exclude_path != NULL) {
+        char *xt = read_file(exclude_path);
+        char *line = xt;
+        while (xt != NULL && *line != '\0') {
+            char *nl = strchr(line, '\n');
+            if (nl != NULL) {
+                *nl = '\0';
+            }
+            if (*line != '\0') {
+                for (i = 0u; i < ncases && strcmp(cases[i].stem, line) != 0; i++) {
+                }
+                if (i == ncases) {
+                    fprintf(stderr, "HARNESS the exclusion file names an id that no case carries\n");
+                    return 2;
+                }
+                excluded[i] = 1;
+            }
+            line = nl != NULL ? nl + 1 : line + strlen(line);
+        }
+        if (xt == NULL) {
+            fprintf(stderr, "HARNESS cannot read the exclusion file\n");
+            return 2;
+        }
+    }
     for (pass = 0; pass < 2; pass++) {
         for (i = 0u; i < ncases; i++) {
             const struct kase *k = &cases[i];
             int deferred = 0;
             size_t j;
+            if (excluded[i]) {
+                continue;
+            }
             for (j = 0u; j < sizeof kinds / sizeof kinds[0]; j++) {
                 if (k->has[K_KIND] && strcmp(kinds[j].name, k->val[K_KIND]) == 0) {
                     deferred = kinds[j].deferred;

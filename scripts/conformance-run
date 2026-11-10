@@ -15,7 +15,7 @@
 #   (the independent bank-signature oracle, 384 rows, handed to the runner as --oracle), configure
 #   and build the preset incrementally (so a stale binary is never judged), run ds_runner under the supervise mode below with
 #   its stdout in results.txt, judge results.txt with conformance-ingest against tests/conformance/REQUIRED and the case
-#   inventory, run the hash sweep (hash_sweep below: the core SHA-256 against the host sha tool for every length of the runner's
+#   inventory (with --mode gate --excluded tests/conformance/EXCLUDED_IN_MODE, so that the exclusion file is validated on every gate run), run the hash sweep (hash_sweep below: the core SHA-256 against the host sha tool for every length of the runner's
 #   --sweep-lengths, HASH_SWEEP_MISMATCH on a difference), run the toy controls (controls_mode below: every tests/controls/NAME
 #   is a deliberately wrong core, generated from the live source by scripts/control-mutate, that the named cases must show red;
 #   CONTROL NAME RED_OK, or CONTROL NAME NOT_RED and status 1), and print the RESULT lines then  STATUS conformance ok n=COUNT .
@@ -26,6 +26,10 @@
 #   through CC; a build directory that was configured with another compiler is removed first. After the build the three planted canaries
 #   (ds_canary heap, overflow, shift) are run: each must exit non-zero and print the sanitizer's own message (AddressSanitizer for heap,
 #   runtime error for the two UBSan ones), printed as CANARY NAME reported; otherwise SANITIZER_DEAD NAME is printed and the status is 1.
+#   Before anything is built build/gate/results.txt must exist (the conformance step makes it; exit 2 otherwise). The ids of
+#   tests/conformance/EXCLUDED_IN_MODE rows for the mode sanitize go to build/sanitize/exclude-ids.txt, the runner gets them as
+#   --exclude-ids, one line  EXCLUDED_IN_MODE sanitize ID  is printed per id, and the ingest runs with --mode sanitize --excluded
+#   tests/conformance/EXCLUDED_IN_MODE --gate-results build/gate/results.txt (D-78: exact set; never counted as a skip).
 #   Then the runner runs under the supervise mode with the wall watchdog at about 3 times the default (900 s), the hash sweep runs
 #   on the sanitized runner, and the toy controls do not (they were judged in the gate preset). ASAN_OPTIONS detect_leaks=1 is exported on
 #   Linux only (Apple ASan has no leak detector). The final line is STATUS sanitize ok n=COUNT.
@@ -77,8 +81,12 @@ run_mode() {
   cd "$here/.."
   root=$(pwd)
   bd=build/$preset
+  if [ "$mode" = sanitize ] && [ ! -f build/gate/results.txt ]; then
+    echo "HARNESS_NO_GATE_RESULTS build/gate/results.txt is missing: the conformance step produces it and the sanitize mode reads it (D-78)" >&2
+    exit 2
+  fi
   mkdir -p "$bd" || { echo "HARNESS_ERROR cannot create $bd" >&2; exit 2; }
-  rm -rf "$bd/cases.tsv" "$bd/ids.txt" "$bd/results.txt" "$bd/evidence" "$bd/r1.tsv" "$bd/rules-fields.txt" "$bd/oracle.tsv" "$bd/oracle.err"
+  rm -rf "$bd/exclude-ids.txt" "$bd/cases.tsv" "$bd/ids.txt" "$bd/results.txt" "$bd/evidence" "$bd/r1.tsv" "$bd/rules-fields.txt" "$bd/oracle.tsv" "$bd/oracle.err"
 
   if sh "$here/conformance-flatten" tests/conformance/cases > "$bd/cases.tsv" 2> "$bd/flatten.err"; then r=0; else r=$?; fi
   if [ "$r" -ne 0 ]; then
@@ -91,6 +99,15 @@ run_mode() {
   if [ ! -s "$bd/ids.txt" ]; then
     echo "HARNESS_NO_CASES the flattened inventory holds no case" >&2
     exit 2
+  fi
+  # the exact exclusion of this mode (D-78): the ids of the rows for this mode, and the ids the supervisor must account for without them
+  ex_args=""
+  : > "$bd/exclude-ids.txt"
+  if [ "$mode" = sanitize ]; then
+    awk -v m="$mode" '/^[ \t]*(#.*)?$/ { next } NF == 2 && $1 == m { print $2 }' tests/conformance/EXCLUDED_IN_MODE > "$bd/exclude-ids.txt"
+    grep -Fvx -f "$bd/exclude-ids.txt" "$bd/ids.txt" > "$bd/ids.run" || true
+    mv "$bd/ids.run" "$bd/ids.txt"
+    ex_args="--exclude-ids $bd/exclude-ids.txt"
   fi
 
   # the two inputs of the profile kinds (D-48, D-51): the frozen r1 record flattened by the same parser as the cases, and the
@@ -142,13 +159,22 @@ run_mode() {
   fi
 
   mkdir -p "$bd/evidence" || { echo "HARNESS_ERROR cannot create $bd/evidence" >&2; exit 2; }
-  if sh "$here/conformance-run" supervise --ids "$bd/ids.txt" --out "$bd/results.txt" --wall "$wall_secs" -- "$bd/ds_runner" --cases "$bd/cases.tsv" --evidence-dir "$bd/evidence" --profile-tsv "$bd/r1.tsv" --rules-fields "$bd/rules-fields.txt" --oracle "$bd/oracle.tsv"; then sup=0; else sup=$?; fi
+  if sh "$here/conformance-run" supervise --ids "$bd/ids.txt" --out "$bd/results.txt" --wall "$wall_secs" -- "$bd/ds_runner" --cases "$bd/cases.tsv" --evidence-dir "$bd/evidence" --profile-tsv "$bd/r1.tsv" --rules-fields "$bd/rules-fields.txt" --oracle "$bd/oracle.tsv" $ex_args; then sup=0; else sup=$?; fi
   if [ "$sup" -eq 2 ]; then
     exit 2
   fi
 
   grep -E '^(RESULT|RUNNER_DONE) ' "$bd/results.txt" || true
-  if sh "$here/conformance-ingest" --root "$root" --results "$bd/results.txt" --required tests/conformance/REQUIRED --inventory tests/conformance/cases > "$bd/ingest.out" 2>&1; then ing=0; else ing=$?; fi
+  # the exclusion lines are this script's (D-80): the runner prints only RESULT and RUNNER_DONE
+  while IFS= read -r ex_id; do
+    echo "EXCLUDED_IN_MODE $mode $ex_id"
+  done < "$bd/exclude-ids.txt"
+  if [ "$mode" = sanitize ]; then
+    ing_mode="--mode sanitize --gate-results build/gate/results.txt"
+  else
+    ing_mode="--mode gate"
+  fi
+  if sh "$here/conformance-ingest" --root "$root" --results "$bd/results.txt" --required tests/conformance/REQUIRED --inventory tests/conformance/cases --excluded tests/conformance/EXCLUDED_IN_MODE $ing_mode > "$bd/ingest.out" 2>&1; then ing=0; else ing=$?; fi
   if [ "$ing" -ne 0 ]; then
     cat "$bd/ingest.out"
     exit "$ing"

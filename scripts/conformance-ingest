@@ -5,12 +5,19 @@
 # conformance-ingest - the RESULT-file judge (D-57, D-58, D-79(c)). It recomputes the gate verdict from the runner's RESULT
 # lines and never trusts a runner summary. Only the outcome pass is green: skip is red and zero tests is red.
 # usage: conformance-ingest --results FILE [--required FILE] [--inventory DIR] [--outcomes FILE] [--root DIR]
-#                           [--expect CODE[,CODE...]]
+#                           [--expect CODE[,CODE...]] [--mode NAME --excluded FILE [--gate-results FILE]]
 #   --root DIR       tree holding tests/conformance/REQUIRED and tests/conformance/cases/ (default: the repository root)
 #   --required FILE  default ROOT/tests/conformance/REQUIRED: one id per line, # comments and blank lines ignored
 #   --inventory DIR  default ROOT/tests/conformance/cases: every <id>.toml names a listed id
 #   --outcomes FILE  default tests/conformance/outcomes.def of the repository this script lives in; the outcome names are
 #                    read from its DS_OUTCOME rows and are never repeated in this script
+#   --mode NAME      the mode this results file comes from (gate or sanitize); required with --excluded
+#   --excluded FILE  tests/conformance/EXCLUDED_IN_MODE (D-78): rows MODE ID, # comments and blank lines ignored. The rows of the
+#                    current mode are the cases that were deliberately not run in this mode: a REQUIRED id without a RESULT line is
+#                    forgiven only when it is listed, so an unlisted exclusion is still OUTCOME_MISSING_ARTIFACT. Every row of every
+#                    mode is checked, in the gate run and in the sanitize run alike: its id must be REQUIRED and must have a pass
+#                    RESULT line in the gate-mode results (--gate-results FILE, default: this results file), and a row of the
+#                    current mode must have no RESULT line here. An exclusion is never a skip.
 # RESULT grammar (one line each, ASCII): RESULT ID OUTCOME assertions=N evidence=REF [machine_time=N] [stop=REASON], then the
 # last line RUNNER_DONE N. ID matches [a-z][a-z0-9_]*. REF is a relative path (no leading slash, no dot-dot segment) or
 # signal:INT / signal:TERM (the supervisor source form, D-77).
@@ -20,13 +27,15 @@
 # stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
 # exit  : 0 clean (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error
 # Violation codes and their classes (D-79(c)) are the table in the awk program below: OUTCOME_<NAME> for every non-pass
-# outcome (class NAME), also OUTCOME_MISSING_ARTIFACT for a REQUIRED id without a line; ING_* codes are harness_failure class.
+# outcome (class NAME), also OUTCOME_MISSING_ARTIFACT for a REQUIRED id without a line; ING_* and EXCL_* codes are harness_failure class.
+# EXCL_BAD_LINE (a row that is not MODE ID, repeats a row or breaks the grammar), EXCL_NOT_REQUIRED, EXCL_NOT_PASS_IN_GATE and
+# EXCL_RAN_IN_MODE come from the exclusion file only.
 set -eu
 LC_ALL=C; export LC_ALL
 here=$(cd "$(dirname "$0")" && pwd)
 
 usage() {
-  echo "usage: conformance-ingest --results FILE [--required FILE] [--inventory DIR] [--outcomes FILE] [--root DIR] [--expect CODE[,CODE...]]" >&2
+  echo "usage: conformance-ingest --results FILE [--required FILE] [--inventory DIR] [--outcomes FILE] [--root DIR] [--expect CODE[,CODE...]] [--mode NAME --excluded FILE [--gate-results FILE]]" >&2
   exit 2
 }
 
@@ -37,8 +46,14 @@ results=""
 required=""
 inventory=""
 outcomes=""
+mode=""
+excluded=""
+gate_results=""
 while [ $# -gt 0 ]; do
   case $1 in
+    --mode) [ $# -ge 2 ] || usage; mode=$2; shift 2 ;;
+    --excluded) [ $# -ge 2 ] || usage; excluded=$2; shift 2 ;;
+    --gate-results) [ $# -ge 2 ] || usage; gate_results=$2; shift 2 ;;
     --expect) [ $# -ge 2 ] || usage; expect=$2; have_expect=1; shift 2 ;;
     --root) [ $# -ge 2 ] || usage; root=$2; shift 2 ;;
     --results) [ $# -ge 2 ] || usage; results=$2; shift 2 ;;
@@ -55,6 +70,15 @@ if [ "$have_expect" -eq 1 ] && [ -z "$(printf '%s' "$expect" | tr -d ', \t\r\n')
   exit 2
 fi
 [ -n "$results" ] || usage
+# the exclusion options belong together: a mode without a file or a gate results file without one would judge nothing
+if [ -n "$excluded" ] && [ -z "$mode" ]; then usage; fi
+if [ -n "$mode" ] && [ -z "$excluded" ]; then usage; fi
+if [ -n "$gate_results" ] && [ -z "$excluded" ]; then usage; fi
+case $mode in
+  '') ;;
+  [a-z]*) case $mode in *[!a-z0-9_-]*) usage ;; esac ;;
+  *) usage ;;
+esac
 if [ ! -d "$root" ]; then
   echo "HARNESS_NO_FILE $root" >&2
   exit 2
@@ -63,7 +87,8 @@ root=$(cd "$root" && pwd)
 [ -n "$required" ] || required="$root/tests/conformance/REQUIRED"
 [ -n "$inventory" ] || inventory="$root/tests/conformance/cases"
 [ -n "$outcomes" ] || outcomes="$here/../tests/conformance/outcomes.def"
-for f in "$results" "$required" "$outcomes"; do
+if [ -n "$excluded" ] && [ -z "$gate_results" ]; then gate_results=$results; fi
+for f in "$results" "$required" "$outcomes" ${excluded:+"$excluded"} ${gate_results:+"$gate_results"}; do
   if [ ! -f "$f" ]; then
     echo "HARNESS_NO_FILE $f" >&2
     exit 2
@@ -113,7 +138,7 @@ done
 # no RESULT line can carry it, so it is reported as missing and never skipped silently.
 awk '/^[ \t]*(#.*)?$/ { next } { print $1 }' "$required" > "$tmp/req"
 
-outf="$tmp/outcomes" invf="$tmp/inv" reqf="$tmp/req" awk '
+outf="$tmp/outcomes" invf="$tmp/inv" reqf="$tmp/req" excf="$excluded" gatef="$gate_results" curmode="$mode" awk '
 function clean(s) { gsub(/[^ -~]/, "?", s); return s }
 function viol(code, detail) {
   if (!(code in cls)) { print "HARNESS_NO_CLASS " code; bad = 1; return }
@@ -134,7 +159,7 @@ BEGIN {
   # the one code-to-class table (D-79(c)): OUTCOME_ codes above carry the outcome name as their class, the structural
   # ING_ codes below are all harness_failure class. The three names used here must exist in outcomes.def.
   hf = "harness_failure"
-  n = split("ING_EMPTY ING_NO_DONE ING_DONE_COUNT ING_BAD_LINE ING_UNKNOWN_TOKEN ING_DUPLICATE_ID ING_UNLISTED_ID ING_ASSERTIONS_ZERO ING_NO_EVIDENCE ING_REQUIRED_EMPTY", hc, " ")
+  n = split("ING_EMPTY ING_NO_DONE ING_DONE_COUNT ING_BAD_LINE ING_UNKNOWN_TOKEN ING_DUPLICATE_ID ING_UNLISTED_ID ING_ASSERTIONS_ZERO ING_NO_EVIDENCE ING_REQUIRED_EMPTY EXCL_BAD_LINE EXCL_NOT_REQUIRED EXCL_NOT_PASS_IN_GATE EXCL_RAN_IN_MODE", hc, " ")
   for (i = 1; i <= n; i++) cls[hc[i]] = hf
   if (!(hf in oc) || !("pass" in oc) || !("missing_artifact" in oc)) { print "HARNESS_BAD_OUTCOMES semantic names absent"; bad = 1 }
   while ((getline s < ENVIRON["invf"]) > 0) inv[s] = 1
@@ -143,6 +168,27 @@ BEGIN {
   while ((getline s < ENVIRON["reqf"]) > 0) req[++nreq] = s
   close(ENVIRON["reqf"])
   nlines = 0; nres = 0; ndone = 0; doneval = 0
+  # the exclusion file (D-78): rows MODE ID. A row of the current mode is forgiven below when its id has no RESULT line.
+  nexc = 0
+  if (ENVIRON["excf"] != "") {
+    xl = 0
+    while ((getline s < ENVIRON["excf"]) > 0) {
+      xl++
+      if (s ~ /^[ \t]*(#.*)?$/) continue
+      nx = split(s, xf, " ")
+      if (nx != 2 || xf[1] !~ /^[a-z][a-z0-9_-]*$/ || xf[2] !~ /^[a-z][a-z0-9_]*$/) { viol("EXCL_BAD_LINE", "line " xl ": not MODE ID"); continue }
+      if ((xf[1] SUBSEP xf[2]) in xdup) { viol("EXCL_BAD_LINE", "line " xl ": repeats a row"); continue }
+      xdup[xf[1] SUBSEP xf[2]] = 1
+      nexc++; xmode[nexc] = xf[1]; xid[nexc] = xf[2]
+      if (xf[1] == ENVIRON["curmode"]) exm[xf[2]] = 1
+    }
+    close(ENVIRON["excf"])
+    while ((getline s < ENVIRON["gatef"]) > 0) {
+      ng = split(s, gf, " ")
+      if (ng >= 3 && gf[1] == "RESULT" && gf[3] == "pass") gpass[gf[2]] = 1
+    }
+    close(ENVIRON["gatef"])
+  }
 }
 {
   nlines++
@@ -185,7 +231,14 @@ END {
   }
   if (nreq == 0) viol("ING_REQUIRED_EMPTY", "no requirement lines")
   for (i = 1; i <= nreq; i++) {
-    if (!(req[i] in seen)) viol("OUTCOME_MISSING_ARTIFACT", "required " clean(req[i]) " has no RESULT line")
+    isreq[req[i]] = 1
+    if (!(req[i] in seen) && !(req[i] in exm)) viol("OUTCOME_MISSING_ARTIFACT", "required " clean(req[i]) " has no RESULT line")
+  }
+  for (i = 1; i <= nexc; i++) {
+    id = xid[i]
+    if (!(id in isreq)) viol("EXCL_NOT_REQUIRED", "excluded " id " (" xmode[i] ") is not in REQUIRED")
+    if (!(id in gpass)) viol("EXCL_NOT_PASS_IN_GATE", "excluded " id " (" xmode[i] ") has no pass RESULT line in the gate results") # rule-excl-gate-pass
+    if (xmode[i] == ENVIRON["curmode"] && (id in seen)) viol("EXCL_RAN_IN_MODE", "excluded " id " has a RESULT line in mode " xmode[i])
   }
   exit (bad ? 2 : 0)
 }' "$results" > "$viol0" || { cat "$viol0" >&2; echo "HARNESS_AWK_FAILED" >&2; exit 2; }
