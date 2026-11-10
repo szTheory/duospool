@@ -20,3 +20,5 @@ content_id_nist_448bit
 content_id_nist_million_a
 record_content_fields
 accept_256k_banksig
+accept_384k_banksig
+accept_1m_banksig

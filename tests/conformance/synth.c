@@ -4,7 +4,8 @@
  * synth.c - synthetic image recipes (D-59). Integer LCG only, no floating point and no clock: a recipe gives the same bytes in
  * every process on every host. The generator is the one named by SYNTH_SPEC, and that string is part of every recipe: a change
  * of seed, multiplier, increment or byte selection is a change of recipe, so the fixture manifest hashes the spec with the bytes.
- *   plain-256k  262144 bytes of the LCG stream, then the bank tags below.
+ *   plain-256k  262144 bytes of the LCG stream (32 file banks), then the bank tags below.
+ *   plain-384k  393216 bytes (48 file banks) and plain-1m 1048576 bytes (128 file banks): the same stream and the same tags.
  *   len:N       N bytes of the same stream, N written in decimal without a leading zero (len:0 is the empty image); used by the
  *               hash sweep, whose lengths straddle the padding boundaries of SHA-256.
  * Bank tags (plain-* recipes only; len:N is the pure stream): after the LCG fill, the first byte of file bank k (the 8 KiB block
@@ -18,7 +19,16 @@
 
 #include "synth.h"
 
-#define PLAIN_256K_BYTES 262144u
+/* the plain-* recipes: name and natural size in bytes */
+static const struct {
+    const char *name;
+    size_t bytes;
+} plain_recipe[] = {
+    {"plain-256k", 262144u},
+    {"plain-384k", 393216u},
+    {"plain-1m", 1048576u},
+};
+
 #define BANK_BYTES 8192u
 #define LEN_RECIPE_MAX 16777216u /* a len:N recipe above 16 MiB is refused, so --emit cannot be asked for an unbounded stream */
 
@@ -32,9 +42,11 @@ int synth_parse(const char *recipe, size_t *n)
     size_t v = 0u;
     size_t i;
 
-    if (strcmp(recipe, "plain-256k") == 0) {
-        *n = PLAIN_256K_BYTES;
-        return 0;
+    for (i = 0u; i < sizeof plain_recipe / sizeof plain_recipe[0]; i++) {
+        if (strcmp(recipe, plain_recipe[i].name) == 0) {
+            *n = plain_recipe[i].bytes;
+            return 0;
+        }
     }
     if (strncmp(recipe, "len:", 4u) != 0 || recipe[4] == '\0') {
         return -1;
