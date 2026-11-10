@@ -1,0 +1,155 @@
+# Phase 2: Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate - Context
+
+**Gathered:** 2026-11-09
+**Status:** Ready for planning
+**Method:** Autonomous discuss under the standing fan-out protocol (AGENTS.md). Five parallel research agents, one per decision area (HuCard contract, machine shell and run record, determinism and rights checks, gate/outcomes/manifest, CI). Their disagreements were reconciled in an adversarial pass by the orchestrator (section "Reconciliations"). No owner question was needed: no authority gate is crossed by the decisions below. The one outward-facing item (pushing to the public remote for CI evidence) is deliberately NOT decided here (D-60).
+
+<domain>
+## Phase Boundary
+
+A host passes content bytes and a named profile. It gets back either a typed refusal or a fresh, isolated, reproducibly initialised machine instance whose identity is recorded. One local command (`sh scripts/check`), mirrored in CI, fails closed.
+
+Delivers (requirements PROF-02, PROF-03, CONT-01..04, CORE-01..03, RUN-02, FIX-02, FIX-04, FIX-05, TOOL-02, CI-01):
+
+1. The C11/CMake/Ninja core library: profile validation, HuCard mapper boundary (256K/384K/1M plain), instance, power-on, canonical state digest, run facts.
+2. A text library and a headless conformance runner outside the core.
+3. The refusal matrix, multi-instance and cross-process determinism tests.
+4. Enforcement checks: core boundary (CORE-02), rights tree scan (FIX-05), fixture manifest and required-test inventory (FIX-02, FIX-04), workflow check.
+5. The extended `scripts/check` gate with distinct outcomes (RUN-02) and the GitHub Actions workflow (CI-01).
+
+Not in this phase: any CPU, VDC, PSG, input behaviour; a public `duospool.h`; install rules; fuzzing/Miri/wasm (CI-02, staged); TG16 byte order, copier headers, special mappers (refused, not implemented).
+
+</domain>
+
+<decisions>
+## Implementation Decisions
+
+### Repository layout and build (Claude design under D-05, D-18, 0001)
+
+- **D-40 Layout.** Three CMake targets plus tests, no public header:
+  - `src/core/` -> `ds_core` (static lib). Profile table, resolve/validate, instance, mapper, power-on PRNG, canonical serializer, SHA-256, content id, run-facts struct. Private headers `ds_*.h`.
+  - `src/text/` -> `ds_text` (links `ds_core`): canonical printers for profile and run record. **Printing only; no parser in C** (see D-47).
+  - `tests/conformance/` -> runner (never installed). Uses the private headers through an internal include dir. No `duospool.h` and no install rules until the Phase 6 consumer proves the shape (D-05).
+  - Dependencies point one way: runner -> text -> core.
+- **D-41 Build flags.** `CMakePresets.json` preset `gate`: Ninja, `build/gate`, `-std=c11 -pedantic -Wall -Wextra -Wconversion -Wshadow -Werror -fwrapv`, `CMAKE_C_EXTENSIONS OFF`, no floats, no `__DATE__/__TIME__`. Warning flags restricted to the gcc/clang common set and tested with both. No `find_package`, no `FetchContent`. A separate sanitizer preset (ASan+UBSan, `-fno-sanitize-recover=all`) is part of the fast gate (workload is milliseconds); libFuzzer/Homebrew LLVM stays staged.
+- **D-42 Core memory.** The core never calls `malloc`. The instance is a fixed-size struct in **caller-supplied memory** (`ds_instance_size()` / `ds_instance_align()`). The struct embeds a fixed 1 MiB ROM array: the loader **copies** the validated bytes in (no borrowed pointer, so later host mutation cannot change a running instance). Result: the allocation cap is structural, there is no allocator-failure path, and `alloc_failed` is not in the refusal enum. One `ds_boot(mem, cap, &request, &out)` either refuses or constructs; there is no "created but unloaded" state. The whole struct is zeroed at init so padding is deterministic. A refusal writes only the result struct, never `mem`.
+- **D-43 Non-mutation.** Boot takes no existing instance, so a refusal cannot mutate one by API shape. The test takes the state digest of a live instance before and after each refusal row and requires equality. No in-place "load into existing" in Phase 2.
+
+### HuCard content contract (CONT-01..04, PROF-02)
+
+- **D-44 Supported sizes and mirroring (all `assumed`, never `supported`).** Exactly three plain sizes, mirrored by 8 KiB bank index `b` in `$00-$7F`:
+  - 256 KiB: file bank = `b mod 32`.
+  - 384 KiB: `b < $40` gives `b & $1F`; `b >= $40` gives `$20 + (b & $0F)`.
+  - 1 MiB: file bank = `b`.
+  - Banks `$80+` are not ROM: the mapper boundary reports "unmapped"; Phase 3 owns the value.
+  - Mirror tables are indexed by a size enum, never by raw size. Everything else (128K, 192K, 512K, 768K, 2M, ...) is refused `size_unsupported`. 512K/768K/192K are refused because emulator sources conflict (MAME vs Mednafen/Geargrafx); 128K because no settled evidence a card exists.
+  - Evidence tier: CODE (three emulators agree on 384K) and REPORT. The primary sources (pcetech.txt, Hudson manual) could not be fetched in research. Ledger: new `LED-LOAD-0003` (assumed: 256/384/1M rule; withheld: "matches hardware"), `LED-LOAD-0004` (open: 512K/768K/192K conflicts, sizes refused), `LED-LOAD-0005` (assumed: window `$00-$7F`, banks `>= $80` not ROM). Promotion beyond `assumed` needs a primary source or E3 capture and is out of this phase.
+  - **No profile r2.** `r1` is frozen. The mirror rule belongs to the mapper named `plain`; the run record carries `mapper = "plain"` and `mapper_rule = "plain-v1"` and the size cap. (The research suggested r2 with `content_sizes`; rejected: the mirror rule is fixed mapper behaviour, not a selectable setting. Revisit if a second plain-mapper variant is ever offered.)
+- **D-45 Declared inputs, never guessed.** The load request carries `mapper` (name: `plain` supported; `sf2`, `populous`, `tennokoe`, `arcade_card`, `mcgenjin` and anything else `mapper_unsupported`; absent `mapper_undeclared`), `byte_order` (0 undeclared, `pce`=1, `tg16`=2) and `header` (0 undeclared, `none`=1, `copier_512`=2). The first profile binds `content_byte_order=pce` and `content_copier_header=refuse`. Supported: (plain, pce, none) only. TG16 gives `byte_order_unsupported`; `copier_512` gives `header_unsupported`. The core never reverses bits, strips bytes or inspects content (no reset-vector, CRC, title string). Refusals carry no hints such as "looks headered". Residual risk recorded as withheld claims: no claim that an image is plain or PC-order; a host that declares `plain` for SF2' bytes of a supported size loads them as plain.
+- **D-46 Refusal enum** (closed, `0` = OK, numbers stable and never reused; string form `load.<name>`): `request_invalid`, `profile_unknown`, `profile_mismatch`, `mapper_undeclared`, `mapper_unsupported`, `byte_order_undeclared`, `byte_order_unsupported`, `header_undeclared`, `header_unsupported`, `buffer_null` (ptr NULL with len>0), `empty` (len==0), `too_short` (0<len<8192, includes 513), `too_large` (len>cap), `size_not_bank_multiple`, `size_unsupported`, plus profile-binding refusals from D-49. **Fixed precedence** (table-tested): request validity, profile, mapper, byte order, header, null/empty, cap, short, bank-multiple, supported-size. Cap is **1 MiB**, a core constant recorded in the run record, checked as `len > cap` on a `size_t` before any read or arithmetic; nothing allocates before validation passes.
+  - Test vectors (each otherwise fully declared plain/pce/none): len 0 NULL and non-NULL -> `empty`; len 1 NULL -> `buffer_null`; len 1, 513, 8191 -> `too_short`; 8192 -> `size_unsupported`; 256K-1 -> `size_not_bank_multiple`; 256K+512 declared none -> `size_not_bank_multiple`, declared `copier_512` -> `header_unsupported`; 128K/192K/512K/768K/2M -> `size_unsupported`; 1M+8K and `SIZE_MAX` with a dummy pointer (never dereferenced) -> `too_large`; 2.5 MiB declared `sf2` -> `mapper_unsupported`; 1M declared `populous`/`tennokoe`/`arcade_card` -> `mapper_unsupported`; undeclared mapper/order/header; TG16; profile mismatch and unknown; bad `struct_size`, nonzero reserved, NULL request -> `request_invalid`. Accept cases: 256K, 384K, 1M each read their bank-signature table through all 128 banks. An allocation-counting shim proves zero allocations on every refusal row. Refusal matrix lives in the fast gate.
+- **D-47 Content identity.** SHA-256 of the bytes exactly as supplied (no normalisation), written **in-house** from FIPS 180-4 (about 100 lines, project licence, no provenance entry), tested against NIST vectors (empty, "abc", 448-bit, one million `a`) and cross-checked with host `shasum -a 256`. Rejected: copying Brad Conte/LibTomCrypt (public domain / not on the D-26 allowlist), mbedTLS (heavy), FNV/CRC for identity. A matching hash is E0 repeatability only. Never log ROM-internal strings.
+
+### Profile, power-on, digest, run record (CORE-01, CORE-03, PROF-02, PROF-03)
+
+- **D-48 Profile field table.** One `profile_fields.def` X-macro with the 13 D-28 fields generates the `ds_profile` struct, the field-index enum, name/kind tables, allowed masks, get/set, the bindings struct, the printer and the name lookup. Each resolved field has value + origin (`constant` or `run-request`). The built-in `r1` constant marks owner-selected fields set and open fields OPEN (no value). Exhaustive-equality tests: loop over the X-list comparing the parsed `r1.toml` TSV (D-51) with the constant; table-name set check in both directions; `_Static_assert` that `sizeof(ds_profile)` equals the sum of member sizes; a mutation test that flips each field and expects an identity change. `label` text never feeds logic.
+- **D-49 Resolve, no defaults.** `ds_resolve(profile_id, rev, bindings)` returns typed refusals naming the field: `OPEN_UNBOUND`, `BIND_CLOSED_FIELD` (owner-selected fields cannot be overridden), `BIND_NOT_ALLOWED` (value outside `allowed`), `PROFILE_UNKNOWN`, `REV_MISMATCH`, `CONTENT_PROFILE_MISMATCH`. The core accepts only a profile equal to a registered built-in by id, rev and every field. A run-request-bound field is recorded `bound_by = "run-request"` and listed in `[withheld]`: no support claim. All 8 open fields are bound by the run request in Phase 2.
+- **D-50 Power-on (CORE-03).** `powerup_policy` stays an open ledger field bound in the run request. Offer `zero` and `seeded-prng-v1`; `powerup_seed` (u64) required for the seeded policy and refused for `zero`. PRNG: splitmix64 written in-house (test vector seed 0 starts `0xE220A8397B1DCDAF`, verify before trusting). One stream per domain, `sub = splitmix(seed ^ DOMAIN_CONST)` with fixed constants (not enum ordinals): `ram8k`, `psg_noise`, `vdc_phase`, later VRAM/palette. Bytes drawn in explicit little-endian order. MPRs: documented constant plus an open ledger entry (Phase 3 research). The `v1` suffix freezes algorithm, domains and draw order. New ledger entry (area `PROF`, since D-20 has no PWR area): modelling assumption on power-on state, withholding any claim that guests do not depend on uninitialised memory.
+- **D-51 One parser, shared: amendment to D-18 (dated 2026-11-09, Claude design).** D-18 said Phase 2 hand-writes a TOML-subset parser in the chosen language outside the core. Refined: the existing sh+awk `toml-subset.awk` stays the only parser of hand-edited data. A new `scripts/conformance-flatten` emits a validated TSV (with an `END` sentinel) that the C runner and tests read. Why: two parsers need a differential corpus to prove agreement; the manifest/inventory checks must not depend on the C build (the gate fails closed even when the build is broken). The core stays text-free either way.
+- **D-52 State digest.** SHA-256 over a canonical stream: prefix `"duospool-state\0"` + serializer version; regions framed `u32 tag, u32 len, payload`, explicit little-endian integers, fixed tags and order. Includes machine state, machine time, resolved-profile hash and content id; excludes pointers and the ROM pointer. Never hash raw struct bytes. A per-region test perturbs live state and expects the digest to change (so a field missing from the serializer is caught). A matching digest is repeatability only.
+- **D-53 Run record.** Canonical strict-TOML-subset text (D-18) with flat one-level tables: `[record]` (format version), `[core]` (build id, `behaviour_epoch` integer), `[profile]` (id, rev, resolved sha256), `[field_<name>]` x13 (status, value, `bound_by`), `[withheld]` (ledger ids), `[content]` (sha256, size, mapper, mapper_rule, byte_order, header_handling), `[power_on]` (policy, policy_version, seed), `[limits]` (size cap), `[machine]` (time with unit, digest algorithm and value). A refusal produces `[refusal]` (reason, requested id/rev) and no `[machine]`. Canonical rules: key order from the X-table, LF only, decimal integers, ASCII strings with only `"` and `\` escaped, no paths, pointers, wall time or pid. Goldens compare `behaviour_epoch`, not the git build id. Resolved field values without label text plus the profile hash satisfy "full resolved profile" (planner to confirm against D-28's "full resolved field text"; if labels are required, they are included and the 16 KiB cap still holds). Records are compared byte for byte (`cmp`).
+
+### Determinism and rights enforcement (CORE-01, CORE-02, FIX-05, CONT-03)
+
+- **D-54 Core boundary check (`scripts/core-boundary-check`, sh + cc + nm).** Compile each core source standalone with `-std=c11 -O0 -ffreestanding -nostdinc -isystem <resource-dir>/include -fno-common -fno-stack-protector -fno-pie -Werror=date-time -Wall -Wextra` (Darwin: `-D_FORTIFY_SOURCE=0`). L1: only `stddef/stdint/stdbool` exist, so any other header fails to compile; the core uses `__builtin_memcpy/memset` and bans `limits.h`. L2: `nm -P -u` must be a subset of `scripts/core-boundary.allow` (`memcpy memmove memset memcmp`; Darwin also `bzero`, `___chkstk_darwin`, leading `_` stripped). No `malloc` (consistent with D-42). L3 hidden globals: no writable symbol in any core object (Linux `nm -P` types `BbCDdGgSsVvu`; Darwin `nm -m` sections `__DATA,__data|__bss|__common`, `(common)`, `__thread`); an empty exception list. `grep` for `float|double` in core sources. Never scan sanitizer builds; scan at `-O0`. Verify clang availability on the CI image (research flagged UNKNOWN); fall back to `gcc -print-file-name=include` and ban `limits.h`.
+  - Negative controls (prototyped): `<time.h>` include, `clock_gettime`, `getenv`, `malloc`, a global counter, a function-local static, initialised data, `__TIME__`; positive controls `ok.c` (memset, 20 KB stack) and `ok2.c` (const tables). Marker rule: print `STATUS core-boundary ok` only on a clean run; exit 0 without a marker is harness error 2; empty nm output for an object with known symbols is exit 2. `--selftest` deletes one allowlist line and requires red.
+- **D-55 CORE-01 tests.** Interleave harness on the private API: instances A and B with different content and seeds, stepped alternately on a fixed-seed LCG schedule, digest and record compared to each solo run; identical-input twins; destroy-and-recreate mid-run; A-B-A order independence; adjacent instances with canary bytes. Liveness control: a toy control library `tests/controls/shared-state/` with a hidden static counter must make the interleave test fail (no `#ifdef` plants in the core). Fresh-process: run twice, second under `env -i` with different `TZ`, cwd, `TMPDIR`, with malloc scribbling (`MallocScribble=1 MallocPreScribble=1` on macOS, `MALLOC_PERTURB_=165` on Linux); `cmp` the records. Record lint rejects absolute paths, `0x...` pointers and timestamps. Sanitizer canaries (a planted heap overflow and signed overflow must each be reported). Use `/usr/bin/clang` for ASan; never Homebrew LLVM (hangs on this macOS). Set `detect_leaks=1` on Linux.
+- **D-56 Rights check (`scripts/rights-check`, FIX-05).** Default-deny every non-text file from `git ls-files` (tracked plus untracked-not-ignored; `.gitignore` is not the gate): NUL bytes, control bytes, bytes invalid in UTF-8, >=20% non-ASCII at >=1 KiB; extension/magic list (pce sgx bin rom iso cue chd sav srm zip 7z, `PK`, `7z`, `Rar!`, gzip, bzip2); shape (size >=4096 and a multiple of 8192 or 8192+512); encoded blobs (a line of 1024+ base64/hex chars). Skip entropy. Allowlist only through the fixture manifest (path must exist, sha256 match, `kind: authored`, SPDX licence); a stale entry fails as `missing_artifact`. Logs/artifacts: runner prints only ids, outcomes, sizes, hashes; a redaction test generates a synthetic "commercial" ROM with unique markers at test time and asserts none appear in runner stdout/stderr/records, with a seeded-leak control that must be flagged. `scripts/audit-history` gains a `--range BASE..HEAD` mode for PR checks (full-history stays scheduled/pre-release/owner checkpoint; it exits 2 on shallow clones). Residual risk recorded: an add-then-delete commit still publishes the blob via `refs/pull/N/head`; the check is detection, not prevention.
+  - Negative controls (created at run time in a temp git repo with `git add -f`, never in the tree): planted `x.pce`; 8192 random bytes no extension; `.txt` holding ROM bytes at 8704 B; 0xEA fill no NUL; ZIP magic; hex-text blob; listed fixture with wrong hash; manifest entry with no file. Positive: a listed authored fixture and UTF-8 prose (`CD-ROM²`) pass.
+
+### Gate, outcomes, manifest, fixtures (RUN-02, FIX-02, FIX-04, TOOL-02)
+
+- **D-57 Outcomes.** Exactly `pass guest_failure timeout harness_failure skip cancelled missing_artifact` (lower snake case), defined once in `tests/conformance/outcomes.def` (X-macro rows; C includes it for enum and names; sh/awk extract the same names). Result line per case: `RESULT <id> <outcome> assertions=<n> evidence=<relpath>` (and machine time/stop reason where relevant), ASCII, id `[a-z][a-z0-9_]*`. Exit codes keep the existing contract: 0 green, 1 any non-pass, 2 harness error; never per-outcome exit codes. The **gate recomputes the verdict from RESULT lines**; it never trusts a runner summary. Unknown token, duplicate id, or id not in the inventory is `harness_failure`. Only `pass` is green (explicitly: `skip` is red; zero tests is red).
+  - Timeouts: machine-time budget per fixture, enforced by the core stepping API, exhausting it without a verdict gives `timeout` (deterministic). A wall-clock watchdog exists only in the sh harness (`perl -e 'alarm N; exec @ARGV'`; macOS has no `timeout(1)`), expiry gives `harness_failure` with reason `wall`, never guest evidence; scale about 3x under sanitizers; never auto-retry; job-level `timeout-minutes` in CI is the last resort. `cancelled` needs a trap with a defined source.
+- **D-58 Inventory and controls.** `tests/conformance/cases/<id>.toml` (id, kind, fixture, expect, meaning, `required`, `control`, `expect_outcome`, `pins`) plus `tests/conformance/REQUIRED` (ids, in `ledger/REQUIRED` style). New `scripts/inventory-check` resolves ledger `TEST:<id>` pins in both directions (D-22) with codes `INV_PIN_UNRESOLVED`, `INV_NOT_REQUIRED`, `INV_REQUIRED_MISSING`, `INV_UNLISTED_CASE`; a REQUIRED id with no RESULT line is `missing_artifact`; `assertions=0` or empty evidence is `harness_failure`. `ledger-check` stays structure-only. Update LED-LOAD-0001/0002 pins from `PENDING:2` to `TEST:` ids. **The five named controls** each live as a mini-root under `tests/gate/<case>/` with an `EXPECT` file, judged by the real checker/runner: removed required test (`INV_REQUIRED_MISSING`), fixture manifest missing a field (`FIX_MISSING_FIELD`), unlisted fixture (`FIX_UNLISTED`), a deliberately wrong literal run through the live C runner (must observe `guest_failure`), and an unlisted ROM-like binary created at run time (`ROMLIKE_BINARY`). `--selftest` mutations delete the rule emitting each code and require the control to flip to "broken".
+  - **Prerequisite refactor (first plan, behaviour-preserving):** `scripts/check` has ~400 lines of copy-pasted control loops (6 near-identical stages). Refactor to `run_controls DIR CHECKER ARGS...` first, proved by `--selftest`, before adding more stages.
+- **D-59 Fixture manifest and fixtures.** One file per fixture, `fixtures/manifest/<id>.toml`, strict subset: id, kind (`synthetic|authored|exception`), source, recipe, toolchain, size, sha256, licence (SPDX; reuse `licence-check` rules), notices, redistribution (`generated-not-committed|committed`), meaning, verdict_source (`spec-literal:<LED-id>`, `guest-computed`, `independent-script`; the literal `duospool-output` is rejected, FIX-03). Phase 2 has no CPU, so fixtures are **synthetic HuCard-shaped images generated at test time** by `tests/conformance/synth.c` (integer LCG; unique tag byte at the start of every 8 KiB bank; all supported sizes and mirror variants; malformed variants: empty, truncated, 512-byte prefix, 513, oversized, 2.5 MiB). Nothing ROM-like is committed (FIX-05; `*.bin` already gitignored). The gate hashes the runner's `--emit` output with `shasum -a 256`/`sha256sum` and compares it to the manifest (independent of the C generator; the generator spec string is part of the hash). Expected bank signatures come from an independent awk script that reads the mirror rule from `LED-LOAD`, not from the core. Honest tier: these cases are E0/E1-literal; they cannot reach E2 without a CPU, so LED-LOAD entries stay `assumed`.
+- **D-60 TOOL-02 / gate structure.** `sh scripts/check` remains the single command (same name, same `--selftest`), documented in README and AGENTS.md. Stage order, cheap first, all stages run and aggregate: preflight (cmake, ninja, cc, shasum; a missing tool is `harness_failure`, never skip); existing meta stages; rights-tree scan; manifest/inventory/ledger-pin static checks; workflow check; `cmake --preset gate` + build; unit and refusal matrix via the runner (one runner process for all cases, no per-case spawn); conformance ingestion (RESULT lines vs REQUIRED); determinism and core-boundary; controls; outcome-sync. Budget (proposal): warm local run <= 60 s, cold CI <= 3 min, per-stage wall time recorded, a stage over 20 s warns, time never fails the gate. Results: stdout `CHECK <stage> PASS|FAIL|ERROR` plus `build/gate/results.tsv` (gitignored). The C runner emits RESULT lines only and never aggregates or decides required vs optional; the sh gate is the sole judge. No test framework dependency; CTest optional convenience, not in the verdict.
+
+### CI (CI-01), under record 0006
+
+- **D-61 Workflow.** One PR job named `gate` (stable name for a required check) on `ubuntu-24.04`, `timeout-minutes: 10`, triggers `pull_request`, `push: branches: [main]`, `workflow_dispatch`. **`actions/checkout` with `fetch-depth: 0`** (measured: the gate FAILS in a depth-1 clone because `protocol-order` walks history) and `persist-credentials: false`. Steps: print tool versions and `$ImageVersion` to `$GITHUB_STEP_SUMMARY`; `sh scripts/check`; build and test with gcc then clang sequentially in the same job; run the gate under the runner's default awk and once more under the other implementation (gawk/mawk). No matrix, no `paths:` filters, no caches (measure first; revisit when `docs/ci-timings.md` shows a step over 30 s). No macOS or Windows job on the PR path (the owner runs macOS locally; the gate is POSIX sh and there is no Windows host until Phase 6): a one-off trial may justify a scheduled job later. Add `.gitattributes` (`* text=auto eol=lf`, binary fixtures `-text`). Failure classes the job owns: sh/awk/userland and `nm` differences from macOS; fresh-clone history dependence; gcc vs clang diagnostics/UB; awk dialect drift.
+- **D-62 Pinning and security.** Only `actions/checkout`, pinned `3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1` (verified lightweight tag, node24; re-verify before commit; peel annotated tags with `^{}`). Top-level `permissions: contents: read`; no `pull_request_target`, `workflow_run`, `secrets.*`, self-hosted runners, `continue-on-error`, `|| true`; `concurrency` with `cancel-in-progress` only for pull_request events; `defaults.run.shell: sh -eu {0}`; no untrusted `${{ }}` in `run:`. New `scripts/workflow-check` (sh+awk, restricted-subset line checker that fails closed on YAML it cannot parse) asserts all of this, with `tests/workflow/<case>/EXPECT` controls and a selftest mutation. `actionlint` (installed locally) is a one-off on workflow change, recorded in the verification report, not in the gate or CI. First-party `.github/dependabot.yml` (github-actions, monthly, grouped); Renovate rejected. Routine files: `.github/pull_request_template.md` (record 0007 line verbatim plus rights checklist; `workflow-check` asserts it with `grep -F`; update 0007's "moves into the template" sentence) and a CODEOWNERS without enforced review. Routine hardening: Actions default permissions read-only, "Actions can approve PRs" off, recorded.
+- **D-63 Timing record.** `scripts/check --timing` prints `TIMING <stage> <s>` (off by default). `scripts/ci-timings <run-id>` (uses `gh run view --json`) emits a markdown row (queue, per-job, run wall = critical path); rows are appended to `docs/ci-timings.md` in a normal commit. Rejected: bot commits (needs `contents: write`, reopens 0006), artifact upload. Standing protocol: after each CI run, review for low-hanging efficiency wins and record them.
+- **D-64 Push and merge policy: NOT decided here.** CI-01 verification needs a green run, which needs a push to the public remote. This is outward-facing and the repo's visibility decision (0004) does not itself pre-authorise routine pushes. Execution does all work locally and commits locally. At the point CI evidence is needed, the orchestrator asks the owner once whether to push a `gsd/phase-2-...` branch and open a PR (no direct push to main, no tags, no force-push, local gate and `audit-history` clean first). If not authorised, criterion 5 is reported **unverified-pending-push**, never satisfied. A branch ruleset on main requiring `gate` is an owner gate (batched into the same ask).
+
+### Claude's Discretion
+
+- Exact CMake target and file names inside the layout; exact `RESULT` field order beyond the fields named; header names; the wording of new ledger statements and reason codes beyond those listed; how many plans and in which wave order, with the constraint that the `scripts/check` control-loop refactor comes first and the CI workflow comes after the gate stages it calls exist.
+- Whether `src/text` stays a separate library or folds into the runner if it stays under ~150 lines.
+
+</decisions>
+
+<reconciliations>
+## Reconciliations (adversarial pass)
+
+- **Borrow vs copy ROM** (shell agent said borrow; HuCard agent said copy): copy, into a fixed 1 MiB array inside the caller-supplied instance struct (D-42). It satisfies both agents' goals (no malloc, no alloc-before-validation, no TOCTOU).
+- **C text parser vs sh/awk parser** (shell agent wanted `ds_text` parser; gate agent wanted one awk parser plus TSV): one awk parser (D-51), a dated refinement of D-18. The core stays text-free either way; `ds_text` only prints.
+- **"No public header" vs "runner uses the public API":** private `ds_*.h` through an internal include dir (D-40).
+- **Profile r2** (HuCard agent): rejected for now (D-44).
+- **Outcome spelling:** snake_case everywhere (`guest_failure`, `harness_failure`, `missing_artifact`), not the hyphenated variants in one report.
+- **Push to remote:** the CI agent called it routine; this orchestrator treats it as an authority question and defers it (D-64).
+- **Primary-source gap:** pcetech.txt and the Hudson manual were unreachable in research. Every size/mirroring/byte-order/header statement stays `assumed` or `open` in the ledger; nothing is promoted.
+- **Prior-art claims** (TigerBeetle, FoundationDB, QEMU machine types, Bazel/Chromium status enums, bsnes serializer) are REPORT (recalled, not re-verified); they motivate design, they are not cited as evidence.
+
+</reconciliations>
+
+<canonical_refs>
+## Canonical References
+
+- `AGENTS.md`; `.planning/PROJECT.md`; `.planning/REQUIREMENTS.md` (PROF-02/03, CONT-01..04, CORE-01..03, RUN-02, FIX-02/04/05, TOOL-02, CI-01); `.planning/ROADMAP.md` Phase 2.
+- `.planning/phases/01-owner-decisions-claim-ledger-and-toolchain-spike/01-CONTEXT.md` (D-05, D-18, D-22, D-26..D-30).
+- `docs/decisions/0001-language-build.md` (C11/CMake/Ninja; Rust's memory-safety and wasm advantages become C obligations), `0002`, `0003`, `0005`, `0006`, `0007`.
+- `profiles/pce-hucard-2btn/r1.toml`; `ledger/` (SCHEMA.md, entries LED-LOAD-0001/0002, REQUIRED); `scripts/check`, `scripts/lib/`, `scripts/audit-history`, `scripts/licence-check`.
+- Spike evidence (read-only, copy with provenance note only): `git show spike-tool-01-evidence:spikes/tool-01/c/`, `.../gates.sh`.
+- `.planning/phases/01-.../01-LINUX-AWK-EVIDENCE.md`; `.planning/research/PITFALLS.md` (C7 rights/log leak).
+- Emulator sources (MAME `pce_slot.cpp`, Mednafen/Beetle `huc.cpp`, Geargrafx `media.cpp`) are READ-ONLY reading material for mirroring facts; no code is copied.
+
+</canonical_refs>
+
+<code_context>
+## Existing Code Insights
+
+### Reusable Assets
+- `scripts/check` stage/function pattern (rc 0/1/2, `CHECKER_DEAD`, `NO_CONTROLS`, `--selftest`); `scripts/lib/toml-subset.awk` and rules awk files; `scripts/audit-history` ROM-like heuristics; `scripts/licence-check`; the tagged spike C skeleton for layout ideas (create/step/digest/status enum).
+
+### Established Patterns
+- EXPECT-file controls (`ledger/negative/<case>/`, `EXPECT`); one REQUIRED list per record family; gate measured at 12 s for 18 stages (spawn-dominated); every checker prints a marker on clean exit.
+
+### Integration Points
+- New trees: `src/core/`, `src/text/`, `tests/conformance/`, `tests/gate/`, `tests/controls/`, `fixtures/manifest/`, `.github/`, `CMakeLists.txt`, `CMakePresets.json`, `.gitattributes`. `scripts/check` is extended, not duplicated. Phase 3 consumes the instance, mapper boundary, digest and gate.
+
+</code_context>
+
+<specifics>
+## Specific Ideas
+
+- The owner's dependency principle (D-08): no new dependencies; SHA-256, splitmix64 and the runner helper are written in-house; only `actions/checkout` is a CI dependency.
+- Mutation-test every enforcement rule: a control that cannot go red means the gate is dead.
+
+</specifics>
+
+<deferred>
+## Deferred Ideas
+
+- Public `duospool.h`, install rules, `.pc`, installed-consumer proof (Phase 6, D-05).
+- libFuzzer/Miri/wasm jobs (CI-02, staged); scheduled macOS/Windows jobs (only if a trial shows a distinct failure class); zizmor.
+- TG16 byte order, copier headers, 512K/768K/192K sizes, special mappers (need new evidence).
+- Branch ruleset on main (owner gate, D-64); REUSE adoption; a CI cache (measure first).
+
+</deferred>
+
+---
+
+*Phase: 02-deterministic-machine-shell-hucard-boundary-and-fail-closed*
+*Context gathered: 2026-11-09*
