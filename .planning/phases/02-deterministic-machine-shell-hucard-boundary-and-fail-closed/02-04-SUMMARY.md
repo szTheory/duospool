@@ -179,7 +179,7 @@ Plan-end (wave-end) commands (D-81):
 | `dash scripts/check` | `CHECK RESULT PASS`, exit 0 |
 | `sh scripts/audit-history` (full history) | **exit 1, two pre-existing TEXT-PATTERN hits, see Deferred Issues**; identical hits and exit status with the pre-plan script (`git show HEAD:scripts/audit-history`) |
 
-No leftover `sleep 600` process after any run.
+No process from the cancel stub of plan 03 is left after any run (an unrelated `sleep 600` from another session exists on this machine and is not the gate's).
 
 ## Files Created/Modified
 

@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 2
 current_phase_name: Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate
 status: executing
-stopped_at: Completed 02-03-PLAN.md
-last_updated: "2026-11-10T03:55:23.920Z"
+stopped_at: Completed 02-04-PLAN.md
+last_updated: "2026-11-10T04:21:49.470Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 2 execution started
-state_head: decfba6614f4b94a87039463cec863cd2eb038cb
+state_head: 4b0a8e5e8b5bdd76e611f521d98acc2e29daa680
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 34
-  completed_plans: 15
+  completed_plans: 16
   percent: 17
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 2 (Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate) — EXECUTING
-Plan: 4 of 22
+Plan: 5 of 22
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 2 execution started
 
@@ -71,6 +71,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 02 P01 | 22 min | 3 tasks | 2 files |
 | Phase 02 P02 | 5 min | 3 tasks | 88 files |
 | Phase 02 P03 | 9 min | 3 tasks | 19 files |
+| Phase 02 P04 | 23 min | 3 tasks | 25 files |
 
 ## Accumulated Context
 
@@ -104,6 +105,8 @@ Recent decisions affecting current work:
 - [Phase 02]: 02-02: conformance-flatten prints violations and its STATUS marker on stderr; stdout is TSV only (empty on any error) — Keeps scripts/check checker() marker rule intact without a validate-only mode and guarantees no partial TSV reaches the runner
 - [Phase 02]: 02-03: conformance-run maps a CMD status above 2 to HARNESS_CMD_STATUS and exit 2; wall expiry is status 142 and is never a cancelled line — keeps the 0/1/2 exit contract and the watchdog distinct from cancelled (D-57, D-77)
 - [Phase 02]: 02-03: outcome-sync codes partition faults minimally: ROWS (count), NAME (set), ORDER only when both are clear — each mini-root control then has an exact, small expected code set and a mutation flips exactly one control
+- [Phase 02]: 02-04: rights-check applies every rule to every file except SHAPE (non-text only, D-76); BLOB is an in-line run; archive magics are real headers; a NUL file is never excused by the manifest allowlist — Bulk text classification uses perl because BSD grep ends a line at a NUL; an excuse must not cover a file with a NUL byte (T-02-16)
+- [Phase 02]: 02-04: full-history audit-history left red on two pre-existing home-path hits in the 02-01 and 02-02 summary history; not allowlisted, owner decides before publication — An allowlist entry would silently hide a finding that is an owner decision; PR range mode is clean; recorded in WINDOWS.md
 
 ### Pending Todos
 
@@ -127,6 +130,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-10T03:55:23.563Z
-Stopped at: Completed 02-03-PLAN.md
+Last session: 2026-11-10T04:21:49.073Z
+Stopped at: Completed 02-04-PLAN.md
 Resume file: None
