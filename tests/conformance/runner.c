@@ -1247,6 +1247,77 @@ static void kind_content_id(const struct kase *k, struct ctx *c, char *got, size
     release_boot(&b);
 }
 
+/*
+ * kind hash_literal: the request names a NIST FIPS 180-4 example input that is built here, in memory (no file is read), and the
+ * expect is the published digest as 64 lowercase hex characters. The input is fed to the core's update in uneven chunks of 1 to 7
+ * bytes (so the internal buffering is exercised at every offset) and again in one call; both digests must equal the literal.
+ * Inputs: empty, abc, 448bit (the 56-byte message that forces a second padding block), million-a (one million letters a).
+ */
+static void kind_hash_literal(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    static const char msg_448[] = "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
+    const char *name = k->val[K_REQUEST];
+    const char *literal = k->val[K_EXPECT];
+    unsigned char *buf = NULL;
+    size_t n = 0u;
+    size_t off = 0u;
+    size_t step = 1u;
+    struct ds_sha256 st;
+    unsigned char digest[DS_SHA256_BYTES];
+    char hex[2u * DS_SHA256_BYTES + 1u];
+
+    if (strcmp(k->val[K_FIXTURE], "none") != 0) {
+        harness_error(c, "a hash_literal case has no content fixture: its fixture must be none");
+        return;
+    }
+    if (!is_hex64(literal)) {
+        harness_error(c, "the expect of a hash_literal case is not 64 lowercase hex characters");
+        return;
+    }
+    if (strcmp(name, "empty") == 0) {
+        n = 0u;
+    } else if (strcmp(name, "abc") == 0) {
+        n = 3u;
+    } else if (strcmp(name, "448bit") == 0) {
+        n = sizeof msg_448 - 1u;
+    } else if (strcmp(name, "million-a") == 0) {
+        n = 1000000u;
+    } else {
+        harness_error(c, "unknown hash_literal input");
+        return;
+    }
+    buf = (unsigned char *)malloc(n != 0u ? n : 1u);
+    if (buf == NULL) {
+        harness_error(c, "out of memory for the hash input");
+        return;
+    }
+    if (strcmp(name, "abc") == 0) {
+        memcpy(buf, "abc", n);
+    } else if (strcmp(name, "448bit") == 0) {
+        memcpy(buf, msg_448, n);
+    } else if (n != 0u) {
+        memset(buf, 'a', n);
+    }
+    check(c, strcmp(name, "448bit") != 0 || n * 8u == 448u, "the 448bit input is not 448 bits long");
+    check(c, strcmp(name, "million-a") != 0 || n == 1000000u, "the million-a input is not one million bytes long");
+
+    ds_sha256_init(&st);
+    while (off < n) {
+        size_t take = n - off < step ? n - off : step;
+        ds_sha256_update(&st, buf + off, take);
+        off += take;
+        step = step % 7u + 1u;
+    }
+    ds_sha256_final(&st, digest);
+    to_hex(digest, DS_SHA256_BYTES, hex);
+    check(c, strcmp(hex, literal) == 0, "the digest fed in uneven chunks differs from the NIST literal");
+    snprintf(got, gotcap, "%.16s", hex);
+    ds_sha256(buf, n, digest);
+    to_hex(digest, DS_SHA256_BYTES, hex);
+    check(c, strcmp(hex, literal) == 0, "the one-call digest differs from the NIST literal");
+    free(buf);
+}
+
 static const struct {
     const char *name;
     kind_fn fn;
@@ -1260,6 +1331,7 @@ static const struct {
     {"names_both_ways", kind_names_both_ways, 0},
     {"field_flip", kind_field_flip, 0},
     {"content_id", kind_content_id, 0},
+    {"hash_literal", kind_hash_literal, 0},
 };
 
 static const char *outcome_of(const struct ctx *c, enum outcome *oc)
