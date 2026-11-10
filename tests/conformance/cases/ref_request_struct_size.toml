@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: the request struct_size field is not the size the core was built with. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_request_struct_size"
+kind = "refuse"
+fixture = "plain-256k"
+request = "struct_size=bad"
+expect = "load.request_invalid"
+meaning = "A request whose struct_size differs from the size of the request struct is refused as load.request_invalid before the profile or any content is looked at"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: the open field lines_per_frame has no binding in the request. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_open_unbound"
+kind = "refuse"
+fixture = "plain-256k"
+request = "bind.lines_per_frame=-"
+expect = "load.open_unbound;field=lines_per_frame"
+meaning = "A request that leaves the open field lines_per_frame unbound is refused as load.open_unbound naming that field, and no default is substituted"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
