@@ -10,7 +10,8 @@
 # run mode (D-60, D-85): everything lives under build/NAME (default gate, the build directory of the preset NAME). The steps are
 #   flatten tests/conformance/cases into cases.tsv (the only parser of hand-edited data, D-51), derive ids.txt from it, flatten the
 #   frozen profiles/pce-hucard-2btn/r1.toml into r1.tsv and cut the 13 field names of scripts/lib/profile-rules.awk into
-#   rules-fields.txt (both handed to the runner for the profile kinds), configure
+#   rules-fields.txt (both handed to the runner for the profile kinds), write oracle.tsv from tests/conformance/mirror-oracle.awk
+#   (the independent bank-signature oracle, 384 rows, handed to the runner as --oracle), configure
 #   and build the preset incrementally (so a stale binary is never judged), run ds_runner under the supervise mode below with
 #   its stdout in results.txt, judge results.txt with conformance-ingest against tests/conformance/REQUIRED and the case
 #   inventory, run the hash sweep (hash_sweep below: the core SHA-256 against the host sha tool for every length of the runner's
@@ -57,7 +58,7 @@ run_mode() {
   root=$(pwd)
   bd=build/$preset
   mkdir -p "$bd" || { echo "HARNESS_ERROR cannot create $bd" >&2; exit 2; }
-  rm -rf "$bd/cases.tsv" "$bd/ids.txt" "$bd/results.txt" "$bd/evidence" "$bd/r1.tsv" "$bd/rules-fields.txt"
+  rm -rf "$bd/cases.tsv" "$bd/ids.txt" "$bd/results.txt" "$bd/evidence" "$bd/r1.tsv" "$bd/rules-fields.txt" "$bd/oracle.tsv" "$bd/oracle.err"
 
   if sh "$here/conformance-flatten" tests/conformance/cases > "$bd/cases.tsv" 2> "$bd/flatten.err"; then r=0; else r=$?; fi
   if [ "$r" -ne 0 ]; then
@@ -88,6 +89,22 @@ run_mode() {
     exit 2
   fi
 
+  # the independent oracle of the bank signatures (D-59): tests/conformance/mirror-oracle.awk is run for each supported size
+  # (KiB) before the runner starts and its rows go to oracle.tsv, which the runner reads with --oracle; the awk script shares no
+  # code or table with the core
+  : > "$bd/oracle.tsv"
+  for ks in 256 384 1024; do
+    if awk -v size="$ks" -f tests/conformance/mirror-oracle.awk >> "$bd/oracle.tsv" 2>> "$bd/oracle.err"; then :; else
+      cat "$bd/oracle.err"
+      rm -f "$bd/oracle.tsv"
+      exit 1
+    fi
+  done
+  if [ "$(sed -n '$=' "$bd/oracle.tsv")" != 384 ]; then
+    echo "HARNESS_ERROR the oracle did not give exactly 384 rows (128 banks for each of 3 sizes)" >&2
+    exit 2
+  fi
+
   if cmake --preset "$preset" > "$bd/build.log" 2>&1 && cmake --build --preset "$preset" >> "$bd/build.log" 2>&1; then :; else
     cat "$bd/build.log"
     echo "BUILD_FAILED preset $preset"
@@ -99,7 +116,7 @@ run_mode() {
   fi
 
   mkdir -p "$bd/evidence" || { echo "HARNESS_ERROR cannot create $bd/evidence" >&2; exit 2; }
-  if sh "$here/conformance-run" supervise --ids "$bd/ids.txt" --out "$bd/results.txt" -- "$bd/ds_runner" --cases "$bd/cases.tsv" --evidence-dir "$bd/evidence" --profile-tsv "$bd/r1.tsv" --rules-fields "$bd/rules-fields.txt"; then sup=0; else sup=$?; fi
+  if sh "$here/conformance-run" supervise --ids "$bd/ids.txt" --out "$bd/results.txt" -- "$bd/ds_runner" --cases "$bd/cases.tsv" --evidence-dir "$bd/evidence" --profile-tsv "$bd/r1.tsv" --rules-fields "$bd/rules-fields.txt" --oracle "$bd/oracle.tsv"; then sup=0; else sup=$?; fi
   if [ "$sup" -eq 2 ]; then
     exit 2
   fi

@@ -10,6 +10,7 @@
 #include <stdint.h>
 
 #include "ds_core.h"
+#include "ds_mapper.h"
 #include "ds_text.h"
 
 /* the build id comes from the CMake cache variable DS_BUILD_ID; a build that sets none prints the literal "unset" */
@@ -205,7 +206,11 @@ static void emit_content(struct out *o, const struct ds_instance *inst)
     }
     table(o, "", "content");
     kv_hex(o, "sha256", inst->content_id, DS_CONTENT_ID_BYTES);
-    kv_u32(o, "size", inst->content_size);
+    if (ds_size_bytes(inst->size_class) == 0u) {
+        fail(o, DS_TEXT_ERR_STATE);
+        return;
+    }
+    kv_u32(o, "size", ds_size_bytes(inst->size_class));
     kv_str(o, "mapper", inst->mapper, DS_MAPPER_NAME_MAX);
     if (o->err == DS_TEXT_OK) {
         /* the mapper rule is named after the mapper: plain is the only mapper of this profile revision */

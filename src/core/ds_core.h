@@ -108,7 +108,7 @@ struct ds_instance {
     struct ds_profile profile; /* the resolved profile of this run */
     uint8_t content_id[DS_CONTENT_ID_BYTES];
     char mapper[DS_MAPPER_NAME_MAX];
-    uint32_t content_size;
+    uint32_t size_class; /* enum ds_size of ds_mapper.h: the image size is kept as an enum, never as a raw length */
     uint32_t byte_order; /* 1 pce, 2 tg16 */
     uint32_t header;     /* 1 none, 2 copier_512 */
     uint8_t rom[DS_ROM_CAP];

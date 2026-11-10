@@ -11,9 +11,10 @@
  * awk, and this reader refuses a TSV without its closing END row, because a truncated file must never read as a smaller suite.
  * Cases run in two passes (D-86): pass one runs every ordinary case in TSV order; pass two runs the deferred kinds, which
  * aggregate over other rows and so can only be evaluated after the loop (none exist yet). RESULT lines are matched by id.
- * usage: ds_runner --cases FILE --evidence-dir DIR [--profile-tsv FILE] [--rules-fields FILE]
+ * usage: ds_runner --cases FILE --evidence-dir DIR [--profile-tsv FILE] [--rules-fields FILE] [--oracle FILE]
  *   --profile-tsv FILE   the flattened profiles/pce-hucard-2btn/r1.toml (scripts/conformance-flatten), read by the r1 kinds
  *   --rules-fields FILE  the 13 field names of scripts/lib/profile-rules.awk, one per line, read by the names kind
+ *   --oracle FILE        the bank-signature rows of tests/conformance/mirror-oracle.awk (SIZE BANK FILEBANK FIRST LAST), read by banksig
  *        ds_runner --outcomes   prints the compiled outcome names, one per line, and exits 0 (read by scripts/outcome-sync --names)
  *        ds_runner --sweep-lengths   prints the 21 hash sweep lengths, one per line: the only definition of the list (D-59)
  *        ds_runner --emit RECIPE     writes the bytes of a synthetic recipe to stdout, nothing else (plain-256k, len:N)
@@ -28,6 +29,7 @@
 #include <string.h>
 
 #include "ds_core.h"
+#include "ds_mapper.h"
 #include "ds_sha256.h"
 #include "ds_text.h"
 #include "runner.h"
@@ -451,7 +453,7 @@ static void run_boot(const char *fixture, const struct spec *s, const struct exp
             check(c, res.instance == (struct ds_instance *)mem && inst != NULL, "result.instance is not the caller memory");
             check(c, res.field_index == DS_NO_FIELD, "an accept names a field");
             if (inst != NULL) {
-                check(c, !e->has_size || (size_t)inst->content_size == e->size, "content size read from the instance differs");
+                check(c, !e->has_size || (size_t)ds_size_bytes(inst->size_class) == e->size, "content size read from the instance differs");
                 check(c, buf == NULL || memcmp(inst->rom, buf, s->len) == 0, "the ROM copy differs from the supplied bytes");
                 check(c, strcmp(inst->profile.id, "pce-hucard-2btn") == 0 && inst->profile.rev == 1u,
                       "the resolved profile is not recorded");
@@ -1318,6 +1320,97 @@ static void kind_hash_literal(const struct kase *k, struct ctx *c, char *got, si
     free(buf);
 }
 
+/*
+ * kind banksig (D-44, D-59): boot the request over the fixture and read byte 0 and byte 8191 of every bank 0 to 127 of the window
+ * through ds_mapper_read; each must be an OK read equal to the FIRST and LAST column of the oracle row of that bank. The rows
+ * come from --oracle FILE, written by scripts/conformance-run from tests/conformance/mirror-oracle.awk, which shares no code or
+ * table with the core or with the generator; the size selecting the rows is the natural size of the fixture recipe, not anything
+ * the core reports. Assertions: two per bank, 256 for the 128 banks.
+ */
+#define ORACLE_BANKS 128u
+
+static const char *oracle_path;
+
+/* the rows of one size (KiB) of the oracle TSV into first/last by bank; NULL on success, otherwise why not */
+static const char *load_oracle(size_t kib, unsigned *first, unsigned *last)
+{
+    char *text = oracle_path != NULL ? read_file(oracle_path) : NULL;
+    char *line;
+    unsigned seen[ORACLE_BANKS];
+    size_t i;
+    const char *err = NULL;
+
+    if (text == NULL) {
+        return "no oracle file (--oracle FILE) or it cannot be read";
+    }
+    memset(seen, 0, sizeof seen);
+    for (line = text; *line != '\0' && err == NULL;) {
+        char *nl = strchr(line, '\n');
+        char *f[5];
+        size_t sz;
+        size_t bank;
+        size_t fb;
+        size_t fi;
+        size_t la;
+
+        if (nl != NULL) {
+            *nl = '\0';
+        }
+        if (split_tab(line, f, 5) != 5 || parse_size(f[0], &sz) != 0 || parse_size(f[1], &bank) != 0 ||
+            parse_size(f[2], &fb) != 0 || parse_size(f[3], &fi) != 0 || parse_size(f[4], &la) != 0 || fi > 255u || la > 255u) {
+            err = "a malformed oracle row";
+        } else if (sz == kib) {
+            if (bank >= ORACLE_BANKS || seen[bank] != 0u) {
+                err = "an oracle bank is out of range or repeated";
+            } else {
+                seen[bank] = 1u;
+                first[bank] = (unsigned)fi;
+                last[bank] = (unsigned)la;
+            }
+        }
+        line = nl != NULL ? nl + 1 : line + strlen(line);
+    }
+    for (i = 0u; err == NULL && i < ORACLE_BANKS; i++) {
+        if (seen[i] == 0u) {
+            err = "the oracle has no row for a bank of this size";
+        }
+    }
+    free(text);
+    return err;
+}
+
+static void kind_banksig(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    unsigned first[ORACLE_BANKS];
+    unsigned last[ORACLE_BANKS];
+    struct booted b;
+    struct spec s;
+    const struct ds_instance *inst = NULL;
+    size_t natural = synth_size(k->val[K_FIXTURE]);
+    const char *err;
+    uint32_t bank;
+
+    err = natural % 1024u == 0u && natural != 0u ? load_oracle(natural / 1024u, first, last) : "the fixture has no size in whole KiB";
+    if (err == NULL) {
+        err = boot_accepted(k->val[K_FIXTURE], k->val[K_REQUEST], &b, &s, &inst);
+    }
+    if (err != NULL) {
+        harness_error(c, err);
+        return;
+    }
+    for (bank = 0u; bank < ORACLE_BANKS; bank++) {
+        uint8_t lo = 0u;
+        uint8_t hi = 0u;
+        uint32_t st_lo = ds_mapper_read(inst, bank, 0u, &lo);
+        uint32_t st_hi = ds_mapper_read(inst, bank, DS_BANK_BYTES - 1u, &hi);
+
+        check(c, st_lo == (uint32_t)DS_MAP_OK && (unsigned)lo == first[bank], "the first byte of a bank differs from the oracle");
+        check(c, st_hi == (uint32_t)DS_MAP_OK && (unsigned)hi == last[bank], "the last byte of a bank differs from the oracle");
+    }
+    snprintf(got, gotcap, "banks=%u", (unsigned)ORACLE_BANKS);
+    release_boot(&b);
+}
+
 static const struct {
     const char *name;
     kind_fn fn;
@@ -1332,6 +1425,7 @@ static const struct {
     {"field_flip", kind_field_flip, 0},
     {"content_id", kind_content_id, 0},
     {"hash_literal", kind_hash_literal, 0},
+    {"banksig", kind_banksig, 0},
 };
 
 static const char *outcome_of(const struct ctx *c, enum outcome *oc)
@@ -1468,6 +1562,8 @@ int main(int argc, char **argv)
             profile_tsv_path = argv[++a];
         } else if (strcmp(argv[a], "--rules-fields") == 0 && a + 1 < argc) {
             rules_fields_path = argv[++a];
+        } else if (strcmp(argv[a], "--oracle") == 0 && a + 1 < argc) {
+            oracle_path = argv[++a];
         } else {
             cases_path = NULL;
             break;
@@ -1475,6 +1571,7 @@ int main(int argc, char **argv)
     }
     if (cases_path == NULL || evdir == NULL) {
         fprintf(stderr, "usage: ds_runner --cases FILE --evidence-dir DIR [--profile-tsv FILE] [--rules-fields FILE]\n"
+                        "                 [--oracle FILE]\n"
                         "       ds_runner --sweep-lengths | --spec | --emit RECIPE | --hash RECIPE\n");
         return 2;
     }

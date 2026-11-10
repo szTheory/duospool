@@ -13,10 +13,10 @@
 #include <stdint.h>
 
 #include "ds_core.h"
+#include "ds_mapper.h"
 #include "ds_sha256.h"
 
 #define DS_MIN_SIZE 8192u
-#define DS_SUPPORTED_SIZE 262144u /* until plan 08 extends the supported set to 256K, 384K and 1M */
 #define DS_BYTE_ORDER_PCE 1u
 #define DS_BYTE_ORDER_TG16 2u
 #define DS_HEADER_NONE 1u
@@ -227,7 +227,8 @@ static uint32_t check_supported_size(struct boot_ctx *c)
     if (req_missing(c)) {
         return DS_REFUSE_request_invalid;
     }
-    return c->req->len != (size_t)DS_SUPPORTED_SIZE ? DS_REFUSE_size_unsupported : DS_OK;
+    /* supported means a member of the size enum (ds_size_classify); no raw size is compared here */
+    return ds_size_classify(c->req->len) == (uint32_t)DS_SIZE_NONE ? DS_REFUSE_size_unsupported : DS_OK;
 }
 
 static const char ds_mapper_plain[] = "plain";
@@ -281,7 +282,7 @@ uint32_t ds_boot(void *mem, size_t cap, const struct ds_boot_request *request, s
     }
     inst->byte_order = request->byte_order;
     inst->header = request->header;
-    inst->content_size = (uint32_t)request->len;
+    inst->size_class = ds_size_classify(request->len);
     __builtin_memcpy(inst->rom, request->content, request->len);
     /* content identity (D-47): SHA-256 of the copied bytes exactly as supplied, taken only after every check has passed */
     ds_sha256(inst->rom, request->len, inst->content_id);
