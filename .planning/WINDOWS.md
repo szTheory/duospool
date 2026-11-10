@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 1
+open_count: 2
 waived_count: 0
 fixed_count: 0
-total_count: 1
-last_updated: 2026-11-10T04:21:23.027Z
+total_count: 2
+last_updated: 2026-11-10T04:39:37.029Z
 ---
 
 # Broken Windows Ledger
@@ -16,6 +16,7 @@ last_updated: 2026-11-10T04:21:23.027Z
 | id | phase | kind | file | line | description | status | reason | recorded_at | resolved_at |
 |----|-------|------|------|------|-------------|--------|--------|-------------|-------------|
 | 1 | 02 | unmet-truth | .planning/phases/02-deterministic-machine-shell-hucard-boundary-and-fail-closed/02-01-SUMMARY.md | 181 | Full-history audit-history reports home-path-mac in the 02-01 and 02-02 summaries (history, pre-dates plan 02-04); owner decides before publication: rewrite unpublished history or allowlist with reason | open |  | 2026-11-10T04:21:23.027Z |  |
+| 2 | 02 | stub | src/core/ds_core.h | 100 | ds_instance.content_id is a zeroed placeholder slot until plan 02-07 adds SHA-256 content identity (the plan 02-05 boot path does not compute it) | open |  | 2026-11-10T04:39:37.029Z |  |
 
 ````json
 [
@@ -29,6 +30,19 @@ last_updated: 2026-11-10T04:21:23.027Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-10T04:21:23.027Z",
+    "resolved_at": null,
+    "milestone": null
+  },
+  {
+    "id": 2,
+    "kind": "stub",
+    "phase": "02",
+    "file": "src/core/ds_core.h",
+    "line": 100,
+    "description": "ds_instance.content_id is a zeroed placeholder slot until plan 02-07 adds SHA-256 content identity (the plan 02-05 boot path does not compute it)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-10T04:39:37.029Z",
     "resolved_at": null,
     "milestone": null
   }
