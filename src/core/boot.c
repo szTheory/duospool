@@ -14,6 +14,7 @@
 
 #include "ds_core.h"
 #include "ds_mapper.h"
+#include "ds_poweron.h"
 #include "ds_sha256.h"
 
 #define DS_MIN_SIZE 8192u
@@ -107,6 +108,34 @@ static uint32_t check_bindings(struct boot_ctx *c)
         c->resolve_code == DS_REFUSE_bind_not_allowed) {
         c->field = c->resolve_field;
         return c->resolve_code;
+    }
+    return DS_OK;
+}
+
+/*
+ * The power-on policy is bound in the request (D-50): seeded-prng-v1 needs a seed and zero refuses one (D-79(b)). The seed is a
+ * 64-bit value, so its presence is a separate flag: seed 0 is a valid seed and is not the same as no seed.
+ */
+static uint32_t check_powerup(struct boot_ctx *c)
+{
+    uint32_t policy;
+
+    if (req_missing(c)) {
+        return DS_REFUSE_request_invalid;
+    }
+    resolve_once(c);
+    if (c->resolve_code != DS_OK) {
+        c->field = c->resolve_field;
+        return c->resolve_code;
+    }
+    policy = ds_policy_of(c->profile.field[DS_FIELD_powerup_policy].value);
+    if (policy == (uint32_t)DS_POLICY_SEEDED && c->req->has_seed == 0u) {
+        c->field = DS_FIELD_powerup_policy;
+        return DS_REFUSE_powerup_seed_required;
+    }
+    if (policy == (uint32_t)DS_POLICY_ZERO && c->req->has_seed != 0u) {
+        c->field = DS_FIELD_powerup_policy;
+        return DS_REFUSE_powerup_seed_unexpected;
     }
     return DS_OK;
 }
@@ -283,6 +312,10 @@ uint32_t ds_boot(void *mem, size_t cap, const struct ds_boot_request *request, s
     inst->byte_order = request->byte_order;
     inst->header = request->header;
     inst->size_class = ds_size_classify(request->len);
+    inst->powerup_policy = ds_policy_of(ctx.profile.field[DS_FIELD_powerup_policy].value);
+    inst->has_seed = request->has_seed != 0u ? 1u : 0u;
+    inst->powerup_seed = inst->has_seed != 0u ? request->powerup_seed : UINT64_C(0);
+    ds_poweron_apply(inst);
     __builtin_memcpy(inst->rom, request->content, request->len);
     /* content identity (D-47): SHA-256 of the copied bytes exactly as supplied, taken only after every check has passed */
     ds_sha256(inst->rom, request->len, inst->content_id);

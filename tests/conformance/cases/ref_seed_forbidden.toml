@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row (D-79(b)): the policy is zero and the request carries a seed. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_seed_forbidden"
+kind = "refuse"
+fixture = "plain-256k"
+request = "seed=7"
+expect = "load.powerup_seed_unexpected;field=powerup_policy"
+meaning = "A request that binds powerup_policy to zero and also supplies a seed is refused as load.powerup_seed_unexpected naming powerup_policy, and the seed is not ignored silently"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

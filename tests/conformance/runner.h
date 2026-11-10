@@ -53,6 +53,8 @@ struct spec {
     int req;
     int bad_size;
     uint32_t reserved;
+    int has_seed;      /* seed=N present (the policy itself comes from bind.powerup_policy) */
+    uint64_t seed;
     const char *bind[DS_FIELD_COUNT];
 };
 
@@ -77,6 +79,7 @@ struct booted {
 void check(struct ctx *c, int cond, const char *what);
 void harness_error(struct ctx *c, const char *what);
 int parse_size(const char *v, size_t *out);
+int parse_u64(const char *v, uint64_t *out); /* decimal, or 0x and hex digits; 0 on success */
 char *read_file(const char *path);
 int split_tab(char *line, char **f, int max);
 const char *parse_spec(struct spec *s, const char *text, size_t default_len);
@@ -125,6 +128,14 @@ void evidence_text(char *buf, size_t cap, const char *id, const char *kind, cons
 void set_marker_seed(size_t v);
 void kind_redaction(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_redaction_leak_control(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+
+/* the power-on and stepping kinds (powkinds.c, plan 12) */
+#define PK_LIST_MAX 512u
+int pk_copy_text(const char *src, char *dst, size_t cap);   /* copy a key's text into a work buffer, 0 on success */
+char *pk_next_item(char **rest, char sep);                  /* the next separator-delimited item of a list, split in place */
+void kind_splitmix(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_poweron(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_poweron_domain(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 
 /* the profile kinds (profkinds.c); each gets the case, the counter, and a buffer for the observed value */
 void kind_profile_equal(const struct kase *k, struct ctx *c, char *got, size_t gotcap);

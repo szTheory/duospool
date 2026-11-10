@@ -115,6 +115,38 @@ int parse_size(const char *v, size_t *out)
     return 0;
 }
 
+int parse_u64(const char *v, uint64_t *out)
+{
+    uint64_t acc = 0u;
+    unsigned base = 10u;
+
+    if (v[0] == '0' && (v[1] == 'x' || v[1] == 'X')) {
+        base = 16u;
+        v += 2;
+    }
+    if (*v == '\0') {
+        return -1;
+    }
+    for (; *v != '\0'; v++) {
+        unsigned d;
+        if (*v >= '0' && *v <= '9') {
+            d = (unsigned)(*v - '0');
+        } else if (base == 16u && *v >= 'a' && *v <= 'f') {
+            d = (unsigned)(*v - 'a') + 10u;
+        } else if (base == 16u && *v >= 'A' && *v <= 'F') {
+            d = (unsigned)(*v - 'A') + 10u;
+        } else {
+            return -1;
+        }
+        if (acc > (UINT64_MAX - d) / base) {
+            return -1;
+        }
+        acc = acc * base + d;
+    }
+    *out = acc;
+    return 0;
+}
+
 static int parse_u32(const char *v, uint32_t *out)
 {
     size_t n;
@@ -219,6 +251,11 @@ static const char *apply_pair(struct spec *s, const char *key, const char *val)
         } else {
             return "reserved is not 0 or 1";
         }
+    } else if (strcmp(key, "seed") == 0) {
+        if (parse_u64(val, &s->seed) != 0) {
+            return "seed is not a number";
+        }
+        s->has_seed = 1;
     } else if (strncmp(key, "bind.", 5) == 0) {
         int f = field_by_name(key + 5);
         if (f < 0) {
@@ -382,6 +419,8 @@ void fill_request(struct ds_boot_request *rq, const struct spec *s, const unsign
     rq->header = s->header;
     rq->content = content;
     rq->len = s->len;
+    rq->has_seed = s->has_seed ? 1u : 0u;
+    rq->powerup_seed = s->has_seed ? s->seed : 0u;
 }
 
 /* boot one case from the fixture recipe and check the outcome against the expectation; got receives the observed reason name */
@@ -1390,6 +1429,9 @@ static const struct {
     {"copy_in", kind_copy_in, 0},
     {"redaction", kind_redaction, 0},
     {"redaction_leak_control", kind_redaction_leak_control, 0},
+    {"splitmix", kind_splitmix, 0},
+    {"poweron", kind_poweron, 0},
+    {"poweron_domain", kind_poweron_domain, 0},
     {"coverage", kind_coverage, 1},
 };
 

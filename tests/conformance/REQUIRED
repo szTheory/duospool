@@ -76,3 +76,9 @@ noheur_reverse_vector
 boot_copy_in_isolated
 redaction_synthetic_rom
 redaction_seeded_leak_flagged
+splitmix_seed0
+poweron_zero
+poweron_draw_order
+poweron_seed_zero_supplied
+ref_seed_required
+ref_seed_forbidden

@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row (D-79(b)): the policy is bound to seeded-prng-v1 and the request carries no seed. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_seed_required"
+kind = "refuse"
+fixture = "plain-256k"
+request = "bind.powerup_policy=seeded-prng-v1"
+expect = "load.powerup_seed_required;field=powerup_policy"
+meaning = "A request that binds powerup_policy to seeded-prng-v1 without a seed is refused as load.powerup_seed_required naming powerup_policy, and no seed is invented"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

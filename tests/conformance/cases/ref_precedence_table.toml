@@ -4,16 +4,17 @@
 # Precedence table (D-46): combined-fault requests, each written REQ>>CODE, where REQ is a request-override string with two or more
 # faults and CODE is the refusal the EARLIER fault must give. Items are separated by a vertical bar and are read from the request
 # key, then from the expect key (a line is limited to 400 characters). One item per adjacent pair of rows of src/core/boot_order.def:
-# memory/request/profile/rev/bindings/mapper/byte order/header, then buffer or empty, the cap, short, bank multiple (a buffer fault and
-# a length fault exclude each other for empty, so the empty row is against short). The two cap rows (D-82) prove the cap is checked
+# memory/request/profile/rev/bindings/powerup/mapper/byte order/header, then buffer or empty, the cap, short, bank multiple (a buffer fault and
+# a length fault exclude each other for empty, so the empty row is against short). Plan 12 added the power-on row: an unbound field beats a
+# missing seed, and a seed fault (required, or unexpected under zero) beats a later undeclared mapper (D-79(b)). The two cap rows (D-82) prove the cap is checked
 # before the supported-size and the bank-multiple rules. scripts/check --selftest mutation-drop-precedence swaps two rows of a scratch
 # copy of boot_order.def and requires this case to come out guest_failure. Evidence tier E0 (repeatability and a literal).
 id = "ref_precedence_table"
 kind = "precedence"
 fixture = "plain-256k"
-request = "mem=null;req=null>>load.memory_invalid|struct_size=bad;profile=nope>>load.request_invalid|profile=nope;rev=2>>load.profile_unknown|rev=2;bind.lines_per_frame=->>load.rev_mismatch|bind.lines_per_frame=-;mapper=->>load.open_unbound|mapper=-;order=->>load.mapper_undeclared|order=-;header=->>load.byte_order_undeclared"
-expect = "header=-;ptr=null;len=1>>load.header_undeclared|ptr=null;len=2097152>>load.buffer_null|len=0>>load.empty|len=1049088>>load.too_large|len=2097152>>load.too_large|len=513>>load.too_short|len=262656>>load.size_not_bank_multiple"
-meaning = "For every adjacent pair of checks in the fixed order, a request carrying both faults is refused with the reason of the earlier one, including the two cap rows where a length over the cap that is also not a bank multiple or not a supported size is refused as too_large"
+request = "mem=null;req=null>>load.memory_invalid|struct_size=bad;profile=nope>>load.request_invalid|profile=nope;rev=2>>load.profile_unknown|rev=2;bind.lines_per_frame=->>load.rev_mismatch|bind.lines_per_frame=-;mapper=->>load.open_unbound|mapper=-;order=->>load.mapper_undeclared|order=-;header=->>load.byte_order_undeclared|seed=7;mapper=->>load.powerup_seed_unexpected"
+expect = "header=-;ptr=null;len=1>>load.header_undeclared|ptr=null;len=2097152>>load.buffer_null|len=0>>load.empty|len=1049088>>load.too_large|len=2097152>>load.too_large|len=513>>load.too_short|len=262656>>load.size_not_bank_multiple|bind.lines_per_frame=-;bind.powerup_policy=seeded-prng-v1>>load.open_unbound|bind.powerup_policy=seeded-prng-v1;mapper=->>load.powerup_seed_required"
+meaning = "For every adjacent pair of checks in the fixed order, a request carrying both faults is refused with the reason of the earlier one, including the power-on seed rows between bindings and mapper, and the two cap rows where a length over the cap that is also not a bank multiple or not a supported size is refused as too_large"
 required = true
 control = false
 expect_outcome = "pass"
