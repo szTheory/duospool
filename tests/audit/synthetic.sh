@@ -27,6 +27,11 @@ audit() {
   if out=$(sh "$audit" --allow "$2" "$1" 2>&1); then rc=0; else rc=$?; fi
 }
 
+# audit_range REPO ALLOWFILE RANGE: run the audit in --range mode; sets $out and $rc
+audit_range() {
+  if out=$(sh "$audit" --allow "$2" --range "$3" "$1" 2>&1); then rc=0; else rc=$?; fi
+}
+
 empty_allow="$work/empty.allow"
 printf '# empty\n' > "$empty_allow"
 tab=$(printf '\t')
@@ -159,6 +164,54 @@ audit "$shallow_dir" "$empty_allow"
 ok=0
 if [ "$full_ok" -eq 1 ] && [ "$is_shallow" = true ] && [ "$rc" -eq 2 ] && ! has 'audit-history: clean' && has 'shallow'; then ok=1; fi
 verdict shallow-clone "$ok"
+
+# ---- range-clean: a bad blob committed at BASE is outside BASE..HEAD, so the range audit is clean; the full audit of the same
+# repository must be dirty, otherwise the control would pass for a repository that holds nothing bad ----
+d=$(new range-clean)
+dd if=/dev/zero of="$d/x.pce" bs=8192 count=1 2>/dev/null
+commit "$d" "rom before the range"
+base=$(g "$d" rev-parse HEAD)
+printf 'later change\n' > "$d/b.txt"
+commit "$d" "clean change"
+audit "$d" "$empty_allow"
+full_rc=$rc
+audit_range "$d" "$empty_allow" "$base..HEAD"
+ok=0
+if [ "$full_rc" -eq 1 ] && [ "$rc" -eq 0 ] && has 'audit-history: clean' && has 'range'; then ok=1; fi
+verdict range-clean "$ok"
+
+# ---- range-dirty: a bad blob added inside the range is reported, by path ----
+d=$(new range-dirty)
+printf 'first\n' > "$d/a.txt"
+commit "$d" first
+base=$(g "$d" rev-parse HEAD)
+dd if=/dev/zero of="$d/y.pce" bs=8192 count=1 2>/dev/null
+commit "$d" "rom inside the range"
+audit_range "$d" "$empty_allow" "$base..HEAD"
+ok=0
+if [ "$rc" -eq 1 ] && has y.pce && has NUL-BYTES; then ok=1; fi
+verdict range-dirty "$ok"
+
+# ---- range-base-missing: BASE is not in the repository (a depth-limited fetch): exit 2, never clean ----
+d=$(new range-base-missing)
+printf 'content\n' > "$d/a.txt"
+commit "$d" plain
+audit_range "$d" "$empty_allow" "0123456789abcdef0123456789abcdef01234567..HEAD"
+ok=0
+if [ "$rc" -eq 2 ] && ! has 'audit-history: clean'; then ok=1; fi
+verdict range-base-missing "$ok"
+
+# ---- range-text: a home path that was already there at BASE is not reported again, one added in the range is ----
+d=$(new range-text)
+printf 'see %s%s%s for notes\n' "/Us" "ers/" "someone/projects/x" > "$d/old.txt"
+commit "$d" "old note"
+base=$(g "$d" rev-parse HEAD)
+printf 'see %s%s%s for more\n' "/Us" "ers/" "someone/projects/y" > "$d/new.txt"
+commit "$d" "new note"
+audit_range "$d" "$empty_allow" "$base..HEAD"
+ok=0
+if [ "$rc" -eq 1 ] && has TEXT-PATTERN && has new.txt && ! has old.txt; then ok=1; fi
+verdict range-text "$ok"
 
 [ "$failed" -eq 0 ] || exit 1
 exit 0

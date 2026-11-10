@@ -392,6 +392,19 @@ stage_protocol_order() {
   checker sh "$here/protocol-order-check"
 }
 
+# tests/audit/synthetic.sh builds throwaway repositories and prints one AUDITTEST line per case (the full-history cases and the
+# --range cases of scripts/audit-history, D-71); its exit status is the verdict. The marker line keeps a dead script from passing
+# as an empty success.
+stage_audit_synthetic() {
+  if sh tests/audit/synthetic.sh > "$tmp/case.out" 2>&1; then r=0; else r=$?; fi
+  cat "$tmp/case.out"
+  if [ "$r" -eq 0 ] && ! grep -q '^AUDITTEST .* PASS$' "$tmp/case.out"; then
+    echo "NO_CONTROLS tests/audit"
+    return 1
+  fi
+  return "$r"
+}
+
 # synthetic.sh prints one SYNTH line per case; its exit status is the verdict. The marker line keeps a dead script
 # (for example one /bin/sh stopped parsing) from passing as an empty success.
 stage_protocol_negatives() {
@@ -953,6 +966,7 @@ run_stage cancel-controls stage_cancel_controls
 run_stage outcome-controls stage_outcome_controls
 run_stage rights-tree stage_rights_tree
 run_stage rights-negatives stage_rights_negatives
+run_stage audit-synthetic stage_audit_synthetic
 
 if [ -n "$only_stage" ]; then
   # one stage: its own CHECK line is the whole output; the exit status is that stage's verdict
