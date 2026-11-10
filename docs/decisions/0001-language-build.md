@@ -88,19 +88,19 @@ What this choice commits Phase 2 to, and what it does not:
 - The measured advantages of the Rust option that C does not have (memory safety by construction at the content boundary, a verified wasm run) become Phase 2 obligations for C: sanitizer and fuzz runs of the content loader and input parser in the staged job (CI-02), explicit bounds and size-cap checks with the refusal matrix (CONT-01..04), no hidden globals (CORE-01), and a wasm build attempt when wasm is promised (decision 13). Plan these as evidence the C core must supply, not as optional extras.
 - The record `reopen-if` names the conditions under which this choice is revisited.
 
-Scorer outcome at the time of the spike (kept for the audit trail):
+Scorer outcome at the time of the spike (historical, kept for the audit trail; the sentences in this subsection describe the state before the owner's choice above, which supersedes them):
 
 The language decision was open and Phase 2 was blocked until the owner chose, and the owner has now chosen.
 
-The scorer's REASON is `margin-below-10`: both options pass every hard gate, Rust leads nominally by 1.20 points (80.20 against 79.00), and D-07 as confirmed by D-37 needs a lead of at least 10.00 points before a result stands in for an owner choice. The status is therefore `proposed-default`, not `owner-recorded`. The `default-in-force` names Rust only because the pre-registered score put it ahead; it is provisional, the STACK.md research ranking was not used, and the sensitivity table shows the leader can flip.
+The scorer's REASON is `margin-below-10`: both options pass every hard gate, Rust leads nominally by 1.20 points (80.20 against 79.00), and D-07 as confirmed by D-37 needs a lead of at least 10.00 points before a result stands in for an owner choice. At that point the status was therefore `proposed-default`, not `owner-recorded`. The `default-in-force` then named Rust only because the pre-registered score put it ahead; it was provisional, the STACK.md research ranking was not used, and the sensitivity table shows the leader can flip.
 
-What the owner is asked to decide: Rust with Cargo, or C11 with CMake and Ninja, for the core, loader and headless runner. The trade the measurements show:
+What the owner was asked to decide: Rust with Cargo, or C11 with CMake and Ninja, for the core, loader and headless runner. The trade the measurements show:
 
 - Rust is ahead on memory safety at the content boundary (C1 5.0 against 3.0, with `forbid(unsafe_code)` on the core and Miri on the facade) and on wasm (it ran under wasmtime with an identical transcript; C did not attempt it).
 - C is ahead on feedback time (gate about half of Rust's, debug incremental about 4x faster on a real edit), on glue (198 lines against 476) and on tool count (3 against 4), on a toy workload of one translation unit or crate.
 - Fuzz ergonomics are level at 4.0 for different reasons: C needs a Homebrew-supplied libFuzzer archive on this Mac, Rust needs a dated nightly.
 
-Until the owner states a choice, a later edit sets `status: owner-recorded`, quoting that statement verbatim with its date. Phase 2 stays blocked until then. No owner statement is recorded here.
+The owner then stated a choice (C11 + CMake + Ninja, 2026-11-09), and the front matter now records it verbatim with its date. Phase 2 is unblocked.
 
 ## Consequences and what is not decided here
 
