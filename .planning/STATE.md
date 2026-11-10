@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 2
 current_phase_name: Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate
 status: executing
-stopped_at: Completed 02-09-PLAN.md
-last_updated: "2026-11-10T05:28:52.473Z"
+stopped_at: Completed 02-10-PLAN.md
+last_updated: "2026-11-10T05:46:50.794Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 2 execution started
-state_head: 29dcb2d268665023d30b39dda6194370330dac92
+state_head: 13843406c5a59918d7999c731e6c0ddcfc1e5b5f
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 34
-  completed_plans: 21
+  completed_plans: 22
   percent: 17
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 2 (Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate) — EXECUTING
-Plan: 10 of 22
+Plan: 11 of 22
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 2 execution started
 
@@ -77,6 +77,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 02 P07 | 10 min | 2 tasks | 20 files |
 | Phase 02 P08 | 8 min | 3 tasks | 18 files |
 | Phase 02 P09 | 9 min | 2 tasks | 11 files |
+| Phase 02 P10 | 13 min | 3 tasks | 50 files |
 
 ## Accumulated Context
 
@@ -126,6 +127,8 @@ Recent decisions affecting current work:
 - [Phase 02]: 02-08: the oracle rule-text guard requires each ledger clause literally and terminated by one of ; . : or the closing quote, exit 1 with ORACLE_RULE_TEXT_DRIFT
 - [Phase 02]: [02-09] Toy controls are generated from the live source by a one-line rule-tagged substitution (scripts/control-mutate); anchor count other than one, an empty or absent EXPECT, or a toy that does not compile is a harness error (exit 2), a toy that passes is NOT_RED (status 1)
 - [Phase 02]: [02-09] LED-LOAD-0004 stays open: 512K, 768K and 192K are refused size_unsupported, a 2 MiB image is refused too_large by the cap; ledger/REQUIRED keeps sorted order
+- [Phase 02]: Sanitizer exclusion has a single source: EXCLUDED_IN_MODE feeds the runner --exclude-ids, the supervisor ids file and the ingest forgiveness, and the ingest asserts the file both ways (10) — an exclusion that cannot drift from what ran; removing a row makes the case run and fail, an unlisted exclusion is OUTCOME_MISSING_ARTIFACT
+- [Phase 02]: alloc_zero kind lives in allockinds.c, not runner.c; runner.c is 64027 of 65536 bytes (plan 11 must split a kind file out before adding a deferred kind) (10) — rights-tree 65536-byte limit; precedent profkinds.c
 
 ### Pending Todos
 
@@ -149,6 +152,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-10T05:28:52.377Z
-Stopped at: Completed 02-09-PLAN.md
+Last session: 2026-11-10T05:46:50.734Z
+Stopped at: Completed 02-10-PLAN.md
 Resume file: None
