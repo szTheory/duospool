@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: the request declares no header handling. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_header_undeclared"
+kind = "refuse"
+fixture = "plain-256k"
+request = "header=-"
+expect = "load.header_undeclared"
+meaning = "A request that declares no header handling is refused as load.header_undeclared and a header is never detected from the image length or content"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

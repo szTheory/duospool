@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: a length of one byte with a NULL content pointer. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_buffer_null"
+kind = "refuse"
+fixture = "plain-256k"
+request = "len=1;ptr=null"
+expect = "load.buffer_null"
+meaning = "A request of one byte over a NULL content pointer is refused as load.buffer_null before any length rule is applied and the pointer is not read"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

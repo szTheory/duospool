@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: a zero length with a non-NULL content pointer. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_empty_ptr"
+kind = "refuse"
+fixture = "plain-256k"
+request = "len=0"
+expect = "load.empty"
+meaning = "A zero-length request with a non-NULL content pointer is refused as load.empty and the pointer is not read"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

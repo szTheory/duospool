@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: 262656 bytes (256 KiB plus 512) declared copier_512 with content_copier_header bound to declared-512, so resolve succeeds and boot refuses. Pins LED-LOAD-0002: a header is never stripped or detected. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_header_copier512"
+kind = "refuse"
+fixture = "plain-256k"
+request = "len=262656;header=copier_512;bind.content_copier_header=declared-512"
+expect = "load.header_unsupported"
+meaning = "A 256 KiB plus 512 byte request declared as headered is refused as load.header_unsupported, no byte is stripped and no claim is made that headered dumps load"
+required = true
+control = false
+expect_outcome = "pass"
+pins = ["LED-LOAD-0002"]
