@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# Mirror rule of the plain mapper (D-44). A modelling assumption, not an established hardware fact. The independent oracle tests/conformance/mirror-oracle.awk matches the clauses of the statement literally and refuses to run when they change.
+id = "LED-LOAD-0003"
+statement = "DuoSpool models the plain mapper window of banks 0 to 127 as: 256K file bank = b mod 32; 384K file bank = b and 0x1F when b below 0x40, 0x20 + (b and 0x0F) when b is 0x40 or above; 1M file bank = b."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["UNKNOWN|pcetech.txt|primary source unreachable, not read", "UNKNOWN|Hudson manual|primary source unreachable, not read", "CODE|MAME|384K block map 0,1,0,1,2,2,2,2 (02-RESEARCH)", "CODE|Beetle PCE|384K bank formula equals the rule", "CODE|Geargrafx|384K bank formula equals the rule", "REPORT|PCEdev wiki|community description of the bank mapping"]
+evidence = []
+disagreement = "none: MAME, Beetle and Geargrafx agree on the 384K rule; no primary source was reachable to compare it with"
+pinning_test = "TEST:accept_384k_banksig"
+updated = "2026-11-10"
+assumption = "The mirror rule is a modelling assumption: three emulator sources agree on it and no primary source was read. It is fixed behaviour of the mapper named plain (mapper_rule plain-v1), not a profile setting."
+revisit_phase = 6
+withheld = ["any claim that the rule matches hardware"]
+origin = "02-CONTEXT D-44"

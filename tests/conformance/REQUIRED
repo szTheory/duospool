@@ -22,3 +22,4 @@ record_content_fields
 accept_256k_banksig
 accept_384k_banksig
 accept_1m_banksig
+accept_unmapped_banks

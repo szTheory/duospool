@@ -1411,6 +1411,49 @@ static void kind_banksig(const struct kase *k, struct ctx *c, char *got, size_t 
     release_boot(&b);
 }
 
+/*
+ * kind unmapped (D-44, T-02-11): for each of the three sizes (the recipes plain-256k, plain-384k, plain-1m, each booted with the
+ * default request) every bank 0x80 to 0xFF must give DS_MAP_UNMAPPED, bank 0xFFFFFFFF must too, an offset of 8192 and the largest
+ * offset in a mapped bank must give DS_MAP_BAD_OFFSET, and none of these statuses may write the output byte (it keeps its
+ * sentinel), which also shows that the ROM array was not read. The case names no value for an unmapped read: Phase 3 owns it.
+ */
+static void kind_unmapped(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    static const char *const recipe[3] = {"plain-256k", "plain-384k", "plain-1m"};
+    size_t r;
+
+    (void)k;
+    for (r = 0u; r < 3u; r++) {
+        struct booted b;
+        struct spec s;
+        const struct ds_instance *inst = NULL;
+        const char *err = boot_accepted(recipe[r], "", &b, &s, &inst);
+        uint32_t bank;
+        uint8_t v;
+
+        if (err != NULL) {
+            harness_error(c, err);
+            return;
+        }
+        for (bank = DS_BANK_LIMIT; bank <= 0xFFu; bank++) {
+            v = 0x5au;
+            check(c, ds_mapper_read(inst, bank, 0u, &v) == (uint32_t)DS_MAP_UNMAPPED && v == 0x5au,
+                  "a bank of 0x80 or above is not unmapped");
+        }
+        v = 0x5au;
+        check(c, ds_mapper_read(inst, 0xFFFFFFFFu, 0u, &v) == (uint32_t)DS_MAP_UNMAPPED && v == 0x5au,
+              "bank 0xFFFFFFFF is not unmapped");
+        v = 0x5au;
+        check(c, ds_mapper_read(inst, 0u, DS_BANK_BYTES, &v) == (uint32_t)DS_MAP_BAD_OFFSET && v == 0x5au,
+              "offset 8192 is not a bad offset");
+        v = 0x5au;
+        check(c, ds_mapper_read(inst, DS_BANK_LIMIT - 1u, 0xFFFFFFFFu, &v) == (uint32_t)DS_MAP_BAD_OFFSET && v == 0x5au,
+              "the largest offset is not a bad offset");
+        release_boot(&b);
+    }
+    snprintf(got, gotcap, "sizes=3");
+}
+
 static const struct {
     const char *name;
     kind_fn fn;
@@ -1426,6 +1469,7 @@ static const struct {
     {"content_id", kind_content_id, 0},
     {"hash_literal", kind_hash_literal, 0},
     {"banksig", kind_banksig, 0},
+    {"unmapped", kind_unmapped, 0},
 };
 
 static const char *outcome_of(const struct ctx *c, enum outcome *oc)
