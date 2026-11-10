@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 2
 current_phase_name: Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate
 status: executing
-stopped_at: Completed 02-06-PLAN.md
-last_updated: "2026-11-10T04:57:44.929Z"
+stopped_at: Completed 02-07-PLAN.md
+last_updated: "2026-11-10T05:08:32.222Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 2 execution started
-state_head: 7bfaf6acb8bfca586c1d4c067c6b6576f5a3a113
+state_head: 3fe2e1e5f98f64d70c74c98c079090e79825f645
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 34
-  completed_plans: 18
+  completed_plans: 19
   percent: 17
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 2 (Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate) — EXECUTING
-Plan: 7 of 22
+Plan: 8 of 22
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 2 execution started
 
@@ -74,6 +74,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 02 P04 | 23 min | 3 tasks | 25 files |
 | Phase 02 P05 | 14 min | 3 tasks | 20 files |
 | Phase 02 P06 | 11 min | 3 tasks | 20 files |
+| Phase 02 P07 | 10 min | 2 tasks | 20 files |
 
 ## Accumulated Context
 
@@ -116,6 +117,8 @@ Recent decisions affecting current work:
 - [Phase 02]: 02-06: ds_text prints with no library call; a quote, backslash, non-ASCII byte or unterminated string is DS_TEXT_ERR_STRING and an empty text (D-69); ds_text_profile prints the identity tables and is an exact part of the record
 - [Phase 02]: 02-06: record skeleton row count is pinned at 50 in runner.c build_expected_keys; plans 07, 12 and 14 that add keys or tables must edit that list in the same commit
 - [Phase 02]: 02-06: gate-gcc resolves to Apple clang on this Mac and is not a real gcc check; real gcc runs in plan 21 and CI. Stage outcome-sync builds the gate preset itself before reading build/gate/ds_runner
+- [Phase 02]: 02-07: content id is the in-house SHA-256 of the copied ROM bytes, taken as the last step of ds_boot; independent check is a gate sweep of 21 lengths against the host sha tool (HASH_SWEEP_MISMATCH)
+- [Phase 02]: 02-07: pinned record sha256 literal uses the len:N recipe, not plain-256k, because plan 08 adds bank tag bytes to plain-256k; profile case kinds moved to tests/conformance/profkinds.c behind runner.h to keep runner.c under 64 KiB
 
 ### Pending Todos
 
@@ -139,6 +142,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-10T04:57:44.868Z
-Stopped at: Completed 02-06-PLAN.md
+Last session: 2026-11-10T05:08:32.170Z
+Stopped at: Completed 02-07-PLAN.md
 Resume file: None
