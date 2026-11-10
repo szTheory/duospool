@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal record (D-53): a refused boot has a record with a refusal table and no machine table. A 1 MiB request declared mcgenjin is refused as
+# load.mapper_unsupported; the printed text must end in the refusal table with the reason, the requested id and the requested rev. Evidence tier
+# E0 (repeatability and a literal): it claims nothing about hardware.
+id = "record_refusal_text"
+kind = "record_refusal"
+fixture = "plain-1m"
+request = "mapper=mcgenjin"
+expect = "load.mapper_unsupported"
+meaning = "The record of a refused request holds the record and core tables and then a refusal table with the reason, the requested profile id and the requested rev, and no profile, content, power_on or machine table"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

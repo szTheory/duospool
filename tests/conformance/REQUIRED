@@ -92,3 +92,8 @@ poweron_diff_seed_diff_digest
 profile_hash_fields
 profile_hash_identity
 digest_region
+nonmutation_digest
+record_golden_384k_seeded
+record_golden_256k_zero
+record_refusal_text
+record_refuses_quote
