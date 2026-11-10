@@ -41,23 +41,181 @@ negative() {
   if [ "$rc" -ne 1 ]; then neg_ok=0; fi
 }
 
-# ---- planted-pce: an 8192-byte zero-filled x.pce, staged with git add -f ----
+tab=$(printf '\t')
+
+# sha OF-FILE : the sha256 of a file, chosen the same way as the checker
+sha() {
+  if command -v sha256sum > /dev/null 2>&1; then sha256sum "$1"; else shasum -a 256 "$1"; fi | awk '{ print $1 }'
+}
+
+# manifest REPO ID SOURCE SHA KIND LICENCE : write fixtures/manifest/ID.toml, redistribution committed
+manifest() {
+  mkdir -p "$1/fixtures/manifest"
+  {
+    printf 'id = "%s"\n' "$2"
+    printf 'kind = "%s"\n' "$5"
+    printf 'source = "%s"\n' "$3"
+    printf 'recipe = "written by hand for this control"\n'
+    printf 'toolchain = "none"\n'
+    printf 'size = 1\n'
+    printf 'sha256 = "%s"\n' "$4"
+    printf 'licence = "%s"\n' "$6"
+    printf 'notices = "none"\n'
+    printf 'redistribution = "committed"\n'
+    printf 'meaning = "rights-check control"\n'
+    printf 'verdict_source = "independent-script"\n'
+  } > "$1/fixtures/manifest/$2.toml"
+}
+
+# ---- negatives: each plants one file (or one manifest entry) in a throwaway repository, and must meet its exact code set ----
+
+# planted-pce: a printable text file whose only fault is its name, so only the extension rule can catch it
 d=$(new planted-pce)
-dd if=/dev/zero of="$d/x.pce" bs=8192 count=1 2>/dev/null
+printf 'not a rom, only a name\n' > "$d/x.pce"
 commit "$d" rom
 negative "$d" ROMLIKE_BINARY
 ok=$neg_ok
-has ROMLIKE_BINARY || ok=0
+has "0${tab}EXT" || ok=0
 verdict planted-pce "$ok"
 
-# ---- clean-prose: a repository holding prose only ----
-d=$(new clean-prose)
-printf 'plain text\nsecond line\n' > "$d/a.txt"
+# random-8192-no-extension: 8192 random bytes under a plain name, caught by content
+d=$(new random-8192-no-extension)
+dd if=/dev/urandom of="$d/blob" bs=8192 count=1 2> /dev/null
+commit "$d" random
+negative "$d" ROMLIKE_BINARY
+ok=$neg_ok
+has "0${tab}NUL" || ok=0
+has 'SHAPE size 8192' || ok=0
+verdict random-8192-no-extension "$ok"
+
+# txt-with-rom-bytes: a .txt of 8704 (8192 plus 512) non-ASCII bytes
+d=$(new txt-with-rom-bytes)
+head -c 8704 /dev/zero | tr '\000' '\251' > "$d/notes.txt"
+commit "$d" romtxt
+negative "$d" ROMLIKE_BINARY
+ok=$neg_ok
+has 'SHAPE size 8704' || ok=0
+has NONASCII || ok=0
+verdict txt-with-rom-bytes "$ok"
+
+# fill-ea-no-nul: 8192 bytes of 0xEA, no NUL byte anywhere (a NUL-only rule would miss it)
+d=$(new fill-ea-no-nul)
+head -c 8192 /dev/zero | tr '\000' '\352' > "$d/fill"
+commit "$d" fill
+negative "$d" ROMLIKE_BINARY
+ok=$neg_ok
+has "0${tab}UTF8" || ok=0
+has 'SHAPE size 8192' || ok=0
+if has "0${tab}NUL"; then ok=0; fi
+verdict fill-ea-no-nul "$ok"
+
+# shaped-ascii-high-byte: 8192 bytes, printable ASCII but for one 0xEA byte: not valid text, so the shape rule applies (D-76)
+d=$(new shaped-ascii-high-byte)
+{ head -c 8191 /dev/zero | tr '\000' 'A'; printf '\352'; } > "$d/shaped"
+commit "$d" shaped
+negative "$d" ROMLIKE_BINARY
+ok=$neg_ok
+has "0${tab}UTF8" || ok=0
+has 'SHAPE size 8192' || ok=0
+verdict shaped-ascii-high-byte "$ok"
+
+# zip-magic: a zip header followed by text
+d=$(new zip-magic)
+{ printf 'PK\003\004'; printf 'some text after the header\n'; } > "$d/pack"
+commit "$d" zip
+negative "$d" ROMLIKE_BINARY
+ok=$neg_ok
+has 'MAGIC zip' || ok=0
+verdict zip-magic "$ok"
+
+# hex-blob: a .txt holding one 1100-character hex line (a text file is not exempt from the blob rule)
+d=$(new hex-blob)
+head -c 1100 /dev/zero | tr '\000' 'a' > "$d/dump.txt"
+printf '\n' >> "$d/dump.txt"
+commit "$d" hex
+negative "$d" ROMLIKE_BINARY
+ok=$neg_ok
+has "1${tab}BLOB" || ok=0
+verdict hex-blob "$ok"
+
+# long-line: one 5000-byte line of characters that are neither hex nor base64
+d=$(new long-line)
+head -c 5000 /dev/zero | tr '\000' '-' > "$d/wide.txt"
+printf '\n' >> "$d/wide.txt"
+commit "$d" wide
+negative "$d" ROMLIKE_BINARY
+ok=$neg_ok
+has 'LINELEN 5000' || ok=0
+if has BLOB; then ok=0; fi
+verdict long-line "$ok"
+
+# listed-wrong-hash: a clean text fixture listed in the manifest with the wrong sha256
+d=$(new listed-wrong-hash)
+mkdir -p "$d/fixtures"
+printf 'authored fixture text\n' > "$d/fixtures/a.txt"
+manifest "$d" a fixtures/a.txt 0000000000000000000000000000000000000000000000000000000000000000 authored 0BSD
+commit "$d" listed
+negative "$d" RIGHTS_HASH_MISMATCH
+verdict listed-wrong-hash "$neg_ok"
+
+# manifest-no-file: an entry whose path does not exist
+d=$(new manifest-no-file)
+printf 'plain\n' > "$d/a.txt"
+manifest "$d" gone fixtures/gone.bin 0000000000000000000000000000000000000000000000000000000000000000 authored 0BSD
+commit "$d" stale
+negative "$d" RIGHTS_MISSING_ARTIFACT
+verdict manifest-no-file "$neg_ok"
+
+# listed-kind-synthetic: right hash, but the kind is not authored
+d=$(new listed-kind-synthetic)
+mkdir -p "$d/fixtures"
+printf 'generated fixture text\n' > "$d/fixtures/s.txt"
+manifest "$d" s fixtures/s.txt "$(sha "$d/fixtures/s.txt")" synthetic 0BSD
+commit "$d" listed
+negative "$d" RIGHTS_BAD_ALLOW
+verdict listed-kind-synthetic "$neg_ok"
+
+# ---- positives: each must exit 0 ----
+
+# ok-listed-authored: an authored fixture with a 5000-byte line, listed with the right hash. Without its manifest entry the same
+# tree is rejected, so the pass below is the entry's doing and not an accident of the content.
+d=$(new ok-listed-authored)
+mkdir -p "$d/fixtures"
+{ head -c 5000 /dev/zero | tr '\000' '-'; printf '\n'; } > "$d/fixtures/wide.txt"
+commit "$d" fixture
+run_rights "$d"
+unlisted_rc=$rc
+manifest "$d" wide fixtures/wide.txt "$(sha "$d/fixtures/wide.txt")" authored 0BSD
+commit "$d" listed
+run_rights "$d"
+ok=0
+if [ "$unlisted_rc" -eq 1 ] && [ "$rc" -eq 0 ] && has 'RECORDS 2'; then ok=1; fi
+verdict ok-listed-authored "$ok"
+
+# ok-utf8-prose: valid UTF-8 prose with a superscript two after CD-ROM
+d=$(new ok-utf8-prose)
+printf 'The CD-ROM\302\262 drive is mentioned here.\n' > "$d/prose.txt"
 commit "$d" prose
 run_rights "$d"
 ok=0
 if [ "$rc" -eq 0 ] && has 'RECORDS 1'; then ok=1; fi
-verdict clean-prose "$ok"
+verdict ok-utf8-prose "$ok"
+
+# ok-ascii-16384: 16384 bytes of printable ASCII in 64-byte lines: an 8 KiB multiple that is valid text, so the shape rule is
+# not applied (D-76). The two Phase 1 boundary-size control files are exactly this.
+d=$(new ok-ascii-16384)
+i=0
+: > "$d/boundary.txt"
+while [ "$i" -lt 256 ]; do
+  { head -c 63 /dev/zero | tr '\000' 'A'; printf '\n'; } >> "$d/boundary.txt"
+  i=$((i + 1))
+done
+commit "$d" boundary
+size=$(wc -c < "$d/boundary.txt" | tr -d ' ')
+run_rights "$d"
+ok=0
+if [ "$size" -eq 16384 ] && [ "$rc" -eq 0 ] && has 'RECORDS 1'; then ok=1; fi
+verdict ok-ascii-16384 "$ok"
 
 [ "$failed" -eq 0 ] || exit 1
 exit 0

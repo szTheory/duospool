@@ -817,6 +817,41 @@ selftest() {
     fi
   fi
 
+  # (k) the rights check must flag a ROM-like extension, and only because of the extension rule (D-56, T-02-18). The planted-pce
+  # control holds a printable text file whose only fault is its name. A scratch copy of scripts/ with the one line carrying the
+  # extension-rule marker deleted must no longer flag it: the suite run against that copy (RIGHTS_CHECK) must exit non-zero and
+  # print "RIGHTSTEST planted-pce FAIL". The unmutated copy is first shown alive on a one-file repository (the name alone must be
+  # flagged), so the red result cannot come from a copy that was broken some other way. The marker is assembled here so that this
+  # script never carries it, and rights-check carries it on exactly one line.
+  if st_want mutation-rights-rule; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    tok=rule-exten
+    tok="${tok}sion"
+    mr="$tmp/selftest/rights-repo"
+    rm -rf "$mr"
+    mkdir -p "$mr"
+    printf 'not a rom, only a name\n' > "$mr/x.pce"
+    if ! (cd "$mr" && GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null git init -q . && GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null git add -f x.pce); then
+      echo "SELFTEST mutation-rights-rule FAIL (cannot build the scratch repository)"; failed=1
+    else
+      if sh "$cp_dir/rights-check" --root "$mr" --expect ROMLIKE_BINARY > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+      st_alive=0
+      if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+      before=$(grep -c "$tok" "$cp_dir/rights-check" || true)
+      grep -v "$tok" "$cp_dir/rights-check" > "$cp_dir/rights-check.mutated" || true
+      mv "$cp_dir/rights-check.mutated" "$cp_dir/rights-check"
+      after=$(grep -c "$tok" "$cp_dir/rights-check" || true)
+      if RIGHTS_CHECK="$cp_dir/rights-check" sh tests/rights/synthetic.sh > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+      if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -ne 0 ] && grep -qx 'RIGHTSTEST planted-pce FAIL' "$tmp/st.out"; then
+        echo "SELFTEST mutation-rights-rule PASS"
+      else
+        echo "SELFTEST mutation-rights-rule FAIL"; failed=1
+      fi
+    fi
+  fi
+
   # a selected NAME that matched no mutation is a usage error, never a vacuous pass
   if [ -n "$st_sel" ] && [ "$st_ran" -eq 0 ]; then usage; fi
   if [ "$failed" -eq 0 ]; then echo "SELFTEST RESULT PASS"; return 0; fi
