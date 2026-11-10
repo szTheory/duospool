@@ -27,56 +27,79 @@ created: "2026-11-09"
 
 ## Sampling Rate
 
-- **After every task commit:** `sh scripts/check`
-- **After every plan wave:** `sh scripts/check --selftest`, `dash scripts/check`, sanitizer preset, gcc and clang presets where a second compiler exists
-- **Before `/gsd-verify-work`:** full suite above green, plus `sh scripts/audit-history`
-- **Max feedback latency:** 60 s
+- **After every task commit (D-81):** the task's own stage-granular command, `sh scripts/check --stage NAME` (or `sh scripts/check --selftest NAME` for one mutation); each is a few seconds
+- **After every plan (wave-end, labelled):** `sh scripts/check`, `sh scripts/check --selftest`, `dash scripts/check`, plus the sanitizer stage and the gcc and clang presets where a second compiler exists
+- **Phase-end (plan 21):** full suite above plus `sh scripts/audit-history` and the one-off Docker `ubuntu:24.04` run (`sh scripts/linux-repro`), labelled local, not a CI claim
+- **Before `/gsd-verify-work`:** phase-end suite green
+- **Max feedback latency:** 60 s for the whole gate; per-task stage commands are much shorter
 
 ---
 
 ## Per-Task Verification Map
 
-Filled by the planner. Every `<automated>` command is `sh scripts/check` (all or `--stage NAME`, `--selftest`) or a named checker invoked by it, each paired with a `<fails_when>` and a named negative control. Status starts pending.
+Per-task commands run at stage granularity (D-81); full-gate, `--selftest`, equivalence-harness and container runs are labelled wave-end or phase-end. Every `<automated>` command is `sh scripts/check --stage NAME`, `sh scripts/check --selftest NAME` or a named checker invoked by it, each paired with a `<fails_when>` and a named negative control. Waves are sequential because every plan edits `scripts/check`. Status starts pending.
 
 | Task | Plan | Wave | Requirement | Check (automated) | Negative control shown red | Status |
 |------|------|------|-------------|-------------------|----------------------------|--------|
-| 01-T1 | 01 | 1 | TOOL-02 | `sh tests/check/equiv.sh BASE` + `--stage licence-negatives` | label-coverage guard in equiv.sh | pending |
-| 01-T2 | 01 | 1 | TOOL-02 | equiv.sh + `dash scripts/check` | seven scenario labels | pending |
-| 01-T3 | 01 | 1 | TOOL-02 | `sh scripts/check --selftest` | mutation-run-controls | pending |
+| 01-T1 | 01 | 1 | TOOL-02 | `--stage licence-negatives`, bogus `--stage` exits 2; plan-end: `tests/check/equiv.sh BASE` | label-coverage guard in equiv.sh | pending |
+| 01-T2 | 01 | 1 | TOOL-02 | six control stages via `--stage`; plan-end: equiv.sh, `dash scripts/check` | seven scenario labels | pending |
+| 01-T3 | 01 | 1 | TOOL-02 | `--selftest mutation-run-controls` | mutation-run-controls | pending |
 | 02-T1 | 02 | 2 | RUN-02, FIX-04 | `--stage ingest-controls` | outcome-skip, required-no-line, unknown-token | pending |
-| 02-T2 | 02 | 2 | RUN-02 | `--stage flatten-controls` | bad-syntax, partial-output probe | pending |
-| 02-T3 | 02 | 2 | RUN-02, TOOL-02 | `--timing`, `--selftest`, preflight | 17+ fabricated ingest controls, mutation-ingest-skip-red, mutation-outcome-sync | pending |
-| 03-T1 | 03 | 3 | PROF-02, PROF-03 | `--stage build`, `--stage conformance` | wrong literal seen as guest_failure | pending |
-| 03-T2 | 03 | 3 | PROF-02, PROF-03, CORE-01 | `--stage conformance` (resolve_*, profile_r1_equal, field_flip) | r1 TSV edit turns profile_r1_equal red | pending |
-| 03-T3 | 03 | 3 | RUN-02 | `--stage outcome-sync` (compiled names) | compiled-list-differs | pending |
-| 04-T1 | 04 | 4 | CONT-01, CONT-04 | `--stage conformance` (accept_256k_banksig, content_id_vs_shasum) | ORACLE_RULE_TEXT_DRIFT | pending |
-| 04-T2 | 04 | 4 | CONT-01, CONT-04 | `--stage conformance` (384K, 1M, NIST, unmapped) | tests/controls/wrong-mirror | pending |
-| 04-T3 | 04 | 4 | CONT-01 | `--stage conformance` (ref_size_8192, ref_size_512k) | per-row expectation edit | pending |
-| 05-T1 | 05 | 4 | FIX-05 | `--stage rights-tree`, `--stage rights-negatives` | planted-pce | pending |
-| 05-T2 | 05 | 4 | FIX-05 | `sh tests/rights/synthetic.sh`, `--selftest` | ten run-time controls, mutation-rights-rule | pending |
-| 05-T3 | 05 | 4 | FIX-05 | `--stage audit-synthetic`, `--stage licences` | range-dirty, src-no-spdx | pending |
-| 06-T1 | 06 | 5 | CONT-03 | `--stage sanitizers` | heap and shift canaries (SANITIZER_DEAD) | pending |
-| 06-T2 | 06 | 5 | CONT-02, CONT-03, PROF-02 | `--stage conformance`, `--stage sanitizers`, `--selftest` | mutation-drop-precedence, alloc_shim_selfcheck | pending |
-| 06-T3 | 06 | 5 | CONT-02, FIX-05 | `--stage conformance`, `--stage ledger-entries` | tests/controls/heuristic-reverse, redaction_seeded_leak_flagged | pending |
-| 07-T1 | 07 | 6 | CORE-03, PROF-03 | `--stage conformance` (record_golden_384k_seeded, splitmix_seed0) | golden digit edit | pending |
-| 07-T2 | 07 | 6 | CORE-01, CORE-03 | `--stage conformance`, `--stage sanitizers` | tests/controls/drop-region | pending |
-| 07-T3 | 07 | 6 | PROF-03 | `--stage record-lint`, `--stage record-lint-negatives`, `--selftest` | path/pointer/timestamp controls, mutation-record-lint-pointer | pending |
-| 08-T1 | 08 | 7 | CORE-02 | `--stage core-boundary-negatives` | time-include | pending |
-| 08-T2 | 08 | 7 | CORE-02 | `--stage core-boundary-negatives`, `--selftest` | ten negative controls, allowlist and writable mutations | pending |
-| 08-T3 | 08 | 7 | CORE-02 | `--stage core-boundary`, `dash scripts/check` | rule mutations | pending |
-| 09-T1 | 09 | 8 | CORE-01 | `--stage conformance` (interleave_ab) | tests/controls/shared-state | pending |
-| 09-T2 | 09 | 8 | CORE-01, CONT-03 | `--stage conformance`, `--stage sanitizers` | aliasing self-check, shared-state toy | pending |
-| 09-T3 | 09 | 8 | CORE-01 | `--stage determinism`, `--stage determinism-negatives`, `--selftest` | differs control, mutation-determinism-compare | pending |
-| 10-T1 | 10 | 9 | FIX-02 | `--stage fixture-negatives` | fix-missing-field, fix-unlisted | pending |
-| 10-T2 | 10 | 9 | FIX-02, FIX-04 | `--stage inventory`, `--stage inventory-negatives`, `--stage fixtures`, `--selftest` | removed-required and five more, three mutations | pending |
-| 10-T3 | 10 | 9 | FIX-04, RUN-02 | `--stage named-controls`, full gate, `--selftest`, dash | five NAMED_CONTROL lines, timeout control | pending |
-| 11-T1 | 11 | 10 | CI-01 | `--stage workflow`, `--stage workflow-negatives`, actionlint (one-off) | pull-request-target | pending |
-| 11-T2 | 11 | 10 | CI-01 | `--stage workflow-negatives`, `--selftest`, actionlint (one-off) | ten bad-workflow variants, mutation-workflow-pin | pending |
-| 11-T3 | 11 | 10 | CI-01 | `--stage ci-timings-controls`, full gate | malformed TSV exit 2 | pending |
-| 12-T1 | 12 | 11 | TOOL-02 | `--stage docs-claims`, `--stage docs-claims-negatives`, `--selftest` | five docs controls, mutation-docs-stale | pending |
-| 12-T2 | 12 | 11 | TOOL-02, CI-01 | full gate, `--selftest`, dash, `sh scripts/audit-history`, `sh scripts/linux-repro` | container run labelled one-off | pending |
-| 12-T3 | 12 | 11 | CI-01 | owner decision (blocking-human checkpoint) | not applicable | pending |
-| 12-T4 | 12 | 11 | CI-01 | recorded outcome in docs/ci-timings.md | no remote write unless authorised | pending |
+| 02-T2 | 02 | 2 | RUN-02, FIX-04 | `--stage ingest-controls`, `--selftest mutation-ingest-skip-red` | 18 fabricated ingest controls, mutation-ingest-skip-red | pending |
+| 02-T3 | 02 | 2 | RUN-02 | `--stage flatten-controls`, `--selftest mutation-flatten-sentinel` | bad-syntax, partial-output probe, mutation-flatten-sentinel | pending |
+| 03-T1 | 03 | 3 | RUN-02 | `--stage cancel-controls`, `--selftest mutation-cancel-trap` | SIGTERM to spin stub, mutation-cancel-trap | pending |
+| 03-T2 | 03 | 3 | TOOL-02 | `--stage preflight`, `--timing` | impossible tool name exits 2 | pending |
+| 03-T3 | 03 | 3 | RUN-02 | `--stage outcome-sync`, `--selftest mutation-outcome-sync` | extra-row, reordered, mutation-outcome-sync | pending |
+| 04-T1 | 04 | 4 | FIX-05 | `--stage rights-tree`, `--stage rights-negatives` | planted-pce | pending |
+| 04-T2 | 04 | 4 | FIX-05 | `sh tests/rights/synthetic.sh`, `--selftest mutation-rights-rule` | fourteen run-time controls, mutation-rights-rule | pending |
+| 04-T3 | 04 | 4 | FIX-05 | `--stage audit-synthetic`, `--stage licences`, `--stage licence-negatives` | range-dirty, src-no-spdx | pending |
+| 05-T1 | 05 | 5 | PROF-02, CORE-01 | `--stage build` plus `ds_runner --tracer` | warnings-as-errors build | pending |
+| 05-T2 | 05 | 5 | PROF-02 | `--stage build`, `--stage conformance` | wrong literal seen as guest_failure | pending |
+| 05-T3 | 05 | 5 | PROF-02 | `--stage conformance` (resolve_*) | resolve case edit turns guest_failure | pending |
+| 06-T1 | 06 | 6 | PROF-03 | `--stage conformance` (record_skeleton_256k) | line-by-line record check | pending |
+| 06-T2 | 06 | 6 | PROF-02, PROF-03 | `--stage conformance` (profile_r1_equal, names, field_flip) | r1 TSV edit turns profile_r1_equal red | pending |
+| 06-T3 | 06 | 6 | RUN-02 | `--stage outcome-sync`, `--stage conformance` | compiled-list-differs | pending |
+| 07-T1 | 07 | 7 | CONT-04 | `--stage conformance` (content_id_vs_shasum, hash sweep) | HASH_SWEEP_MISMATCH, bit-length mutant | pending |
+| 07-T2 | 07 | 7 | CONT-04 | `--stage conformance` (NIST, record_content_fields) | NIST literal digit edit | pending |
+| 08-T1 | 08 | 8 | CONT-01 | `--stage conformance` (accept_256k_banksig) | oracle arithmetic edit | pending |
+| 08-T2 | 08 | 8 | CONT-01 | `--stage conformance` (384K, 1M) | banksig cases vs oracle | pending |
+| 08-T3 | 08 | 8 | CONT-01 | `--stage conformance`, `--stage ledger-entries` | ORACLE_RULE_TEXT_DRIFT | pending |
+| 09-T1 | 09 | 9 | CONT-01 | `--stage conformance` (controls mode) | tests/controls/wrong-mirror (CONTROL RED_OK) | pending |
+| 09-T2 | 09 | 9 | CONT-01 | `--stage conformance`, `--stage ledger-entries` | ref_size_8192, ref_size_512k rows | pending |
+| 10-T1 | 10 | 10 | CONT-03 | `--stage conformance`, `--stage sanitizers` | heap and shift canaries (SANITIZER_DEAD) | pending |
+| 10-T2 | 10 | 10 | CONT-03 | `--stage conformance` (alloc_*) | alloc_shim_selfcheck | pending |
+| 10-T3 | 10 | 10 | CONT-03 | `--stage excluded-mode-controls`, `--stage sanitizers`, `--selftest mutation-excluded-gate-pass` | five exclusion controls, mutation-excluded-gate-pass | pending |
+| 11-T1 | 11 | 11 | CONT-01, CONT-02, PROF-02 | `--stage conformance`, `--stage ledger-entries` | per-row expectation edit | pending |
+| 11-T2 | 11 | 11 | CONT-02, CONT-03 | `--stage conformance`, `--selftest mutation-drop-precedence` | mutation-drop-precedence, nonmutation_matrix | pending |
+| 11-T3 | 11 | 11 | CONT-02, CONT-03, FIX-05 | `--stage conformance`, `--stage sanitizers` | tests/controls/heuristic-reverse, redaction_seeded_leak_flagged | pending |
+| 12-T1 | 12 | 12 | CORE-03 | `--stage conformance`, `--stage sanitizers` | bare-XOR derivation mutant | pending |
+| 12-T2 | 12 | 12 | CORE-03 | `--stage conformance`, `--stage ledger-entries` | advance_rules literals | pending |
+| 13-T1 | 13 | 13 | CORE-01, PROF-03 | `--stage conformance`, `--stage sanitizers` | digest framing check, profile_hash_fields | pending |
+| 13-T2 | 13 | 13 | CORE-01 | `--stage conformance`, `--stage sanitizers` | tests/controls/drop-region | pending |
+| 14-T1 | 14 | 14 | PROF-03, CORE-03, CONT-04 | `--stage conformance` (record_golden_384k_seeded) | golden digit edit | pending |
+| 14-T2 | 14 | 14 | PROF-03 | `--stage conformance` (second golden, refusal record, quote) | record_refuses_quote | pending |
+| 14-T3 | 14 | 14 | PROF-03 | `--stage record-lint`, `--stage record-lint-negatives`, `--selftest mutation-record-lint-pointer` | path/pointer/timestamp controls | pending |
+| 15-T1 | 15 | 15 | CORE-02 | `--stage core-boundary-negatives` | time-include | pending |
+| 15-T2 | 15 | 15 | CORE-02 | `--stage core-boundary-negatives`, two `--selftest` mutations | ten negative controls, allowlist and writable mutations | pending |
+| 15-T3 | 15 | 15 | CORE-02 | `--stage core-boundary` | rule mutations | pending |
+| 16-T1 | 16 | 16 | CORE-01 | `--stage conformance` (interleave_ab) | tests/controls/shared-state | pending |
+| 16-T2 | 16 | 16 | CORE-01, CONT-03 | `--stage conformance`, `--stage sanitizers` | aliasing self-check | pending |
+| 16-T3 | 16 | 16 | CORE-01 | `--stage determinism`, `--stage determinism-negatives`, `--selftest mutation-determinism-compare` | differs control, mutation-determinism-compare | pending |
+| 17-T1 | 17 | 17 | FIX-02 | `--stage fixture-negatives`, `conformance-run fixtures --only plain-256k` | fix-missing-field, fix-unlisted | pending |
+| 17-T2 | 17 | 17 | FIX-02 | `--stage fixtures`, `--stage fixture-negatives`, two `--selftest` mutations | hash-mismatch, stale-entry, two mutations | pending |
+| 18-T1 | 18 | 18 | FIX-04 | `--stage inventory`, `--stage inventory-negatives` | removed-required | pending |
+| 18-T2 | 18 | 18 | FIX-04 | `--stage inventory`, `--selftest mutation-inventory-required-missing` | pin-backlink and five more | pending |
+| 18-T3 | 18 | 18 | FIX-04, RUN-02, FIX-05 | `--stage named-controls` | seven NAMED_CONTROL lines, field-wise EXPECT probe | pending |
+| 19-T1 | 19 | 19 | CI-01 | `--stage workflow`, `--stage workflow-negatives`, actionlint (one-off) | pull-request-target | pending |
+| 19-T2 | 19 | 19 | CI-01 | `--stage workflow`, actionlint (one-off) | static rules still accept the extended workflow | pending |
+| 20-T1 | 20 | 20 | CI-01 | `--stage workflow-negatives` | untrusted-expr | pending |
+| 20-T2 | 20 | 20 | CI-01 | `--stage workflow-negatives`, `--selftest mutation-workflow-pin` | ten bad-workflow variants, mutation-workflow-pin | pending |
+| 20-T3 | 20 | 20 | CI-01 | `--stage ci-timings-controls` | malformed TSV exit 2 | pending |
+| 21-T1 | 21 | 21 | TOOL-02 | `--stage docs-claims`, `--stage docs-claims-negatives`, `--selftest mutation-docs-stale` | five docs controls, mutation-docs-stale | pending |
+| 21-T2 | 21 | 21 | TOOL-02, CI-01 | phase-end: full gate, `--selftest`, dash, `sh scripts/audit-history`, `sh scripts/linux-repro` | container run labelled one-off (first real gcc, mawk, gawk evidence on this Mac) | pending |
+| 21-T3 | 21 | 21 | TOOL-02 | grep of docs/ci-timings.md and this file | not applicable | pending |
+| 22-T1 | 22 | 22 | CI-01 | owner decision (blocking-human checkpoint, one-way) | not applicable | pending |
+| 22-T2 | 22 | 22 | CI-01 | recorded outcome in docs/ci-timings.md | no remote write unless authorised | pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
