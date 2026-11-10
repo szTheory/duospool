@@ -2,9 +2,18 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
-# conformance-run - the sh harness that drives the conformance runner (D-57, D-77). The only mode so far is supervise; later
-# plans add modes, and an unknown mode exits 2 with the usage line so that they can do so without changing this contract.
-# usage: conformance-run supervise --ids FILE --out FILE [--wall N] -- CMD ARGS...
+# conformance-run - the sh harness that drives the conformance runner (D-57, D-77). Modes: supervise (the watchdog and the
+# cancelled producer) and run (the whole conformance step). Later plans add modes, and an unknown mode exits 2 with the usage
+# line so that they can do so without changing this contract.
+# usage: conformance-run run [--preset NAME]
+#        conformance-run supervise --ids FILE --out FILE [--wall N] -- CMD ARGS...
+# run mode (D-60, D-85): everything lives under build/NAME (default gate, the build directory of the preset NAME). The steps are
+#   flatten tests/conformance/cases into cases.tsv (the only parser of hand-edited data, D-51), derive ids.txt from it, configure
+#   and build the preset incrementally (so a stale binary is never judged), run ds_runner under the supervise mode below with
+#   its stdout in results.txt, judge results.txt with conformance-ingest against tests/conformance/REQUIRED and the case
+#   inventory, and print the RESULT lines then  STATUS conformance ok n=COUNT . Violations are printed instead of the STATUS line.
+#   exit 0 judged green | 1 judged red, a malformed case file or a failed build | 2 harness error (also wall expiry)
+# supervise mode:
 #   --ids FILE  one case id per line (# comments and blank lines ignored): the ids that must have a RESULT line
 #   --out FILE  CMD's stdout is written here (truncated first); this is the file that conformance-ingest judges
 #   --wall N    wall-clock watchdog in whole seconds, default 300 (D-57: the watchdog lives in this harness, not in the runner)
@@ -20,13 +29,79 @@
 set -eu
 LC_ALL=C; export LC_ALL
 
+here=$(cd "$(dirname "$0")" && pwd)
+
 usage() {
-  echo "usage: conformance-run supervise --ids FILE --out FILE [--wall N] -- CMD ARGS..." >&2
+  echo "usage: conformance-run run [--preset NAME] | supervise --ids FILE --out FILE [--wall N] -- CMD ARGS..." >&2
   exit 2
+}
+
+# run_mode [--preset NAME]: the whole conformance step for one preset. Every file it produces is first removed, so that a step
+# that fails can never leave an earlier good file to be judged.
+run_mode() {
+  preset=gate
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --preset) [ $# -ge 2 ] || usage; preset=$2; shift 2 ;;
+      *) usage ;;
+    esac
+  done
+  case $preset in
+    '' | *[!A-Za-z0-9_-]*) usage ;;
+  esac
+  cd "$here/.."
+  root=$(pwd)
+  bd=build/$preset
+  mkdir -p "$bd" || { echo "HARNESS_ERROR cannot create $bd" >&2; exit 2; }
+  rm -rf "$bd/cases.tsv" "$bd/ids.txt" "$bd/results.txt" "$bd/evidence"
+
+  if sh "$here/conformance-flatten" tests/conformance/cases > "$bd/cases.tsv" 2> "$bd/flatten.err"; then r=0; else r=$?; fi
+  if [ "$r" -ne 0 ]; then
+    cat "$bd/flatten.err"
+    rm -f "$bd/cases.tsv"
+    [ "$r" -eq 1 ] || r=2
+    exit "$r"
+  fi
+  awk -F'\t' '$1 == "K" { print $2 }' "$bd/cases.tsv" | sort -u > "$bd/ids.txt"
+  if [ ! -s "$bd/ids.txt" ]; then
+    echo "HARNESS_NO_CASES the flattened inventory holds no case" >&2
+    exit 2
+  fi
+
+  if cmake --preset "$preset" > "$bd/build.log" 2>&1 && cmake --build --preset "$preset" >> "$bd/build.log" 2>&1; then :; else
+    cat "$bd/build.log"
+    echo "BUILD_FAILED preset $preset"
+    exit 1
+  fi
+  if [ ! -x "$bd/ds_runner" ]; then
+    echo "HARNESS_ERROR $bd/ds_runner is missing after a clean build" >&2
+    exit 2
+  fi
+
+  mkdir -p "$bd/evidence" || { echo "HARNESS_ERROR cannot create $bd/evidence" >&2; exit 2; }
+  if sh "$here/conformance-run" supervise --ids "$bd/ids.txt" --out "$bd/results.txt" -- "$bd/ds_runner" --cases "$bd/cases.tsv" --evidence-dir "$bd/evidence"; then sup=0; else sup=$?; fi
+  if [ "$sup" -eq 2 ]; then
+    exit 2
+  fi
+
+  grep -E '^(RESULT|RUNNER_DONE) ' "$bd/results.txt" || true
+  if sh "$here/conformance-ingest" --root "$root" --results "$bd/results.txt" --required tests/conformance/REQUIRED --inventory tests/conformance/cases > "$bd/ingest.out" 2>&1; then ing=0; else ing=$?; fi
+  if [ "$ing" -ne 0 ]; then
+    cat "$bd/ingest.out"
+    exit "$ing"
+  fi
+  if [ "$sup" -ne 0 ]; then
+    echo "CONFORMANCE_RUNNER_STATUS $sup"
+    exit 1
+  fi
+  n=$(grep -c '^RESULT ' "$bd/results.txt" || true)
+  echo "STATUS conformance ok n=$n"
+  exit 0
 }
 
 [ $# -ge 1 ] || usage
 case $1 in
+  run) shift; run_mode "$@" ;;
   supervise) shift ;;
   *) usage ;;
 esac

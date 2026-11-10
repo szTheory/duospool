@@ -651,6 +651,13 @@ stage_build() {
   return 0
 }
 
+# conformance (D-57, D-60): the whole run mode of conformance-run: flatten the case inventory, build the gate preset incrementally,
+# run every case in one supervised runner process and judge the RESULT lines with conformance-ingest. The build is part of the
+# step, so a stale binary is never judged. The runner decides nothing; the verdict is the ingest's.
+stage_conformance() {
+  checker sh "$here/conformance-run" run
+}
+
 # ---- self-test: prove the gate is alive (not vacuous). Mutates a COPY of scripts/ only ----
 
 # st_want NAME: true when no mutation was selected (run them all) or NAME is the selected one
@@ -984,6 +991,7 @@ run_stage rights-tree stage_rights_tree
 run_stage rights-negatives stage_rights_negatives
 run_stage audit-synthetic stage_audit_synthetic
 run_stage build stage_build
+run_stage conformance stage_conformance
 
 if [ -n "$only_stage" ]; then
   # one stage: its own CHECK line is the whole output; the exit status is that stage's verdict

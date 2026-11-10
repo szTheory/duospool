@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The conformance cases the gate requires: one id per line, in the style of ledger/REQUIRED. A listed id with no RESULT line is
+# missing_artifact (scripts/conformance-ingest). Add an id here in the same change that adds its case file.
+ref_profile_unknown
+accept_tracer_256k

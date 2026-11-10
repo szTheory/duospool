@@ -24,5 +24,5 @@ file(GLOB DS_CORE_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/core
 add_library(ds_core STATIC ${DS_CORE_SOURCES})
 target_include_directories(ds_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src/core)
 
-add_executable(ds_runner tests/conformance/runner.c)
+add_executable(ds_runner tests/conformance/runner.c tests/conformance/synth.c)
 target_link_libraries(ds_runner PRIVATE ds_core)
