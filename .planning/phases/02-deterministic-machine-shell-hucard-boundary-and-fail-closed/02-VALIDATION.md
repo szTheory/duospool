@@ -2,8 +2,8 @@
 phase: "02"
 slug: "deterministic-machine-shell-hucard-boundary-and-fail-closed"
 status: draft
-nyquist_compliant: false
-wave_0_complete: false
+nyquist_compliant: true
+wave_0_complete: true
 created: "2026-11-09"
 ---
 
@@ -112,18 +112,18 @@ Per-task commands run at stage granularity (D-81); full-gate, `--selftest`, equi
 
 ## Wave 0 Requirements
 
-- [ ] `scripts/check` `run_controls` refactor plus golden transcripts (behaviour-preserving, proved by `--selftest` and transcript equality) — first plan
-- [ ] `tests/conformance/outcomes.def` plus shared extractor, the `outcome-sync` checker with `outcome-controls` (plan 03) and the `outcome-sync` stage after `build` (plan 06, D-85)
-- [ ] `scripts/conformance-flatten` with its own negative controls
-- [ ] `scripts/conformance-ingest` with fabricated-results controls
-- [ ] `CMakeLists.txt`, `CMakePresets.json` (gate, gate-gcc, gate-clang, sanitizer), runner skeleton (`--list`, `--emit`, RESULT lines, `RUNNER_DONE`)
-- [ ] `src/core/profile_fields.def`, `ds_profile`, initial `ds_boot` returning typed refusals
-- [ ] Preflight stage (cmake, ninja, cc, shasum or sha256sum, perl, iconv, nm: missing is `harness_failure`)
-- [ ] `tests/lib/gitfix.sh` (from `tests/audit/synthetic.sh`)
-- [ ] `tests/controls/{shared-state,wrong-mirror,heuristic-reverse,drop-region}/{RULE,EXPECT}` rule files and `scripts/control-mutate` (toys are generated into `build/` from the live source at control time; no committed full-copy snapshots, D-85)
-- [ ] Independent awk oracle for mirror signatures and the `--emit` hash compare
-- [ ] Ledger entries LED-LOAD-0003/0004/0005 and a PROF power-on entry; pins move from `PENDING:2` to `TEST:<id>` only after the cases exist
-- [ ] `.gitattributes`; SPDX headers on every new file (extend `licence-check` to `src/` and `tests/`, D-71)
+- [x] `scripts/check` `run_controls` refactor plus golden transcripts (behaviour-preserving, proved by `--selftest` and transcript equality) — first plan
+- [x] `tests/conformance/outcomes.def` plus shared extractor, the `outcome-sync` checker with `outcome-controls` (plan 03) and the `outcome-sync` stage after `build` (plan 06, D-85)
+- [x] `scripts/conformance-flatten` with its own negative controls
+- [x] `scripts/conformance-ingest` with fabricated-results controls
+- [x] `CMakeLists.txt`, `CMakePresets.json` (gate, gate-gcc, gate-clang, sanitizer), runner skeleton (`--list`, `--emit`, RESULT lines, `RUNNER_DONE`)
+- [x] `src/core/profile_fields.def`, `ds_profile`, initial `ds_boot` returning typed refusals
+- [x] Preflight stage (cmake, ninja, cc, shasum or sha256sum, perl, iconv, nm: missing is `harness_failure`)
+- [x] `tests/lib/gitfix.sh` (from `tests/audit/synthetic.sh`)
+- [x] `tests/controls/{shared-state,wrong-mirror,heuristic-reverse,drop-region}/{RULE,EXPECT}` rule files and `scripts/control-mutate` (toys are generated into `build/` from the live source at control time; no committed full-copy snapshots, D-85)
+- [x] Independent awk oracle for mirror signatures and the `--emit` hash compare
+- [x] Ledger entries LED-LOAD-0003/0004/0005 and a PROF power-on entry; pins move from `PENDING:2` to `TEST:<id>` only after the cases exist
+- [x] `.gitattributes`; SPDX headers on every new file (extend `licence-check` to `src/` and `tests/`, D-71)
 
 ---
 
@@ -139,11 +139,11 @@ Everything else has automated verification. Authority gates (push, branch rulese
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 60s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies (the one exception is the owner authority gate 22-T1, listed under Manual-Only)
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 60s (a warm `sh scripts/check` took 45 s on a quiet machine at plan 02-21; 69 to 112 s when the shared machine was loaded, see docs/ci-timings.md; `--stage NAME` gives sub-10-second feedback)
+- [x] `nyquist_compliant: true` set in frontmatter (plan 02-21, after the full suite, `--selftest`, `dash`, and the container run were green; the full-history audit keeps its two known, owner-decision hits)
 
 **Approval:** pending
