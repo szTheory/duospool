@@ -3,10 +3,13 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
 # check - the Phase 1 gate entry point (D-30). Phase 2 extends this script; it does not add a second one.
-# usage: sh scripts/check [--selftest [NAME] | --stage NAME]
+# usage: sh scripts/check [--selftest [NAME] | --stage NAME] [--timing]
 #   --selftest mutates a temp copy of scripts/ and proves that a removed rule or a dead stage 1 turns the gate red;
 #              with NAME it runs only the mutation printed as SELFTEST NAME (an unknown NAME exits 2)
 #   --stage NAME runs only the stage NAME (an unknown NAME exits 2) and exits with that stage's verdict
+#   --timing     prints TIMING <stage> <seconds> after each CHECK line, and TIMING_WARN <stage> for a stage over 20 s (D-60, D-63);
+#                combinable with --stage, off by default. Time is a record and a warning, never a failure.
+#   every run (not --selftest) truncates and writes build/gate/results.tsv: stage, verdict, seconds, one TAB-separated line each
 # stdout: one line per stage  CHECK <stage> PASS|FAIL|ERROR , then  CHECK RESULT PASS|FAIL
 # exit  : 0 all stages pass | 1 a stage failed (violation or broken control) | 2 harness error in a stage
 set -eu
@@ -172,6 +175,27 @@ run_controls() {
 }
 
 # ---- stages: each is a function that prints details and returns 0 pass, 1 fail, 2 harness error ----
+
+# preflight (D-60): the tools the gate needs are present. A missing tool is a harness error (exit 2 from preflight, ERROR
+# here), never a skipped stage. Then two controls against the checker itself: an impossible tool name must be refused with
+# exit 2 and a PREFLIGHT_MISSING line naming it (T-02-06), and an a|b entry must be satisfied by its second alternative.
+stage_preflight() {
+  checker sh "$here/preflight" || return $?
+  pf_rc=0
+  if sh "$here/preflight" --tools no-such-tool-xyz > "$tmp/pf.out" 2>&1; then r=0; else r=$?; fi
+  if [ "$r" -ne 2 ] || ! grep -qx 'PREFLIGHT_MISSING no-such-tool-xyz' "$tmp/pf.out" || grep -q '^STATUS preflight ok$' "$tmp/pf.out"; then
+    echo "CONTROL BROKEN preflight-missing-tool (exit $r, wanted 2 with PREFLIGHT_MISSING no-such-tool-xyz)"
+    sed 's/^/  /' "$tmp/pf.out"
+    pf_rc=1
+  fi
+  if sh "$here/preflight" --tools 'no-such-tool-xyz|sh' > "$tmp/pf.out" 2>&1; then r=0; else r=$?; fi
+  if [ "$r" -ne 0 ] || ! grep -qx 'PREFLIGHT_OK sh' "$tmp/pf.out"; then
+    echo "CONTROL BROKEN preflight-alternative (exit $r, wanted 0 with PREFLIGHT_OK sh)"
+    sed 's/^/  /' "$tmp/pf.out"
+    pf_rc=1
+  fi
+  return "$pf_rc"
+}
 
 stage_ledger_entries() {
   checker sh "$here/ledger-check" --required ledger/REQUIRED ledger/entries/
@@ -761,29 +785,46 @@ run_stage() {
     return 0
   fi
   stage_ran=1
+  t0=$(date +%s)
   if "$fn" > "$tmp/out" 2>&1; then rc=0; else rc=$?; fi
+  secs=$(( $(date +%s) - t0 ))
   case $rc in
     0) verdict=PASS ;;
     1) verdict=FAIL; fails=$((fails + 1)) ;;
     *) verdict=ERROR; errs=$((errs + 1)) ;;
   esac
   echo "CHECK $name $verdict"
+  printf '%s\t%s\t%s\n' "$name" "$verdict" "$secs" >> "$results_tsv"
+  if [ "$timing" -eq 1 ]; then
+    echo "TIMING $name $secs"
+    if [ "$secs" -gt 20 ]; then echo "TIMING_WARN $name"; fi
+  fi
   if [ "$rc" -ne 0 ]; then
     sed 's/^/    /' "$tmp/out"
   fi
 }
 
 usage() {
-  echo "usage: sh scripts/check [--selftest [NAME] | --stage NAME]" >&2
+  echo "usage: sh scripts/check [--selftest [NAME] | --stage NAME] [--timing]" >&2
   exit 2
 }
 
 only_stage=""
 stage_ran=0
 st_sel=""
+# --timing may stand anywhere: take it out of the argument list, keeping the order of the rest
+timing=0
+n_args=$#
+while [ "$n_args" -gt 0 ]; do
+  a=$1
+  shift
+  n_args=$((n_args - 1))
+  if [ "$a" = "--timing" ]; then timing=1; else set -- "$@" "$a"; fi
+done
 if [ $# -gt 0 ]; then
   case $1 in
     --selftest)
+      [ "$timing" -eq 0 ] || usage
       [ $# -le 2 ] || usage
       st_sel=${2-}
       if [ $# -eq 2 ] && [ -z "$st_sel" ]; then usage; fi
@@ -797,6 +838,12 @@ if [ $# -gt 0 ]; then
   esac
 fi
 
+# every run records its stages (build/ is gitignored): truncated here, one line per stage that runs
+results_tsv="$root/build/gate/results.tsv"
+mkdir -p "$root/build/gate" || { echo "HARNESS_ERROR cannot create build/gate" >&2; exit 2; }
+: > "$results_tsv"
+
+run_stage preflight stage_preflight
 run_stage ledger-entries stage_ledger_entries
 run_stage ledger-negatives stage_ledger_negatives
 run_stage ledger-samples stage_ledger_samples

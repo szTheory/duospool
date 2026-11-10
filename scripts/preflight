@@ -1,0 +1,63 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# preflight - tool presence check, the first stage of the gate (D-60). A missing build tool is a harness error, never a skip:
+# a stage that silently did not run would read as a pass.
+# usage: preflight [--tools LIST]
+#   --tools LIST  space-separated tool names; a|b means either one satisfies the entry (the first one found is reported)
+#   default: cmake ninja cc nm perl iconv awk git sha256sum|shasum
+# stdout: PREFLIGHT_OK TOOL per entry found, PREFLIGHT_MISSING ENTRY per entry not found, and on success the marker line
+#         STATUS preflight ok
+# exit  : 0 every entry found | 2 an entry is missing, or a usage error (there is no exit 1: nothing here is a violation of a rule)
+set -eu
+LC_ALL=C; export LC_ALL
+
+usage() {
+  echo "usage: preflight [--tools LIST]" >&2
+  exit 2
+}
+
+tools="cmake ninja cc nm perl iconv awk git sha256sum|shasum"
+while [ $# -gt 0 ]; do
+  case $1 in
+    --tools) [ $# -ge 2 ] || usage; tools=$2; shift 2 ;;
+    *) usage ;;
+  esac
+done
+
+# the list is split on blanks only: no globbing, and | stays part of a word
+set -f
+missing=0
+n=0
+for entry in $tools; do
+  n=$((n + 1))
+  found=""
+  rest=$entry
+  while [ -n "$rest" ]; do
+    case $rest in
+      *'|'*) alt=${rest%%'|'*}; rest=${rest#*'|'} ;;
+      *) alt=$rest; rest="" ;;
+    esac
+    if [ -n "$alt" ] && command -v "$alt" > /dev/null 2>&1; then
+      found=$alt
+      break
+    fi
+  done
+  if [ -n "$found" ]; then
+    echo "PREFLIGHT_OK $found"
+  else
+    echo "PREFLIGHT_MISSING $entry"
+    missing=$((missing + 1))
+  fi
+done
+
+if [ "$n" -eq 0 ]; then
+  echo "PREFLIGHT_MISSING <empty tool list>"
+  exit 2
+fi
+if [ "$missing" -gt 0 ]; then
+  exit 2
+fi
+echo "STATUS preflight ok"
+exit 0
