@@ -750,6 +750,30 @@ stage_core_boundary_negatives() {
   run_controls --ok-prefix --require-negative tests/gate/core-boundary tests/gate/core-boundary sh "$here/core-boundary-check" --root @DIR@ @EXPECT@
 }
 
+# determinism (D-55, D-86): the fresh-process half of CORE-01. scripts/determinism-run run reads the runner, cases.tsv, r1.tsv and oracle.tsv that the
+# build and conformance stages made earlier in this same gate run (it never builds), runs the runner in two processes, the second under env -i with a
+# different TZ, working directory and TMPDIR and with allocator scribbling, and compares every record file byte for byte after record-lint. E0:
+# repeatability only. Registered after core-boundary, and therefore after build and conformance.
+stage_determinism() {
+  checker sh "$here/determinism-run" run
+}
+
+# determinism-negatives (D-55): tests/gate/determinism/<case>/ holds a.toml and b.toml; ok-<case> must compare equal, a case with an EXPECT must fail with
+# exactly that code. DET_MISSING_FILE is a harness error (exit 2), which run_controls would report as HARNESS_ERROR, so it is asserted directly here:
+# a path that does not exist must give exit 2 and the code, never a pass.
+stage_determinism_negatives() {
+  dn_rc=0
+  run_controls --ok-prefix --require-negative --need HARNESS_NO_FILE @DIR@a.toml --need HARNESS_NO_FILE @DIR@b.toml tests/gate/determinism tests/gate/determinism sh "$here/determinism-run" compare @EXPECT@ @DIR@a.toml @DIR@b.toml || dn_rc=$?
+  dn_ok=tests/gate/determinism/ok-same
+  if sh "$here/determinism-run" compare "$dn_ok/a.toml" "$dn_ok/absent.toml" > "$tmp/dn.out" 2>&1; then dn_r=0; else dn_r=$?; fi
+  if [ "$dn_r" -ne 2 ] || ! grep -q '^DET_MISSING_FILE ' "$tmp/dn.out"; then
+    echo "CONTROL BROKEN missing-file (exit $dn_r, wanted 2 with DET_MISSING_FILE)"
+    sed 's/^/  /' "$tmp/dn.out"
+    [ "$dn_rc" -eq 2 ] || dn_rc=1
+  fi
+  return "$dn_rc"
+}
+
 # ---- self-test: prove the gate is alive (not vacuous). Mutates a COPY of scripts/ only ----
 
 # st_want NAME: true when no mutation was selected (run them all) or NAME is the selected one
@@ -1209,6 +1233,31 @@ selftest() {
     fi
   fi
 
+  # (q) the byte comparison of determinism-run is what makes the differs control fail (T-02-33). The rule line carries a comment token that is
+  # assembled here, so that this script never carries it. On an unmutated copy the differs control is met (EXPECT_OK); with the one token line deleted
+  # from the copy, the same run must exit 1: a comparison that cannot report a difference leaves the control broken.
+  if st_want mutation-determinism-compare; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    tok=rule-
+    tok="${tok}cmp"
+    dr="tests/gate/determinism/differs"
+    if sh "$cp_dir/determinism-run" compare --expect DET_RECORD_DIFF "$dr/a.toml" "$dr/b.toml" > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c "$tok" "$cp_dir/determinism-run" || true)
+    grep -v "$tok" "$cp_dir/determinism-run" > "$cp_dir/determinism-run.mutated" || true
+    mv "$cp_dir/determinism-run.mutated" "$cp_dir/determinism-run"
+    after=$(grep -c "$tok" "$cp_dir/determinism-run" || true)
+    if sh "$cp_dir/determinism-run" compare --expect DET_RECORD_DIFF "$dr/a.toml" "$dr/b.toml" > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+      echo "SELFTEST mutation-determinism-compare PASS"
+    else
+      echo "SELFTEST mutation-determinism-compare FAIL"; failed=1
+    fi
+  fi
+
   # a selected NAME that matched no mutation is a usage error, never a vacuous pass
   if [ -n "$st_sel" ] && [ "$st_ran" -eq 0 ]; then usage; fi
   if [ "$failed" -eq 0 ]; then echo "SELFTEST RESULT PASS"; return 0; fi
@@ -1320,6 +1369,8 @@ run_stage record-lint stage_record_lint
 run_stage record-lint-negatives stage_record_lint_negatives
 run_stage core-boundary stage_core_boundary
 run_stage core-boundary-negatives stage_core_boundary_negatives
+run_stage determinism stage_determinism
+run_stage determinism-negatives stage_determinism_negatives
 
 if [ -n "$only_stage" ]; then
   # one stage: its own CHECK line is the whole output; the exit status is that stage's verdict
