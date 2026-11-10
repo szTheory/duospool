@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# canned.tsv - a synthetic run in the record shape of scripts/ci-timings (not a real CI run: the dates, ids and times are invented).
+# It crosses midnight and a leap day (2028-02-29 to 2028-03-01) so the day arithmetic is exercised; the run waited 12 s, job gate ran 145 s,
+# job extra ran 54 s, and the run wall time (latest job end minus run start) is 148 s.
+run	1234567890	2028-02-29T23:59:50Z	2028-03-01T00:00:02Z	success
+job	gate	2028-03-01T00:00:05Z	2028-03-01T00:02:30Z
+job	extra	2028-03-01T00:00:06Z	2028-03-01T00:01:00Z

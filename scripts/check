@@ -880,6 +880,82 @@ stage_workflow_negatives() {
   return "$wn_rc"
 }
 
+# ci-timings-controls (CI-01, D-63, D-64): scripts/ci-timings judged offline against a canned run. Nothing here touches a network: the --tsv mode is run with
+# a stub gh first on PATH that records any call (it must record none), and the RUN_ID mode is run against the same stub, which prints the canned record
+# instead of contacting GitHub, so the exact gh arguments (read-only: run view ID --json ... --jq ...) are asserted too. The row must be the one line of
+# EXPECT, a malformed record and a non-numeric run id must exit 2 and print no row, and the repository tree must be unchanged afterwards.
+# One line per control, CI_TIMINGS_CONTROL NAME OK, or CI_TIMINGS_CONTROL_BROKEN NAME (any broken control fails the stage, exit 1).
+stage_ci_timings_controls() {
+  ct_rc=0
+  ct_dir=tests/gate/ci-timings
+  for ct_f in canned.tsv malformed.tsv EXPECT; do
+    if [ ! -f "$ct_dir/$ct_f" ]; then
+      echo "HARNESS_NO_FILE $ct_dir/$ct_f"
+      ct_rc=2
+    fi
+  done
+  [ "$ct_rc" -eq 0 ] || return 2
+  ct_before=$(git status --porcelain 2> /dev/null || true)
+  ct_bin="$tmp/ct-bin"
+  mkdir -p "$ct_bin"
+  printf '%s\n' '#!/bin/sh' 'printf "%s\n" "$@" > "$CT_ARGV"' 'cat "$CT_CANNED"' > "$ct_bin/gh"
+  chmod +x "$ct_bin/gh"
+  CT_ARGV="$tmp/ct-argv"
+  CT_CANNED="$root/$ct_dir/canned.tsv"
+  export CT_ARGV CT_CANNED
+  rm -f "$CT_ARGV"
+
+  # (1) the canned file gives exactly the stored row, and gh is never run in this mode
+  if PATH="$ct_bin:$PATH" sh "$here/ci-timings" --tsv "$ct_dir/canned.tsv" > "$tmp/ct1" 2>&1; then ct_r=0; else ct_r=$?; fi
+  if [ "$ct_r" -eq 0 ] && [ "$(wc -l < "$tmp/ct1" | tr -d ' ')" = 1 ] && grep -Fxq -f "$ct_dir/EXPECT" "$tmp/ct1" && [ ! -e "$CT_ARGV" ]; then
+    echo "CI_TIMINGS_CONTROL canned-row OK"
+  else
+    echo "CI_TIMINGS_CONTROL_BROKEN canned-row (exit $ct_r, gh called: $([ -e "$CT_ARGV" ] && echo yes || echo no))"
+    ct_rc=1
+  fi
+
+  # (2) a malformed record exits 2 and prints no row
+  if sh "$here/ci-timings" --tsv "$ct_dir/malformed.tsv" > "$tmp/ct2" 2>&1; then ct_r=0; else ct_r=$?; fi
+  if [ "$ct_r" -eq 2 ] && ! grep -q '^| ' "$tmp/ct2"; then
+    echo "CI_TIMINGS_CONTROL malformed-exit-2 OK"
+  else
+    echo "CI_TIMINGS_CONTROL_BROKEN malformed-exit-2 (exit $ct_r, wanted 2 and no row)"
+    ct_rc=1
+  fi
+
+  # (3) the RUN_ID mode against the stub gh: the same row, and the call is  gh run view ID --json ... --jq ...  (a read, never a write)
+  rm -f "$CT_ARGV"
+  if PATH="$ct_bin:$PATH" sh "$here/ci-timings" 1234567890 > "$tmp/ct3" 2>&1; then ct_r=0; else ct_r=$?; fi
+  if [ "$ct_r" -eq 0 ] && grep -Fxq -f "$ct_dir/EXPECT" "$tmp/ct3" && [ -f "$CT_ARGV" ] \
+    && [ "$(sed -n 1p "$CT_ARGV")" = run ] && [ "$(sed -n 2p "$CT_ARGV")" = view ] && [ "$(sed -n 3p "$CT_ARGV")" = 1234567890 ] \
+    && grep -Fxq -e --json "$CT_ARGV" && grep -Fxq -e --jq "$CT_ARGV"; then
+    echo "CI_TIMINGS_CONTROL run-id-call OK"
+  else
+    echo "CI_TIMINGS_CONTROL_BROKEN run-id-call (exit $ct_r)"
+    ct_rc=1
+  fi
+
+  # (4) a run id that is not digits is refused before gh is looked up
+  rm -f "$CT_ARGV"
+  if PATH="$ct_bin:$PATH" sh "$here/ci-timings" '12x;echo' > "$tmp/ct4" 2>&1; then ct_r=0; else ct_r=$?; fi
+  if [ "$ct_r" -eq 2 ] && [ ! -e "$CT_ARGV" ]; then
+    echo "CI_TIMINGS_CONTROL bad-run-id OK"
+  else
+    echo "CI_TIMINGS_CONTROL_BROKEN bad-run-id (exit $ct_r)"
+    ct_rc=1
+  fi
+
+  # (5) the repository tree is unchanged by all of it
+  ct_after=$(git status --porcelain 2> /dev/null || true)
+  if [ "$ct_before" = "$ct_after" ]; then
+    echo "CI_TIMINGS_CONTROL tree-unchanged OK"
+  else
+    echo "CI_TIMINGS_CONTROL_BROKEN tree-unchanged (scripts/ci-timings wrote into the repository)"
+    ct_rc=1
+  fi
+  return "$ct_rc"
+}
+
 # named-controls (FIX-04, RUN-02, FIX-05; D-58, D-77, D-80, D-85): the five named negative controls of the success criterion and the producers of the two
 # outcomes that only a live run can show, each judged by the real checker or by the live runner, never by a re-implementation here. Registered after
 # the build and conformance stages: the live controls run the ds_runner that conformance-run builds incrementally itself, and the stage reads no
@@ -1707,6 +1783,7 @@ run_stage inventory stage_inventory
 run_stage inventory-negatives stage_inventory_negatives
 run_stage workflow stage_workflow
 run_stage workflow-negatives stage_workflow_negatives
+run_stage ci-timings-controls stage_ci_timings_controls
 run_stage build stage_build
 run_stage outcome-sync stage_outcome_sync
 run_stage conformance stage_conformance
