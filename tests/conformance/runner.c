@@ -35,20 +35,6 @@
 #include "runner.h"
 #include "synth.h"
 
-/*
- * The allocation counter of the gate presets (D-42, D-46): tests/conformance/allocshim.c counts the allocator calls made by the
- * objects linked into this executable. A build without the shim (DS_ALLOC_SHIM 0, the sanitize preset) has a counter that never
- * moves, so the two alloc_zero cases fail there as guest_failure and scripts/conformance-run excludes them from that mode only.
- */
-#if DS_ALLOC_SHIM
-unsigned long ds_shim_calls(void);
-#else
-static unsigned long ds_shim_calls(void)
-{
-    return 0ul;
-}
-#endif
-
 enum outcome {
 #define DS_OUTCOME(n) OUT_##n,
 #include "outcomes.def"
@@ -491,6 +477,41 @@ static void run_boot(const char *fixture, const struct spec *s, const struct exp
 }
 
 
+/*
+ * For kind alloc_zero (allockinds.c): the cases, and the allocator calls made inside ds_boot when the request of a refuse row is
+ * booted again with fresh test-allocated memory. On a row that cannot be booted c gets a harness error and *allocs is left alone.
+ */
+void boot_row(const struct kase *r, struct ctx *c, unsigned long *allocs)
+{
+    struct spec s;
+    struct expect e;
+    struct ctx sub;
+    char got[64];
+    const char *err;
+    size_t natural;
+
+    if (r->bad != NULL || !r->has[K_FIXTURE] || !r->has[K_REQUEST] || !r->has[K_EXPECT]) {
+        harness_error(c, "a refuse row is malformed");
+        return;
+    }
+    natural = synth_size(r->val[K_FIXTURE]);
+    err = natural == 0u ? "unknown fixture recipe" : parse_spec(&s, r->val[K_REQUEST], natural);
+    if (err == NULL) {
+        err = parse_expect(&e, r->val[K_EXPECT]);
+    }
+    if (err != NULL) {
+        harness_error(c, err);
+        return;
+    }
+    memset(&sub, 0, sizeof sub);
+    run_boot(r->val[K_FIXTURE], &s, &e, &sub, got, sizeof got);
+    if (sub.harness) {
+        harness_error(c, sub.why);
+        return;
+    }
+    *allocs = boot_allocs;
+}
+
 /* write the evidence file: ids, reason names, sizes and assertion counts only, never content bytes */
 static int write_evidence(const char *path, const char *id, const char *kind, const char *expect, const char *got, unsigned n)
 {
@@ -519,6 +540,16 @@ static const struct {
 
 static struct kase cases[MAX_CASES];
 static size_t ncases;
+
+size_t case_count(void)
+{
+    return ncases;
+}
+
+const struct kase *case_get(size_t i)
+{
+    return &cases[i];
+}
 
 /* read a whole file into a NUL-terminated heap buffer; NULL on any failure */
 char *read_file(const char *path)
@@ -1470,92 +1501,6 @@ static void kind_unmapped(const struct kase *k, struct ctx *c, char *got, size_t
         release_boot(&b);
     }
     snprintf(got, gotcap, "sizes=3");
-}
-
-/*
- * kind alloc_zero (D-42, D-46): the allocation witness of the gate presets. The request names the form:
- *   selfcheck  the test calls the allocator once and the counter must read exactly 1, so a dead shim cannot pass
- *   matrix     every refuse-kind row of the cases TSV is booted again with fresh test-allocated memory and the counter is read around
- *              ds_boot: it must read 0. One assertion per row, so the assertion count is the number of rows run; the shim must be
- *              live first (the probe below is not an assertion; a dead shim is one failed assertion and no row runs)
- * The allocator is called through a volatile pointer so that the compiler cannot drop the probe pair.
- */
-static void *(*volatile alloc_probe)(size_t) = malloc;
-
-static int shim_alive(void)
-{
-    unsigned long before = ds_shim_calls();
-    void *p = alloc_probe(16u);
-    unsigned long after = ds_shim_calls();
-
-    free(p);
-    return after - before == 1ul;
-}
-
-static void kind_alloc_zero(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
-{
-    const char *form = k->val[K_REQUEST];
-
-    if (strcmp(form, "selfcheck") == 0) {
-        unsigned long before = ds_shim_calls();
-        void *p = alloc_probe(16u);
-        unsigned long moved = ds_shim_calls() - before;
-
-        free(p);
-        snprintf(got, gotcap, "calls=%lu", moved);
-        check(c, moved == 1ul, "one allocator call from the test did not move the counter by exactly one");
-    } else if (strcmp(form, "matrix") == 0) {
-        size_t i;
-        unsigned rows = 0u;
-
-        snprintf(got, gotcap, "rows=0");
-        if (!shim_alive()) {
-            check(c, 0, "the allocation shim is not live in this build");
-            return;
-        }
-        for (i = 0u; i < ncases; i++) {
-            const struct kase *r = &cases[i];
-            struct spec s;
-            struct expect e;
-            struct ctx sub;
-            const char *err;
-            size_t natural;
-
-            if (!r->has[K_KIND] || strcmp(r->val[K_KIND], "refuse") != 0) {
-                continue;
-            }
-            if (r->bad != NULL || !r->has[K_FIXTURE] || !r->has[K_REQUEST] || !r->has[K_EXPECT]) {
-                harness_error(c, "a refuse row is malformed");
-                return;
-            }
-            natural = synth_size(r->val[K_FIXTURE]);
-            err = natural == 0u ? "unknown fixture recipe" : parse_spec(&s, r->val[K_REQUEST], natural);
-            if (err == NULL) {
-                err = parse_expect(&e, r->val[K_EXPECT]);
-            }
-            if (err != NULL) {
-                harness_error(c, err);
-                return;
-            }
-            memset(&sub, 0, sizeof sub);
-            run_boot(r->val[K_FIXTURE], &s, &e, &sub, got, gotcap);
-            if (sub.harness) {
-                harness_error(c, sub.why);
-                return;
-            }
-            check(c, boot_allocs == 0ul, "ds_boot allocated on a refuse row");
-            if (boot_allocs != 0ul) {
-                fprintf(stderr, "alloc_zero_matrix: row %s made %lu allocator calls\n", r->stem, boot_allocs);
-            }
-            rows++;
-        }
-        snprintf(got, gotcap, "rows=%u", rows);
-        if (rows == 0u) {
-            check(c, 0, "the cases hold no refuse row");
-        }
-    } else {
-        harness_error(c, "alloc_zero request is neither selfcheck nor matrix");
-    }
 }
 
 static const struct {

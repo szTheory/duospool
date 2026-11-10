@@ -67,6 +67,15 @@ const char *parse_spec(struct spec *s, const char *text, size_t default_len);
 extern const char *profile_tsv_path;
 extern const char *rules_fields_path;
 
+/* what the allocation kind (allockinds.c) needs from the runner: the cases and the allocator calls made inside ds_boot for a refuse row */
+size_t case_count(void);
+const struct kase *case_get(size_t i);
+void boot_row(const struct kase *r, struct ctx *c, unsigned long *allocs);
+
+/* the allocation counter (allocshim.c in the gate presets, a counter that never moves otherwise) and the kind that reads it */
+unsigned long ds_shim_calls(void);
+void kind_alloc_zero(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+
 /* the profile kinds (profkinds.c); each gets the case, the counter, and a buffer for the observed value */
 void kind_profile_equal(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_names_both_ways(const struct kase *k, struct ctx *c, char *got, size_t gotcap);

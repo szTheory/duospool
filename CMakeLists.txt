@@ -45,9 +45,21 @@ target_include_directories(ds_text PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src/text)
 target_link_libraries(ds_text PUBLIC ds_core)
 target_compile_definitions(ds_text PRIVATE "DS_BUILD_ID=\"${DS_BUILD_ID}\"")
 
-add_executable(ds_runner tests/conformance/runner.c tests/conformance/profkinds.c tests/conformance/synth.c)
+# The allocation-counting shim (D-42, D-46): linked into the runner of the gate presets (DS_ALLOC_SHIM ON) so that the alloc_zero cases
+# can count allocator calls around ds_boot. The sanitize preset turns it OFF, because the sanitizer runtime owns the allocator; the
+# runner is told by the DS_ALLOC_SHIM definition, and in that build the two alloc_zero cases fail (they are excluded from that mode
+# only, tests/conformance/EXCLUDED_IN_MODE). The core never sees the shim: it is a source of the runner and of the toy runners only.
+set(DS_ALLOC_SHIM ON CACHE BOOL "Link the allocation-counting shim into the runner")
+set(DS_SHIM_SOURCES "")
+set(DS_SHIM_DEFINITION "DS_ALLOC_SHIM=0")
+if(DS_ALLOC_SHIM)
+  set(DS_SHIM_SOURCES tests/conformance/allocshim.c)
+  set(DS_SHIM_DEFINITION "DS_ALLOC_SHIM=1")
+endif()
+
+add_executable(ds_runner tests/conformance/runner.c tests/conformance/profkinds.c tests/conformance/allockinds.c tests/conformance/synth.c ${DS_SHIM_SOURCES})
 target_link_libraries(ds_runner PRIVATE ds_text ds_core)
-target_compile_definitions(ds_runner PRIVATE DS_ALLOC_SHIM=0)
+target_compile_definitions(ds_runner PRIVATE ${DS_SHIM_DEFINITION})
 
 # Toy control libraries (D-85, D-55): one runner per tests/controls/NAME/RULE, each built from the ds_core sources with the one file
 # named by the rule's file= line replaced by a generated variant of the live file. scripts/control-mutate writes that variant to
@@ -76,11 +88,11 @@ foreach(rule IN LISTS DS_CONTROL_RULES)
   set(toy_core_sources ${DS_CORE_SOURCES})
   list(REMOVE_ITEM toy_core_sources "${live_source}")
   add_executable(ds_toy_${name} EXCLUDE_FROM_ALL
-    tests/conformance/runner.c tests/conformance/profkinds.c tests/conformance/synth.c
+    tests/conformance/runner.c tests/conformance/profkinds.c tests/conformance/allockinds.c tests/conformance/synth.c ${DS_SHIM_SOURCES}
     ${DS_TEXT_SOURCES} ${toy_core_sources} "${toy_source}")
   target_include_directories(ds_toy_${name} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/core ${CMAKE_CURRENT_SOURCE_DIR}/src/text)
-  target_compile_definitions(ds_toy_${name} PRIVATE "DS_BUILD_ID=\"${DS_BUILD_ID}\"")
+  target_compile_definitions(ds_toy_${name} PRIVATE "DS_BUILD_ID=\"${DS_BUILD_ID}\"" ${DS_SHIM_DEFINITION})
 endforeach()
 
 # Planted canaries (D-55, D-83): ds_canary has three modes, each a defect that a live sanitizer must report (a heap overflow, a signed
