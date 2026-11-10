@@ -12,8 +12,8 @@
  * DS_TEXT_ERR_STRING and emits nothing. Any error leaves buf as an empty string (buf[0] is NUL when cap is at least 1) and
  * *outlen as 0, so a failed print can never be read as a short record.
  * On success the text is NUL-terminated inside cap and *outlen is its length without the terminator.
- * This skeleton prints the tables record, core, profile, field_NAME (13), content and limits. The content sha256, the profile
- * sha256, the withheld ids, the power-on table and the machine table come with later plans.
+ * This skeleton prints the tables record, core, profile, field_NAME (13), content and limits. The content table starts with the
+ * content sha256 (64 lowercase hex characters, D-47); the profile sha256, the withheld ids, the power-on table and the machine table come with later plans.
  */
 #ifndef DS_TEXT_H
 #define DS_TEXT_H

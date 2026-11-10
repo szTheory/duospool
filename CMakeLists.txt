@@ -34,5 +34,5 @@ target_include_directories(ds_text PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src/text)
 target_link_libraries(ds_text PUBLIC ds_core)
 target_compile_definitions(ds_text PRIVATE "DS_BUILD_ID=\"${DS_BUILD_ID}\"")
 
-add_executable(ds_runner tests/conformance/runner.c tests/conformance/synth.c)
+add_executable(ds_runner tests/conformance/runner.c tests/conformance/profkinds.c tests/conformance/synth.c)
 target_link_libraries(ds_runner PRIVATE ds_text ds_core)

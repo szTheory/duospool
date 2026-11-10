@@ -5,13 +5,15 @@
  * ds_boot runs the checks of boot_order.def in order and the first refusal wins; nothing is read from the request content
  * before every check has passed (the checks look at the pointer and the length only), and a refusal writes only the result
  * struct, never caller memory. After the checks the whole instance is zeroed (so padding is deterministic), the profile is
- * recorded and the bytes are copied into the fixed ROM array: the instance never borrows the host's buffer.
+ * recorded and the bytes are copied into the fixed ROM array: the instance never borrows the host's buffer. The content id is
+ * the SHA-256 of that copy (D-47); the core never opens a file and never looks at what the bytes mean.
  * The core declares and checks; it never guesses (D-45): no byte order, header or mapper is inferred from content.
  */
 #include <stddef.h>
 #include <stdint.h>
 
 #include "ds_core.h"
+#include "ds_sha256.h"
 
 #define DS_MIN_SIZE 8192u
 #define DS_SUPPORTED_SIZE 262144u /* until plan 08 extends the supported set to 256K, 384K and 1M */
@@ -281,5 +283,7 @@ uint32_t ds_boot(void *mem, size_t cap, const struct ds_boot_request *request, s
     inst->header = request->header;
     inst->content_size = (uint32_t)request->len;
     __builtin_memcpy(inst->rom, request->content, request->len);
+    /* content identity (D-47): SHA-256 of the copied bytes exactly as supplied, taken only after every check has passed */
+    ds_sha256(inst->rom, request->len, inst->content_id);
     return finish(result, DS_OK, DS_NO_FIELD, inst);
 }

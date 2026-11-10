@@ -7,7 +7,7 @@ kind = "record_lines"
 fixture = "plain-256k"
 request = ""
 expect = "record.format_version=1;core.behaviour_epoch=1;profile.id=pce-hucard-2btn;profile.rev=1;content.size=262144;content.mapper=plain;content.mapper_rule=plain-v1;content.byte_order=pce;content.header_handling=none;limits.size_cap=1048576"
-meaning = "The record skeleton of a 256 KiB synthetic image is printed in canonical form: 50 rows in fixed table and key order, LF and printable ASCII only, and a quote, a backslash or a short buffer makes the printer refuse and emit nothing"
+meaning = "The record skeleton of a 256 KiB synthetic image is printed in canonical form: 51 rows in fixed table and key order, LF and printable ASCII only, and a quote, a backslash or a short buffer makes the printer refuse and emit nothing"
 required = true
 control = false
 expect_outcome = "pass"

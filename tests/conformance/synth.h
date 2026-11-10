@@ -9,7 +9,13 @@
 
 #include <stddef.h>
 
-/* natural size in bytes of a recipe, 0 when the recipe is unknown */
+/* the generator spec string: part of every recipe, so a change of the generator is a change of recipe */
+const char *synth_spec(void);
+
+/* natural size in bytes of a recipe into *n and return 0, or return -1 when the recipe is unknown; len:0 is valid and gives 0 */
+int synth_parse(const char *recipe, size_t *n);
+
+/* natural size in bytes of a recipe, 0 when the recipe is unknown (and for len:0: use synth_parse to tell them apart) */
 size_t synth_size(const char *recipe);
 
 /*

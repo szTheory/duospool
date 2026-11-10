@@ -114,6 +114,21 @@ static void kv_u32(struct out *o, const char *key, uint32_t value)
     put_ch(o, '\n');
 }
 
+/* a lowercase hexadecimal string value of n bytes, quoted: 2 * n characters */
+static void kv_hex(struct out *o, const char *key, const uint8_t *bytes, size_t n)
+{
+    static const char digit[16] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
+    size_t i;
+
+    put_lit(o, key);
+    put_lit(o, " = \"");
+    for (i = 0u; i < n; i++) {
+        put_ch(o, digit[(bytes[i] >> 4) & 0x0fu]);
+        put_ch(o, digit[bytes[i] & 0x0fu]);
+    }
+    put_lit(o, "\"\n");
+}
+
 /* a table header; tables are separated by one blank line, and the first table of a text has none before it */
 static void table(struct out *o, const char *prefix, const char *name)
 {
@@ -189,6 +204,7 @@ static void emit_content(struct out *o, const struct ds_instance *inst)
         return;
     }
     table(o, "", "content");
+    kv_hex(o, "sha256", inst->content_id, DS_CONTENT_ID_BYTES);
     kv_u32(o, "size", inst->content_size);
     kv_str(o, "mapper", inst->mapper, DS_MAPPER_NAME_MAX);
     if (o->err == DS_TEXT_OK) {

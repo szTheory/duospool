@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Content identity row (self-consistency): the digest ds_boot stores, the digest the core computes over a fresh copy of the recipe bytes and the content.sha256 line of the record are one value. The independent comparison with the host sha tool is the length sweep in scripts/conformance-run. Evidence tier E0: repeatability only, not proof that content is genuine.
+id = "content_id_vs_shasum"
+kind = "content_id"
+fixture = "plain-256k"
+request = ""
+expect = "consistent"
+meaning = "The content id stored by the boot of a 256 KiB synthetic image equals the SHA-256 of the bytes as supplied and the sha256 line of the printed record, in 64 lowercase hex characters, and a flipped bit changes it"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

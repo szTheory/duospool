@@ -13,7 +13,9 @@
 #   rules-fields.txt (both handed to the runner for the profile kinds), configure
 #   and build the preset incrementally (so a stale binary is never judged), run ds_runner under the supervise mode below with
 #   its stdout in results.txt, judge results.txt with conformance-ingest against tests/conformance/REQUIRED and the case
-#   inventory, and print the RESULT lines then  STATUS conformance ok n=COUNT . Violations are printed instead of the STATUS line.
+#   inventory, run the hash sweep (hash_sweep below: the core SHA-256 against the host sha tool for every length of the runner's
+#   --sweep-lengths, HASH_SWEEP_MISMATCH on a difference), and print the RESULT lines then  STATUS conformance ok n=COUNT .
+#   Violations are printed instead of the STATUS line.
 #   exit 0 judged green | 1 judged red, a malformed case file or a failed build | 2 harness error (also wall expiry)
 # supervise mode:
 #   --ids FILE  one case id per line (# comments and blank lines ignored): the ids that must have a RESULT line
@@ -112,9 +114,54 @@ run_mode() {
     echo "CONFORMANCE_RUNNER_STATUS $sup"
     exit 1
   fi
+  hash_sweep "$bd/ds_runner"
   n=$(grep -c '^RESULT ' "$bd/results.txt" || true)
   echo "STATUS conformance ok n=$n"
   exit 0
+}
+
+# hash_sweep RUNNER (D-47, D-59): the independent check of the in-house SHA-256. For every length the runner prints with
+# --sweep-lengths (the one definition of the list), the bytes of the synthetic image len:N go from the runner's --emit through the
+# host sha tool (sha256sum if present, else shasum -a 256, chosen once), and the 64-hex digest field is compared with the one the
+# core computes (--hash len:N). The host tool shares no code, language or author with the core; a difference prints
+# HASH_SWEEP_MISMATCH with the length and ends the stage with status 1. A missing tool or an unusable answer is a harness error.
+hash_sweep() {
+  hs_runner=$1
+  if command -v sha256sum > /dev/null 2>&1; then
+    hs_tool=sha256sum
+  elif command -v shasum > /dev/null 2>&1; then
+    hs_tool="shasum -a 256"
+  else
+    echo "HARNESS_ERROR neither sha256sum nor shasum is available for the hash sweep" >&2
+    exit 2
+  fi
+  hs_lens=$("$hs_runner" --sweep-lengths) || { echo "HARNESS_ERROR the runner gave no sweep lengths" >&2; exit 2; }
+  hs_n=0
+  hs_bad=0
+  for hs_len in $hs_lens; do
+    hs_host=$("$hs_runner" --emit "len:$hs_len" | $hs_tool | awk '{ print $1 }')
+    hs_core=$("$hs_runner" --hash "len:$hs_len") || { echo "HARNESS_ERROR the runner could not hash len:$hs_len" >&2; exit 2; }
+    case $hs_host in
+      '' | *[!0-9a-f]*) echo "HARNESS_ERROR the host sha tool gave no digest for len:$hs_len" >&2; exit 2 ;;
+    esac
+    if [ "${#hs_host}" -ne 64 ]; then
+      echo "HARNESS_ERROR the host sha tool gave a digest of the wrong length for len:$hs_len" >&2
+      exit 2
+    fi
+    if [ "$hs_host" != "$hs_core" ]; then
+      echo "HASH_SWEEP_MISMATCH length=$hs_len core=$hs_core host=$hs_host"
+      hs_bad=$((hs_bad + 1))
+    fi
+    hs_n=$((hs_n + 1))
+  done
+  if [ "$hs_n" -eq 0 ]; then
+    echo "HARNESS_ERROR the hash sweep ran no length" >&2
+    exit 2
+  fi
+  if [ "$hs_bad" -ne 0 ]; then
+    exit 1
+  fi
+  echo "STATUS hash-sweep ok lengths=$hs_n"
 }
 
 [ $# -ge 1 ] || usage

@@ -15,6 +15,11 @@
  *   --profile-tsv FILE   the flattened profiles/pce-hucard-2btn/r1.toml (scripts/conformance-flatten), read by the r1 kinds
  *   --rules-fields FILE  the 13 field names of scripts/lib/profile-rules.awk, one per line, read by the names kind
  *        ds_runner --outcomes   prints the compiled outcome names, one per line, and exits 0 (read by scripts/outcome-sync --names)
+ *        ds_runner --sweep-lengths   prints the 21 hash sweep lengths, one per line: the only definition of the list (D-59)
+ *        ds_runner --emit RECIPE     writes the bytes of a synthetic recipe to stdout, nothing else (plain-256k, len:N)
+ *        ds_runner --hash RECIPE     prints the SHA-256 of a recipe's bytes computed by the core, 64 lowercase hex characters
+ *        ds_runner --spec            prints the generator spec string that is part of every recipe
+ *   scripts/conformance-run compares --hash with the host sha tool over --emit for every sweep length (HASH_SWEEP_MISMATCH).
  * exit : 0 every case ran and RUNNER_DONE was printed (the verdict is the ingest's), 2 usage or harness error (no case ran)
  */
 #include <stdint.h>
@@ -23,7 +28,9 @@
 #include <string.h>
 
 #include "ds_core.h"
+#include "ds_sha256.h"
 #include "ds_text.h"
+#include "runner.h"
 #include "synth.h"
 
 enum outcome {
@@ -43,28 +50,6 @@ static const char *const outcome_name[OUT_COUNT] = {
 #define CANARY 0xa5u
 #define CANARY_TAIL 64u
 
-enum { PTR_OK, PTR_NULL, PTR_DUMMY };
-enum { MEM_OK, MEM_NULL, MEM_MISALIGNED };
-enum { CAP_OK, CAP_SHORT };
-enum { REQ_OK, REQ_NULL };
-
-/* the request of one case, filled from a request-override string (semicolon-separated k=v) */
-struct spec {
-    char text[512];
-    const char *profile;
-    uint32_t rev;
-    const char *mapper; /* NULL = undeclared */
-    uint32_t order;
-    uint32_t header;
-    size_t len;
-    int ptr;
-    int mem;
-    int cap;
-    int req;
-    int bad_size;
-    uint32_t reserved;
-    const char *bind[DS_FIELD_COUNT];
-};
 
 /* what a case expects: accept (with the content size read from the instance) or one refusal (with the field it names) */
 struct expect {
@@ -76,15 +61,8 @@ struct expect {
     size_t size;
 };
 
-/* assertion counter: a case passes only when it made at least one assertion and none failed */
-struct ctx {
-    unsigned n;
-    int failed;
-    int harness;
-    char why[160];
-};
 
-static void check(struct ctx *c, int cond, const char *what)
+void check(struct ctx *c, int cond, const char *what)
 {
     c->n++;
     if (!cond && !c->failed) {
@@ -93,7 +71,7 @@ static void check(struct ctx *c, int cond, const char *what)
     }
 }
 
-static void harness_error(struct ctx *c, const char *what)
+void harness_error(struct ctx *c, const char *what)
 {
     if (!c->harness) {
         c->harness = 1;
@@ -121,7 +99,7 @@ static int field_by_name(const char *name)
     return -1;
 }
 
-static int parse_size(const char *v, size_t *out)
+int parse_size(const char *v, size_t *out)
 {
     size_t acc = 0u;
     if (*v == '\0') {
@@ -259,7 +237,7 @@ static const char *apply_pair(struct spec *s, const char *key, const char *val)
 }
 
 /* fill s from a request-override string; NULL on success, otherwise the reason */
-static const char *parse_spec(struct spec *s, const char *text, size_t default_len)
+const char *parse_spec(struct spec *s, const char *text, size_t default_len)
 {
     char *p;
     size_t i;
@@ -506,7 +484,6 @@ static int write_evidence(const char *path, const char *id, const char *kind, co
 
 /* ---- the cases TSV (scripts/conformance-flatten): K<TAB>STEM<TAB>TABLE<TAB>KEY<TAB>TYPE<TAB>VALUE rows and a last END row ---- */
 
-enum { K_ID, K_KIND, K_FIXTURE, K_REQUEST, K_EXPECT, K_MEANING, K_REQUIRED, K_CONTROL, K_EXPECT_OUTCOME, K_PINS, NKEYS };
 
 /* the ten keys of a case (D-58 nine plus the request key of D-79(a)) and the TSV type of each */
 static const struct {
@@ -519,18 +496,12 @@ static const struct {
 
 #define MAX_CASES 1024u
 
-struct kase {
-    const char *stem;
-    const char *val[NKEYS];
-    int has[NKEYS];
-    const char *bad; /* the first structural fault of the case, NULL when none */
-};
 
 static struct kase cases[MAX_CASES];
 static size_t ncases;
 
 /* read a whole file into a NUL-terminated heap buffer; NULL on any failure */
-static char *read_file(const char *path)
+char *read_file(const char *path)
 {
     FILE *fp = fopen(path, "rb");
     char *buf;
@@ -573,7 +544,7 @@ static int valid_id(const char *s)
 }
 
 /* split a line in place on TAB into at most max fields, empty fields kept; returns the field count */
-static int split_tab(char *line, char **f, int max)
+int split_tab(char *line, char **f, int max)
 {
     int n = 0;
     for (;;) {
@@ -821,7 +792,6 @@ static const char *boot_accepted(const char *fixture, const char *request, struc
 
 /* ---- kind record_lines: the canonical record skeleton, line by line (D-53, D-69) ---- */
 
-#define REC_CAP 16384u
 #define REC_MAX_ROWS 128u
 #define KEY_MAX 72u
 
@@ -830,7 +800,7 @@ struct recrow {
     const char *val;   /* the text after " = ", quotes kept */
 };
 
-/* the keys the skeleton must print, in order: table.key (D-53: record, core, profile, 13 field tables, content, limits) */
+/* the keys the skeleton must print, in order: table.key (D-53: record, core, profile, 13 field tables, content with the sha256 first, limits) */
 static char exp_key[REC_MAX_ROWS][KEY_MAX];
 static size_t n_exp;
 
@@ -872,6 +842,7 @@ static void build_expected_keys(void)
         exp_add("", tab, "value");
         exp_add("", tab, "bound_by");
     }
+    exp_add("", "content", "sha256");
     exp_add("", "content", "size");
     exp_add("", "content", "mapper");
     exp_add("", "content", "mapper_rule");
@@ -1041,7 +1012,7 @@ static void kind_record_lines(const struct kase *k, struct ctx *c, char *got, si
     err = parse_record(work, rows, &nrows);
     check(c, err == NULL, err != NULL ? err : "layout");
     build_expected_keys();
-    check(c, n_exp == 50u, "the expected skeleton does not hold 50 rows (format_version, 2 core, 2 profile, 39 field, 5 content, 1 limit)");
+    check(c, n_exp == 51u, "the expected skeleton does not hold 51 rows (format_version, 2 core, 2 profile, 39 field, 6 content, 1 limit)");
     check(c, err == NULL && nrows == n_exp, "the number of rows differs from the skeleton");
     for (i = 0u; err == NULL && i < nrows && i < n_exp; i++) {
         if (strcmp(rows[i].key, exp_key[i]) != 0) {
@@ -1150,412 +1121,130 @@ static void kind_record_lines(const struct kase *k, struct ctx *c, char *got, si
     release_boot(&b);
 }
 
-/* ---- the frozen r1 record, flattened by scripts/conformance-flatten (--profile-tsv) and the field-name list of the profile rules
- * (--rules-fields, one name per line, cut out of scripts/lib/profile-rules.awk by conformance-run). C never parses TOML (D-40,
- * D-51): both files are line formats printed by the sh gate. ---- */
+/* ---- the content identity (D-47): hex form, the sweep list and the kind content_id ---- */
 
-#define MAX_PROWS 512u
-#define MAX_RULES 64u
+/*
+ * The lengths of the hash sweep: 0 and 1, the padding boundaries of SHA-256 (55, 56, 57 around the length field, 63, 64, 65 at the
+ * block edge, and the same pair of edges one and two blocks on), the bank-size neighbours, and the three supported image sizes.
+ * This array is the ONE definition: scripts/conformance-run reads it through --sweep-lengths and plan 17 builds the fixture
+ * manifest from the same output, so the two can never disagree.
+ */
+static const size_t sweep_len[] = {0u,   1u,    54u,   55u,   56u,   57u,   63u,    64u,     65u,      119u,    120u,
+                                   121u, 127u,  128u,  129u,  8191u, 8192u, 8193u,  262144u, 393216u, 1048576u};
 
-struct prow {
-    const char *table; /* empty for a root key */
-    const char *key;
-    const char *type; /* s, i, b or a */
-    char *value;      /* an array has its elements joined with '|' (flatten uses the unit separator) */
-};
-
-static const char *profile_tsv_path;
-static const char *rules_fields_path;
-static struct prow prow[MAX_PROWS];
-static size_t nprow;
-static int ptsv_state; /* 0 not read, 1 read, -1 failed */
-static const char *ptsv_why;
-static const char *rules_name[MAX_RULES];
-static size_t nrules;
-static int rules_state;
-static const char *rules_why;
-
-/* read the flattened r1 once; NULL on success, otherwise why not (a harness fault of the run, never a verdict) */
-static const char *load_profile_tsv(void)
+/* lowercase hex of n bytes into out (2 * n + 1 bytes) */
+static void to_hex(const unsigned char *bytes, size_t n, char *out)
 {
-    char *text;
-    char *line;
-    int seen_end = 0;
-    size_t end_count = 0u;
+    static const char digit[] = "0123456789abcdef";
+    size_t i;
 
-    if (ptsv_state != 0) {
-        return ptsv_state > 0 ? NULL : ptsv_why;
+    for (i = 0u; i < n; i++) {
+        out[2u * i] = digit[(bytes[i] >> 4) & 0x0fu];
+        out[2u * i + 1u] = digit[bytes[i] & 0x0fu];
     }
-    ptsv_state = -1;
-    if (profile_tsv_path == NULL) {
-        ptsv_why = "this case needs --profile-tsv";
-        return ptsv_why;
-    }
-    text = read_file(profile_tsv_path);
-    if (text == NULL) {
-        ptsv_why = "cannot read the profile TSV";
-        return ptsv_why;
-    }
-    for (line = text; *line != '\0';) {
-        char *nl = strchr(line, '\n');
-        char *f[6];
-        int nf;
-        if (nl == NULL) {
-            ptsv_why = "the profile TSV has a last line without a newline";
-            return ptsv_why;
-        }
-        *nl = '\0';
-        if (seen_end) {
-            ptsv_why = "a row follows the END row of the profile TSV";
-            return ptsv_why;
-        }
-        nf = split_tab(line, f, 6);
-        if (nf == 2 && strcmp(f[0], "END") == 0) {
-            if (parse_size(f[1], &end_count) != 0) {
-                ptsv_why = "malformed END row in the profile TSV";
-                return ptsv_why;
-            }
-            seen_end = 1;
-        } else if (nf == 6 && strcmp(f[0], "K") == 0 && strcmp(f[1], "r1") == 0 && nprow < MAX_PROWS) {
-            char *v;
-            prow[nprow].table = f[2];
-            prow[nprow].key = f[3];
-            prow[nprow].type = f[4];
-            prow[nprow].value = f[5];
-            if (f[4][0] == 'a') {
-                for (v = f[5]; *v != '\0'; v++) {
-                    if (*v == '\037') {
-                        *v = '|';
-                    }
-                }
-            }
-            nprow++;
-        } else {
-            ptsv_why = "an unexpected row in the profile TSV (only K rows of r1 and one END row are expected)";
-            return ptsv_why;
-        }
-        line = nl + 1;
-    }
-    if (!seen_end || end_count != 1u || nprow == 0u) {
-        ptsv_why = "the profile TSV has no END row, an END count other than 1, or no row";
-        return ptsv_why;
-    }
-    ptsv_state = 1;
-    return NULL;
+    out[2u * n] = '\0';
 }
 
-static const struct prow *ptsv_get(const char *table, const char *key)
+/* 64 characters of 0-9 a-f and nothing else: the one accepted spelling of a digest */
+static int is_hex64(const char *s)
 {
     size_t i;
 
-    for (i = 0u; i < nprow; i++) {
-        if (strcmp(prow[i].table, table) == 0 && strcmp(prow[i].key, key) == 0) {
-            return &prow[i];
+    for (i = 0u; i < 64u; i++) {
+        if (!((s[i] >= '0' && s[i] <= '9') || (s[i] >= 'a' && s[i] <= 'f'))) {
+            return 0;
         }
     }
-    return NULL;
+    return s[64] == '\0';
 }
 
-/* read the field-name list of the profile rules once: one non-empty name per line */
-static const char *load_rules_fields(void)
+/* SHA-256 of a recipe's bytes through the core, as hex; 0 on success, -1 when the recipe is unknown or memory is short */
+static int hash_recipe(const char *recipe, char *hex)
 {
-    char *text;
-    char *line;
+    size_t n;
+    unsigned char *buf;
+    unsigned char digest[DS_SHA256_BYTES];
 
-    if (rules_state != 0) {
-        return rules_state > 0 ? NULL : rules_why;
+    if (synth_parse(recipe, &n) != 0) {
+        return -1;
     }
-    rules_state = -1;
-    if (rules_fields_path == NULL) {
-        rules_why = "this case needs --rules-fields";
-        return rules_why;
+    buf = (unsigned char *)malloc(n != 0u ? n : 1u);
+    if (buf == NULL) {
+        return -1;
     }
-    text = read_file(rules_fields_path);
-    if (text == NULL) {
-        rules_why = "cannot read the rules field list";
-        return rules_why;
+    if (synth_fill(recipe, buf, n) != 0) {
+        free(buf);
+        return -1;
     }
-    for (line = text; *line != '\0';) {
-        char *nl = strchr(line, '\n');
-        if (nl == NULL) {
-            rules_why = "the rules field list has a last line without a newline";
-            return rules_why;
-        }
-        *nl = '\0';
-        if (*line == '\0' || nrules == MAX_RULES) {
-            rules_why = "the rules field list holds an empty line or too many names";
-            return rules_why;
-        }
-        rules_name[nrules++] = line;
-        line = nl + 1;
-    }
-    if (nrules == 0u) {
-        rules_why = "the rules field list is empty";
-        return rules_why;
-    }
-    rules_state = 1;
-    return NULL;
-}
-
-/* is v exactly one of the values of the '|'-separated set */
-static int list_has(const char *set, const char *v)
-{
-    size_t n = strlen(v);
-
-    while (*set != '\0') {
-        const char *bar = strchr(set, '|');
-        size_t m = bar != NULL ? (size_t)(bar - set) : strlen(set);
-        if (m == n && memcmp(set, v, n) == 0) {
-            return 1;
-        }
-        if (bar == NULL) {
-            break;
-        }
-        set = bar + 1;
-    }
+    ds_sha256(buf, n, digest);
+    to_hex(digest, DS_SHA256_BYTES, hex);
+    free(buf);
     return 0;
 }
 
 /*
- * Where the frozen r1 states no allowed list, the core's own list must be this one: nothing for vdc_count, vpc and input_port1
- * (owner-selected, never bound), and for powerup_policy the D-67 constant, because the frozen record cannot gain the key.
+ * kind content_id: boot the request (an accepted one) over the fixture and require that the content id stored by ds_boot, the
+ * SHA-256 the core computes over a FRESH copy of the recipe bytes, and the content.sha256 line of the printed record are one and
+ * the same value, 64 lowercase hex characters, and that it is the digest of the bytes as supplied (a single flipped bit gives
+ * another digest). This is a self-consistency case: the independent comparison with a tool that shares nothing with the core is
+ * the sweep in scripts/conformance-run (D-59). A matching hash shows repeatability, not that the content is genuine.
  */
-static const char *core_allowed_without_r1(const char *field)
+static void kind_content_id(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
 {
-    return strcmp(field, "powerup_policy") == 0 ? "zero|seeded-prng-v1" : "";
-}
-
-/*
- * kind profile_equal: the built-in r1 constant against the flattened r1.toml, field by field (D-48, T-02-48). Compared per field:
- * status, the value of an owner-selected field, the allowed list where r1 has one (and the documented core list where it has
- * none), the absence of any value on an open field, and that the proposal of an open field is one of the allowed values. Not
- * compared: label, decision and ledger keys, which the core does not carry. Root keys: profile_id, rev and the
- * unresolved_behaviours ids, which must be exactly the ones the constant lists.
- */
-static void kind_profile_equal(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
-{
-    const char *why = load_profile_tsv();
-    const struct ds_profile *b;
-    const struct prow *r;
-    uint32_t f;
-    unsigned n_open = 0u;
-    unsigned n_owner = 0u;
-    unsigned core_open = 0u;
-
-    (void)k;
-    if (why != NULL) {
-        harness_error(c, why);
-        return;
-    }
-    b = ds_profile_builtin("pce-hucard-2btn", 1u);
-    check(c, b != NULL, "the built-in profile pce-hucard-2btn rev 1 is not registered");
-    if (b == NULL) {
-        return;
-    }
-    r = ptsv_get("", "profile_id");
-    check(c, r != NULL && strcmp(r->value, b->id) == 0, "the profile id differs from r1");
-    r = ptsv_get("", "rev");
-    check(c, r != NULL && r->type[0] == 'i' && strcmp(r->value, "1") == 0 && b->rev == 1u, "the revision differs from r1");
-
-    /* unresolved_behaviours: every id of r1 is in the constant and the constant has no other */
-    r = ptsv_get("", "unresolved_behaviours");
-    check(c, r != NULL && r->type[0] == 'a', "r1 has no unresolved_behaviours array");
-    if (r != NULL) {
-        uint32_t u;
-        unsigned n_r1 = 0u;
-        const char *p = r->value;
-        while (*p != '\0') {
-            const char *bar = strchr(p, '|');
-            size_t m = bar != NULL ? (size_t)(bar - p) : strlen(p);
-            int found = 0;
-            for (u = 0u; u < ds_profile_unresolved_count(); u++) {
-                const char *id = ds_profile_unresolved(u);
-                if (id != NULL && strlen(id) == m && memcmp(id, p, m) == 0) {
-                    found = 1;
-                }
-            }
-            check(c, found, "an unresolved behaviour id of r1 is missing from the constant");
-            n_r1++;
-            if (bar == NULL) {
-                break;
-            }
-            p = bar + 1;
-        }
-        check(c, n_r1 == ds_profile_unresolved_count(), "the constant lists a different number of unresolved behaviours than r1");
-    }
-
-    for (f = 0u; f < (uint32_t)DS_FIELD_COUNT; f++) {
-        const char *name = ds_field_name(f);
-        const struct prow *st = ptsv_get(name, "status");
-        const struct prow *val = ptsv_get(name, "value");
-        const struct prow *al = ptsv_get(name, "allowed");
-        const struct prow *pr = ptsv_get(name, "proposal");
-        const char *core_allowed = ds_field_allowed(f);
-        char msg[160];
-        int owner;
-
-        snprintf(msg, sizeof msg, "field %s: r1 has no status", name);
-        check(c, st != NULL, msg);
-        if (st == NULL) {
-            continue;
-        }
-        owner = strcmp(st->value, "owner-selected") == 0;
-        if (b->field[f].status == (uint8_t)DS_STATUS_OPEN) {
-            core_open++;
-        }
-        if (owner) {
-            n_owner++;
-        } else if (strcmp(st->value, "open") == 0) {
-            n_open++;
-        }
-        snprintf(msg, sizeof msg, "field %s: the status differs from r1 (owner-selected or open)", name);
-        check(c, owner ? b->field[f].status == (uint8_t)DS_STATUS_OWNER : b->field[f].status == (uint8_t)DS_STATUS_OPEN, msg);
-        if (owner) {
-            snprintf(msg, sizeof msg, "field %s: the value differs from the owner-selected value of r1", name);
-            check(c, val != NULL && strcmp(val->value, b->field[f].value) == 0, msg);
-            snprintf(msg, sizeof msg, "field %s: an owner-selected field is not bound_by constant in the constant", name);
-            check(c, b->field[f].bound_by == (uint8_t)DS_BOUND_CONSTANT, msg);
-        } else {
-            snprintf(msg, sizeof msg, "field %s: r1 gives an open field a value, or the constant does", name);
-            check(c, val == NULL && b->field[f].value[0] == '\0', msg);
-            snprintf(msg, sizeof msg, "field %s: an open field of the constant is already bound", name);
-            check(c, b->field[f].bound_by == (uint8_t)DS_BOUND_NONE, msg);
-            snprintf(msg, sizeof msg, "field %s: the r1 proposal is not one of the allowed values", name);
-            check(c, pr != NULL && list_has(core_allowed, pr->value), msg);
-        }
-        snprintf(msg, sizeof msg, "field %s: the allowed list differs from r1 (or from the documented core list where r1 has none)",
-                 name);
-        check(c, strcmp(core_allowed, al != NULL ? al->value : core_allowed_without_r1(name)) == 0, msg);
-    }
-    check(c, n_owner == 6u && n_open == 7u && core_open == 7u, "r1 and the constant do not both have 6 owner-selected and 7 open fields");
-    snprintf(got, gotcap, "fields=%u", (unsigned)DS_FIELD_COUNT);
-}
-
-/*
- * kind names_both_ways: the 13 field names of the X-list, the table names of the flattened r1 and the field list of the profile
- * rules are the same set, each checked against each in both directions, and a name appears once.
- */
-static void kind_names_both_ways(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
-{
-    const char *why = load_profile_tsv();
-    const char *why2 = why != NULL ? why : load_rules_fields();
-    uint32_t f;
-    size_t i;
-    size_t n_tables = 0u;
-
-    (void)k;
-    if (why2 != NULL) {
-        harness_error(c, why2);
-        return;
-    }
-    check(c, ds_field_name((uint32_t)DS_FIELD_COUNT) == NULL, "the name table has a name past the last field");
-    for (f = 0u; f < (uint32_t)DS_FIELD_COUNT; f++) {
-        const char *name = ds_field_name(f);
-        char msg[160];
-        int in_rules = 0;
-        snprintf(msg, sizeof msg, "field %s of the X-list is not a table of r1", name);
-        check(c, ptsv_get(name, "status") != NULL, msg);
-        for (i = 0u; i < nrules; i++) {
-            in_rules += strcmp(rules_name[i], name) == 0;
-        }
-        snprintf(msg, sizeof msg, "field %s of the X-list is not exactly once in the list of scripts/lib/profile-rules.awk", name);
-        check(c, in_rules == 1, msg);
-    }
-    /* the other direction: every table of r1 is an X-list field, every name of the rules is one too */
-    for (i = 0u; i < nprow; i++) {
-        int dup = 0;
-        size_t j;
-        if (prow[i].table[0] == '\0') {
-            continue;
-        }
-        for (j = 0u; j < i; j++) {
-            dup += strcmp(prow[j].table, prow[i].table) == 0;
-        }
-        if (dup == 0) {
-            char msg[160];
-            int known = 0;
-            n_tables++;
-            for (f = 0u; f < (uint32_t)DS_FIELD_COUNT; f++) {
-                known += strcmp(ds_field_name(f), prow[i].table) == 0;
-            }
-            snprintf(msg, sizeof msg, "table %s of r1 is not a field of the X-list", prow[i].table);
-            check(c, known == 1, msg);
-        }
-    }
-    for (i = 0u; i < nrules; i++) {
-        char msg[160];
-        int known = 0;
-        for (f = 0u; f < (uint32_t)DS_FIELD_COUNT; f++) {
-            known += strcmp(ds_field_name(f), rules_name[i]) == 0;
-        }
-        snprintf(msg, sizeof msg, "name %s of the profile rules is not a field of the X-list", rules_name[i]);
-        check(c, known == 1, msg);
-    }
-    check(c, n_tables == (size_t)DS_FIELD_COUNT && nrules == (size_t)DS_FIELD_COUNT && DS_FIELD_COUNT == 13,
-          "the three field sets do not each hold exactly 13 names");
-    snprintf(got, gotcap, "names=%u", (unsigned)DS_FIELD_COUNT);
-}
-
-/*
- * kind field_flip: for each of the 13 fields, change the resolved profile (its value, its status, its binder) in a copy and print
- * the profile identity text again: each of the three changes must change the text, or the field is not part of the identity
- * (T-02-48). One assertion per field. Label text is not part of the core, so it cannot be part of this text. The case expect
- * carries fields=N, the number of fields the case was written for; a different number is a fault of the case.
- */
-static void kind_field_flip(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
-{
-    static char t0[REC_CAP];
-    static char t1[REC_CAP];
+    static char text[REC_CAP];
+    struct recrow rows[REC_MAX_ROWS];
+    struct booted b;
     struct spec s;
-    struct ds_bindings bnd;
-    struct ds_profile base;
-    struct ds_profile work;
-    const char *err = parse_spec(&s, k->val[K_REQUEST], 0u);
-    const char *at = strstr(k->val[K_EXPECT], "fields=");
-    size_t n0 = 0u;
-    size_t n1 = 0u;
-    uint32_t field = 0u;
-    uint32_t f;
+    const struct ds_instance *inst = NULL;
+    const struct recrow *row;
+    unsigned char *fresh;
+    unsigned char digest[DS_SHA256_BYTES];
+    unsigned char flipped[DS_SHA256_BYTES];
+    char want[2u * DS_SHA256_BYTES + 1u];
+    char have[2u * DS_SHA256_BYTES + 1u];
+    size_t len = 0u;
+    size_t nrows = 0u;
+    size_t i;
+    const char *err;
 
+    err = boot_accepted(k->val[K_FIXTURE], k->val[K_REQUEST], &b, &s, &inst);
     if (err != NULL) {
         harness_error(c, err);
         return;
     }
-    if (strcmp(k->val[K_FIXTURE], "none") != 0 || at == NULL || strcmp(at + 7, "13") != 0 || DS_FIELD_COUNT != 13) {
-        harness_error(c, "a field_flip case has fixture none and expect fields=13, and the profile has 13 fields");
+    fresh = (unsigned char *)malloc(s.len != 0u ? s.len : 1u);
+    if (fresh == NULL || synth_fill(k->val[K_FIXTURE], fresh, s.len) != 0) {
+        free(fresh);
+        release_boot(&b);
+        harness_error(c, "cannot regenerate the recipe bytes");
         return;
     }
-    for (f = 0u; f < (uint32_t)DS_FIELD_COUNT; f++) {
-        bnd.value[f] = s.bind[f];
+    ds_sha256(fresh, s.len, digest);
+    to_hex(digest, DS_SHA256_BYTES, want);
+    to_hex(inst->content_id, DS_SHA256_BYTES, have);
+    check(c, strcmp(want, have) == 0, "the content id stored by ds_boot differs from the SHA-256 of the supplied bytes");
+    check(c, is_hex64(have), "the content id is not 64 lowercase hex characters");
+    for (i = 0u; i < DS_SHA256_BYTES && inst->content_id[i] == 0u; i++) {
+        /* find the first non-zero byte */
     }
-    memset(&base, 0, sizeof base);
-    if (ds_resolve(s.profile, s.rev, &bnd, &base, &field) != 0u) {
-        harness_error(c, "the request of a field_flip case must resolve");
-        return;
+    check(c, i < DS_SHA256_BYTES, "the content id is all zero: the placeholder slot was never filled");
+    if (s.len != 0u) {
+        fresh[s.len / 2u] = (unsigned char)(fresh[s.len / 2u] ^ 1u);
+        ds_sha256(fresh, s.len, flipped);
+        check(c, memcmp(flipped, digest, DS_SHA256_BYTES) != 0, "a flipped bit of the content leaves the digest unchanged");
     }
-    if (ds_text_profile(&base, t0, sizeof t0, &n0) != DS_TEXT_OK) {
-        harness_error(c, "the resolved profile does not print");
-        return;
-    }
-    for (f = 0u; f < (uint32_t)DS_FIELD_COUNT; f++) {
-        char msg[160];
-        int ok_value;
-        int ok_status;
-        int ok_bound;
+    snprintf(got, gotcap, "%.16s", have);
 
-        work = base;
-        work.field[f].value[0] = work.field[f].value[0] == 'x' ? 'y' : 'x';
-        ok_value = ds_text_profile(&work, t1, sizeof t1, &n1) == DS_TEXT_OK && strcmp(t0, t1) != 0;
-        work = base;
-        work.field[f].status = work.field[f].status == (uint8_t)DS_STATUS_OWNER ? (uint8_t)DS_STATUS_OPEN : (uint8_t)DS_STATUS_OWNER;
-        ok_status = ds_text_profile(&work, t1, sizeof t1, &n1) == DS_TEXT_OK && strcmp(t0, t1) != 0;
-        work = base;
-        work.field[f].bound_by = work.field[f].bound_by == (uint8_t)DS_BOUND_CONSTANT ? (uint8_t)DS_BOUND_RUN_REQUEST : (uint8_t)DS_BOUND_CONSTANT;
-        ok_bound = ds_text_profile(&work, t1, sizeof t1, &n1) == DS_TEXT_OK && strcmp(t0, t1) != 0;
-        snprintf(msg, sizeof msg, "field %s: a change of its value, status or binder leaves the printed identity unchanged", ds_field_name(f));
-        check(c, ok_value && ok_status && ok_bound, msg);
+    check(c, ds_text_record(inst, text, sizeof text, &len) == DS_TEXT_OK, "ds_text_record failed on an accepted instance");
+    if (len != 0u) {
+        err = parse_record(text, rows, &nrows);
+        check(c, err == NULL, err != NULL ? err : "layout");
+        row = find_row(rows, nrows, "content.sha256");
+        check(c, row != NULL && strlen(row->val) == 66u && row->val[0] == '"' && row->val[65] == '"' && strncmp(row->val + 1, want, 64u) == 0,
+              "the content.sha256 line of the record differs from the content id");
     }
-    snprintf(got, gotcap, "assertions=%u", (unsigned)DS_FIELD_COUNT);
+    free(fresh);
+    release_boot(&b);
 }
 
 static const struct {
@@ -1570,6 +1259,7 @@ static const struct {
     {"profile_equal", kind_profile_equal, 0},
     {"names_both_ways", kind_names_both_ways, 0},
     {"field_flip", kind_field_flip, 0},
+    {"content_id", kind_content_id, 0},
 };
 
 static const char *outcome_of(const struct ctx *c, enum outcome *oc)
@@ -1658,6 +1348,45 @@ int main(int argc, char **argv)
         }
         return 0;
     }
+    if (argc == 2 && strcmp(argv[1], "--sweep-lengths") == 0) {
+        size_t n;
+        for (n = 0u; n < sizeof sweep_len / sizeof sweep_len[0]; n++) {
+            printf("%lu\n", (unsigned long)sweep_len[n]);
+        }
+        return 0;
+    }
+    if (argc == 2 && strcmp(argv[1], "--spec") == 0) {
+        printf("%s\n", synth_spec());
+        return 0;
+    }
+    if (argc == 3 && strcmp(argv[1], "--hash") == 0) {
+        char hex[2u * DS_SHA256_BYTES + 1u];
+        if (hash_recipe(argv[2], hex) != 0) {
+            fprintf(stderr, "HARNESS unknown recipe\n");
+            return 2;
+        }
+        printf("%s\n", hex);
+        return 0;
+    }
+    if (argc == 3 && strcmp(argv[1], "--emit") == 0) {
+        /* the only way an image ever leaves memory: stdout, for the host hash tool; nothing is written to a file */
+        size_t n;
+        unsigned char *buf;
+        int ok;
+        if (synth_parse(argv[2], &n) != 0) {
+            fprintf(stderr, "HARNESS unknown recipe\n");
+            return 2;
+        }
+        buf = (unsigned char *)malloc(n != 0u ? n : 1u);
+        if (buf == NULL || synth_fill(argv[2], buf, n) != 0) {
+            free(buf);
+            fprintf(stderr, "HARNESS cannot generate the recipe\n");
+            return 2;
+        }
+        ok = fwrite(buf, 1u, n, stdout) == n && fflush(stdout) == 0;
+        free(buf);
+        return ok ? 0 : 2;
+    }
     for (a = 1; a < argc; a++) {
         if (strcmp(argv[a], "--cases") == 0 && a + 1 < argc) {
             cases_path = argv[++a];
@@ -1673,7 +1402,8 @@ int main(int argc, char **argv)
         }
     }
     if (cases_path == NULL || evdir == NULL) {
-        fprintf(stderr, "usage: ds_runner --cases FILE --evidence-dir DIR [--profile-tsv FILE] [--rules-fields FILE]\n");
+        fprintf(stderr, "usage: ds_runner --cases FILE --evidence-dir DIR [--profile-tsv FILE] [--rules-fields FILE]\n"
+                        "       ds_runner --sweep-lengths | --spec | --emit RECIPE | --hash RECIPE\n");
         return 2;
     }
     text = read_file(cases_path);

@@ -13,3 +13,4 @@ record_skeleton_256k
 profile_r1_equal
 profile_names_both_ways
 field_flip
+content_id_vs_shasum
