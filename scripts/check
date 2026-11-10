@@ -843,6 +843,26 @@ stage_inventory_negatives() {
   return "$in_rc"
 }
 
+# workflow (CI-01, D-61, D-62): the real CI definition, judged statically by scripts/workflow-check (permissions, the one pinned action, the
+# forbidden triggers, the checkout and shell settings, the gate step, the pull-request template line and the dependabot file). Static, so it
+# is registered before the build (D-60); it reads no file a build produces. actionlint is a one-off on a workflow change, not a stage.
+stage_workflow() {
+  checker sh "$here/workflow-check"
+}
+
+# workflow-negatives (CI-01, D-62): every tests/workflow/<case>/ is a mini-root (.github/workflows/gate.yml, the template, the dependabot
+# file): ok-<case> must pass and a case with an EXPECT must fail with exactly that code set. The ok-gate mini-root must also be a byte copy of
+# the real workflow, so the controls are mutations of the file that CI runs and cannot drift from it.
+stage_workflow_negatives() {
+  wn_rc=0
+  run_controls --ok-prefix --require-negative --need HARNESS_NO_FILE @DIR@.github/workflows/gate.yml tests/workflow tests/workflow sh "$here/workflow-check" --root @DIR@ @EXPECT@ || wn_rc=$?
+  if cmp -s .github/workflows/gate.yml tests/workflow/ok-gate/.github/workflows/gate.yml; then :; else
+    echo "CONTROL_DRIFT tests/workflow/ok-gate/.github/workflows/gate.yml differs from .github/workflows/gate.yml"
+    [ "$wn_rc" -eq 2 ] || wn_rc=1
+  fi
+  return "$wn_rc"
+}
+
 # named-controls (FIX-04, RUN-02, FIX-05; D-58, D-77, D-80, D-85): the five named negative controls of the success criterion and the producers of the two
 # outcomes that only a live run can show, each judged by the real checker or by the live runner, never by a re-implementation here. Registered after
 # the build and conformance stages: the live controls run the ds_runner that conformance-run builds incrementally itself, and the stage reads no
@@ -1645,6 +1665,8 @@ run_stage rights-negatives stage_rights_negatives
 run_stage audit-synthetic stage_audit_synthetic
 run_stage inventory stage_inventory
 run_stage inventory-negatives stage_inventory_negatives
+run_stage workflow stage_workflow
+run_stage workflow-negatives stage_workflow_negatives
 run_stage build stage_build
 run_stage outcome-sync stage_outcome_sync
 run_stage conformance stage_conformance

@@ -1,0 +1,45 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# gate - the CI wrapper over the one local command (record 0006, CI-01, D-61, D-62). The gate logic lives in scripts/check;
+# this file only runs it on a clean Linux machine, which is a different machine from the owner's macOS one.
+# Block-style YAML only: scripts/workflow-check is a restricted line checker that refuses anything it cannot parse.
+name: gate
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: gate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+defaults:
+  run:
+    shell: sh -eu {0}
+jobs:
+  gate:
+    name: gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Tool versions
+        run: |
+          {
+            echo "image: ${ImageVersion:-unknown}"
+            cmake --version | sed -n 1p
+            ninja --version
+            gcc --version | sed -n 1p
+            clang --version | sed -n 1p
+            for t in gawk mawk awk; do command -v "$t" || echo "$t: absent"; done
+            readlink -f "$(command -v awk)"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Gate
+        run: sh scripts/check
