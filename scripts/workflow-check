@@ -22,10 +22,11 @@
 #     WF_EXPR_IN_RUN           an expression opener inside a run value or run block (pass it through env, D-62)
 #     WF_UNTRUSTED_EXPR        an expression outside the allowlist: github.event.pull_request.base.sha, github.event_name, github.workflow,
 #                              github.ref, github.sha (and one of those compared with == to a quoted word)
+#     WF_FORBIDDEN_KEY         a secrets reference, self-hosted, a continue-on-error key, or || true / || : in a run block
+#     WF_CONCURRENCY           the top-level concurrency block lacks the exact group or the exact cancel-in-progress expression (D-62)
 #     WF_DEPENDABOT            ROOT/.github/dependabot.yml is missing or lacks version 2, the github-actions ecosystem, monthly, or the group
 #     WF_UNPARSABLE            YAML outside the accepted subset: printed, then exit 2 (a file the checker cannot read is never a pass,
 #                              and an --expect cannot name it)
-#   Plan 20 adds the key and concurrency codes (WF_FORBIDDEN_KEY, WF_CONCURRENCY) after the two expression codes above.
 # stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then (clean) a line  WORKFLOWS n  and  STATUS workflow ok
 # stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
 # exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error, or WF_UNPARSABLE

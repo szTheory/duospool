@@ -1,0 +1,85 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# gate - the CI wrapper over the one local command (record 0006, CI-01, D-61, D-62). The gate logic lives in scripts/check;
+# this file only runs it on a clean Linux machine, which is a different machine from the owner's macOS one.
+# Block-style YAML only: scripts/workflow-check is a restricted line checker that refuses anything it cannot parse.
+#
+# The job earns its place by catching four failure classes the owner's machine cannot:
+#   1. sh, awk, userland and nm differences from macOS (the Linux image: dash, mawk or gawk, GNU tools, ELF symbols)
+#   2. fresh-clone history dependence (a full clone with no local branches or leftover build files; protocol-order and the range audit read history)
+#   3. gcc versus clang diagnostics and undefined behaviour (the gate runs one compiler; the two steps after it run each compiler on its own build directory)
+#   4. awk dialect drift (the gate runs again under the other awk implementation)
+# One job on one runner image, no paths filter and no cache: measure first, and revisit when docs/ci-timings.md shows a step over 30 seconds.
+# First-run review items: timeout-minutes (the second gate run and the two compiler runs add to the job; compare with the recorded
+# critical path), and whether the second awk needs the apt install fallback (the Tool versions step prints which awk is the default).
+name: gate
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: gate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+defaults:
+  run:
+    shell: sh -eu {0}
+jobs:
+  gate:
+    name: gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Tool versions
+        run: |
+          {
+            echo "image: ${ImageVersion:-unknown}"
+            cmake --version | sed -n 1p
+            ninja --version
+            gcc --version | sed -n 1p
+            clang --version | sed -n 1p
+            for t in gawk mawk awk; do command -v "$t" || echo "$t: absent"; done
+            readlink -f "$(command -v awk)"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Gate
+        run: sh scripts/check --stage workflow
+      # The base commit of the pull request reaches the command through the environment, never through the script text (D-62).
+      - name: Range audit
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: sh scripts/audit-history --range "${BASE_SHA}..HEAD"
+      - name: gcc build and conformance
+        run: sh scripts/conformance-run run --preset gate-gcc
+      - name: clang build and conformance
+        run: sh scripts/conformance-run run --preset gate-clang
+      # The other awk implementation goes first on PATH through a symlink in a temporary directory; nothing system-wide is switched.
+      # If it is not installed, apt installs it as a fallback (a choice recorded for review after the first run, D-74).
+      - name: Second awk gate run
+        run: |
+          default_awk=$(readlink -f "$(command -v awk)")
+          case $default_awk in
+            */gawk) other=mawk ;;
+            *) other=gawk ;;
+          esac
+          if ! command -v "$other" > /dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq "$other"
+          fi
+          shim="$RUNNER_TEMP/awk-shim"
+          mkdir -p "$shim"
+          ln -sf "$(command -v "$other")" "$shim/awk"
+          PATH="$shim:$PATH"
+          export PATH
+          echo "first run awk: $default_awk"
+          echo "second run awk: $(readlink -f "$(command -v awk)")"
+          sh scripts/check

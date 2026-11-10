@@ -860,6 +860,23 @@ stage_workflow_negatives() {
     echo "CONTROL_DRIFT tests/workflow/ok-gate/.github/workflows/gate.yml differs from .github/workflows/gate.yml"
     [ "$wn_rc" -eq 2 ] || wn_rc=1
   fi
+  # the unparsable shape fails closed (T-02-41): flow-map syntax is outside the accepted YAML subset, so the checker must exit 2, with no --expect and
+  # with an --expect that names the code (an unreadable file is never a pass and never an expected outcome). The scratch workflow is the ok-gate one
+  # with its permissions block turned into a flow map.
+  wu="$tmp/wf-unparsable"
+  rm -rf "$wu"
+  mkdir -p "$wu"
+  cp -R tests/workflow/ok-gate/.github "$wu/.github"
+  awk '$0 == "  contents: read" { next } $0 == "permissions:" { print "permissions: { contents: read }"; next } { print }' \
+    tests/workflow/ok-gate/.github/workflows/gate.yml > "$wu/.github/workflows/gate.yml"
+  if sh "$here/workflow-check" --root "$wu" > "$tmp/wu1.out" 2>&1; then wu_r1=0; else wu_r1=$?; fi
+  if sh "$here/workflow-check" --root "$wu" --expect WF_UNPARSABLE > "$tmp/wu2.out" 2>&1; then wu_r2=0; else wu_r2=$?; fi
+  if [ "$wu_r1" -eq 2 ] && [ "$wu_r2" -eq 2 ] && grep -q 'WF_UNPARSABLE' "$tmp/wu1.out"; then
+    echo "CONTROL_UNPARSABLE exit 2 without and with --expect, as required"
+  else
+    echo "CONTROL_UNPARSABLE_BROKEN flow-map workflow gave exit $wu_r1 (no expect) and $wu_r2 (expect), wanted 2 and 2 with WF_UNPARSABLE printed"
+    [ "$wn_rc" -eq 2 ] || wn_rc=1
+  fi
   return "$wn_rc"
 }
 
@@ -1558,6 +1575,29 @@ selftest() {
       echo "SELFTEST mutation-wrong-literal-compare PASS"
     else
       echo "SELFTEST mutation-wrong-literal-compare FAIL"; failed=1
+    fi
+  fi
+
+  # (v) the pin rule of workflow-check is what turns the tag-pinned-action control red (T-02-41): the control, run with --expect WF_UNPINNED_ACTION,
+  # is met on an unmutated copy of scripts/ (exit 0, EXPECT_OK); with the one line tagged rule-pin deleted from the copy of the rules the code is no longer
+  # reported, so the same run must exit 1: the control flipped to broken.
+  if st_want mutation-workflow-pin; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    wpr="tests/workflow/tag-pinned-action"
+    if sh "$cp_dir/workflow-check" --root "$wpr" --expect WF_UNPINNED_ACTION > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c 'rule-pin' "$cp_dir/lib/workflow-rules.awk" || true)
+    grep -v 'rule-pin' "$cp_dir/lib/workflow-rules.awk" > "$cp_dir/lib/workflow-rules.mutated" || true
+    mv "$cp_dir/lib/workflow-rules.mutated" "$cp_dir/lib/workflow-rules.awk"
+    after=$(grep -c 'rule-pin' "$cp_dir/lib/workflow-rules.awk" || true)
+    if sh "$cp_dir/workflow-check" --root "$wpr" --expect WF_UNPINNED_ACTION > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+      echo "SELFTEST mutation-workflow-pin PASS"
+    else
+      echo "SELFTEST mutation-workflow-pin FAIL"; failed=1
     fi
   fi
 

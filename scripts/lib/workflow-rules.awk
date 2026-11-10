@@ -12,11 +12,16 @@
 # A key is [A-Za-z_][A-Za-z0-9_.-]* and may not repeat inside one mapping. A list item sits two spaces under its key.
 # Output records, one per line:  V TAB CODE TAB LINE TAB DETAIL   and a single last  E TAB LINES  (a run that prints no E line is dead).
 # Codes owned here: WF_NO_PERMISSIONS WF_EXCESS_PERMISSION WF_UNPINNED_ACTION WF_UNEXPECTED_ACTION WF_FORBIDDEN_TRIGGER
-#   WF_MISSING_FETCH_DEPTH WF_PERSIST_CREDENTIALS WF_SHELL WF_RUNNER WF_NO_GATE_STEP WF_EXPR_IN_RUN WF_UNTRUSTED_EXPR WF_UNPARSABLE.
+#   WF_MISSING_FETCH_DEPTH WF_PERSIST_CREDENTIALS WF_SHELL WF_RUNNER WF_NO_GATE_STEP WF_EXPR_IN_RUN WF_UNTRUSTED_EXPR
+#   WF_FORBIDDEN_KEY WF_CONCURRENCY WF_UNPARSABLE.
 # The expression rules read every ${{ }} on every line that is not a YAML comment (the content of a run block included, a shell comment
 # in it too: the runner expands it before the shell sees the text). An expression inside a run value or run block is WF_EXPR_IN_RUN;
 # an expression anywhere that is not on the allowlist is WF_UNTRUSTED_EXPR (D-62, T-02-38). Allowed: github.event.pull_request.base.sha,
 # github.event_name, github.workflow, github.ref, github.sha, and one of those compared with == to a quoted lowercase word.
+# WF_FORBIDDEN_KEY: a secrets reference (the key secrets, or the text secrets. or secrets[ on any non-comment line), a self-hosted runner, a
+# continue-on-error key, or a failure swallowed in a run block with || true or || : (the gate must be able to fail, D-62).
+# WF_CONCURRENCY: the top-level concurrency block must carry group gate-${{ github.workflow }}-${{ github.ref }} and cancel-in-progress
+# ${{ github.event_name == 'pull_request' }} exactly (a push to main is never cancelled by a later one).
 # Every rule is one self-contained statement ending in a tag comment (rule-NAME), so a selftest can delete the line and show the
 # control that depends on it flip. Awk dialect: no regex intervals, no gensub, no length of an array (BWK, mawk and gawk all read it).
 
@@ -53,6 +58,13 @@ function expr_ok(e,   n) {
   return ((substr(e, 1, n - 1) in allow) && substr(e, n + 4) ~ /^'[a-z_]+'$/)
 }
 
+# scan_text: the forbidden-key rules that read the text of a line. inrun is 1 for a run value or run block content.
+function scan_text(s, ln, inrun) {
+  if (index(s, "secrets.") > 0 || index(s, "secrets[") > 0) viol("WF_FORBIDDEN_KEY", ln, "a secrets reference")  # rule-secrets
+  if (index(s, "self-hosted") > 0) viol("WF_FORBIDDEN_KEY", ln, "a self-hosted runner")  # rule-self-hosted
+  if (inrun && s ~ /\|\|[ ]*(true|:)([ ;]|$)/) viol("WF_FORBIDDEN_KEY", ln, "a failure swallowed with || true")  # rule-or-true
+}
+
 # scan_exprs: every ${{ }} on one line. inrun is 1 when the line is a run value or the content of a run block.
 function scan_exprs(s, ln, inrun,   p, q, e) {
   while ((p = index(s, "${{")) > 0) {
@@ -65,7 +77,7 @@ function scan_exprs(s, ln, inrun,   p, q, e) {
     }
     e = trim(substr(s, 1, q - 1))
     s = substr(s, q + 2)
-    if (!expr_ok(e)) viol("WF_UNTRUSTED_EXPR", ln, "expression is not on the allowlist: " e)  # rule-untrusted
+    if (index(e, "secrets") == 0 && !expr_ok(e)) viol("WF_UNTRUSTED_EXPR", ln, "expression is not on the allowlist: " e)  # rule-untrusted
   }
 }
 
@@ -127,6 +139,7 @@ BEGIN {
   # the content of a block scalar is not read as structure
   if (bs) {
     if (ind > bsk) {
+      scan_text(text, ln, bskey == "run")
       scan_exprs(text, ln, bskey == "run")
       next
     }
@@ -189,6 +202,7 @@ BEGIN {
   } else check_scalar(val, ln)
 
   # expressions on this line (a run value on one line is a run block for the expression rules)
+  scan_text(text, ln, haskey && key == "run" && !kopen && !bs)
   scan_exprs(text, ln, haskey && key == "run" && !kopen && !bs)
 
   # leaving a permissions block or the steps list
@@ -238,6 +252,13 @@ BEGIN {
   if (top == "on" && ki > 0 && (key == "pull_request_target" || key == "workflow_run")) viol("WF_FORBIDDEN_TRIGGER", ln, key " is a forbidden trigger")  # rule-trigger
   if (ki == 0 && key == "on" && (val == "pull_request_target" || val == "workflow_run")) viol("WF_FORBIDDEN_TRIGGER", ln, val " is a forbidden trigger")  # rule-trigger
 
+  # forbidden keys
+  if (key == "secrets" || key == "continue-on-error") viol("WF_FORBIDDEN_KEY", ln, key " is a forbidden key")  # rule-forbidden-key
+
+  # concurrency: the group and the cancel expression, exactly
+  if (top == "concurrency" && ki == 2 && key == "group" && val == "gate-${{ github.workflow }}-${{ github.ref }}") cgroup = 1  # rule-concurrency-group
+  if (top == "concurrency" && ki == 2 && key == "cancel-in-progress" && val == "${{ github.event_name == 'pull_request' }}") ccancel = 1  # rule-concurrency-cancel
+
   # shell and runner
   if (key == "shell" && val != "sh -eu {0}") viol("WF_SHELL", ln, "shell must be sh -eu {0}")  # rule-shell
   if (key == "shell" && val == "sh -eu {0}" && top == "defaults") shellok = 1
@@ -272,6 +293,7 @@ END {
   step_end()
   if (!haveperm) viol("WF_NO_PERMISSIONS", 0, "no top-level permissions block")  # rule-perm-missing
   if (!shellok) viol("WF_SHELL", 0, "defaults.run.shell: sh -eu {0} is not set")  # rule-shell-missing
+  if (!cgroup || !ccancel) viol("WF_CONCURRENCY", 0, "concurrency needs group gate-${{ github.workflow }}-${{ github.ref }} and cancel-in-progress ${{ github.event_name == 'pull_request' }}")  # rule-concurrency
   if (!runson) viol("WF_RUNNER", 0, "no runs-on")  # rule-runner-missing
   if (needgate && !havecheckout) viol("WF_MISSING_FETCH_DEPTH", 0, "no actions/checkout step: the gate needs the full history")  # rule-checkout-missing
   if (needgate && !gatefound) viol("WF_NO_GATE_STEP", 0, "no step named Gate that runs exactly: sh scripts/check")  # rule-gate-step
