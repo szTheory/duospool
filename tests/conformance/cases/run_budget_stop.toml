@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Budgeted run, stop function (D-57, D-68): the stop function is checked before the first step and after every step. A stop at 3000 in steps of
+# 1000 ends at 3000 with the stopped outcome; when the budget is exactly 3000 the stop at 3000 still wins (a budget exactly consumed is not
+# exceeded), a stop at 3001 does not fire and the budget outcome follows; a stop that already holds ends the run before any step. Evidence
+# tier E0, placeholder stepping that makes no hardware claim (LED-PROF-0002).
+id = "run_budget_stop"
+kind = "run_budget"
+fixture = "plain-256k"
+request = "bind.powerup_policy=seeded-prng-v1;seed=42"
+expect = "budget=5000,step=1000,stop=3000,result=stopped,time=3000|budget=3000,step=1000,stop=3000,result=stopped,time=3000|budget=3000,step=1000,stop=3001,result=budget,time=3000|budget=5,step=1,stop=0,result=stopped,time=0|budget=2500,step=1000,stop=1,result=stopped,time=1000"
+meaning = "A stop function ends the run at the first step boundary where it holds, wins over an exactly consumed budget, and a stop that holds before the first step costs no cycle"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

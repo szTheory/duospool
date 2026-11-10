@@ -1431,6 +1431,8 @@ static const struct {
     {"redaction_leak_control", kind_redaction_leak_control, 0},
     {"splitmix", kind_splitmix, 0},
     {"poweron", kind_poweron, 0},
+    {"advance", kind_advance, 0},
+    {"run_budget", kind_run_budget, 0},
     {"poweron_domain", kind_poweron_domain, 0},
     {"coverage", kind_coverage, 1},
 };

@@ -82,3 +82,7 @@ poweron_draw_order
 poweron_seed_zero_supplied
 ref_seed_required
 ref_seed_forbidden
+advance_rules
+run_budget
+run_budget_stop
+poweron_domain_independence

@@ -135,6 +135,8 @@ int pk_copy_text(const char *src, char *dst, size_t cap);   /* copy a key's text
 char *pk_next_item(char **rest, char sep);                  /* the next separator-delimited item of a list, split in place */
 void kind_splitmix(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_poweron(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_advance(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_run_budget(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_poweron_domain(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 
 /* the profile kinds (profkinds.c); each gets the case, the counter, and a buffer for the observed value */
