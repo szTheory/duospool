@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 2
 current_phase_name: Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate
 status: executing
-stopped_at: Completed 02-02-PLAN.md
-last_updated: "2026-11-10T03:47:22.586Z"
+stopped_at: Completed 02-03-PLAN.md
+last_updated: "2026-11-10T03:55:23.920Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 2 execution started
-state_head: de72eda4b0597e9fd253324a04292036c94ff3eb
+state_head: decfba6614f4b94a87039463cec863cd2eb038cb
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 34
-  completed_plans: 14
+  completed_plans: 15
   percent: 17
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 2 (Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate) — EXECUTING
-Plan: 3 of 22
+Plan: 4 of 22
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 2 execution started
 
@@ -70,6 +70,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 1 P12 | n/a | 3 tasks | 5 files |
 | Phase 02 P01 | 22 min | 3 tasks | 2 files |
 | Phase 02 P02 | 5 min | 3 tasks | 88 files |
+| Phase 02 P03 | 9 min | 3 tasks | 19 files |
 
 ## Accumulated Context
 
@@ -101,6 +102,8 @@ Recent decisions affecting current work:
 - [Phase 02]: Gate refactors are proven by tests/check/equiv.sh transcript equivalence against a git archive of the base commit plus a selftest mutation; the harness is a one-shot proof and will DIFF once later plans change gate stdout on purpose
 - [Phase 02]: 02-02: conformance-ingest judges against the repository's outcomes.def (not the mini-root's); a malformed REQUIRED id is reported as OUTCOME_MISSING_ARTIFACT — Mini-root controls supply REQUIRED and cases but must use the one real outcome set; no extra code needed
 - [Phase 02]: 02-02: conformance-flatten prints violations and its STATUS marker on stderr; stdout is TSV only (empty on any error) — Keeps scripts/check checker() marker rule intact without a validate-only mode and guarantees no partial TSV reaches the runner
+- [Phase 02]: 02-03: conformance-run maps a CMD status above 2 to HARNESS_CMD_STATUS and exit 2; wall expiry is status 142 and is never a cancelled line — keeps the 0/1/2 exit contract and the watchdog distinct from cancelled (D-57, D-77)
+- [Phase 02]: 02-03: outcome-sync codes partition faults minimally: ROWS (count), NAME (set), ORDER only when both are clear — each mini-root control then has an exact, small expected code set and a mutation flips exactly one control
 
 ### Pending Todos
 
@@ -124,6 +127,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-10T03:47:22.514Z
-Stopped at: Completed 02-02-PLAN.md
+Last session: 2026-11-10T03:55:23.563Z
+Stopped at: Completed 02-03-PLAN.md
 Resume file: None
