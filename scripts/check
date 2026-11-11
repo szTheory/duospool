@@ -2520,6 +2520,58 @@ selftest() {
     fi
   fi
 
+  # (z11) a restore that skips one field copy is what the restore cases must show red (plan 03-31; D-122: the third control, skip a field in restore; D-131 caps the toy cores at 8, so it is a selftest mutation and not a toy). A scratch tree holds the sources of the gate preset (as for mutation-drop-precedence, no controls, so no toy is built).
+  # The unmutated scratch runner must pass snapshot_restore_sampled (--only, against the real cases TSV and the live built fixtures), so that the red below cannot come from a broken build. Then the one line of pass 2 of dec_cpu0 that stores the Y register (the commit branch: pass 1 writes nothing) is replaced in the scratch copy of src/core/snapshot.c (the line must occur exactly once, or
+  # the selftest is a harness error and not a silent pass) and the value is read and dropped instead ((void)y: the warnings are errors, so an unused variable would not build), the scratch tree is rebuilt and the same case must give RESULT guest_failure. The live tree is never written.
+  if st_want mutation-restore-skip-field; then
+    st_ran=1
+    sf_root="$tmp/selftest/skip-root"
+    sf_ok=1
+    sf_why=""
+    rm -rf "$sf_root"
+    mkdir -p "$sf_root/tests/conformance" "$sf_root/ev"
+    if [ ! -x build/gate/ds_runner ] || [ ! -f build/gate/fixtures/ds-proto.pce ]; then
+      fixture_build_run || { echo "HARNESS_ERROR mutation-restore-skip-field: the fixtures could not be built"; exit 2; }
+      stage_build || { echo "HARNESS_ERROR mutation-restore-skip-field: the gate preset could not be built"; exit 2; }
+    fi
+    cp CMakeLists.txt CMakePresets.json "$sf_root/"
+    cp -R src "$sf_root/src"
+    cp tests/conformance/*.c tests/conformance/*.h tests/conformance/*.def "$sf_root/tests/conformance/"
+    if sh "$here/conformance-flatten" tests/conformance/cases > "$sf_root/cases.tsv" 2> "$tmp/st.err"; then :; else sf_ok=0; sf_why="cannot flatten the cases"; fi
+    if [ "$sf_ok" -eq 1 ]; then
+      if (cd "$sf_root" && cmake --preset gate > build.log 2>&1 && cmake --build --preset gate >> build.log 2>&1); then :; else sf_ok=0; sf_why="the unmutated scratch tree does not build"; fi
+    fi
+    if [ "$sf_ok" -eq 1 ]; then
+      "$sf_root/build/gate/ds_runner" --cases "$sf_root/cases.tsv" --evidence-dir "$sf_root/ev" --only snapshot_restore_sampled > "$sf_root/before.txt" 2> /dev/null || true
+      if ! awk '$1 == "RESULT" && $2 == "snapshot_restore_sampled" && $3 == "pass" { f = 1 } END { exit !f }' "$sf_root/before.txt"; then
+        sf_ok=0
+        sf_why="snapshot_restore_sampled does not pass on the unmutated scratch tree"
+      fi
+    fi
+    if [ "$sf_ok" -eq 1 ]; then
+      sf_n=$(grep -c '^        inst->y = y;$' "$sf_root/src/core/snapshot.c" || true)
+      if [ "$sf_n" -ne 1 ]; then
+        echo "HARNESS_ERROR mutation-restore-skip-field: src/core/snapshot.c must hold exactly one line 'inst->y = y;' in pass 2 of dec_cpu0 (found $sf_n)"
+        exit 2
+      fi
+      sed 's/^        inst->y = y;$/        (void)y;/' "$sf_root/src/core/snapshot.c" > "$sf_root/snapshot.mutated" || true
+      mv "$sf_root/snapshot.mutated" "$sf_root/src/core/snapshot.c"
+      if (cd "$sf_root" && cmake --build --preset gate >> build.log 2>&1); then :; else sf_ok=0; sf_why="the mutated scratch tree does not build"; fi
+    fi
+    if [ "$sf_ok" -eq 1 ]; then
+      "$sf_root/build/gate/ds_runner" --cases "$sf_root/cases.tsv" --evidence-dir "$sf_root/ev" --only snapshot_restore_sampled > "$sf_root/after.txt" 2> /dev/null || true
+      if ! awk '$1 == "RESULT" && $2 == "snapshot_restore_sampled" && $3 == "guest_failure" { f = 1 } END { exit !f }' "$sf_root/after.txt"; then
+        sf_ok=0
+        sf_why="snapshot_restore_sampled is not guest_failure with one field copy removed from pass 2 of the restore"
+      fi
+    fi
+    if [ "$sf_ok" -eq 1 ]; then
+      echo "SELFTEST mutation-restore-skip-field PASS"
+    else
+      echo "SELFTEST mutation-restore-skip-field FAIL ($sf_why)"; failed=1
+    fi
+  fi
+
   # (z10) the tiling list of ds_core.h is what makes a member added to struct ds_instance without a snapshot decision a build failure (plan 03-30; D-122, Pattern 8): in a scratch copy of the core headers a one-byte member is added to the struct and nothing else, and a one-line
   # translation unit that includes the header must then fail to compile with the message of the tiling static assert. The unmutated scratch copy
   # must compile, so the failure cannot come from a broken scratch tree. The live tree is never written.
