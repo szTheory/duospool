@@ -9,13 +9,53 @@ by the `ci-timings-controls` stage of `scripts/check`.
 
 ## Status
 
-No CI run exists yet. Pushing a branch to the public remote is an owner decision (D-64) and has not been authorised, so the workflow has only been
-judged statically by `scripts/workflow-check` and its controls. The Phase 2 success criterion that needs a green CI run is therefore
-unverified-pending-push, not satisfied. The table below stays empty until a real run is recorded: a row built from a canned file or a local run
-would be a claim about CI that nothing has earned.
+CI-CHECKPOINT: verified (answer: authorised-branch-pr) run 42939483070
 
-A local one-off run of the gate in an Ubuntu 24.04 container is a useful dry run of failure classes 1, 3 and 4 below. It is not a CI run, it has no
-row in this table, and it does not change the status above.
+The owner decision that allowed the push is recorded here as it was given. Answer option id: `authorised-branch-pr`. The owner's selection, verbatim:
+"Push branch + PR, allowlist the 2 paths (Recommended)", chosen in the /gsd-autonomous session on 2026-11-10, answering the question about pushing one
+phase branch and opening a pull request for the first CI run. It is not `authorised-branch-pr-and-settings`: no repository setting was changed and no
+ruleset was created. The scope was one branch, `gsd/phase-02-deterministic-machine-shell-hucard-boundary-and-fail-closed`, and one pull request into
+`main`; `main` was not pushed to, no tag was created, no force-push was used.
+
+Success criterion 5 is verified by one real run: the `gate` job of run 42939483070 (pull request 1, head `b063518`) concluded success on a GitHub-hosted
+`ubuntu-24.04` runner. The evidence tier is E0, repeatability: the run shows that the gate command passes on a second machine class with a second awk
+and two compilers, not that any profile is accurate. It is the first GitHub-hosted run of the gate, so it is distinct evidence from the local runs and
+from the one-off container run below.
+
+## First run (run 42939483070)
+
+Runner image `ubuntu-24.04`, image version 20261101.360.1 (runner 2.338.2), from the run log. The `Tool versions` step writes cmake, ninja, gcc and clang
+versions to the job summary, which `gh` and the Actions API do not return (`output.summary` is null), so those four versions are not recorded here;
+add them from the job page if they matter. The awk facts come from the log of the `Second awk gate run` step:
+
+- **Default awk (D-74):** `/usr/bin/gawk` (gawk). The first gate run and the range audit ran under gawk. The dual run therefore exercised mawk as the
+  second implementation, which is the dialect the owner's machine and gawk both differ from.
+- **Second awk:** `/usr/bin/mawk`. It was already installed on the image, so the `apt-get` fallback did not run (the step log holds no apt output). The
+  fallback is untested on this image and cheap; keep it as a guard against an image change.
+- **Both full gates passed:** `CHECK RESULT PASS` with 47 stages under gawk, and again under mawk.
+- The macOS awk (BWK 20200816) is exercised only by the local runs, so three awk implementations now have evidence, from three places.
+
+Step seconds (from the step timestamps of the job): set up, checkout and tool versions 2 s; `Gate` 37 s; `Range audit` 16 s; `gcc build and conformance`
+7 s; `clang build and conformance` 9 s; `Second awk gate run` 25 s. Slowest stages inside the gate, from the gaps between the `CHECK` lines (a
+rounded estimate, whole seconds): `build` 7 s (cold), `conformance` 6 s, `sanitizers` 5 s, every other stage 2 s or less.
+
+## Efficiency review of the first run
+
+- **Critical path 100 s, queue 0 s.** One job, so the critical path is the job. The local baseline below was 45 s of wall time on a quiet developer
+  machine, so the runner is about 2 times slower than that machine, with `Range audit` and the second awk run added. Compare later rows with this one.
+- **No cache, and none justified.** The `Gate` step is 37 s as a whole step, over the 30 s rule of thumb, but it is 47 stages and none of them passes
+  7 s, so the time is spread out and there is nothing for a cache to hold: the stages build from source with no downloaded dependency. A cache would
+  only hide the cold-start failures the job exists to catch.
+- **Possible overlap, not changed.** The `Gate` step's `conformance` stage and the `gcc build and conformance` step both build with the system C compiler
+  (gcc on this image) in different build directories, which is about 7 s of repeated work. It is kept: the two directories prove a clean gcc preset
+  build, and 7 s is far below any threshold. Revisit if the gate grows.
+- **The second awk step is 25 s, the largest piece after `Gate`.** It reruns every stage, which is the point (failure class 4). It could be limited to the
+  awk-using stages later, but that would take an inventory of those stages, and the saving is under 25 s. Not changed.
+- **`timeout-minutes: 10` against a 100 s critical path.** That is a 6 times margin. A single sample is not enough to tighten it; reconsider after
+  three or more rows, when a limit of 5 minutes would still leave a margin of about 3 times. Not changed.
+- **`Range audit` is 16 s** on this pull request because the range holds the whole phase (130 commits). A normal pull request holds a few commits, so
+  expect it to shrink.
+- **Nothing was weakened.** No stage, control, selftest or workflow step was skipped, merged or shortened, and no workflow file changed for this review.
 
 ## Timing table
 
@@ -24,6 +64,7 @@ start, which is the critical path), and the run conclusion.
 
 | Date (UTC) | Run id | Queue s | Job s | Run wall s (critical path) | Notes |
 |------------|--------|---------|-------|----------------------------|-------|
+| 2026-11-11 | 42939483070 | 0 | gate=98 | 100 | success |
 
 ## Failure classes the job owns
 
@@ -47,12 +88,15 @@ different job, not a deletion.
 
 ## Pending hand-offs
 
-Each item is a setting on the remote repository. It is applied only with the push checkpoint's authorisation (D-80); until then it stays here as a
-pending hand-off, and nothing in the repository applies it.
+Each item is a setting on the remote repository. It is applied only with the push checkpoint's authorisation (D-80). The owner's answer was
+`authorised-branch-pr`, which does not authorise settings, so none was changed and all three stay pending hand-offs for the owner.
 
-1. Actions default workflow permissions set to read-only.
-2. Actions allowed to approve pull requests: off.
-3. A branch ruleset on `main` that requires the `gate` check (owner gate, D-64).
+1. Actions default workflow permissions set to read-only. Read-only observation on 2026-11-10 (a GET, no change): already `read`.
+2. Actions allowed to approve pull requests: off. Read-only observation on 2026-11-10: already off (`can_approve_pull_request_reviews` false).
+3. A branch ruleset on `main` that requires the `gate` check (owner gate, D-64). Read-only observation on 2026-11-10: no ruleset exists.
+
+Items 1 and 2 are already at the wanted values on the repository today, but nothing in the repository pins them, so they stay on the list for the owner
+to confirm. Item 3 is not done: `main` is unprotected, and the `gate` check exists now (it ran on pull request 1) so a ruleset can name it.
 
 ## Local baseline (a local run, not a CI run)
 

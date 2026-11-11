@@ -132,6 +132,7 @@ Per-task commands run at stage granularity (D-81); full-gate, `--selftest`, equi
 | Behavior | Requirement | Why Manual | Test Instructions |
 |----------|-------------|------------|-------------------|
 | First green GitHub Actions run, critical-path timing row | CI-01 | Needs a push to the public remote, which is an owner decision (D-64); otherwise reported unverified-pending-push | After owner authorises: push a `gsd/phase-2-*` branch, open a PR, `scripts/ci-timings <run-id>`, append the row to `docs/ci-timings.md` |
+| Recorded outcome (plan 02-22): verified, answer `authorised-branch-pr` (owner, 2026-11-10), run 42939483070 on pull request 1, `gate` job success, critical path 100 s, default awk gawk, second awk mawk; row and review in `docs/ci-timings.md`. Evidence tier E0 repeatability. Remote settings (Actions permissions, Actions approving PRs, branch ruleset on `main`) stay pending hand-offs for the owner | CI-01 | Owner authority gate, answered | Done: branch `gsd/phase-02-deterministic-machine-shell-hucard-boundary-and-fail-closed` pushed, PR opened, `sh scripts/ci-timings 42939483070` row appended |
 
 Everything else has automated verification. Authority gates (push, branch ruleset) are recorded hand-offs, not UAT.
 
