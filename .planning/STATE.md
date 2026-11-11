@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 3
 current_phase_name: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-current_plan: 3
+current_plan: 4
 status: planning
-stopped_at: Completed 03-02-PLAN.md
-last_updated: "2026-11-11T06:23:56.977Z"
+stopped_at: Completed 03-35-PLAN.md
+last_updated: "2026-11-11T06:31:44.538Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 2 complete, transitioned to Phase 3
-state_head: 77abfbabf7bddcb0adcb89c8e7b94c50a0816ef4
+state_head: ccf0574ff85dbcf3a48d7037f8e293ecce60f42c
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 72
-  completed_plans: 36
+  completed_plans: 37
   percent: 33
 ---
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 3 — HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-Current Plan: 3
+Current Plan: 4
 Total Plans in Phase: 38
 Status: Ready to execute
-Last activity: 2026-11-11 — Completed 03-02 (W1: placeholder run API deleted, run_until_abs and run_chunk_sum, spin and interleave kinds and the shared-state toy on ds_run)
+Last activity: 2026-11-11 — Completed 03-35 (W1: run_refusals.def, kind run_refuse with six refusal rows, deferred run_refusal_coverage)
 
 Progress: [███░░░░░░░] 33%
 
@@ -95,6 +95,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 02 P22 | 35 min | 2 tasks | 7 files |
 | Phase 03 P01 | 25min | 3 tasks | 15 files |
 | Phase 03 P02 | 35min | 2 tasks | 17 files |
+| Phase 3 P35 | 25min | 2 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -175,6 +176,7 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-01: ds_cpu_reset is called from ds_boot so a booted instance is always in reset state; ds_cpu_step returns mclk and ds_run adds them in one statement
 - [Phase 03]: 03-02: D-68 and D-75 superseded by D-91; the placeholder stepping API is deleted and every stepping kind runs ds_run to absolute deadlines
 - [Phase 03]: 03-02: ds_run overshoot is 0 for a call that took no step; run_until items assert overshoot = time - until instead of a separate literal
+- [Phase 3]: 03-35: ds_run refusal codes live in run_refusals.def (run.NAME, 16 slots), never refusals.def; sink and deadline renamed sink_unsupported and time_wrap, numbers 1..6 unchanged
 
 ### Pending Todos
 
@@ -198,6 +200,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-11T06:23:56.838Z
-Stopped at: Completed 03-02-PLAN.md
+Last session: 2026-11-11T06:31:44.388Z
+Stopped at: Completed 03-35-PLAN.md
 Resume file: None
