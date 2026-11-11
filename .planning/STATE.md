@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 3
 current_phase_name: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-current_plan: 8
+current_plan: 9
 status: planning
-stopped_at: Completed 03-05-PLAN.md
-last_updated: "2026-11-11T07:14:47.976Z"
+stopped_at: Completed 03-37-PLAN.md
+last_updated: "2026-11-11T07:23:33.995Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 2 complete, transitioned to Phase 3
-state_head: 2b09d68d8aea65f77128294ad044508dbbd63682
+state_head: 3c7ccf1ce51cc2d3241bdfc425e6d49173585b32
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 72
-  completed_plans: 41
+  completed_plans: 42
   percent: 33
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 3 — HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-Current Plan: 8
+Current Plan: 9
 Total Plans in Phase: 38
 Status: Ready to execute
 Last activity: 2026-11-11 — Completed 03-04 (W1: optional case keys, guestkinds.c, authored fixture key, machine_time and stop on RESULT)
@@ -100,6 +100,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 3 P36 | 20min | 1 tasks | 16 files |
 | Phase 03 P04 | 20min | 2 tasks | 17 files |
 | Phase 03 P05 | 60min | 2 tasks | 18 files |
+| Phase 03 P37 | 35min | 2 tasks | 33 files |
 
 ## Accumulated Context
 
@@ -185,6 +186,7 @@ Recent decisions affecting current work:
 - [Phase 3]: 03-36: poweron_domain keeps its kind with a no-domain stand-in stream until the v2 domains arrive in 03-24
 - [Phase 3]: 03-04: guest case grammar: fixture authored:NAME, integer keys until_mclk and checks, expect id=N; RESULT tail machine_time=N stop=REASON from guest and run kinds
 - [Phase 03]: 03-05: fixture library (startup, verdict, check) with a DCK1 literal table at $F000; GUEST checks store an XOR mask entry; protocol faults are -D switches in verdict.inc built as variants
+- [Phase 03]: 03-37: fixture-lint pairs CHECK uses with .checks rows (UNLISTED_CHECK, ORPHAN_CHECK), FXL_COUNT is headers only, RAW line = comment word RAW with RAW:<page>, stage 1 in its own lex file
 
 ### Pending Todos
 
@@ -208,6 +210,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-11T07:14:47.827Z
-Stopped at: Completed 03-05-PLAN.md
+Last session: 2026-11-11T07:23:33.844Z
+Stopped at: Completed 03-37-PLAN.md
 Resume file: None
