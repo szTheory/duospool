@@ -35,28 +35,36 @@ and evidenced is not supported, regardless of how it looks in a frontend.
 - ✓ One documented local command (`sh scripts/check`) that matches the fast PR
   gate, plus CI that runs the same gate — Phase 2 (first green CI run on
   PR 1; gcc/clang/mawk/gawk evidence is CI plus a one-off local container run)
+- ✓ A portable emulation core with explicit per-instance state, no host UI,
+  wall-clock, filesystem or device dependence — Phase 2 and 3 (fixed-size
+  instance in caller memory, no malloc; machine time in master clocks)
+- ✓ Deterministic execution: scripted per-port logical input stamped in machine
+  time, fresh isolated instances, bounded runs with absolute deadlines, and
+  repeatable outputs, including chunked runs and snapshot/restore that match
+  an uninterrupted run — Phase 3 (evidence tier E0, repeatability only)
 
 ### Active
 
 These are hypotheses until shipped and validated. Detailed, ID'd requirements
 live in `.planning/REQUIREMENTS.md`.
 
-- [ ] A portable emulation core with explicit per-instance machine state. The
-      core does not depend on host UI, wall-clock scheduling, filesystems,
-      physical controller discovery, or audio/video devices.
 - [ ] A first named base PC Engine/TG-16 profile (region, console revision, CPU
       revision, video timing, controller signaling, content format) with
-      documented evidence for each behavior claimed.
-- [ ] Deterministic execution: scripted logical input with explicit timing, fresh
-      isolated machine state, bounded execution, and repeatable outputs.
+      documented evidence for each behavior claimed. (Seven CPU, interrupt and
+      timer ledger entries are supported at E1 documentary level; the rest are
+      labelled modelling assumptions.)
 - [ ] Separate observations of CPU/device effects, logical input, machine time,
       raw emulated video (before host scaling/colour conversion), raw audio
       (PSG events and PCM, before device playback), and guest progress.
+      (Instruction and device-write sinks, the pad read log, machine time and
+      guest-RAM verdicts exist from Phase 3; video and audio are Phases 4 and 5.)
 - [ ] A headless runner (or equivalent consumer) that can load content, apply a
       scripted input, run for a bounded machine time, and emit observations.
 - [ ] Original, rights-cleared diagnostic fixtures with a manifest (source,
       build recipe, hashes, license, notices, redistribution terms, test
-      meaning) as the dependable fast test suite.
+      meaning) as the dependable fast test suite. (CPU, MMU, timer, interrupt,
+      speed-switch and pad fixtures exist from Phase 3; display and audio
+      fixtures are still to come.)
 - [ ] An installed-consumer/package proof: an independent consumer built
       against the installed artifact with source/build paths unavailable.
 - [ ] Measured, workload-identified performance tracking, with correct output
@@ -124,7 +132,7 @@ system card + CD tracks, PC Engine palette/geometry/variable timing, audio
 cadence.
 
 **Project state.** Greenfield. At initialization the repository contained only
-planning configuration, the bootstrap pack, and `AGENTS.md`. After Phase 1 it holds the claim ledger (`ledger/`), the first-profile record (`profiles/`), decision records (`docs/decisions/`), licence files, and a fail-closed shell gate (`scripts/check`). The core language is C11 with CMake and Ninja (record 0001). After Phase 2 it also holds a C11 core shell (`src/core`: profile resolve, HuCard boot/refusal, mapper boundary, power-on policy, state digest), a run-record printer, a conformance runner with 104 required cases, and a 47-stage fail-closed gate. No CPU, video or audio exists yet. The repository is public at github.com/szTheory/duospool; PR 1 (Phase 2 branch) is open and unmerged.
+planning configuration, the bootstrap pack, and `AGENTS.md`. After Phase 1 it holds the claim ledger (`ledger/`), the first-profile record (`profiles/`), decision records (`docs/decisions/`), licence files, and a fail-closed shell gate (`scripts/check`). The core language is C11 with CMake and Ninja (record 0001). After Phase 3 it also holds a HuC6280 CPU with an MMU and I/O bus, a closed-form timer, an interrupt controller, a 2-button pad on the SEL/CLR protocol, bounded runs in master clocks, trace and device-write sinks, snapshot/restore, 13 authored guest fixtures built with ca65, and a 56-stage gate with 236 conformance cases and 16 toy controls. After Phase 2 it also holds a C11 core shell (`src/core`: profile resolve, HuCard boot/refusal, mapper boundary, power-on policy, state digest), a run-record printer, a conformance runner with 104 required cases, and a 47-stage fail-closed gate. No video or audio exists yet. The repository is public at github.com/szTheory/duospool; PR 1 (the Phase 2 branch) is open and unmerged; Phase 3 and the Phase 2 review fixes are local only, pending owner push authorisation.
 
 ## Constraints
 
@@ -197,4 +205,4 @@ This document evolves at phase transitions and milestone boundaries.
 5. Refresh only the sibling/LibFuturo evidence that could change the live decision
 
 ---
-*Last updated: 2026-11-10 after Phase 2 (deterministic machine shell, HuCard boundary and fail-closed gate; E0 evidence only)*
+*Last updated: 2026-11-11 after Phase 3 (HuC6280 CPU, bus, timer, interrupts and 2-button pad; E0 repeatability, E1 documentary for seven entries)*
