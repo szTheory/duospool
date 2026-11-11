@@ -472,6 +472,19 @@ unsigned char *load_image(const char *rom, size_t *len)
     return read_rom(path, (size_t)DS_ROM_CAP, len);
 }
 
+/* the model.NAME=VALUE pairs of a parsed request into the booted instance through ds_model_set, before the first step (plan 03-17); NULL on success, otherwise why not (a fault of the case: a refused setting is never a verdict on the guest) */
+const char *apply_model(struct ds_instance *inst, const struct spec *s)
+{
+    unsigned i;
+
+    for (i = 0u; i < s->nmodel; i++) {
+        if (ds_model_set(inst, s->model_name[i], s->model_value[i]) != (uint32_t)DS_MODELREF_NONE) {
+            return "a model.NAME setting of the request was refused by ds_model_set";
+        }
+    }
+    return NULL;
+}
+
 /*
  * Boot the image in b->content (len bytes, heap memory the caller set; release_boot frees it) over the request text (the case's request key; empty gives the defaults of parse_spec).
  * NULL and b and the accepted instance on success, otherwise why not: a fault here is a harness fault of the case, never a verdict on the guest. On a fault b is released.
@@ -499,6 +512,11 @@ const char *boot_content(const char *request, size_t len, struct booted *b, cons
     if (ds_boot(b->mem, ds_instance_size(), &rq, &res) != 0u || res.instance == NULL) {
         release_boot(b);
         return "the built fixture image was refused at boot";
+    }
+    err = apply_model(res.instance, &s);
+    if (err != NULL) {
+        release_boot(b);
+        return err;
     }
     *inst = res.instance;
     return NULL;

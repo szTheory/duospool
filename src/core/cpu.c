@@ -632,12 +632,21 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
         ea = zp_addr(op1);
         ds_bus_write(inst, bus, ea, (uint8_t)((uint32_t)ds_bus_read(inst, bus, ea) | (1u << (mn - (uint32_t)MN_SMB0))));
         break;
-    case MN_TMA: /* A <- the selected MPR, no flag changes (S8-101): the one-hot operand is the documented use; a multi-bit operand returns the highest selected index (D-105); operand 0 leaves A alone until plan 03-17 adds tma_zero */
+    case MN_TMA: /* A <- the selected MPR, no flag changes (S8-101): the one-hot operand is the documented use. The two edges the manual does not define are single constants (D-105, ASSUMED LED-CPU-0015; four emulators
+                    disagree, ER-8): a multi-bit operand returns the HIGHEST selected index (the loop below overwrites A in ascending order), and the operand $00 follows the model parameter tma_zero: bus_latch (the default)
+                    returns mpr_latch, a_unchanged leaves A alone. The latch takes the byte that a TMA with a nonzero operand returned; TMA #0 does not change it. No flag changes. */
+        if (op1 == 0u) {
+            if (inst->tma_zero == (uint8_t)DS_TMA_ZERO_BUS_LATCH) {
+                inst->a = inst->mpr_latch;
+            }
+            break;
+        }
         for (i = 0u; i < (uint32_t)DS_MPR_COUNT; i++) {
             if ((op1 & (1u << i)) != 0u) {
                 inst->a = inst->mpr[i];
             }
         }
+        inst->mpr_latch = inst->a;
         break;
     case MN_ST0: /* the immediate goes to physical $1FE000, $1FE002 or $1FE003 whatever the MPRs hold (H8-8 Table 2-2-3, S8-80 to S8-82, D-106); no flag changes */
         ds_bus_write_phys(inst, bus, 0x1FE000u, (uint8_t)op1);
@@ -779,11 +788,15 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
     case MN_BRA: /* the table's 4 cycles already include the branch: no adder (S8-29) */
         taken = 1;
         break;
-    case MN_TAM: /* every selected MPR gets A (D-105: one-hot is the documented use) */
+    case MN_TAM: /* every selected MPR gets A (S8-90: one-hot is the documented use). The edges the manual does not define are single constants (D-105, ASSUMED LED-CPU-0015, ER-8): a multi-bit operand writes EVERY
+                    selected MPR, and the operand $00 is a no-op (no MPR changes, the latch keeps its byte). A TAM with a nonzero operand puts A in the one-byte latch mpr_latch. */
         for (i = 0u; i < (uint32_t)DS_MPR_COUNT; i++) {
             if ((op1 & (1u << i)) != 0u) {
                 ds_mpr_write(inst, i, inst->a);
             }
+        }
+        if (op1 != 0u) {
+            inst->mpr_latch = inst->a;
         }
         break;
     case MN_JSR: /* pushes the address of the last byte of the instruction, high byte first */

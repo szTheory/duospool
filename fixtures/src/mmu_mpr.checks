@@ -5,7 +5,7 @@
 # Class tags: MAN:<page> (the literal is a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model> (the expected byte is computed in the guest, the table entry is an XOR mask of $00), ASSUMED:<LED-id>.
 # The HuCard bytes the checks read are written by the fixture itself (segment BANKS: byte 0 of file bank k is k, the last byte is k xor $A5); the work RAM cells are written by the checks. A pass is not a support claim (ER-4).
 id=8
-checks=48
+checks=49
 1	bank80-reads-ff	ASSUMED:LED-CPU-0012	Bank $80 is not mapped (the run $80-$F7): a read through it returns the constant $FF
 2	bankf7-reads-ff	ASSUMED:LED-CPU-0012	Bank $F7, the last of the unmapped run, reads $FF
 3	bankfc-reads-ff	ASSUMED:LED-CPU-0012	Bank $FC, the first bank after the four work RAM banks, is not mapped and reads $FF
@@ -54,3 +54,4 @@ checks=48
 46	empty-write-keeps-iobuf	ASSUMED:LED-CPU-0013	A write in the empty window does not change io_buffer: the PSG window still reads $A5
 47	vdc-write-keeps-iobuf	ASSUMED:LED-CPU-0013	A write in the VDC window does not change io_buffer: the PSG window still reads $A5
 48	st0-keeps-iobuf	ASSUMED:LED-CPU-0013	ST0 writes physical $1FE000 through the physical path (H8-8 Table 2-2-3) and does not change io_buffer either: the PSG window still reads $A5
+49	tma-zero-observe	ASSUMED:LED-CPU-0015	TMA with the operand $00 (the manual defines only 2^i): after a TAM that put $F8 in the latch and with A = $5A, the byte left in A is the model parameter tma_zero made visible: the latch ($F8) under bus_latch, A unchanged ($5A) under a_unchanged; each case supplies it (observe=49:VALUE)	observe

@@ -134,14 +134,17 @@ struct ds_instance {
     /* bus state (plan 03-16, region BUS0 of the digest; D-104, D-105): io_buffer is the last byte that crossed the data bus in a read or write of the windows $0800-$17FF of the hardware page, mpr_latch the byte of TAM and TMA (plan 03-17); both are constant 0 at power-on under every policy */
     uint8_t io_buffer;
     uint8_t mpr_latch;
+    /* the selected value of the model parameter tma_zero (plan 03-17, model_params.def): an index into its allowed list, 0 = bus_latch = the default, so a zeroed instance holds the default; set only by ds_model_set before the first step, carried in region BUS0 */
+    uint8_t tma_zero;
     uint8_t rom[DS_ROM_CAP];
 };
 
-/* the CPU block and the bus block have no padding: pc follows the power-up seed, io_buffer the speed bit, mpr_latch io_buffer, and the ROM array follows mpr_latch */
+/* the CPU block and the bus block have no padding: pc follows the power-up seed, io_buffer the speed bit, mpr_latch io_buffer, tma_zero mpr_latch, and the ROM array follows tma_zero */
 _Static_assert(offsetof(struct ds_instance, pc) == offsetof(struct ds_instance, powerup_seed) + sizeof(uint64_t), "padding before the CPU state");
 _Static_assert(offsetof(struct ds_instance, io_buffer) == offsetof(struct ds_instance, speed) + 1u, "padding between the CPU state and io_buffer");
 _Static_assert(offsetof(struct ds_instance, mpr_latch) == offsetof(struct ds_instance, io_buffer) + 1u, "padding between io_buffer and mpr_latch");
-_Static_assert(offsetof(struct ds_instance, rom) == offsetof(struct ds_instance, mpr_latch) + 1u, "padding after the bus state");
+_Static_assert(offsetof(struct ds_instance, tma_zero) == offsetof(struct ds_instance, mpr_latch) + 1u, "padding between mpr_latch and tma_zero");
+_Static_assert(offsetof(struct ds_instance, rom) == offsetof(struct ds_instance, tma_zero) + 1u, "padding after the bus state");
 
 struct ds_boot_request {
     uint32_t struct_size; /* sizeof(struct ds_boot_request) */
@@ -266,6 +269,47 @@ uint8_t ds_bus_read(struct ds_instance *inst, struct ds_bus *bus, uint16_t addr)
 void ds_bus_write(struct ds_instance *inst, struct ds_bus *bus, uint16_t addr, uint8_t value);
 void ds_mpr_write(struct ds_instance *inst, uint32_t index, uint8_t value); /* the only writer of mpr[] */
 void ds_bus_write_phys(struct ds_instance *inst, struct ds_bus *bus, uint32_t phys, uint8_t value); /* the physical write of ST0 to ST2 (D-106): $1FE000 | n for n in 0, 2, 3, the MPRs are never consulted; any other address is dropped */
+
+/* ---- model parameters (model_params.def, model_refusals.def, model.c; plan 03-17; D-105, D-113) ---- */
+
+enum ds_model_index {
+#define DS_MODEL(name, allowed, def, ledger, status) DS_MODEL_##name,
+#include "model_params.def"
+#undef DS_MODEL
+    DS_MODEL_COUNT
+};
+_Static_assert((unsigned)DS_MODEL_COUNT <= 4u, "model_params.def has more than the 4 rows of D-113");
+
+/* the values of tma_zero in the order of its allowed list: the stored selection is the index */
+enum { DS_TMA_ZERO_BUS_LATCH = 0, DS_TMA_ZERO_A_UNCHANGED = 1 };
+
+/* the refusal codes of ds_model_set (model_refusals.def; F4): their own set and prefix, never part of refusals.def or run_refusals.def */
+enum ds_model_refusal {
+    DS_MODELREF_NONE = 0,
+#define DS_MODELREF(name, number) DS_MODELREF_##name = number,
+#include "model_refusals.def"
+#undef DS_MODELREF
+    DS_MODELREF_SLOTS = 8 /* the name table has this many slots: a number at or above it fails to compile */
+};
+
+/* "model.NAME" for a model refusal number, "ok" for DS_MODELREF_NONE, NULL for a number that is not a member */
+const char *ds_model_refusal_name(uint32_t number);
+
+/* the rows of model_params.def; NULL for an index at or above DS_MODEL_COUNT */
+const char *ds_model_name(uint32_t index);
+const char *ds_model_allowed(uint32_t index); /* values separated by '|', the first is the default */
+const char *ds_model_default(uint32_t index);
+const char *ds_model_ledger(uint32_t index);
+const char *ds_model_status(uint32_t index);
+
+/* the value of row index that the instance holds: a pointer to its token inside the allowed list (the token is NOT NUL-terminated: *len is its length); NULL for a NULL instance or len, an index at or above DS_MODEL_COUNT or a stored selection outside the list */
+const char *ds_model_value(const struct ds_instance *inst, uint32_t index, size_t *len);
+
+/*
+ * Select a value of a model parameter by name. Returns DS_MODELREF_NONE and stores the selection, or a refusal and writes nothing (the instance is byte-identical): unknown_name, value_not_allowed, state. Both texts are untrusted:
+ * the name and the value must equal a row and one of its allowed values exactly. The state check is the last: a parameter is set before the first step (machine time 0) and is refused afterwards.
+ */
+uint32_t ds_model_set(struct ds_instance *inst, const char *name, const char *value);
 
 /* NUL-terminated string equality without string.h; both arguments must be non-NULL */
 static inline int ds_streq(const char *a, const char *b)

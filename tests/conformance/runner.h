@@ -53,6 +53,8 @@ enum { MEM_OK, MEM_NULL, MEM_MISALIGNED };
 enum { CAP_OK, CAP_SHORT };
 enum { REQ_OK, REQ_NULL };
 
+#define SPEC_MODEL_MAX 4u /* at most the 4 rows of model_params.def (D-113) */
+
 /* the request of one case, filled from a request-override string (semicolon-separated k=v) */
 struct spec {
     char text[512];
@@ -71,6 +73,9 @@ struct spec {
     int has_seed;      /* seed=N present (the policy itself comes from bind.powerup_policy) */
     uint64_t seed;
     const char *bind[DS_FIELD_COUNT];
+    unsigned nmodel;    /* model.NAME=VALUE pairs of the request (plan 03-17): applied with ds_model_set after the boot and before the first step; the texts point into text */
+    const char *model_name[SPEC_MODEL_MAX];
+    const char *model_value[SPEC_MODEL_MAX];
 };
 
 #define CONTENT_LIMIT (4u * 1024u * 1024u) /* the largest content buffer a case may allocate; a longer row uses ptr=dummy or ptr=null */
@@ -100,6 +105,8 @@ int split_tab(char *line, char **f, int max);
 const char *parse_spec(struct spec *s, const char *text, size_t default_len);
 const char *parse_expect(struct expect *e, const char *text);
 void fill_request(struct ds_boot_request *rq, const struct spec *s, const unsigned char *content);
+/* apply the model.NAME=VALUE pairs of a parsed request to a booted instance (ds_model_set, before the first step; guestkinds.c): NULL on success, otherwise why not */
+const char *apply_model(struct ds_instance *inst, const struct spec *s);
 
 /* boot a request over a recipe and check the outcome against the expectation (got receives the observed reason name) */
 void run_boot(const char *fixture, const struct spec *s, const struct expect *e, struct ctx *c, char *got, size_t gotcap);

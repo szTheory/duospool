@@ -260,6 +260,13 @@ static const char *apply_pair(struct spec *s, const char *key, const char *val)
             return "seed is not a number";
         }
         s->has_seed = 1;
+    } else if (strncmp(key, "model.", 6) == 0) {
+        if (s->nmodel >= SPEC_MODEL_MAX || key[6] == '\0') {
+            return "model. needs a name and at most 4 model keys";
+        }
+        s->model_name[s->nmodel] = key + 6;
+        s->model_value[s->nmodel] = val;
+        s->nmodel++;
     } else if (strncmp(key, "bind.", 5) == 0) {
         int f = field_by_name(key + 5);
         if (f < 0) {
@@ -486,6 +493,11 @@ void run_boot(const char *fixture, const struct spec *s, const struct expect *e,
 
     if (base == NULL) {
         harness_error(c, "out of memory for the instance buffer");
+        return;
+    }
+    if (s->nmodel != 0u) {
+        free(base);
+        harness_error(c, "a model.NAME key applies to a kind that runs the machine, not to a boot row");
         return;
     }
     memset(base, (int)CANARY, total);
@@ -940,6 +952,11 @@ const char *boot_accepted(const char *fixture, const char *request, struct boote
     if (ds_boot(b->mem, ds_instance_size(), &rq, &res) != 0u || res.instance == NULL) {
         release_boot(b);
         return "the request was refused: this kind needs an accepted boot";
+    }
+    err = apply_model(res.instance, s);
+    if (err != NULL) {
+        release_boot(b);
+        return err;
     }
     *inst = res.instance;
     return NULL;

@@ -139,3 +139,6 @@ mutate_sweep_cyc_probe
 cycle_adders_manual
 mmu_mpr_256k
 vdc_penalty_assumed
+mmu_mpr_tma_zero_latch
+mmu_mpr_tma_zero_keep
+mmu_mpr_observe_missing

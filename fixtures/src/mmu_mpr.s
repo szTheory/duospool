@@ -11,7 +11,7 @@
         .setcpu "huc6280"
 
 DSV_ID = 8
-DSV_CHECKS = 48
+DSV_CHECKS = 49
 
         .include "startup.inc"
         .include "verdict.inc"
@@ -69,6 +69,7 @@ SL4 = $10                       ; MPR4 (logical $8000-$9FFF)
         LIT 46, $A5
         LIT 47, $A5
         LIT 48, $A5
+        LIT 49, $00             ; an observe row (the case supplies the observed byte)
 
 ; MAP mask, bank: write one mapping register (A is clobbered)
         .macro MAP mask, bank
@@ -272,4 +273,13 @@ fixture_main:
         st0 #$22                        ; ST0 writes physical $1FE000, the VDC window, without the MPRs (H8-8 Table 2-2-3, D-106)
         lda a:$6800                     ; check 48 ASSUMED:LED-CPU-0013: it did not change io_buffer
         CHECK_LIT 48
+
+; ---- the TAM and TMA edges that the manual does not define (D-105, R-4, ER-8; ASSUMED:LED-CPU-0015): the manual documents the one-hot operand 2^i only (S8-90, S8-101) ----
+; The operand $00 of TMA is the model parameter tma_zero (model_params.def): bus_latch returns the one-byte latch (the last value TAM or TMA moved), a_unchanged leaves A alone. Check 49 is an observe-only row, so each case
+; supplies the byte it expects under its own value of the parameter (observe=49:VALUE); TAM and TMA with a nonzero operand put their byte in the latch, here TAM #$02 with A = $F8 (MPR1 already holds $F8, so the map does not move).
+        lda #$F8
+        tam #$02                        ; MPR1 = $F8 again; the latch takes $F8
+        lda #$5A
+        tma #0                          ; TMA with the operand $00 (R-4: it assembles normally): A = the latch ($F8) under bus_latch, $5A (unchanged) under a_unchanged
+        CHECK_OBSERVE 49
         rts

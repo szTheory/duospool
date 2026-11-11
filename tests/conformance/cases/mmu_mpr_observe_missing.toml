@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Control (plan 03-17; plan 03-10 observe-only design): the mmu_mpr case with its one defect, the missing observe=49:VALUE item for the observe row of TMA #0. The runner must catch it as harness_failure:observe-missing and never read the observed byte as a pass,
+# so a missing expectation cannot turn an observe row into a check that asserts nothing. The case passes only when the judge gives exactly that outcome and reason. Evidence tier E0 (a control of the harness).
+id = "mmu_mpr_observe_missing"
+kind = "guest"
+fixture = "authored:mmu-mpr"
+request = ""
+expect = "id=8;verdict=harness_failure:observe-missing"
+meaning = "An observe row without an observe=IDX:VALUE item in the case is a harness failure, not a pass"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+checks = 49
