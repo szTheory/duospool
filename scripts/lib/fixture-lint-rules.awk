@@ -135,7 +135,7 @@ END {
       k = rowidx[s, r]
       seen[s, k]++
       if (!((s, k) in chkn) || seen[s, k] > 1) viol(rowfile[s], "FXL_ORPHAN_CHECK", rowline[s, r], "row " k " matches no CHECK of " s ".s, or repeats an earlier row")  # rule-orphan
-      else if (rowobs[s, r] != (chkword[s, k] == "CHECK_OBSERVE")) viol(rowfile[s], "FXL_BAD_OBSERVE", rowline[s, r], "row " k " and its CHECK disagree: observe in the fifth column goes with CHECK_OBSERVE and with nothing else")  # rule-bad-observe
+      if (((s, k) in chkn) && seen[s, k] == 1 && rowobs[s, r] != (chkword[s, k] == "CHECK_OBSERVE")) viol(rowfile[s], "FXL_BAD_OBSERVE", rowline[s, r], "row " k " and its CHECK disagree: observe in the fifth column goes with CHECK_OBSERVE and with nothing else")  # rule-bad-observe
     }
     if (s in hasc) {
       if (!((s, "id") in hdr) || hdr[s, "id"] !~ /^[1-9][0-9]*$/) viol(hasc[s], "FXL_COUNT", 0, "id= header missing or not a positive number")  # rule-count
