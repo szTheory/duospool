@@ -31,7 +31,7 @@ E4 = differential vs another emulator (finds disagreements, decides nothing).
 - [ ] **CPU-01**: The core executes the HuC6280 instruction set (65C02 base plus HuC6280 additions: block transfers, ST0/ST1/ST2, TAM/TMA, SXY/SAX/SAY, CSH/CSL, SET/T-flag, TST, BSR, bit ops) with flag/register effects verified by authored fixtures against the HuC6280 manual (E1/E2).
 - [x] **CPU-02**: The MMU maps logical addresses through MPR0–7 to the 21-bit physical space (256 × 8 KiB banks), including RAM, HuCard banks, I/O page, and a defined unmapped-read value, verified by fixtures.
 - [x] **CPU-03**: The timer (reload, decrement rate tied to the master clock, IRQ) and interrupt controller (disable/status registers, documented priority, sampling point) behave as documented, verified by fixtures that report results in guest RAM.
-- [ ] **CPU-04**: High/low CPU speed switching changes instruction timing on the master-clock timeline, and VDC/VCE access penalties are applied as documented.
+- [x] **CPU-04**: High/low CPU speed switching changes instruction timing on the master-clock timeline, and VDC/VCE access penalties are applied as documented.
 - [ ] **CPU-05**: Block-transfer instructions are resumable at byte granularity. A bounded run can stop mid-transfer and continue with identical results to an uninterrupted run, and interrupt handling around block transfers follows the recorded model.
 - [ ] **CPU-06**: Instruction and cycle claims cite their source. Any cycle count without a primary source or E2/E3 evidence is labeled as a modelling assumption in the ledger.
 
@@ -163,7 +163,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CPU-01 | Phase 3 | Pending |
 | CPU-02 | Phase 3 | Complete |
 | CPU-03 | Phase 3 | Complete |
-| CPU-04 | Phase 3 | Pending |
+| CPU-04 | Phase 3 | Complete |
 | CPU-05 | Phase 3 | Pending |
 | CPU-06 | Phase 3 | Pending |
 | VID-01 | Phase 4 | Pending |
