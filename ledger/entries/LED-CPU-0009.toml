@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# Interrupt entry and the T flag (D-99; CPU-01, CPU-03). Modelling choices where the manual is silent or ambiguous; no hardware interrupt entry exists in the core yet (plans 03-22 and 03-23), so the pin checks BRK and RTI only.
+# Page cites: the verifier, date and fact seen are in each source below and in fixtures/lib/cites.txt; plan 03-15 re-read no page.
+id = "LED-CPU-0009"
+statement = "DuoSpool models an interrupt entry as 8 cycles that push PCH, PCL and P, set I and clear D and T, pushing the current T; BRK and PHP push T = 0; PLP and RTI load T from bit 5 of the pulled byte. These are modelling choices, not hardware measurements."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|H8-5 H8-17|T set by SET, cleared in the next fetch, saved on the stack at an interrupt, reads 0 through PHP; BRK pushes BRK+2, B=1; gsd-phase-researcher 2026-11-10", "FACT|S8-30 S8-70|BRK 8 cycles, T=0 B=1 D=0 I=1; RTI 7 cycles, flags RESTORED; gsd-phase-researcher 2026-11-10", "REPORT|pcetech.txt, emulator sources|8-cycle entry and pushed T are reports only (ER-8)"]
+evidence = ["E0|tests/conformance/cases/cpu_flow.toml: BRK pushes bit 5 = 0 and RTI loads T from bit 5 (checks 56 and 59, class ASSUMED), repeatable on the authored fixture; no hardware interrupt entry is exercised"]
+disagreement = "T at hardware interrupt entry: the H8-4 and H8-5 wording (T is saved on the stack when an interrupt occurs, set only for a special interrupt) and pcetech read differently; D-99 fixes one constant: push the current T, then clear it. The pushed 0 of BRK and PHP is the project's reading of H8-5 and S8-30. The 8-cycle entry has emulator reports only."
+pinning_test = "TEST:cpu_flow"
+updated = "2026-11-11"
+assumption = "One constant for the T bit pushed at entry, one for BRK, PHP, PLP and RTI, and an 8-cycle entry; the two readings of the T bit at entry stay in the disagreement field until a distinguishing observation exists. The pinned case asserts BRK and RTI only."
+revisit_phase = 3
+withheld = ["any claim of hardware cycle accuracy", "any claim of interrupt latency in cycles", "any claim of game compatibility", "any TG-16 or region claim", "any claim about the T bit that a hardware interrupt saves"]
+origin = "03-CONTEXT D-99"

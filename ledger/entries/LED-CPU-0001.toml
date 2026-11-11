@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# Opcode byte and base-cycle table (D-97; CPU-01, CPU-06). A documentary comparison with a page-image transcription: not a hardware measurement, and not above assumed until plan 03-32 re-reads the pages (ER-1, ER-2, R-8).
+# Page cites: the verifier, date and fact seen are in each source below and in fixtures/lib/cites.txt; plan 03-15 re-read no page. pcetech.txt lists the same 22 undefined opcodes as the complement of the 234 defined ones (agreement of a community note, not independent proof).
+id = "LED-CPU-0001"
+statement = "The DuoSpool opcode byte and base-cycle table equals the manual's stated values in H8-25 and the S8 per-instruction pages: 234 defined opcodes and 22 undefined cells. This is a documentary comparison with a transcription, not a hardware measurement."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|H8-25|map of 234 cells, 22 empty; image read by gsd-phase-researcher 2026-11-10; CSL CSH 1 byte 3 cycles", "FACT|S8-17 to S8-108|bytes and base cycles per instruction; images read by gsd-executor 2026-11-11", "UNKNOWN|22 empty cells|no page gives length or cycles: 1 byte 2 cycles is an assumption (LED-CPU-0010)"]
+evidence = ["E1|tests/conformance/cases/opcode_table_manual.toml: documentary comparison of the compiled table with the page transcription, listed here and counted only after the plan 03-32 re-read (ER-1, R-8)", "E0|tests/conformance/cases/opcode_table_manual.toml: the table and the transcription agree for all 256 opcodes, consistency of two readings by one project"]
+disagreement = "H8-25 footnote prints the block-transfer cost as 17+16z, a misprint of 17+6x (H8-6, S8-88 and S8-89 print 17+6x; R-1): the table holds base 17. H8-25 misprints opcodes 34 to 37, B4, B5 and the mode of 7D, and S8-96 prints TAI at E3: the instruction pages decided."
+pinning_test = "TEST:opcode_table_manual"
+updated = "2026-11-11"
+assumption = "The compiled table and the TSV are two page-image readings by one project, so a shared misreading would not be caught by their agreement. The 22 undefined cells are compared by membership only. The entry stays assumed until the plan 03-32 image re-read (ER-1, ER-2)."
+revisit_phase = 3
+withheld = ["any claim of hardware cycle accuracy", "any claim of interrupt latency in cycles", "any claim of game compatibility", "any TG-16 or region claim", "any claim about what the 22 undefined opcodes do on hardware"]
+origin = "03-CONTEXT D-97"

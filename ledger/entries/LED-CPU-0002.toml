@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# Cycle adders (D-98; CPU-01, CPU-06). A documentary comparison with page literals, not a hardware measurement, and not above assumed until plan 03-32 re-reads the pages (ER-1, ER-2, R-8).
+# Page cites: the verifier, date and fact seen are in each source below and in fixtures/lib/cites.txt; plan 03-15 re-read no page. The block-transfer cost belongs to a later entry (17+6x from H8-6, S8-88 and S8-89, never from the H8-25 footnote).
+id = "LED-CPU-0002"
+statement = "The DuoSpool cycle adders equal the manual's stated values: a taken conditional branch, BBR and BBS add 2 cycles, T mode adds 3 to ADC, AND, EOR and ORA, decimal mode adds 1 to ADC and SBC, and BRK, RTI, TAM, TMA, CSL and CSH take 8, 7, 5, 4, 3 and 3 cycles at the current speed."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|S8-17 S8-74|T=1 adds 3 cycles, D=1 adds 1, V unaffected; images read by gsd-phase-researcher 2026-11-10", "FACT|S8-20 S8-24 S8-30 S8-70 S8-90 S8-101|BBR 6 +2 taken, BEQ 2 +2, BRK 8, RTI 7, TAM 5, TMA 4; gsd-phase-researcher 2026-11-10, gsd-executor 2026-11-11", "FACT|H8-4 H8-25|decimal +1 cycle; CSL CSH map cells 3 cycles, no S8 page (R-6); gsd-phase-researcher 2026-11-10"]
+evidence = ["E1|tests/conformance/cases/cycle_adders_manual.toml: 18 counts measured from the cyc_probe trace equal page literals; listed here, counted only after the plan 03-32 re-read (ER-1, R-8)", "E0|tests/conformance/cases/cycle_adders_manual.toml: the measured quantity is the core own charged time, not an in-guest clock"]
+disagreement = "H8-25 footnote prints the block-transfer cost as 17+16z, a misprint of 17+6x (H8-6, S8-88 and S8-89 print 17+6x; R-1): kept here for later block use. H8-4 prose says C is set on a borrow while S8-74 gives A - M - not C: the formula page decides, no cycle is involved."
+pinning_test = "TEST:cycle_adders_manual"
+updated = "2026-11-11"
+assumption = "Each adder is charged on top of the base table as the page states it and the pinned case checks single instructions from the trace. T mode together with decimal mode (+4), the page-cross penalty of a taken branch and the VDC penalty are not stated by any page read and stay assumptions (LED-CPU-0010)."
+revisit_phase = 3
+withheld = ["any claim of hardware cycle accuracy", "any claim of interrupt latency in cycles", "any claim of game compatibility", "any TG-16 or region claim", "any claim about the cost of T mode combined with decimal mode"]
+origin = "03-CONTEXT D-98"

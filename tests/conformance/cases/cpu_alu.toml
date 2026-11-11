@@ -14,6 +14,6 @@ meaning = "The authored cpu_alu fixture runs the logic, add, subtract, shift, in
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-CPU-0010"]
 until_mclk = 4000000
 checks = 96

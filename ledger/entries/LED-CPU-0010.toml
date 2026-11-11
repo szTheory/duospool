@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# CPU edge behaviour (D-99; CPU-01). Modelling choices where the manual is silent or ambiguous: ASSUMED-class rows of cpu_alu (decimal C, Z, borrow value, T with D, TSB Z, TRB Z and the TRB stored result), of cpu_ldst (pointer wraps at zz = $FF) and of cpu_huc (check 75, the TRB stored result) name this entry.
+# Page cites: the verifier, date and fact seen are in each source below and in fixtures/lib/cites.txt; plan 03-15 re-read no page. The pin is the one case cpu_alu.
+id = "LED-CPU-0010"
+statement = "DuoSpool models these CPU edges as constants: decimal N, Z and C come from the adjusted result with V unchanged, invalid BCD is not exercised, the 22 undefined opcodes are 1 byte 2 cycles, zero page and stack pointers wrap in $20xx and $21xx, a taken branch has no page-cross penalty, read-modify-write is one read and one write, TSB and TRB take N and V from memory bits 7 and 6."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|S8-103 H8-5|TSB TRB N from memory bit 7, V from bit 6; S8-102 prose says TRB result not stored, formula stores not A AND M; gsd-phase-researcher 2026-11-10", "FACT|S8-11 H8-3|zero page high byte always $20, stack $2100-$21FF; gsd-phase-researcher 2026-11-10", "UNKNOWN|decimal flags, invalid BCD, undefined opcodes, page crossing|no page states them (D-99)"]
+evidence = ["E0|tests/conformance/cases/cpu_alu.toml: the ASSUMED rows pass on the authored fixture, repeatability of DuoSpool's own model; the rows in cpu_ldst and cpu_huc are the same class"]
+disagreement = "TSB and TRB N and V: S8-103 and H8-5 say memory bits 7 and 6, pcetech says the result (research mismatch 9); no fixture asserts N and V of TSB and TRB beyond an ASSUMED label. TRB stored result: formula versus prose on S8-102. Decimal N, Z, C and the borrow value: no page gives a rule."
+pinning_test = "TEST:cpu_alu"
+updated = "2026-11-11"
+assumption = "Each edge above is one constant chosen so that the authored fixtures can run; the rows that depend on it are labelled ASSUMED in their checks files and the manual-page rows do not depend on it. The pinned case shows the constants are repeatable, not that they match hardware."
+revisit_phase = 3
+withheld = ["any claim of hardware cycle accuracy", "any claim of interrupt latency in cycles", "any claim of game compatibility", "any TG-16 or region claim", "any claim about invalid BCD or the 22 undefined opcodes on hardware"]
+origin = "03-CONTEXT D-99"

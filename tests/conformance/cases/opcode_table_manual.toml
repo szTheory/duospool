@@ -16,4 +16,4 @@ meaning = "The instruction length and base cycle count of every one of the 256 o
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-CPU-0001"]
