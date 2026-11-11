@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 3
 current_phase_name: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-current_plan: 6
+current_plan: 7
 status: planning
-stopped_at: Completed 03-36-PLAN.md
-last_updated: "2026-11-11T06:44:59.772Z"
+stopped_at: Completed 03-04-PLAN.md
+last_updated: "2026-11-11T06:54:49.086Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 2 complete, transitioned to Phase 3
-state_head: f84ceda77f7d87f144043e92c93fedb93bef778d
+state_head: 87a9c85815f0dc648507460548907dd0b1798dd4
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 72
-  completed_plans: 39
+  completed_plans: 40
   percent: 33
 ---
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 3 — HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-Current Plan: 6
+Current Plan: 7
 Total Plans in Phase: 38
 Status: Ready to execute
-Last activity: 2026-11-11 — Completed 03-36 (W1: placeholder state out, master-clocks record, epoch 2, goldens regenerated)
+Last activity: 2026-11-11 — Completed 03-04 (W1: optional case keys, guestkinds.c, authored fixture key, machine_time and stop on RESULT)
 
 Progress: [███░░░░░░░] 33%
 
@@ -98,6 +98,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 3 P35 | 25min | 2 tasks | 14 files |
 | Phase 3 P03 | 25min | 2 tasks | 13 files |
 | Phase 3 P36 | 20min | 1 tasks | 16 files |
+| Phase 03 P04 | 20min | 2 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -181,6 +182,7 @@ Recent decisions affecting current work:
 - [Phase 3]: 03-35: ds_run refusal codes live in run_refusals.def (run.NAME, 16 slots), never refusals.def; sink and deadline renamed sink_unsupported and time_wrap, numbers 1..6 unchanged
 - [Phase 3]: 03-03: CPU0 stream order is a x y s p pc speed (memory order differs); accessor span is pc..speed
 - [Phase 3]: 03-36: poweron_domain keeps its kind with a no-domain stand-in stream until the v2 domains arrive in 03-24
+- [Phase 3]: 03-04: guest case grammar: fixture authored:NAME, integer keys until_mclk and checks, expect id=N; RESULT tail machine_time=N stop=REASON from guest and run kinds
 
 ### Pending Todos
 
@@ -204,6 +206,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-11T06:44:59.618Z
-Stopped at: Completed 03-36-PLAN.md
+Last session: 2026-11-11T06:54:48.933Z
+Stopped at: Completed 03-04-PLAN.md
 Resume file: None
