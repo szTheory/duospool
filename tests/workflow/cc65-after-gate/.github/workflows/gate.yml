@@ -11,8 +11,11 @@
 #   3. gcc versus clang diagnostics and undefined behaviour (the gate runs one compiler; the two steps after it run each compiler on its own build directory)
 #   4. awk dialect drift (the gate runs again under the other awk implementation)
 # One job on one runner image, no paths filter and no cache: measure first, and revisit when docs/ci-timings.md shows a step over 30 seconds.
-# First-run review items: timeout-minutes (the second gate run and the two compiler runs add to the job; compare with the recorded
-# critical path), and whether the second awk needs the apt install fallback (the Tool versions step prints which awk is the default).
+# Timeout: 20 minutes (plan 03-33 review, docs/ci-timings.md). The one real run (Phase 2, 47 stages) took 100 s, but the gate now has 56 stages and
+# runs twice (gawk then mawk) plus a gcc and a clang build, and the estimated critical path is 6 to 10 minutes with a wide uncertainty and no CI row
+# yet. The limit only bounds a hung job, so it is set to twice the high estimate; tighten it after three recorded Phase 3 rows.
+# First-run review items: the apt cc65 step cost, the critical path against this limit, and whether the second awk needs the apt install fallback
+# (the Tool versions step prints which awk is the default).
 name: gate
 on:
   pull_request:
@@ -32,7 +35,7 @@ jobs:
   gate:
     name: gate
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
