@@ -9,9 +9,18 @@ DuoSpool is a working name and is not trademark-cleared.
 ## Status
 
 Phase 3 is in progress. The core is a deterministic machine shell that accepts or refuses plain HuCard bytes under a named
-profile, and it runs authored fixture programs through a bounded run measured in master clocks. Nothing is claimed as supported:
-there is no accuracy claim, no compatibility claim and no boot claim. Every outcome comes from a fresh, headless, repeatable run,
-and a matching hash proves repeatability only.
+profile, and it executes the authored fixture suite through a bounded run measured in master clocks. Every outcome comes from a
+fresh, headless, repeatable run, and a matching hash proves repeatability only.
+
+Supported entries (evidence tier E1, documentary): LED-CPU-0001, LED-CPU-0002, LED-CPU-0005, LED-CPU-0014, LED-CPU-0016,
+LED-IRQ-0002 and LED-IRQ-0004 (part a only). Supported here means the model equals the cited manual page: a documentary
+comparison, not a hardware measurement.
+
+The block-transfer cost entry, LED-CPU-0007, stays assumed. Every other claim is a labelled modelling assumption in
+`ledger/entries`, and the gate makes no second-assembler claim (the optional WLA-DX cross-check is a local one-off recorded in
+`docs/ci-timings.md`).
+
+Withheld claim words: "accurate", "cycle-accurate", "interrupt-accurate", "pad-accurate", "hardware-verified", "compatible", "supports TG-16/PC Engine", "boots", "passes the CPU tests". None of them is used here without an evidence class, and the gate rejects each one anywhere else in this file.
 
 ## Local gate
 

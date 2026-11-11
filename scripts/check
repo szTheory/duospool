@@ -2298,6 +2298,37 @@ selftest() {
     fi
   fi
 
+  # (w2) the three README wording rules of docs-check (ER-6, plan 03-33) are what turn their controls red: each control, run with its own --expect code, is met on an
+  # unmutated copy of scripts/ (exit 0, EXPECT_OK); with the one line tagged rule-claim-word, rule-supported-list or rule-supported-meaning deleted from the copy
+  # the code is no longer reported, so the same run must exit 1. One line per rule (the first three controls name the codes); all three must flip.
+  if st_want mutation-docs-claim-word; then
+    st_ran=1
+    cw_bad=0
+    for cw_pair in claim-word:DOCS_CLAIM_WORD:rule-claim-word claim-word-quoted:DOCS_CLAIM_WORD:rule-claim-word supported-list:DOCS_SUPPORTED_LIST:rule-supported-list supported-meaning:DOCS_SUPPORTED_MEANING:rule-supported-meaning; do
+      cw_case=${cw_pair%%:*}
+      cw_rest=${cw_pair#*:}
+      cw_code=${cw_rest%%:*}
+      cw_tag=${cw_rest#*:}
+      rm -rf "$cp_dir"
+      cp -R "$here" "$cp_dir"
+      cw_root="tests/docs/$cw_case"
+      if sh "$cp_dir/docs-check" --root "$cw_root" --expect "$cw_code" > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+      st_alive=0
+      if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+      before=$(grep -c "$cw_tag" "$cp_dir/docs-check" || true)
+      grep -v "$cw_tag" "$cp_dir/docs-check" > "$cp_dir/docs-check.mutated" || true
+      mv "$cp_dir/docs-check.mutated" "$cp_dir/docs-check"
+      after=$(grep -c "$cw_tag" "$cp_dir/docs-check" || true)
+      if sh "$cp_dir/docs-check" --root "$cw_root" --expect "$cw_code" > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+      if [ "$st_alive" -eq 1 ] && [ "$before" -ge 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+        echo "SELFTEST mutation-docs-claim-word $cw_case PASS"
+      else
+        echo "SELFTEST mutation-docs-claim-word $cw_case FAIL (alive $st_alive, tagged lines $before then $after, mutated run exit $r)"; cw_bad=1
+      fi
+    done
+    [ "$cw_bad" -eq 0 ] || failed=1
+  fi
+
   # (y) the orphan rule of fixture-lint is what turns the orphan-check control red (T-03-17, plan 03-37): same shape as (r). The control, run with --expect
   # FXL_ORPHAN_CHECK, is met on an unmutated copy (exit 0, EXPECT_OK); with the lines tagged rule-orphan deleted from the copy of the rules the code is no longer
   # reported, so the same run must exit 1: the control flipped to broken.

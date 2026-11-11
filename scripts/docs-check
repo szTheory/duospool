@@ -13,6 +13,14 @@
 #     DOCS_TOOL_MISSING        a tool on the default list of ROOT/scripts/preflight (the line  tools="..." ) is not named as a word in
 #                              ROOT/README.md; for an entry a|b one alternative named is enough. Skipped when ROOT has no scripts/preflight
 #                              (the older mini roots); the real repository always has it and its preflight stage fails without it.
+#     DOCS_CLAIM_WORD          ROOT/README.md contains a withheld claim word (ER-6: accurate, cycle-accurate, interrupt-accurate, pad-accurate,
+#                              hardware-verified, compatible, supports TG-16, supports PC Engine, boots, passes the CPU tests; case-insensitive,
+#                              whole words). The only place allowed is the README's own policy line, the one line that starts with
+#                              Withheld claim words: , and there only inside double quotes. A quoted word on any other line is a violation.
+#     DOCS_SUPPORTED_LIST      the entry ids in the README paragraph that starts with Supported entries (until the next blank line) are not exactly
+#                              the entries of ROOT/ledger/entries whose status is supported. Skipped when ROOT has no ledger/entries.
+#     DOCS_SUPPORTED_MEANING   at least one entry is supported and the README does not say what that means in the fixed plain words
+#                              documentary comparison and not a hardware measurement. Skipped when ROOT has no ledger/entries.
 # stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then (clean) the line  STATUS docs ok
 # stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
 # exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error
@@ -108,6 +116,56 @@ if [ -f "$pre" ]; then
     [ "$named" -eq 1 ] || addv README.md DOCS_TOOL_MISSING 0 "preflight tool $entry is not named in README.md" # rule-tool-named
   done
   set +f
+fi
+
+# withheld claim words (ER-6): lower-case, whole words (the characters on either side are not letters, digits or underscore, so a hyphen
+# is a boundary and cycle-accurate is found by accurate). Allowed only inside double quotes on the policy line. POSIX awk only (no \b, no IGNORECASE).
+cw_hits=$(awk '
+  BEGIN {
+    re = "(^|[^a-z0-9_])(accurate|cycle-accurate|interrupt-accurate|pad-accurate|hardware-verified|compatible|supports tg-16|supports pc engine|boots|passes the cpu tests)([^a-z0-9_]|$)"
+  }
+  {
+    line = $0
+    if (line ~ /^Withheld claim words:/) {
+      gsub(/"[^"]*"/, "", line)
+    }
+    if (tolower(line) ~ re) { print NR }
+  }
+' "$readme")
+cw_count=0
+for cw_n in $cw_hits; do
+  addv README.md DOCS_CLAIM_WORD "$cw_n" "a withheld claim word outside the quoted policy line" # rule-claim-word
+  cw_count=$((cw_count + 1))
+done
+
+# supported entries (ER-2, ER-6): the README names exactly the ledger entries whose status is supported, and says in fixed plain words what that means
+led="$root/ledger/entries"
+if [ -d "$led" ]; then
+  sup=$(for f in "$led"/*.toml; do
+    [ -f "$f" ] || continue
+    if grep -qx 'status = "supported"' "$f"; then
+      grep -m 1 '^id = "' "$f" | sed 's/^id = "//; s/".*$//'
+    fi
+  done | sort -u | tr '\n' ' ')
+  listed=$(awk '
+    /^Supported entries/ { inpar = 1 }
+    /^[ \t]*$/ { inpar = 0 }
+    inpar {
+      s = $0
+      while (match(s, /LED-[A-Z]+-[0-9]+/)) {
+        print substr(s, RSTART, RLENGTH)
+        s = substr(s, RSTART + RLENGTH)
+      }
+    }
+  ' "$readme" | sort -u | tr '\n' ' ')
+  [ "$sup" = "$listed" ] || addv README.md DOCS_SUPPORTED_LIST 0 "README lists [$listed] but the ledger has supported [$sup]" # rule-supported-list
+  if [ -n "$sup" ]; then
+    # the text is joined first: the README wraps its lines, and the phrases may break across one
+    tr '\n' ' ' < "$readme" | tr -s ' ' > "$tmp/readme.flat"
+    sm_ok=0
+    if grep -qF 'documentary comparison' "$tmp/readme.flat" && grep -qF 'not a hardware measurement' "$tmp/readme.flat"; then sm_ok=1; fi
+    [ "$sm_ok" -eq 1 ] || addv README.md DOCS_SUPPORTED_MEANING 0 "supported entries exist but the README lacks the plain meaning" # rule-supported-meaning
+  fi
 fi
 
 sort -u "$viol0" > "$viol"
