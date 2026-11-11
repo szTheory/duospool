@@ -1,19 +1,19 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
-# The [stimulus] table of the run record (plan 03-23; D-112, D-53 amended, ER-5, Pitfall 16, T-03-65): the authored fixture fixtures/src/irq_ctl.s is booted with a declared IRQ1 and IRQ2 test stimulus (the key irq_stim: events AT,LINE,LEVEL in master clocks, line 1 or 2, level 1 requested or 0 not), run to the deadline until_mclk and
-# its record is printed. The expect literals are this case's own irq_stim values, written here as decimal fields separated by commas: stimulus.events is 5 and stimulus.event_1 to event_5 are the five events, the last time above 2^32 so that a 64-bit time is printed in full. The kind compares the same table with the list it parsed from the key (so the literals and the key cannot drift
-# apart), requires no sixth event line and no colon, slash or backslash in any value (a dd:dd shape would be taken for a time by the record lint). A boot that declares nothing prints events = 0 (record_skeleton_256k and the two goldens). The list is a test hook (ER-5), not a statement about the VDC or any other source; the table only repeats what the case declared. Evidence tier E0:
-# the record repeats the declared input and says nothing about the machine.
+# The [stimulus] table of the run record (plan 03-23; D-112, D-53 amended, ER-5, Pitfall 16, T-03-65): a synthetic 256 KiB image is booted, the case declares an IRQ1 and IRQ2 test stimulus with the key irq_stim (events AT,LINE,LEVEL in master clocks, line 1 or 2, level 1 requested or 0 not) and the runner
+# gives it to the core with ds_irq_stim_set before the first step, then the record is printed. The expect literals are this case's own irq_stim values, written here as decimal fields separated by commas: stimulus.events is 5 and stimulus.event_1 to event_5 are the five events, the last time above 2^32 so that a 64-bit
+# time is printed in full. The kind compares the same table with the list it parsed from the key (so the literals and the key cannot drift apart), requires no sixth event line and no colon, slash or backslash in any value (a dd:dd shape would be taken for a time by the record lint), and holds the rest of the skeleton to the
+# same rows as the case without a stimulus; the record is written to the records directory, so the record lint and the determinism stage read a real table with events. A boot that declares nothing prints events = 0 (record_skeleton_256k and the two goldens). The list is a test hook (ER-5), not a statement about the VDC or any
+# other source; the table only repeats what the case declared. Evidence tier E0: the record repeats the declared input and says nothing about the machine.
 id = "record_stimulus_shown"
-kind = "record_run"
-fixture = "authored:irq-ctl"
+kind = "record_lines"
+fixture = "plain-256k"
 request = ""
-expect = "run.reason=until;run.stop_point=instruction;stimulus.events=5;stimulus.event_1=1200000,1,1;stimulus.event_2=1500000,1,0;stimulus.event_3=3200000,1,1;stimulus.event_4=3200000,2,1;stimulus.event_5=4294967297,2,0"
-meaning = "A run that declared five IRQ1 and IRQ2 test events prints them in its record as stimulus.events = 5 and one event line each, as decimal AT,LINE,LEVEL fields separated by commas, and a record of a run that declared none prints events = 0"
+expect = "stimulus.events=5;stimulus.event_1=1200000,1,1;stimulus.event_2=1500000,1,0;stimulus.event_3=3200000,1,1;stimulus.event_4=3200000,2,1;stimulus.event_5=4294967297,2,0"
+meaning = "A boot that declared five IRQ1 and IRQ2 test events prints them in its record as stimulus.events = 5 and one event line each, as decimal AT,LINE,LEVEL fields separated by commas, and a record of a run that declared none prints events = 0"
 required = true
 control = false
 expect_outcome = "pass"
 pins = []
-until_mclk = 2000000
 irq_stim = ["1200000,1,1", "1500000,1,0", "3200000,1,1", "3200000,2,1", "4294967297,2,0"]

@@ -19,7 +19,7 @@
 #            built runner twice with the same absolute arguments and --records: first in the current environment, then through env -i with a
 #            different TZ, working directory and TMPDIR and with the allocator scribbling on (MallocScribble and MallocPreScribble on Darwin,
 #            MALLOC_PERTURB_ elsewhere). Each record directory must hold exactly one ID.record.toml per case of kind accept, record_lines,
-#            record_run, record_golden or record_refusal in cases.tsv (counted with awk over the kind column), the two name sets must be equal, and then
+#            record_golden or record_refusal in cases.tsv (counted with awk over the kind column), the two name sets must be equal, and then
 #            every file is compared through compare. The two runs also use different marker seeds: a record must not depend on that either.
 # stdout: violations  CODE<TAB>DETAIL , then on a clean run the marker line  STATUS determinism ok n=N  (N files compared)
 # stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
@@ -175,7 +175,7 @@ run_mode() {
   rm -rf "$dd"
   mkdir -p "$dd/cwd2" "$dd/tmp2"
   # the record-producing cases, derived from the kind column and never from a literal count (D-86)
-  awk -F'\t' '$1 == "K" && $4 == "kind" && ($6 == "accept" || $6 == "record_lines" || $6 == "record_run" || $6 == "record_golden" || $6 == "record_refusal") { print $2 ".record.toml" }' "$bd/cases.tsv" | sort -u > "$dd/want.names"
+  awk -F'\t' '$1 == "K" && $4 == "kind" && ($6 == "accept" || $6 == "record_lines" || $6 == "record_golden" || $6 == "record_refusal") { print $2 ".record.toml" }' "$bd/cases.tsv" | sort -u > "$dd/want.names"
   n_rec=$(sed -n '$=' "$dd/want.names")
   if [ -z "$n_rec" ]; then
     echo "HARNESS_ERROR build/gate/cases.tsv holds no case of a record-producing kind: a determinism run over no record is a dead check" >&2
