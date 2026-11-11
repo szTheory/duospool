@@ -531,7 +531,7 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
     struct ds_bus bus_state = {0u, log, inst->machine_time, mclk_per_cycle, 0u, 0u}; /* what this instruction's bus accesses add to it, the observer log they report to and the stamp rule of the accesses (start, cycle length, last cycle, read-modify-write): a local of the step, nothing survives it (D-92, D-108) */
     struct ds_bus *bus = &bus_state;
     uint32_t pc = inst->pc;
-    uint32_t i_before = (uint32_t)inst->p & P_I; /* the I value in force before the instruction: the interrupt sample uses it (irq_i_sample = pre, D-111) */
+    uint32_t i_before = (uint32_t)inst->p & P_I; /* the I value in force before the instruction: the interrupt sample uses it when irq_i_sample is pre, the default (D-111) */
     uint8_t opcode = ds_bus_read(inst, bus, inst->pc);
     const struct ds_op *op = &ops[opcode];
     uint32_t mn = op->mn;
@@ -541,6 +541,7 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
     int t_active = ((uint32_t)inst->p & P_T) != 0u; /* T as the instruction before this one left it: only ADC, AND, EOR and ORA read it (S8-17) */
     uint32_t total;
     uint32_t vector;
+    uint32_t i_sample;
 
     bus->last = cycles + flag_cycles(mn, t_active, inst->p) - 1u; /* the last cycle of the instruction before the penalty: where a single data access is stamped (D-92) */
     bus->rmw = op->cls == (uint8_t)CL_RMW ? 1u : 0u;
@@ -913,12 +914,14 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
     cycles += bus->penalty; /* the VDC and VCE accesses this instruction made, charged by the bus (D-107) */
     inst->pc = (uint16_t)next;
     total = cycles * mclk_per_cycle;
+    i_sample = inst->irq_i_sample == (uint8_t)DS_IRQ_I_SAMPLE_POST ? ((uint32_t)inst->p & P_I) : i_before; /* post: the I value the instruction left (CLI, SEI, PLP and RTI have just changed it); pre: the one from before */
     /*
      * The interrupt sample (D-111, H8-12: the interrupt inputs are sampled in the last bus cycle of the instruction; ties are inclusive): the stamp is the start of the last cycle, the end of the instruction minus the length of that cycle, which
-     * is at the speed the instruction started at (a CSL or CSH ends at its old speed). A timer register write in that cycle has already taken effect. With irq_i_sample = pre, the only value of this plan, the I flag of the sample is the one in
-     * force before the instruction, so after CLI, SEI, PLP and RTI the next instruction decides. The entry runs now, in the same step, so there is no persisted latch and no stop point between an instruction and its entry.
+     * is at the speed the instruction started at (a CSL or CSH ends at its old speed). A timer register write in that cycle has already taken effect, and so has a write to $1402 or $1403. The I flag of the sample is the model parameter irq_i_sample
+     * (ASSUMED LED-IRQ-0005, open): with pre, the default, it is the one in force before the instruction, so after CLI, SEI, PLP and RTI the next instruction decides; with post it is the one the instruction left, so there is no latency. No other value
+     * exists (D-111). The entry runs now, in the same step, so there is no persisted latch and no stop point between an instruction and its entry.
      */
-    if (i_before == 0u) {
+    if (i_sample == 0u) {
         vector = ds_irq_pending(inst, bus->start + (uint64_t)total - (uint64_t)mclk_per_cycle);
         if (vector != 0u) {
             total += interrupt_entry(inst, log, bus->start + (uint64_t)total, vector);

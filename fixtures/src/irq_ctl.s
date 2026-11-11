@@ -7,12 +7,14 @@
 ; not evidence about the VDC or any hardware source (ER-5, D-112, ASSUMED LED-IRQ-0008), and the fixture is only meaningful under the case that declares it: every scenario first polls the request register until the line it needs reads high, so the
 ; scenarios do not depend on how long the code before them took, and every wait is bounded (a machine with no stimulus fails a check, it does not hang).
 ; The stimulus the cases declare (windows in master clocks, the line is high from the first time to the second): window A IRQ1 from 1200000 to 1500000; B IRQ2 from 2200000 to 2500000; C IRQ1 and IRQ2 from 3200000 to 3500000; D IRQ1 from 4200000 to 4500000.
+; Windows B, C and D (checks 16 to 30) come after A: B IRQ2 and BRK (IRQ2D masks, BRK and IRQ2 reach the same handler through $FFF6 and are told apart by the pushed B bit), C all three sources (the request register reads 7, a write clears TIQ only, the three are taken in the order timer, IRQ1,
+; IRQ2 whatever the latency parameter), D the latency probe (an IRQ1 that is pending when CLI executes: the A register the handler sees at its entry tells whether the entry came right after CLI or after the next instruction, the observe row 30 of the parameter irq_i_sample, ASSUMED LED-IRQ-0005).
 ; Window A (checks 5 to 15): the IRQ1 level reads in bit 1, I and IRQ1D each mask the delivery, the unmasking write is taken at once, the entry goes through $FFF8, pushes B = 0 and the interrupted D and I, the handler sees I set and D clear and bit 1 of $1403 set,
 ; a write to $1403 does not clear a level, the level ends with its window. Checks 1 to 4 read the register state before any event. Every cell the checks read is written by the fixture first (D-127). No HuC, PCEAS, emulator or cc65 library code.
         .setcpu "huc6280"
 
 DSV_ID = 11
-DSV_CHECKS = 15
+DSV_CHECKS = 30
 
         .include "startup.inc"
         .include "verdict.inc"
@@ -34,6 +36,21 @@ DSV_CHECKS = 15
         LIT 13, $02
         LIT 14, $02
         LIT 15, $00
+        LIT 16, $01
+        LIT 17, $00
+        LIT 18, $02
+        LIT 19, $10
+        LIT 20, $00
+        LIT 21, $00
+        LIT 22, $07
+        LIT 23, $03
+        LIT 24, $07
+        LIT 25, $03
+        LIT 26, $04
+        LIT 27, $01
+        LIT 28, $02
+        LIT 29, $01
+        LIT 30, $00                     ; an observe row (the table entry is $00 as for every check): the case judges the byte, which is the A register at the entry of the handler
 
 SL3 = $08                       ; the TAM operand of MPR3 (logical $6000-$7FFF)
 TIM_RELOAD = $6C00              ; the timer window with MPR3 = $FF: the reload register (write) and the counter (read)
@@ -79,6 +96,14 @@ fixture_main:
         sta a:VEC_IRQ1                  ; the IRQ1 vector jumps through this slot (startup.inc)
         lda #>irq1_h
         sta a:VEC_IRQ1+1
+        lda #<irq2_h
+        sta a:VEC_IRQ2                  ; the IRQ2 and BRK vector (both use $FFF6)
+        lda #>irq2_h
+        sta a:VEC_IRQ2+1
+        lda #<timer_h
+        sta a:VEC_TIMER
+        lda #>timer_h
+        sta a:VEC_TIMER+1
         jsr reset_scen
 
 ; ---- the register state before any declared event (H8-15, H8-16, H8-18) ----
@@ -144,6 +169,85 @@ fixture_main:
         lda a:IRQ_REQ
         and #$03
         CHECK_LIT 15                    ; check 15 ASSUMED:LED-IRQ-0008: after the second event of the declared stimulus both lines read 0 again (the level is a pure function of time)
+
+; ---- window B: IRQ2 and BRK ----
+        jsr reset_scen
+        WAIT_SET $01                    ; the IRQ2 level of the declared stimulus
+        lda a:IRQ_REQ
+        and #$07
+        CHECK_LIT 16                    ; check 16 MAN:H8-15: bit 0 of the request register is the IRQ2 level; IRQ1 (bit 1) and TIQ (bit 2) read 0
+        lda #$01
+        sta a:IRQ_DIS                   ; IRQ2D = 1
+        cli                             ; I = 0: only IRQ2D masks
+        DELAY 30
+        sei
+        lda a:H2_COUNT
+        CHECK_LIT 17                    ; check 17 MAN:H8-16: IRQ2D = 1 disables the interrupt request at the IRQ2 pin: with I clear the handler did not run
+        brk                             ; BRK is not masked by I (I is set here): it pushes B = 1 and goes through $FFF6 like IRQ2
+        .byte $EA                       ; the byte after BRK: the return address is BRK + 2 (H8-17)
+        lda #$00
+        sta a:IRQ_DIS                   ; IRQ2D = 0 (the BRK handler masked it again); I is still set, the RTI restored it
+        cli                             ; the pending IRQ2 is taken after the next instruction (pre) or at once (post)
+        nop
+        DELAY 4
+        sei
+        lda a:H2_COUNT
+        CHECK_LIT 18                    ; check 18 MAN:H8-13: BRK and IRQ2 reach the same handler through $FFF6: it ran twice
+        lda a:PBLOG
+        and #$10
+        CHECK_LIT 19                    ; check 19 MAN:H8-5: the BRK entry pushed the status byte with B = 1
+        lda a:PBLOG+1
+        and #$10
+        CHECK_LIT 20                    ; check 20 MAN:H8-5: the IRQ2 entry pushed the status byte with B = 0, so the shared handler tells them apart
+        lda a:H1_COUNT
+        CHECK_LIT 21                    ; check 21 MAN:H8-13: IRQ2 does not use the IRQ1 vector $FFF8
+        WAIT_CLEAR $03
+
+; ---- window C: IRQ1, IRQ2 and the timer pending together ----
+        jsr reset_scen
+        WAIT_SET $03                    ; both levels
+        lda #$00
+        sta a:TIM_RELOAD                ; reload 0: a borrow at every prescaler step
+        lda #$01
+        sta a:TIM_CTRL                  ; start
+        DELAY 60                        ; 361 cycles: one step (256 cycles) has passed, so TIQ is set
+        lda a:IRQ_REQ
+        and #$07
+        CHECK_LIT 22                    ; check 22 MAN:H8-15: IRQ2, IRQ1 and TIQ read 1 together (bits 0, 1 and 2)
+        sta a:IRQ_REQ                   ; a write to the request register resets TIQ only
+        lda a:IRQ_REQ
+        and #$07
+        CHECK_LIT 23                    ; check 23 MAN:H8-15: after the write TIQ reads 0 and the two levels, which are inputs, still read 1
+        DELAY 60                        ; the timer still runs at reload 0
+        lda a:IRQ_REQ
+        and #$07
+        CHECK_LIT 24                    ; check 24 MAN:H8-15: the next borrow sets TIQ again
+        cli                             ; all three are pending with I clear: the handlers mask or acknowledge their source, so each is taken once
+        nop
+        DELAY 30
+        sei
+        lda a:LOGN
+        CHECK_LIT 25                    ; check 25 MAN:H8-13: three entries, one per source
+        lda a:LOG
+        CHECK_LIT 26                    ; check 26 MAN:H8-13: the timer (code $04) is taken first: the priority is timer, IRQ1, IRQ2
+        lda a:LOG+1
+        CHECK_LIT 27                    ; check 27 MAN:H8-13: IRQ1 (code $01) is taken before IRQ2
+        lda a:LOG+2
+        CHECK_LIT 28                    ; check 28 MAN:H8-13: IRQ2 (code $02) is taken last
+        WAIT_CLEAR $03
+
+; ---- window D: an IRQ1 pending when CLI executes ----
+        jsr reset_scen
+        WAIT_SET $02                    ; the IRQ1 level of the declared stimulus, I is set
+        lda #$00                        ; A = 0 before CLI
+        cli                             ; I = 0 with IRQ1 pending
+        lda #$77                        ; the instruction after CLI: with irq_i_sample = pre the entry comes after it and the handler sees A = $77; with post it comes at once and the handler sees A = 0
+        nop
+        DELAY 4
+        sei
+        lda a:H1_COUNT
+        CHECK_LIT 29                    ; check 29 MAN:H8-13: the pending IRQ1 is taken after CLI under both values of the parameter, once
+        CHECK_OBSERVE 30, a:H_A         ; check 30 ASSUMED:LED-IRQ-0005: the A register at the entry, observe-only: $77 under pre, $00 under post (the case supplies it)
         rts
 
 ; reset_scen: a known state before a scenario: I set, D clear, the timer stopped, the disable register and TIQ clear, every counter and logged cell zero
@@ -216,6 +320,42 @@ irq1_h:
         sta a:LOG,x
         inc a:LOGN
         inc a:H1_COUNT
+        plx
+        pla
+        rti
+
+; the IRQ2 and BRK vector handler: save A and X, log the status byte the entry pushed (the B bit tells BRK from IRQ2), mask IRQ2, log and count, RTI
+irq2_h:
+        pha
+        phx
+        tsx
+        lda a:$2103,x
+        ldx a:H2_COUNT
+        sta a:PBLOG,x
+        lda a:IRQ_DIS
+        ora #$01
+        sta a:IRQ_DIS
+        ldx a:LOGN
+        lda #$02
+        sta a:LOG,x
+        inc a:LOGN
+        inc a:H2_COUNT
+        plx
+        pla
+        rti
+
+; the TIMER vector handler: save A and X, stop the timer, acknowledge with a write to $1403, log and count, RTI
+timer_h:
+        pha
+        phx
+        lda #$00
+        sta a:TIM_CTRL
+        sta a:IRQ_REQ
+        ldx a:LOGN
+        lda #$04
+        sta a:LOG,x
+        inc a:LOGN
+        inc a:HT_COUNT
         plx
         pla
         rti

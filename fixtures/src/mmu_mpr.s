@@ -274,7 +274,7 @@ fixture_main:
         lda a:$7402                     ; check 37 ASSUMED:LED-CPU-0013: $1402, the interrupt disable register (H8-24, H8-16): three register bits (0 at reset, plan 03-21 keeps them in the instance), the upper five from io_buffer: $A5 and $F8 = $A0
         CHECK_LIT 37
         SETIO $A5
-        lda a:$7403                     ; check 38 ASSUMED:LED-CPU-0013: $1403, the interrupt request register (H8-15), reads the same way: its three bits are 0 here (no timer interrupt is requested: the timer was stopped before a step passed), so $A0
+        lda a:$7403                     ; check 38 ASSUMED:LED-CPU-0013: $1403, the interrupt request register (H8-15), reads the same way: its three bits are 0 here (no timer interrupt is requested: the timer was stopped before a step passed; IRQ1 and IRQ2 read 0 because the case declares no irq_stim, re-judged in plan 03-22), so $A0
         CHECK_LIT 38
         SETIO $FF
         lda a:$77FE                     ; check 39 ASSUMED:LED-CPU-0013: the window repeats (H8-24: A1-A0 select the register): offset $3FE has A1 = 1 and A0 = 0, so it is $1402: $FF and $F8 = $F8
@@ -283,7 +283,7 @@ fixture_main:
         lda a:$7400                     ; check 40 ASSUMED:LED-CPU-0013: the interrupt window addresses with A1 = 0 name no register: the read is io_buffer ($A5)
         CHECK_LIT 40
         lda #$0F
-        sta a:$7402                     ; a write to the interrupt disable register (since plan 03-21 it sets the three disable bits, all three here, and stores its byte in io_buffer; nothing runs with interrupts enabled after this point)
+        sta a:$7402                     ; a write to the interrupt disable register (since plan 03-21 it sets the three disable bits, all three here, and stores its byte in io_buffer; I stays set and no stimulus is declared, so nothing can be taken after this point; re-judged in plan 03-22)
         lda a:$6800                     ; check 41 ASSUMED:LED-CPU-0013: the write stored its byte in io_buffer
         CHECK_LIT 41
         lda #$96

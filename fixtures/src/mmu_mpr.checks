@@ -43,7 +43,7 @@ checks=60
 35	timer-window-second-address	ASSUMED:LED-CPU-0013	Both addresses of the timer window read the counter (D-109): bit 7 from io_buffer ($FF) and the held counter 0, so $80
 36	timer-write-sets-iobuf	ASSUMED:LED-CPU-0013	A write of $7F to the timer reload address stores its byte in io_buffer: the PSG window reads $7F
 37	irq-1402-upper-bits	ASSUMED:LED-CPU-0013	The interrupt disable register $1402 (H8-24) has three bits (0 at reset, held in the instance since plan 03-21): the upper five come from io_buffer, $A5 and $F8 = $A0
-38	irq-1403-upper-bits	ASSUMED:LED-CPU-0013	The interrupt request register $1403 reads the same way, its three bits 0 (no timer interrupt is requested): $A0
+38	irq-1403-upper-bits	ASSUMED:LED-CPU-0013	The interrupt request register $1403 reads the same way, its three bits 0 (no timer interrupt is requested and the case declares no irq_stim, so IRQ1 and IRQ2 read 0, re-judged in plan 03-22): $A0
 39	irq-window-repeats	ASSUMED:LED-CPU-0013	The interrupt window repeats: offset $3FE has A1 = 1 and A0 = 0 and reads like $1402: $FF and $F8 = $F8
 40	irq-1400-open-bus	ASSUMED:LED-CPU-0013	The interrupt window addresses with A1 = 0 name no register: the read is io_buffer, $A5
 41	irq-write-sets-iobuf	ASSUMED:LED-CPU-0013	A write of $0F to $1402 stores its byte in io_buffer: the PSG window reads $0F

@@ -1127,7 +1127,7 @@ static int mr_value_is(const struct ds_instance *inst, const char *want)
 
 static void mr_variants(struct ctx *c, const char *code, struct ds_instance *inst, unsigned *calls)
 {
-    static const char *const bad_names[] = {NULL, "", "tma_zer", "tma_zero_", "TMA_ZERO", " tma_zero", "tma_zero ", "tma_zero|", "irq_i_sample", "model.tma_zero"};
+    static const char *const bad_names[] = {NULL, "", "tma_zer", "tma_zero_", "TMA_ZERO", " tma_zero", "tma_zero ", "tma_zero|", "irq_i_sampl", "irq_i_sample ", "IRQ_I_SAMPLE", "irq_i_sample|tma_zero", "model.tma_zero"};
     static const char *const bad_values[] = {NULL, "", "bus_latc", "bus_latch_", "BUS_LATCH", "bus_latch|a_unchanged", "a_unchanged|", "|", " bus_latch", "bus_latch ", "0", "1", "a_unchange"};
     unsigned i;
 
@@ -1140,6 +1140,13 @@ static void mr_variants(struct ctx *c, const char *code, struct ds_instance *ins
         for (i = 0u; i < sizeof bad_values / sizeof bad_values[0]; i++) {
             mr_refused(c, inst, "tma_zero", bad_values[i], (uint32_t)DS_MODELREF_value_not_allowed, calls);
         }
+        /* the second row (plan 03-22): its values are pre and post, and the values of the other row are not its values */
+        mr_refused(c, inst, "irq_i_sample", "bus_latch", (uint32_t)DS_MODELREF_value_not_allowed, calls);
+        mr_refused(c, inst, "irq_i_sample", "a_unchanged", (uint32_t)DS_MODELREF_value_not_allowed, calls);
+        mr_refused(c, inst, "irq_i_sample", "PRE", (uint32_t)DS_MODELREF_value_not_allowed, calls);
+        mr_refused(c, inst, "irq_i_sample", "pre|post", (uint32_t)DS_MODELREF_value_not_allowed, calls);
+        mr_refused(c, inst, "irq_i_sample", " post", (uint32_t)DS_MODELREF_value_not_allowed, calls);
+        mr_refused(c, inst, "tma_zero", "post", (uint32_t)DS_MODELREF_value_not_allowed, calls);
     } else if (strcmp(code, "state") == 0) {
         struct ds_run_request rq;
         struct ds_run_result res;
@@ -1149,6 +1156,9 @@ static void mr_variants(struct ctx *c, const char *code, struct ds_instance *ins
         check(c, mr_value_is(inst, "bus_latch"), "a fresh instance does not hold the default value of tma_zero");
         check(c, ds_model_set(inst, "tma_zero", "a_unchanged") == (uint32_t)DS_MODELREF_NONE && mr_value_is(inst, "a_unchanged"), "a valid selection before the first step was not accepted");
         check(c, ds_model_set(inst, "tma_zero", "bus_latch") == (uint32_t)DS_MODELREF_NONE && mr_value_is(inst, "bus_latch"), "the default selection before the first step was not accepted");
+        check(c, inst->irq_i_sample == (uint8_t)DS_IRQ_I_SAMPLE_PRE, "a fresh instance does not hold the default value of irq_i_sample");
+        check(c, ds_model_set(inst, "irq_i_sample", "post") == (uint32_t)DS_MODELREF_NONE && inst->irq_i_sample == (uint8_t)DS_IRQ_I_SAMPLE_POST, "irq_i_sample = post before the first step was not accepted");
+        check(c, ds_model_set(inst, "irq_i_sample", "pre") == (uint32_t)DS_MODELREF_NONE && inst->irq_i_sample == (uint8_t)DS_IRQ_I_SAMPLE_PRE, "irq_i_sample = pre before the first step was not accepted");
         memset(&rq, 0, sizeof rq);
         memset(&res, 0, sizeof res);
         rq.struct_size = (uint32_t)sizeof rq;
@@ -1163,6 +1173,7 @@ static void mr_variants(struct ctx *c, const char *code, struct ds_instance *ins
         check(c, reason == (uint32_t)DS_RUN_REASON_UNTIL && res.steps >= 1u && inst->machine_time != 0u, "the first run of the state variants took no step");
         mr_refused(c, inst, "tma_zero", "a_unchanged", (uint32_t)DS_MODELREF_state, calls);
         mr_refused(c, inst, "tma_zero", "bus_latch", (uint32_t)DS_MODELREF_state, calls); /* the value it already holds is refused too: the state is not a comparison */
+        mr_refused(c, inst, "irq_i_sample", "post", (uint32_t)DS_MODELREF_state, calls);
         check(c, mr_value_is(inst, "bus_latch"), "a refused selection changed the value");
         /* the arguments are judged before the state: a bad name or value after the first step keeps its own code */
         mr_refused(c, inst, "tma_zer", "bus_latch", (uint32_t)DS_MODELREF_unknown_name, calls);

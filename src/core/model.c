@@ -3,7 +3,7 @@
 /*
  * model.c - the named modelling parameters and ds_model_set (plan 03-17; D-105, D-113, D-121, D-134).
  * The rows are generated from model_params.def and the refusal names from model_refusals.def; nothing here is writable but the instance. A selection is a one-byte index into the allowed list of its row, kept in the
- * instance member that has the row's name (tma_zero lives in region BUS0), so a snapshot of the instance carries it and a restored machine behaves as the original (D-121). The setter validates the name, then the value, then the
+ * instance member that has the row's name (tma_zero lives in region BUS0, irq_i_sample in region IRQC), so a snapshot of the instance carries it and a restored machine behaves as the original (D-121). The setter validates the name, then the value, then the
  * state of the machine, and writes only after all three passed, so a refusal leaves the instance byte-identical (T-03-47).
  */
 #include <stddef.h>

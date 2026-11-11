@@ -172,3 +172,8 @@ irq_ctl_pre
 irq_stim_refuse_order
 irq_stim_refuse_count
 irq_stim_refuse_line
+irq_ctl_post
+mutate_sweep_irq_ctl
+irq_stim_refuse_level
+irq_stim_refuse_state
+irq_stim_refusal_coverage

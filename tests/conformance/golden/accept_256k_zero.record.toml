@@ -13,6 +13,7 @@
 # it was recomputed with the same throwaway perl script after it had reproduced the committed version 3 digest, and the stream file hashes to the value under shasum -a 256. The runner skips this comment block and compares the rest byte for byte.
 # Plan 03-18 changed the layout, format_version 2 to 3: after [power_on] the record now holds [model_tma_zero] (the default, bound_by default), [constants] (the nine rows of src/core/constants.def, each NAME = "VALUE LEDGER") and [run] (reason none for a boot that ran nothing),
 # and [withheld] gained the ledger ids of the model row and of the constants rows. The literals were written by hand from the two def files, never copied from printer output. The digest line did not change (no state was added), and the profile and content hashes did not change.
+# Plan 03-22 added the second row of src/core/model_params.def, irq_i_sample (default pre, ledger LED-IRQ-0005, status open): the record gains the table [model_irq_i_sample] after [model_tma_zero] and [withheld] the id LED-IRQ-0005 (18 ids, under the cap of 24). The two blocks were written by hand from the def and are not printer output; the layout otherwise did not change.
 [record]
 format_version = 3
 
@@ -91,7 +92,7 @@ value = "zero"
 bound_by = "run-request"
 
 [withheld]
-ids = ["LED-AUD-0001", "LED-CPU-0003", "LED-CPU-0004", "LED-CPU-0010", "LED-CPU-0012", "LED-CPU-0015", "LED-CPU-0017", "LED-IO-0001", "LED-IRQ-0001", "LED-LOAD-0001", "LED-LOAD-0002", "LED-LOAD-0003", "LED-LOAD-0005", "LED-PROF-0002", "LED-VID-0001", "LED-VID-0002", "LED-VID-0003"]
+ids = ["LED-AUD-0001", "LED-CPU-0003", "LED-CPU-0004", "LED-CPU-0010", "LED-CPU-0012", "LED-CPU-0015", "LED-CPU-0017", "LED-IO-0001", "LED-IRQ-0001", "LED-IRQ-0005", "LED-LOAD-0001", "LED-LOAD-0002", "LED-LOAD-0003", "LED-LOAD-0005", "LED-PROF-0002", "LED-VID-0001", "LED-VID-0002", "LED-VID-0003"]
 
 [content]
 sha256 = "cb038cda079ab0edec440521c4dc250a8a8c2af6e068470dbda7f05ff07b0287"
@@ -111,6 +112,12 @@ seed = 0
 value = "bus_latch"
 ledger = "LED-CPU-0015"
 status = "assumed"
+bound_by = "default"
+
+[model_irq_i_sample]
+value = "pre"
+ledger = "LED-IRQ-0005"
+status = "open"
 bound_by = "default"
 
 [constants]

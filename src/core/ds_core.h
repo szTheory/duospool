@@ -135,7 +135,7 @@ struct ds_instance {
     uint8_t timer_counter;
     uint8_t timer_reload;
     uint8_t timer_enabled;
-    /* the interrupt controller (plans 03-21 and 03-22, irq.c; D-110, D-111): irq_disable holds the three bits of the disable register $1402 (1 = disabled, bit 0 IRQ2D, bit 1 IRQ1D, bit 2 TIQD; 0 at reset, H8-16), tiq_latch the TIQ request bit (0 at reset, H8-15) and irq_i_sample the selected value of the model parameter irq_i_sample (an index into its allowed list, 0 = pre = the default; set only by ds_model_set before the first step, row of model_params.def from the second task of plan 03-22). The three are region IRQC */
+    /* the interrupt controller (plans 03-21 and 03-22, irq.c; D-110, D-111): irq_disable holds the three bits of the disable register $1402 (1 = disabled, bit 0 IRQ2D, bit 1 IRQ1D, bit 2 TIQD; 0 at reset, H8-16), tiq_latch the TIQ request bit (0 at reset, H8-15) and irq_i_sample the selected value of the model parameter irq_i_sample (an index into its allowed list, 0 = pre = the default; set only by ds_model_set before the first step: the row of model_params.def). The three are region IRQC */
     uint8_t irq_disable;
     uint8_t tiq_latch;
     uint8_t irq_i_sample;
@@ -367,6 +367,9 @@ _Static_assert((unsigned)DS_MODEL_COUNT <= 4u, "model_params.def has more than t
 
 /* the values of tma_zero in the order of its allowed list: the stored selection is the index */
 enum { DS_TMA_ZERO_BUS_LATCH = 0, DS_TMA_ZERO_A_UNCHANGED = 1 };
+
+/* the values of irq_i_sample in the order of its allowed list: the stored selection is the index (cpu.c, ds_cpu_step_obs) */
+enum { DS_IRQ_I_SAMPLE_PRE = 0, DS_IRQ_I_SAMPLE_POST = 1 };
 
 /* the refusal codes of ds_model_set (model_refusals.def; F4): their own set and prefix, never part of refusals.def or run_refusals.def */
 enum ds_model_refusal {

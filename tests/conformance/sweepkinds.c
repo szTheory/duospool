@@ -31,15 +31,16 @@ struct sweep_end {
 };
 
 /*
- * Boot a copy of the image (patch_at is the file offset whose byte is XORed with $FF, or len for no patch) and run it to done or to the absolute deadline until.
+ * Boot a copy of the image (patch_at is the file offset whose byte is XORed with $FF, or len for no patch) over the request and the declared irq_stim of the case (plan 03-22) and run it to done or to the absolute deadline until.
  * NULL on success (end is filled), otherwise why not: a harness fault of the case.
  */
-static const char *sweep_run(const unsigned char *image, size_t len, const char *request, size_t patch_at, uint64_t until, struct sweep_end *end)
+static const char *sweep_run(const unsigned char *image, size_t len, const struct kase *kase, size_t patch_at, uint64_t until, struct sweep_end *end)
 {
     struct booted b;
     const struct ds_instance *inst = NULL;
     struct ds_run_request rq;
     struct ds_run_result res;
+    uint32_t refusal = 0u;
     const char *err;
 
     b.mem = NULL;
@@ -51,8 +52,16 @@ static const char *sweep_run(const unsigned char *image, size_t len, const char 
     if (patch_at < len) {
         b.content[patch_at] = (unsigned char)(b.content[patch_at] ^ 0xFFu);
     }
-    err = boot_content(request, len, &b, &inst);
+    err = boot_content(kase->val[K_REQUEST], len, &b, &inst);
     if (err != NULL) {
+        return err;
+    }
+    err = apply_irq_stim((struct ds_instance *)(void *)b.mem, kase, &refusal); /* the case's declared stimulus, before the first step: every mutated run sees the one the unmutated run saw (plan 03-22, NW3) */
+    if (err == NULL && refusal != 0u) {
+        err = "the irq_stim list of the case was refused by ds_irq_stim_set";
+    }
+    if (err != NULL) {
+        release_boot(&b);
         return err;
     }
     memset(&rq, 0, sizeof rq);
@@ -161,7 +170,7 @@ void kind_mutate_sweep(const struct kase *k, struct ctx *c, char *got, size_t go
         }
     }
     /* the baseline: the unmutated image must run to done and pass, or a later flip could come from a broken guest */
-    err = sweep_run(image, len, k->val[K_REQUEST], len, until, &end);
+    err = sweep_run(image, len, k, len, until, &end);
     if (err != NULL) {
         free(image);
         harness_error(c, err);
@@ -200,7 +209,7 @@ void kind_mutate_sweep(const struct kase *k, struct ctx *c, char *got, size_t go
         if (is_excluded(&ex, n)) {
             continue;
         }
-        err = sweep_run(image, len, k->val[K_REQUEST], SW_ENTRY0 + 2u * (n - 1u) + 1u, until, &end);
+        err = sweep_run(image, len, k, SW_ENTRY0 + 2u * (n - 1u) + 1u, until, &end);
         if (err != NULL) {
             harness_error(t, err);
             break;
