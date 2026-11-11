@@ -3149,6 +3149,9 @@ selftest() {
       as_case core-boundary-allowlist 'STATUS core-boundary ok' "$as_dir" core-boundary.allow sh "$here/core-boundary-check" --root "$cb_ok"
       as_case core-boundary-undefined 'STATUS core-boundary ok' "$as_dir" nm.u sh "$here/core-boundary-check" --root "$cb_ok"
       as_case core-boundary-writable 'STATUS core-boundary ok' "$as_dir" nm.all sh "$here/core-boundary-check" --root "$cb_ok"
+      rl_ok="tests/gate/record-lint/ok-accept"
+      as_case record-lint-violations 'STATUS record-lint ok' "$as_dir" '$2 != "P"' sh "$here/record-lint" "$rl_ok/record.toml"
+      as_case record-lint-codes 'EXPECT_OK' "$as_dir" '{ print $2 }' sh "$here/record-lint" --expect REC_PATH tests/gate/record-lint/path-in-value/record.toml
       fl_ok="tests/gate/fixture-lint/ok-fixture"
       as_case fixture-lint-stage1 'STATUS fixture-lint ok' "$as_dir" fixture-lint-lex sh "$here/fixture-lint" --root "$fl_ok" --cites fixtures/lib/cites.txt --tsv tests/oracle/huc6280-opcodes.tsv
       as_case fixture-lint-stage2 'STATUS fixture-lint ok' "$as_dir" fixture-lint-rules sh "$here/fixture-lint" --root "$fl_ok" --cites fixtures/lib/cites.txt --tsv tests/oracle/huc6280-opcodes.tsv

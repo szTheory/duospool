@@ -120,12 +120,15 @@ for p in "$@"; do
   fi
 done
 
-# violations: everything but the P records, sorted and de-duplicated
-awk 'BEGIN { FS = "\t" } $2 != "P"' "$raw" | sort -u > "$viol"
+# violations: everything but the P records, sorted and de-duplicated. No pipeline has awk on its left (CR-01): a filter that dies must not
+# read as "no violations", so awk writes a file, its status is tested, and only then does sort read it.
+awk 'BEGIN { FS = "\t" } $2 != "P"' "$raw" > "$tmp/viol.raw" || { echo "HARNESS_AWK failed (violation filter)" >&2; exit 2; }
+sort -u "$tmp/viol.raw" > "$viol"
 nrec=$(awk 'BEGIN { FS = "\t" } $2 == "P" { n++ } END { print n + 0 }' "$raw")
 
 if [ "$have_expect" -eq 1 ]; then
-  got=$(awk -F'\t' '{ print $2 }' "$viol" | sort -u | tr '\n' ',' | sed 's/,$//')
+  awk -F'\t' '{ print $2 }' "$viol" > "$tmp/codes.raw" || { echo "HARNESS_AWK failed (code list)" >&2; exit 2; }
+  got=$(sort -u "$tmp/codes.raw" | tr '\n' ',' | sed 's/,$//')
   want=$(printf '%s\n' "$expect" | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/,$//')
   if [ "$got" = "$want" ]; then
     echo "EXPECT_OK"
