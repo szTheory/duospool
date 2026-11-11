@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 3
 current_phase_name: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-current_plan: 5
+current_plan: 6
 status: planning
-stopped_at: Completed 03-03-PLAN.md
-last_updated: "2026-11-11T06:39:47.979Z"
+stopped_at: Completed 03-36-PLAN.md
+last_updated: "2026-11-11T06:44:59.772Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 2 complete, transitioned to Phase 3
-state_head: 5d30988929b9f021ea55e025f3e1e7db9a3c628a
+state_head: f84ceda77f7d87f144043e92c93fedb93bef778d
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 72
-  completed_plans: 38
+  completed_plans: 39
   percent: 33
 ---
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 3 — HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-Current Plan: 5
+Current Plan: 6
 Total Plans in Phase: 38
 Status: Ready to execute
-Last activity: 2026-11-11 — Completed 03-35 (W1: run_refusals.def, kind run_refuse with six refusal rows, deferred run_refusal_coverage)
+Last activity: 2026-11-11 — Completed 03-36 (W1: placeholder state out, master-clocks record, epoch 2, goldens regenerated)
 
 Progress: [███░░░░░░░] 33%
 
@@ -97,6 +97,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 03 P02 | 35min | 2 tasks | 17 files |
 | Phase 3 P35 | 25min | 2 tasks | 14 files |
 | Phase 3 P03 | 25min | 2 tasks | 13 files |
+| Phase 3 P36 | 20min | 1 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -179,6 +180,7 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-02: ds_run overshoot is 0 for a call that took no step; run_until items assert overshoot = time - until instead of a separate literal
 - [Phase 3]: 03-35: ds_run refusal codes live in run_refusals.def (run.NAME, 16 slots), never refusals.def; sink and deadline renamed sink_unsupported and time_wrap, numbers 1..6 unchanged
 - [Phase 3]: 03-03: CPU0 stream order is a x y s p pc speed (memory order differs); accessor span is pc..speed
+- [Phase 3]: 03-36: poweron_domain keeps its kind with a no-domain stand-in stream until the v2 domains arrive in 03-24
 
 ### Pending Todos
 
@@ -202,6 +204,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-11T06:39:47.831Z
-Stopped at: Completed 03-03-PLAN.md
+Last session: 2026-11-11T06:44:59.618Z
+Stopped at: Completed 03-36-PLAN.md
 Resume file: None
