@@ -11,7 +11,7 @@
         .setcpu "huc6280"
 
 DSV_ID = 4
-DSV_CHECKS = 25
+DSV_CHECKS = 96
 
         .include "startup.inc"
         .include "verdict.inc"
@@ -83,12 +83,83 @@ RAM_W   = $2700                 ; the absolute work cells of the read-modify-wri
         LIT 17, $00
         LIT 18, $12
         LIT 19, $13
-        LIT 20, $14
-        LIT 21, $15
-        LIT 22, $16
-        LIT 23, $17
-        LIT 24, $18
-        LIT 25, $19
+        LIT 20, $15
+        LIT 21, $17
+        LIT 22, $18
+        LIT 23, $19
+        LIT 24, $30
+        LIT 25, $2F
+        LIT 26, $80
+        LIT 27, $41
+        LIT 28, $00
+        LIT 29, $00
+        LIT 30, $46
+        LIT 31, $00
+        LIT 32, $01
+        LIT 33, $02
+        LIT 34, $40
+        LIT 35, $34
+        LIT 36, $39
+        LIT 37, $33
+        LIT 38, $78
+        LIT 39, $00
+        LIT 40, $00
+        LIT 41, $30
+        LIT 42, $77
+        LIT 43, $03
+        LIT 44, $30
+        LIT 45, $3C
+        LIT 46, $F0
+        LIT 47, $42
+        LIT 48, $20
+        LIT 49, $00
+        LIT 50, $00
+        LIT 51, $02
+        LIT 52, $00
+        LIT 53, $00
+        LIT 54, $01
+        LIT 55, $01
+        LIT 56, $00
+        LIT 57, $00
+        LIT 58, $81
+        LIT 59, $81
+        LIT 60, $00
+        LIT 61, $00
+        LIT 62, $81
+        LIT 63, $81
+        LIT 64, $42
+        LIT 65, $03
+        LIT 66, $41
+        LIT 67, $81
+        LIT 68, $80
+        LIT 69, $00
+        LIT 70, $7F
+        LIT 71, $11
+        LIT 72, $03
+        LIT 73, $7F
+        LIT 74, $81
+        LIT 75, $00
+        LIT 76, $41
+        LIT 77, $43
+        LIT 78, $C0
+        LIT 79, $03
+        LIT 80, $01
+        LIT 81, $80
+        LIT 82, $03
+        LIT 83, $80
+        LIT 84, $03
+        LIT 85, $C2
+        LIT 86, $42
+        LIT 87, $80
+        LIT 88, $3F
+        LIT 89, $83
+        LIT 90, $02
+        LIT 91, $00
+        LIT 92, $F0
+        LIT 93, $02
+        LIT 94, $C2
+        LIT 95, $80
+        LIT 96, $40
 
 fixture_main:
         ldx #$00                ; the pages the checks read are filled with $FF, then every cell that a check reads is written
@@ -203,34 +274,450 @@ fill:   sta a:$2000,x
         lda #$10
         adc z:ZP_A,x
         CHECK_LIT 19
-        sec                     ; check 20 adc-ind MAN:S8-17: ADC (zz) with C set: $10 + the cell value $03 + 1 gives $14
-        lda #$10
-        adc (<ZP_PTR)
-        CHECK_LIT 20
-        sec                     ; check 21 adc-indx MAN:S8-17: ADC (zz,X) (X = 4) with C set: $10 + the cell value $04 + 1 gives $15
+        sec                     ; check 20 adc-indx MAN:S8-17: ADC (zz,X) (X = 4) with C set: $10 + the cell value $04 + 1 gives $15
         ldx #$04
         lda #$10
         adc (<ZP_PTR,x)
-        CHECK_LIT 21
-        sec                     ; check 22 adc-indy MAN:S8-17: ADC (zz),Y (Y = 3) with C set: $10 + the cell value $05 + 1 gives $16
-        ldy #$03
-        lda #$10
-        adc (<ZP_PTR),y
-        CHECK_LIT 22
-        sec                     ; check 23 adc-abs MAN:S8-17: ADC absolute with C set: $10 + the cell value $06 + 1 gives $17
+        CHECK_LIT 20
+        sec                     ; check 21 adc-abs MAN:S8-17: ADC absolute with C set: $10 + the cell value $06 + 1 gives $17
         lda #$10
         adc a:RAM_ABS
-        CHECK_LIT 23
-        sec                     ; check 24 adc-absx MAN:S8-17: ADC absolute,X (X = 2) with C set: $10 + the cell value $07 + 1 gives $18
+        CHECK_LIT 21
+        sec                     ; check 22 adc-absx MAN:S8-17: ADC absolute,X (X = 2) with C set: $10 + the cell value $07 + 1 gives $18
         ldx #$02
         lda #$10
         adc a:RAM_ABS,x
-        CHECK_LIT 24
-        sec                     ; check 25 adc-absy MAN:S8-17: ADC absolute,Y (Y = 5) with C set: $10 + the cell value $08 + 1 gives $19
+        CHECK_LIT 22
+        sec                     ; check 23 adc-absy MAN:S8-17: ADC absolute,Y (Y = 5) with C set: $10 + the cell value $08 + 1 gives $19
         ldy #$05
         lda #$10
         adc a:RAM_ABS,y
+        CHECK_LIT 23
+        sec                     ; check 24 sbc-imm MAN:S8-74: SBC immediate with C set (no borrow): $50 - $20 - 0 = $30
+        lda #$50
+        sbc #$20
+        CHECK_LIT 24
+        clc                     ; check 25 sbc-borrow-in MAN:S8-74: SBC subtracts the complement of C (A - M - not C): C clear gives $50 - $20 - 1 = $2F
+        lda #$50
+        sbc #$20
         CHECK_LIT 25
+        sec                     ; check 26 sbc-borrow-out MAN:S8-74: SBC of $20 - $30 with C set borrows: A = $F0, so C is clear and N is set: masked P byte $80
+        lda #$20
+        sbc #$30
+        PMASK $C3
+        CHECK_LIT 26
+        sec                     ; check 27 sbc-overflow MAN:S8-74: SBC sets V for $80 - $01 = $7F (a negative minus a positive gives a positive): C stays set, masked P byte $41
+        lda #$80
+        sbc #$01
+        PMASK $C3
+        CHECK_LIT 27
+        lda #$01                ; check 28 sbc-model-result GUEST:sbc-binary: SBC against the in-guest adder fed the complement of M (A + not M + C, S8-74) over 16 edge pairs with C clear and set: the OR of every result difference is zero
+        sta a:KIND
+        jsr agg_addsub
+        stz a:GEXP
+        lda a:MDR
+        CHECK_GUEST 28
+        stz a:GEXP              ; check 29 sbc-model-flags GUEST:sbc-binary: SBC N V Z C against the in-guest adder over the same 32 differences: the OR of every flag difference is zero
+        lda a:MDF
+        CHECK_GUEST 29
+        sed                     ; check 30 dec-adc-simple MAN:S8-17: ADC in decimal mode on valid BCD, C clear: $12 + $34 gives $46
+        clc
+        lda #$12
+        adc #$34
+        cld
+        CHECK_LIT 30
+        sed                     ; check 31 dec-adc-wrap-value MAN:S8-17: ADC in decimal mode on $99 + $01 leaves the decimal sum $00 in A
+        clc
+        lda #$99
+        adc #$01
+        cld
+        CHECK_LIT 31
+        sed                     ; check 32 dec-adc-wrap-c ASSUMED:LED-CPU-0010: ADC in decimal mode on $99 + $01: C set from the decimal carry (the page lists C without defining it in decimal mode, D-99)
+        clc
+        lda #$99
+        adc #$01
+        php
+        pla
+        and #$01
+        cld
+        CHECK_LIT 32
+        sed                     ; check 33 dec-adc-wrap-z ASSUMED:LED-CPU-0010: ADC in decimal mode on $99 + $01: Z set from the adjusted result $00 (D-99)
+        clc
+        lda #$99
+        adc #$01
+        php
+        pla
+        and #$02
+        cld
+        CHECK_LIT 33
+        SETP $40                ; check 34 dec-adc-v-kept-set MAN:S8-17: ADC in decimal mode leaves V alone: V set by PLP before SED, $01 + $01, V still set (binary mode would clear it): masked V bit $40
+        sed
+        lda #$01
+        adc #$01
+        php
+        pla
+        and #$40
+        cld
+        CHECK_LIT 34
+        sed                     ; check 35 dec-sbc-simple MAN:S8-74: SBC in decimal mode on valid BCD, C set: $46 - $12 gives $34
+        sec
+        lda #$46
+        sbc #$12
+        cld
+        CHECK_LIT 35
+        sed                     ; check 36 dec-sbc-digit-borrow MAN:S8-74: SBC in decimal mode borrows from the high digit: $40 - $01 gives $39
+        sec
+        lda #$40
+        sbc #$01
+        cld
+        CHECK_LIT 36
+        sed                     ; check 37 dec-sbc-borrow-in MAN:S8-74: SBC in decimal mode subtracts the complement of C: C clear, $46 - $12 - 1 gives $33
+        clc
+        lda #$46
+        sbc #$12
+        cld
+        CHECK_LIT 37
+        sed                     ; check 38 dec-sbc-borrow-value ASSUMED:LED-CPU-0010: SBC in decimal mode on $12 - $34 (a borrow out): A = $78, the ten's complement of the difference (the project's reading of a decimal borrow, D-99)
+        sec
+        lda #$12
+        sbc #$34
+        cld
+        CHECK_LIT 38
+        sed                     ; check 39 dec-sbc-borrow-c ASSUMED:LED-CPU-0010: SBC in decimal mode on $12 - $34: C clear for the borrow (D-99)
+        sec
+        lda #$12
+        sbc #$34
+        php
+        pla
+        and #$01
+        cld
+        CHECK_LIT 39
+        SETP $00                ; check 40 dec-sbc-v-kept MAN:S8-74: SBC in decimal mode leaves V alone: V clear, $80 - $01 (binary mode would set it): masked V bit $00
+        sed
+        sec
+        lda #$80
+        sbc #$01
+        php
+        pla
+        and #$40
+        cld
+        CHECK_LIT 40
+        ldx #$F0                ; check 41 t-adc-cell MAN:S8-17: SET then ADC: the sum goes to the zero-page cell $20F0 (X = $F0): $10 + $20 = $30 in the cell
+        lda #$10
+        sta a:$2000+$F0
+        lda #$77
+        clc
+        set
+        adc #$20
+        lda a:$2000+$F0
+        CHECK_LIT 41
+        ldx #$F0                ; check 42 t-adc-a-kept MAN:S8-17: SET then ADC leaves A alone: A stays $77
+        lda #$10
+        sta a:$2000+$F0
+        lda #$77
+        clc
+        set
+        adc #$20
+        CHECK_LIT 42
+        ldx #$F0                ; check 43 t-adc-flags MAN:S8-17: SET then ADC takes its flags from the cell sum: cell $FF + $01 = $00 sets Z and C (A = $00 would give neither): masked P byte $03
+        lda #$FF
+        sta a:$2000+$F0
+        lda #$00
+        clc
+        set
+        adc #$01
+        PMASK $C3
+        CHECK_LIT 43
+        ldx #$F0                ; check 44 t-and MAN:S8-18: SET then AND: the cell $F0 AND $3C = $30 is stored in the cell
+        lda #$F0
+        sta a:$2000+$F0
+        lda #$0F
+        set
+        and #$3C
+        lda a:$2000+$F0
+        CHECK_LIT 44
+        ldx #$F0                ; check 45 t-ora MAN:S8-58: SET then ORA: the cell $30 OR $0C = $3C is stored in the cell
+        lda #$30
+        sta a:$2000+$F0
+        lda #$0F
+        set
+        ora #$0C
+        lda a:$2000+$F0
+        CHECK_LIT 45
+        ldx #$F0                ; check 46 t-eor MAN:S8-47: SET then EOR: the cell $FF EOR $0F = $F0 is stored in the cell
+        lda #$FF
+        sta a:$2000+$F0
+        lda #$0F
+        set
+        eor #$0F
+        lda a:$2000+$F0
+        CHECK_LIT 46
+        ldx #$F0                ; check 47 t-cleared-next MAN:S8-17: T mode applies only to the instruction right after SET: SET, CLC, then ADC works on A ($41 + $01 = $42)
+        lda #$41
+        set
+        clc
+        adc #$01
+        CHECK_LIT 47
+        ldx #$F0                ; check 48 t-decimal ASSUMED:LED-CPU-0010: SED before SET, then ADC: the cell $19 + $01 = $20 in decimal (the combination of T mode and decimal mode is stated on no page, D-99)
+        lda #$19
+        sta a:$2000+$F0
+        sed
+        clc
+        set
+        adc #$01
+        cld
+        lda a:$2000+$F0
+        CHECK_LIT 48
+        stz a:KIND              ; check 49 asl-model-result GUEST:shift: ASL A against the in-guest bit-serial shifter over 16 edge values with C clear and set: the OR of every result difference is zero
+        jsr agg_shift
+        stz a:GEXP
+        lda a:MDR
+        CHECK_GUEST 49
+        stz a:GEXP              ; check 50 asl-model-flags GUEST:shift: ASL A N Z C against the in-guest shifter over the same 32 inputs (C is the bit shifted out, not the old C): the OR of every flag difference is zero
+        lda a:MDF
+        CHECK_GUEST 50
+        lda #$81                ; check 51 asl-mem-zp MAN:S8-19: ASL zero page is a read-modify-write: the cell $2050 ($81) becomes $02
+        sta z:ZP_W
+        asl z:ZP_W
+        lda z:ZP_W
+        CHECK_LIT 51
+        lda #$01                ; check 52 lsr-model-result GUEST:shift: LSR A against the in-guest shifter over 16 edge values with C clear and set: the OR of every result difference is zero
+        sta a:KIND
+        jsr agg_shift
+        stz a:GEXP
+        lda a:MDR
+        CHECK_GUEST 52
+        stz a:GEXP              ; check 53 lsr-model-flags GUEST:shift: LSR A N Z C against the in-guest shifter over the same 32 inputs: the OR of every flag difference is zero
+        lda a:MDF
+        CHECK_GUEST 53
+        SETP $00                ; check 54 lsr-n-clear MAN:S8-56: LSR always clears N (bit 7 is filled with zero): $FF loads with N set, LSR gives $7F, masked P byte $01 (C only)
+        lda #$FF
+        lsr a
+        PMASK $83
+        CHECK_LIT 54
+        lda #$03                ; check 55 lsr-mem-abs MAN:S8-56: LSR absolute: the cell $2700 ($03) becomes $01
+        sta a:RAM_W
+        lsr a:RAM_W
+        lda a:RAM_W
+        CHECK_LIT 55
+        lda #$02                ; check 56 rol-model-result GUEST:shift: ROL A against the in-guest shifter (C comes in at bit 0) over 16 edge values with C clear and set: the OR of every result difference is zero
+        sta a:KIND
+        jsr agg_shift
+        stz a:GEXP
+        lda a:MDR
+        CHECK_GUEST 56
+        stz a:GEXP              ; check 57 rol-model-flags GUEST:shift: ROL A N Z C against the in-guest shifter over the same 32 inputs: the OR of every flag difference is zero
+        lda a:MDF
+        CHECK_GUEST 57
+        sec                     ; check 58 rol-carry-in MAN:S8-68: ROL rotates C into bit 0: C set, $40 gives $81
+        lda #$40
+        rol a
+        CHECK_LIT 58
+        ldx #$03                ; check 59 rol-mem-zpx MAN:S8-68: ROL zero page,X rotates C in: C set, the cell $2053 ($C0) becomes $81 (X = 3)
+        lda #$C0
+        sta z:ZP_W,x
+        sec
+        rol z:ZP_W,x
+        lda z:ZP_W,x
+        CHECK_LIT 59
+        lda #$03                ; check 60 ror-model-result GUEST:shift: ROR A against the in-guest shifter (C comes in at bit 7) over 16 edge values with C clear and set: the OR of every result difference is zero
+        sta a:KIND
+        jsr agg_shift
+        stz a:GEXP
+        lda a:MDR
+        CHECK_GUEST 60
+        stz a:GEXP              ; check 61 ror-model-flags GUEST:shift: ROR A N Z C against the in-guest shifter over the same 32 inputs: the OR of every flag difference is zero
+        lda a:MDF
+        CHECK_GUEST 61
+        sec                     ; check 62 ror-carry-in MAN:S8-69: ROR rotates C into bit 7: C set, $02 gives $81
+        lda #$02
+        ror a
+        CHECK_LIT 62
+        ldx #$02                ; check 63 ror-mem-absx MAN:S8-69: ROR absolute,X rotates C in: C set, the cell $2702 ($02) becomes $81 (X = 2)
+        lda #$02
+        sta a:RAM_W,x
+        sec
+        ror a:RAM_W,x
+        lda a:RAM_W,x
+        CHECK_LIT 63
+        lda #$41                ; check 64 inc-a MAN:S8-48: INC accumulator: $41 becomes $42
+        inc a
+        CHECK_LIT 64
+        SETP $01                ; check 65 inc-a-wrap MAN:S8-48: INC accumulator wraps $FF to $00: Z set, C untouched (set by PLP), masked P byte $03
+        lda #$FF
+        inc a
+        PMASK $C3
+        CHECK_LIT 65
+        lda #$42                ; check 66 dec-a MAN:S8-44: DEC accumulator: $42 becomes $41
+        dec a
+        CHECK_LIT 66
+        SETP $01                ; check 67 dec-a-wrap MAN:S8-44: DEC accumulator wraps $00 to $FF: N set, C untouched (set by PLP), masked P byte $81
+        lda #$00
+        dec a
+        PMASK $C3
+        CHECK_LIT 67
+        lda #$7F                ; check 68 inc-mem-zp MAN:S8-48: INC zero page: the cell $2050 ($7F) becomes $80
+        sta z:ZP_W
+        inc z:ZP_W
+        lda z:ZP_W
+        CHECK_LIT 68
+        ldx #$02                ; check 69 dec-mem-absx MAN:S8-44: DEC absolute,X: the cell $2702 ($01) becomes $00 (X = 2)
+        lda #$01
+        sta a:RAM_W,x
+        dec a:RAM_W,x
+        lda a:RAM_W,x
+        CHECK_LIT 69
+        ldx #$7E                ; check 70 inx-value MAN:S8-49: INX: $7E becomes $7F (read back with TXA)
+        inx
+        txa
+        CHECK_LIT 70
+        ldy #$10                ; check 71 iny-value MAN:S8-50: INY: $10 becomes $11 (read back with TYA)
+        iny
+        tya
+        CHECK_LIT 71
+        SETP $01                ; check 72 iny-wrap MAN:S8-50: INY wraps $FF to $00: Z set, C untouched, masked P byte $03
+        ldy #$FF
+        iny
+        PMASK $C3
+        CHECK_LIT 72
+        ldx #$80                ; check 73 dex-value MAN:S8-45: DEX: $80 becomes $7F (read back with TXA; the page's function line prints Y, its title, opcode CA and mnemonic are X)
+        dex
+        txa
+        CHECK_LIT 73
+        SETP $01                ; check 74 dex-wrap MAN:S8-45: DEX wraps $00 to $FF: N set, C untouched, masked P byte $81
+        ldx #$00
+        dex
+        PMASK $C3
+        CHECK_LIT 74
+        ldy #$01                ; check 75 dey-value MAN:S8-46: DEY: $01 becomes $00 (read back with TYA)
+        dey
+        tya
+        CHECK_LIT 75
+        SETP $40                ; check 76 cmp-gt MAN:S8-41: CMP of $30 with $20 (A - M, S8-41): C set, Z and N clear, V untouched (set by PLP): masked P byte $41
+        lda #$30
+        cmp #$20
+        PMASK $C3
+        CHECK_LIT 76
+        SETP $40                ; check 77 cmp-eq MAN:S8-41: CMP of equal bytes sets Z and C, V untouched: masked P byte $43
+        lda #$20
+        cmp #$20
+        PMASK $C3
+        CHECK_LIT 77
+        SETP $41                ; check 78 cmp-lt MAN:S8-41: CMP of $10 with $20 clears C (C was set) and sets N from the difference $F0, V untouched: masked P byte $C0
+        lda #$10
+        cmp #$20
+        PMASK $C3
+        CHECK_LIT 78
+        SETP $00                ; check 79 cmp-zpx MAN:S8-41: CMP zero page,X with equal bytes ($02 and the cell $2013) sets Z and C (X = 3): masked P byte $03
+        ldx #$03
+        lda #$02
+        cmp z:ZP_A,x
+        PMASK $C3
+        CHECK_LIT 79
+        SETP $00                ; check 80 cpx-gt MAN:S8-42: CPX of $30 with $20 sets C: masked P byte $01
+        ldx #$30
+        cpx #$20
+        PMASK $C3
+        CHECK_LIT 80
+        SETP $01                ; check 81 cpx-lt MAN:S8-42: CPX of $10 with $20 clears C (C was set) and sets N: masked P byte $80
+        ldx #$10
+        cpx #$20
+        PMASK $C3
+        CHECK_LIT 81
+        SETP $00                ; check 82 cpx-abs MAN:S8-42: CPX absolute with X = $06 against the byte $06 at $2500 sets Z and C: masked P byte $03
+        ldx #$06
+        cpx a:RAM_ABS
+        PMASK $C3
+        CHECK_LIT 82
+        SETP $01                ; check 83 cpy-lt MAN:S8-43: CPY of $10 with $20 clears C (C was set) and sets N: masked P byte $80
+        ldy #$10
+        cpy #$20
+        PMASK $C3
+        CHECK_LIT 83
+        SETP $00                ; check 84 cpy-zp MAN:S8-43: CPY zero page with Y = $01 against the cell $2010 ($01) sets Z and C: masked P byte $03
+        ldy #$01
+        cpy z:ZP_A
+        PMASK $C3
+        CHECK_LIT 84
+        SETP $00                ; check 85 bit-imm MAN:S8-25: BIT immediate: $01 AND $C0 is zero (Z set) and N and V come from the operand bits 7 and 6 (the flag row of the page reads M7 and M6): masked P byte $C2
+        lda #$01
+        bit #$C0
+        PMASK $C3
+        CHECK_LIT 85
+        lda #$40                ; check 86 bit-zp MAN:S8-25: BIT zero page: A = $0F with the cell $2050 = $40: Z set, N clear, V set from bit 6: masked P byte $42
+        sta z:ZP_W
+        SETP $00
+        lda #$0F
+        bit z:ZP_W
+        PMASK $C3
+        CHECK_LIT 86
+        ldx #$02                ; check 87 bit-absx MAN:S8-25: BIT absolute,X: A = $FF with the cell $2702 = $80: Z clear, N set, V clear: masked P byte $80 (X = 2)
+        lda #$80
+        sta a:RAM_W,x
+        SETP $00
+        lda #$FF
+        bit a:RAM_W,x
+        PMASK $C3
+        CHECK_LIT 87
+        lda #$30                ; check 88 tsb-zp-mem MAN:S8-103: TSB zero page stores A OR M: A = $0F, the cell $2050 ($30) becomes $3F
+        sta z:ZP_W
+        lda #$0F
+        tsb z:ZP_W
+        lda z:ZP_W
+        CHECK_LIT 88
+        lda #$02                ; check 89 tsb-abs-mem MAN:S8-103: TSB absolute stores A OR M: A = $81, the cell $2700 ($02) becomes $83
+        sta a:RAM_W
+        lda #$81
+        tsb a:RAM_W
+        lda a:RAM_W
+        CHECK_LIT 89
+        lda #$F0                ; check 90 tsb-z-set ASSUMED:LED-CPU-0010: TSB: Z is set when A AND the old memory byte is zero (A = $0F, cell $F0). The page lists Z without saying where it comes from; N and V of TSB are not asserted (S8-103 against pcetech)
+        sta z:ZP_W
+        SETP $00
+        lda #$0F
+        tsb z:ZP_W
+        PMASK $02
+        CHECK_LIT 90
+        lda #$FF                ; check 91 tsb-z-clear ASSUMED:LED-CPU-0010: TSB: Z is clear when A AND the old memory byte is not zero (A = $01, cell $FF)
+        sta z:ZP_W
+        SETP $02
+        lda #$01
+        tsb z:ZP_W
+        PMASK $02
+        CHECK_LIT 91
+        lda #$FF                ; check 92 trb-zp-mem ASSUMED:LED-CPU-0010: TRB zero page clears the bits of A in memory (the page formula M <- not A AND M; its prose says the result is not stored, so the stored result is the project's reading): A = $0F, the cell $2050 ($FF) becomes $F0
+        sta z:ZP_W
+        lda #$0F
+        trb z:ZP_W
+        lda z:ZP_W
+        CHECK_LIT 92
+        lda #$F0                ; check 93 trb-z-set ASSUMED:LED-CPU-0010: TRB: Z is set when A AND the old memory byte is zero (A = $0F, cell $F0); N and V of TRB are not asserted
+        sta z:ZP_W
+        SETP $00
+        lda #$0F
+        trb z:ZP_W
+        PMASK $02
+        CHECK_LIT 93
+        lda #$FE                ; check 94 tst-zp MAN:S8-104: TST #imm,zero page: $01 AND the cell $2050 ($FE) is zero (Z set); N and V come from the memory byte bits 7 and 6: masked P byte $C2
+        sta z:ZP_W
+        SETP $00
+        tst #$01, z:ZP_W
+        PMASK $C3
+        CHECK_LIT 94
+        ldx #$03                ; check 95 tst-zpx MAN:S8-104: TST #imm,zero page,X: $80 AND the cell $2053 ($80) is not zero; N set, V clear: masked P byte $80 (X = 3)
+        lda #$80
+        sta z:ZP_W,x
+        SETP $00
+        tst #$80, z:ZP_W,x
+        PMASK $C3
+        CHECK_LIT 95
+        ldx #$02                ; check 96 tst-absx MAN:S8-104: TST #imm,absolute,X: $FF AND the cell $2702 ($40) is not zero; V set from bit 6, N clear: masked P byte $40 (X = 2)
+        lda #$40
+        sta a:RAM_W,x
+        SETP $00
+        tst #$FF, a:RAM_W,x
+        PMASK $C3
+        CHECK_LIT 96
         rts
 
 ; the model routines (GEXP is the expected byte of the CHECK_GUEST macro)
@@ -398,6 +885,67 @@ aa_res: sta a:MR
         cmp #96
         bne aa_loop
         rts
+; agg_shift: KIND 0 ASL, 1 LSR, 2 ROL, 3 ROR over the 32 inputs of vec_sh against model_shl or model_shr; the carry in (rotates) is MFILL; MDR and MDF as above, flags N Z C ($83)
+agg_shift:
+        stz a:MDR
+        stz a:MDF
+        ldx #$00
+as_loop: lda a:vec_sh,x
+        sta a:MA
+        lda a:vec_sh+1,x
+        sta a:MC
+        stz a:MFILL
+        lda a:KIND
+        and #$02
+        beq as_nof
+        lda a:MC
+        sta a:MFILL
+as_nof: lda a:KIND
+        and #$01
+        bne as_r
+        jsr model_shl
+        bra as_m
+as_r:   jsr model_shr
+as_m:   stz a:MV
+        jsr model_flags
+        lda a:MC
+        beq as_c0
+        sec
+        bra as_go
+as_c0:  clc
+as_go:  lda a:MA
+        ldy a:KIND
+        beq as_asl
+        dey
+        beq as_lsr
+        dey
+        beq as_rol
+        ror a
+        bra as_res
+as_asl: asl a
+        bra as_res
+as_lsr: lsr a
+        bra as_res
+as_rol: rol a
+as_res: sta a:MR
+        php
+        pla
+        and #$83
+        sta a:RFL
+        lda a:MR
+        eor a:GEXP
+        ora a:MDR
+        sta a:MDR
+        lda a:RFL
+        eor a:GFL
+        ora a:MDF
+        sta a:MDF
+        inx
+        inx
+        txa
+        cmp #64
+        bne as_loop
+        rts
 
         .byte $00               ; the zero before the first mask
 masktab: .byte $01, $02, $04, $08, $10, $20, $40, $80, $00
@@ -411,3 +959,9 @@ vec_ac:
         .byte $0F, $01, $00, $0F, $01, $01, $F0, $10, $00, $F0, $10, $01
         .byte $80, $01, $00, $80, $01, $01, $FF, $01, $00, $FF, $01, $01
         .byte $12, $34, $00, $12, $34, $01, $C3, $3C, $00, $C3, $3C, $01
+; the shifts: 16 edge bytes, each with C clear and then set; two bytes per vector
+vec_sh:
+        .byte $00, $00, $00, $01, $01, $00, $01, $01, $02, $00, $02, $01, $7F, $00, $7F, $01
+        .byte $80, $00, $80, $01, $81, $00, $81, $01, $40, $00, $40, $01, $FF, $00, $FF, $01
+        .byte $55, $00, $55, $01, $AA, $00, $AA, $01, $FE, $00, $FE, $01, $C0, $00, $C0, $01
+        .byte $0F, $00, $0F, $01, $F0, $00, $F0, $01, $3C, $00, $3C, $01, $C3, $00, $C3, $01

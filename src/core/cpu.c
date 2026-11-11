@@ -213,14 +213,13 @@ static void set_nz(struct ds_instance *inst, uint32_t value)
     inst->p = (uint8_t)p;
 }
 
-/* CMP: A - M for N Z C only; C is set when A >= M */
-static void cmp(struct ds_instance *inst, uint32_t m)
+/* CMP, CPX, CPY (S8-41 to S8-43): reg - M for N Z C only, V untouched; C is set when reg >= M (the carry flag of the subtraction, never the H8-4 prose about borrows: research mismatch 6) */
+static void compare(struct ds_instance *inst, uint32_t reg, uint32_t m)
 {
-    uint32_t a = inst->a;
-    uint32_t diff = (a - m) & 0xFFu;
+    uint32_t diff = (reg - m) & 0xFFu;
     uint32_t p = (uint32_t)inst->p & ~P_C;
 
-    if (a >= m) {
+    if (reg >= m) {
         p |= P_C;
     }
     inst->p = (uint8_t)p;
@@ -379,12 +378,143 @@ static uint32_t add_binary(struct ds_instance *inst, uint32_t a, uint32_t m)
     return res;
 }
 
-/* ADC: the T-mode cell or A is the first addend; the decimal variant lands with its checks in the same plan */
+/*
+ * Decimal add and subtract on valid BCD (S8-17, S8-74): the cycle count grows by one and V is unaffected (both from the pages); the result is the packed BCD sum or difference of the two digits, each digit adjusted by 6 (add) or by -6
+ * (subtract). N, Z and C are taken from the adjusted result and the decimal carry (D-99, an assumption, LED-CPU-0010); what a decimal operation does with a digit above 9 is not defined here and is not tested.
+ */
+static uint32_t add_decimal(struct ds_instance *inst, uint32_t a, uint32_t m)
+{
+    uint32_t lo = (a & 0x0Fu) + (m & 0x0Fu) + ((uint32_t)inst->p & P_C);
+    uint32_t hi;
+    uint32_t res;
+    uint32_t p = (uint32_t)inst->p & ~(P_N | P_Z | P_C);
+
+    if (lo > 9u) {
+        lo += 6u;
+    }
+    hi = (a >> 4u) + (m >> 4u) + (lo >> 4u);
+    if (hi > 9u) {
+        hi += 6u;
+        p |= P_C;
+    }
+    res = ((hi & 0x0Fu) << 4u) | (lo & 0x0Fu);
+    inst->p = (uint8_t)p;
+    set_nz(inst, res);
+    return res;
+}
+
+static uint32_t sub_decimal(struct ds_instance *inst, uint32_t a, uint32_t m)
+{
+    uint32_t borrow_in = 1u - ((uint32_t)inst->p & P_C); /* A - M - not C (S8-74) */
+    uint32_t lo = (a & 0x0Fu) + 16u - (m & 0x0Fu) - borrow_in;
+    uint32_t hi;
+    uint32_t res;
+    uint32_t p = (uint32_t)inst->p & ~(P_N | P_Z | P_C);
+    uint32_t borrow_lo = lo < 16u ? 1u : 0u;
+
+    lo = borrow_lo != 0u ? ((lo + 10u) & 0x0Fu) : (lo & 0x0Fu); /* a borrowed digit is adjusted by -6, which is +10 modulo 16 */
+    hi = (a >> 4u) + 16u - (m >> 4u) - borrow_lo;
+    if (hi >= 16u) {
+        p |= P_C; /* no borrow out */
+        hi &= 0x0Fu;
+    } else {
+        hi = (hi + 10u) & 0x0Fu;
+    }
+    res = (hi << 4u) | lo;
+    inst->p = (uint8_t)p;
+    set_nz(inst, res);
+    return res;
+}
+
+/* ADC: the T-mode cell or A is the first addend; D selects the decimal add (T mode with D is the project's reading of a combination no page states, LED-CPU-0010) */
 static void adc_op(struct ds_instance *inst, int t_mode, uint32_t m)
 {
-    uint32_t res = add_binary(inst, acc_in(inst, t_mode), m);
+    uint32_t acc = acc_in(inst, t_mode);
+    uint32_t res = ((uint32_t)inst->p & P_D) != 0u ? add_decimal(inst, acc, m) : add_binary(inst, acc, m);
 
     acc_out(inst, t_mode, res);
+}
+
+/* SBC (S8-74): A - M - not C; binary mode adds the complement of M, so the same adder serves; there is no T-mode form */
+static void sbc_op(struct ds_instance *inst, uint32_t m)
+{
+    uint32_t a = inst->a;
+
+    inst->a = (uint8_t)(((uint32_t)inst->p & P_D) != 0u ? sub_decimal(inst, a, m) : add_binary(inst, a, m ^ 0xFFu));
+}
+
+/* ASL, LSR, ROL, ROR, INC, DEC on a value (S8-19, S8-56, S8-68, S8-69, S8-48, S8-44): the shifts set N Z C (C is the bit shifted out), INC and DEC set N and Z only */
+static uint32_t rmw_value(struct ds_instance *inst, uint32_t mn, uint32_t v)
+{
+    uint32_t cin = (uint32_t)inst->p & P_C;
+    uint32_t cout = 0u;
+    uint32_t res;
+    uint32_t p = (uint32_t)inst->p & ~P_C;
+
+    switch ((enum ds_mn)mn) {
+    case MN_ASL:
+        res = (v << 1u) & 0xFFu;
+        cout = (v >> 7u) & 1u;
+        break;
+    case MN_LSR:
+        res = v >> 1u;
+        cout = v & 1u;
+        break;
+    case MN_ROL:
+        res = ((v << 1u) | cin) & 0xFFu;
+        cout = (v >> 7u) & 1u;
+        break;
+    case MN_ROR:
+        res = (v >> 1u) | (cin << 7u);
+        cout = v & 1u;
+        break;
+    case MN_INC:
+        res = (v + 1u) & 0xFFu;
+        cout = cin; /* C is not in the flag row of INC and DEC: it stays as it was */
+        break;
+    default: /* MN_DEC */
+        res = (v - 1u) & 0xFFu;
+        cout = cin;
+        break;
+    }
+    if (cout != 0u) {
+        p |= P_C;
+    }
+    inst->p = (uint8_t)p;
+    set_nz(inst, res);
+    return res;
+}
+
+/* BIT, TSB, TRB, TST: Z from first AND v; N and V from bits 7 and 6 of the memory (or, for BIT immediate, the operand) byte v (S8-25, S8-102 to S8-104, H8-5); C is untouched. The N and V of TSB and TRB are the page's reading (research mismatch 9). */
+static void bit_test(struct ds_instance *inst, uint32_t first, uint32_t v)
+{
+    uint32_t p = (uint32_t)inst->p & ~(P_N | P_V | P_Z);
+
+    if ((v & 0x80u) != 0u) {
+        p |= P_N;
+    }
+    if ((v & 0x40u) != 0u) {
+        p |= P_V;
+    }
+    if ((first & v) == 0u) {
+        p |= P_Z;
+    }
+    inst->p = (uint8_t)p;
+}
+
+/* the memory cell of TST (S8-104): the encoding is opcode, immediate, then the address, so zero page or the low byte come second and the high byte fourth */
+static uint16_t tst_addr(const struct ds_instance *inst, uint32_t mode, uint32_t op2, uint32_t op3)
+{
+    switch ((enum ds_mode)mode) {
+    case AM_IMMZPX:
+        return zp_addr(op2 + (uint32_t)inst->x);
+    case AM_IMMABS:
+        return (uint16_t)(op2 | (op3 << 8u));
+    case AM_IMMABSX:
+        return (uint16_t)((op2 | (op3 << 8u)) + (uint32_t)inst->x);
+    default: /* AM_IMMZP */
+        return zp_addr(op2);
+    }
 }
 
 /* one instruction; log is the instruction sink writer of the running ds_run call or NULL (plan 03-10): the hook is called once per executed instruction with the state before it runs (D-119) */
@@ -421,8 +551,17 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
     case MN_CLC:
         inst->p = (uint8_t)((uint32_t)inst->p & ~P_C);
         break;
-    case MN_SEC: /* C <- 1, no other flag (S8-75); the flag instructions of plan 03-13 that this group's fixture needs come with it */
+    case MN_SEC: /* C <- 1, no other flag (S8-75); SEC, SED and CLV are plan 03-13's flag instructions, done here because this group's fixture needs them */
         inst->p = (uint8_t)((uint32_t)inst->p | P_C);
+        break;
+    case MN_SED: /* D <- 1 (S8-76) */
+        inst->p = (uint8_t)((uint32_t)inst->p | P_D);
+        break;
+    case MN_CLV: /* V <- 0 */
+        inst->p = (uint8_t)((uint32_t)inst->p & ~P_V);
+        break;
+    case MN_SET: /* T <- 1 after the fetch-time clear: the next ADC, AND, EOR or ORA works on the cell named by X (S8-78) */
+        inst->p = (uint8_t)((uint32_t)inst->p | P_T);
         break;
     case MN_LDA:
         if (operand_value(inst, mode, op1, abs_addr, &v) != 0) {
@@ -508,7 +647,20 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
         inst->y = (uint8_t)(((uint32_t)inst->y + 1u) & 0xFFu);
         set_nz(inst, inst->y);
         break;
-    case MN_ADC: /* binary; the decimal variant is added with its checks */
+    case MN_DEX:
+        inst->x = (uint8_t)(((uint32_t)inst->x - 1u) & 0xFFu);
+        set_nz(inst, inst->x);
+        break;
+    case MN_DEY:
+        inst->y = (uint8_t)(((uint32_t)inst->y - 1u) & 0xFFu);
+        set_nz(inst, inst->y);
+        break;
+    case MN_SBC:
+        if (operand_value(inst, mode, op1, abs_addr, &v) != 0) {
+            sbc_op(inst, v);
+        }
+        break;
+    case MN_ADC: /* binary or decimal by D, memory-to-memory by T */
         if (operand_value(inst, mode, op1, abs_addr, &v) != 0) {
             adc_op(inst, t_active, v);
         }
@@ -520,20 +672,55 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
         break;
     case MN_CMP:
         if (operand_value(inst, mode, op1, abs_addr, &v) != 0) {
-            cmp(inst, v);
+            compare(inst, inst->a, v);
+        }
+        break;
+    case MN_CPX:
+        if (operand_value(inst, mode, op1, abs_addr, &v) != 0) {
+            compare(inst, inst->x, v);
+        }
+        break;
+    case MN_CPY:
+        if (operand_value(inst, mode, op1, abs_addr, &v) != 0) {
+            compare(inst, inst->y, v);
+        }
+        break;
+    case MN_BIT: /* N and V from the operand, Z from A AND the operand; BIT immediate follows the page's flag row too */
+        if (operand_value(inst, mode, op1, abs_addr, &v) != 0) {
+            bit_test(inst, inst->a, v);
+        }
+        break;
+    case MN_TSB: /* M <- A OR M (S8-103) */
+        if (has_ea(mode)) {
+            ea = eff_addr(inst, mode, op1, abs_addr);
+            v = ds_bus_read(inst, ea);
+            bit_test(inst, inst->a, v);
+            ds_bus_write(inst, ea, (uint8_t)(v | (uint32_t)inst->a));
+        }
+        break;
+    case MN_TRB: /* M <- not A AND M (the formula of S8-102; the prose of that page says the result is not stored: the stored reading is the project's, LED-CPU-0010) */
+        if (has_ea(mode)) {
+            ea = eff_addr(inst, mode, op1, abs_addr);
+            v = ds_bus_read(inst, ea);
+            bit_test(inst, inst->a, v);
+            ds_bus_write(inst, ea, (uint8_t)(v & ~(uint32_t)inst->a));
+        }
+        break;
+    case MN_TST: /* immediate AND memory: Z from the two, N and V from the memory byte; nothing is stored */
+        v = ds_bus_read(inst, tst_addr(inst, mode, op2, ds_bus_read(inst, (uint16_t)(pc + 3u))));
+        bit_test(inst, op1, v);
+        break;
+    case MN_ASL: case MN_LSR: case MN_ROL: case MN_ROR: case MN_INC: case MN_DEC: /* the accumulator and the memory forms: one read then one write, N and Z from the result */
+        if (mode == (uint32_t)AM_ACC) {
+            inst->a = (uint8_t)rmw_value(inst, mn, inst->a);
+        } else if (has_ea(mode)) {
+            ea = eff_addr(inst, mode, op1, abs_addr);
+            ds_bus_write(inst, ea, (uint8_t)rmw_value(inst, mn, ds_bus_read(inst, ea)));
         }
         break;
     case MN_EOR: /* N and Z */
         if (operand_value(inst, mode, op1, abs_addr, &v) != 0) {
             logic_op(inst, mn, t_active, v);
-        }
-        break;
-    case MN_INC: /* memory forms only: one read and one write, N and Z from the result (the accumulator form is plan 03-12) */
-        if (has_ea(mode)) {
-            ea = eff_addr(inst, mode, op1, abs_addr);
-            lo = ((uint32_t)ds_bus_read(inst, ea) + 1u) & 0xFFu;
-            ds_bus_write(inst, ea, (uint8_t)lo);
-            set_nz(inst, lo);
         }
         break;
     case MN_BNE:
@@ -589,14 +776,11 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
     /* ---- the functionality gap: these mnemonics advance PC by the table length and charge the table cycles, with no register, flag or memory effect, until their group lands ---- */
     case MN_UNDEF: /* D-96: one byte, two cycles, T cleared */
         break;
-    case MN_ASL: case MN_BIT: case MN_CPX: case MN_CPY: case MN_DEC: case MN_LSR: case MN_ROL: case MN_ROR: case MN_SBC:
-    case MN_TRB: case MN_TSB: case MN_TST: case MN_SET: case MN_DEX: case MN_DEY:
-        break; /* plan 03-12, later tasks: shift, compare, bit test, SBC, SET */
     case MN_BBR0: case MN_BBR1: case MN_BBR2: case MN_BBR3: case MN_BBR4: case MN_BBR5: case MN_BBR6: case MN_BBR7:
     case MN_BBS0: case MN_BBS1: case MN_BBS2: case MN_BBS3: case MN_BBS4: case MN_BBS5: case MN_BBS6: case MN_BBS7:
     case MN_BCC: case MN_BCS: case MN_BMI: case MN_BPL: case MN_BVC: case MN_BRK: case MN_BSR: case MN_RTI: case MN_NOP:
-    case MN_CLI: case MN_CLV: case MN_SED:
-        break; /* plan 03-13: flow, flag instructions, BRK and RTI */
+    case MN_CLI:
+        break; /* plan 03-13: flow, CLI, BRK and RTI (SEC, SED and CLV are done in plan 03-12) */
     case MN_RMB0: case MN_RMB1: case MN_RMB2: case MN_RMB3: case MN_RMB4: case MN_RMB5: case MN_RMB6: case MN_RMB7:
     case MN_SMB0: case MN_SMB1: case MN_SMB2: case MN_SMB3: case MN_SMB4: case MN_SMB5: case MN_SMB6: case MN_SMB7:
     case MN_SAX: case MN_SAY: case MN_SXY: case MN_ST0: case MN_ST1: case MN_ST2: case MN_CSH: case MN_CSL: case MN_TMA:
