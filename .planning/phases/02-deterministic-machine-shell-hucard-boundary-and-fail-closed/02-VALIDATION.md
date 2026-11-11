@@ -1,7 +1,7 @@
 ---
 phase: "02"
 slug: "deterministic-machine-shell-hucard-boundary-and-fail-closed"
-status: draft
+status: complete
 nyquist_compliant: true
 wave_0_complete: true
 created: "2026-11-09"

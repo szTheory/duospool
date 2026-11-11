@@ -17,7 +17,7 @@ Owner-gated decisions are not decided here. Phases that depend on one name it an
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Owner Decisions, Claim Ledger and Toolchain Spike** - Gate phase. Measured language spike, a first-profile record, and decision records for the owner to confirm. The claim ledger holds every open hardware fact (completed 2026-11-09)
-- [ ] **Phase 2: Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate** - Typed accept/refuse of HuCard bytes into fresh, isolated, seeded instances. One local command and CI fail closed
+- [x] **Phase 2: Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate** - Typed accept/refuse of HuCard bytes into fresh, isolated, seeded instances. One local command and CI fail closed (completed 2026-11-10)
 - [ ] **Phase 3: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad** - Authored fixtures report guest-RAM verdicts for the CPU, MMU, timer, IRQ, and SEL/CLR pad, with negative controls and resumable bounded runs
 - [ ] **Phase 4: VCE/VDC Raw Video** - Per-scanline raw video and guest-recorded interrupt timing, checked against literal expectations for background, sprites, DMA, palette, and dot clock
 - [ ] **Phase 5: PSG Raw Audio** - Timestamped PSG event log and PCM at a recorded format, checked by semantic properties. Can run in parallel with Phase 4
@@ -89,7 +89,7 @@ Plans:
   3. Every run record contains the full profile identity (every guest-visible setting) and the power-on policy and seed. Two instances run interleaved in one process produce the same digests as each instance run alone. The same inputs in a fresh process produce identical records. A build- or test-time check rejects core use of host clocks, filesystem, threads, environment, device, or UI APIs, and a deliberately violating negative control is shown to fail it.
   4. One documented local command runs the fast gate. Pass, guest failure, timeout, harness failure, skip, cancelled, and missing artifact are reported as distinct outcomes, and only pass is green. Each named negative control fails the gate: a removed required test, a missing manifest field, an unlisted fixture, a deliberately wrong literal, and an unlisted ROM/firmware-like binary added to the tree.
   5. CI on the owner-selected provider runs the same fast gate on every change. Each job is tied to a named failure class, and its critical-path time is recorded. If the CI provider is still undecided, this criterion is reported as blocked, not satisfied.
-**Plans**: 22/22 plans executed
+**Plans**: 22/22 plans complete
 - [x] 02-01-PLAN.md
 - [x] 02-02-PLAN.md
 - [x] 02-03-PLAN.md
@@ -197,7 +197,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phases 4 and 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Owner Decisions, Claim Ledger and Toolchain Spike | 12/12 | Complete    | 2026-11-09 |
-| 2. Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate | 22/22 | In Progress | - |
+| 2. Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate | 22/22 | Complete    | 2026-11-10 |
 | 3. HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad | 0/TBD | Not started | - |
 | 4. VCE/VDC Raw Video | 0/TBD | Not started | - |
 | 5. PSG Raw Audio | 0/TBD | Not started | - |
