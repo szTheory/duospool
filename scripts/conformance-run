@@ -16,7 +16,7 @@
 #   flatten tests/conformance/cases into cases.tsv (the only parser of hand-edited data, D-51), derive ids.txt from it, flatten the
 #   frozen profiles/pce-hucard-2btn/r1.toml into r1.tsv and cut the 13 field names of scripts/lib/profile-rules.awk into
 #   rules-fields.txt (both handed to the runner for the profile kinds), write oracle.tsv from tests/conformance/mirror-oracle.awk
-#   (the independent bank-signature oracle, 384 rows, handed to the runner as --oracle), configure
+#   (the independent bank-signature oracle, 384 rows, handed to the runner as --oracle), write bankclass.tsv from tests/conformance/bankclass-oracle.awk (the bank-class oracle re-derived from the ledger text, 256 rows, --bank-oracle; plan 03-20), configure
 #   and build the preset incrementally (so a stale binary is never judged), run ds_runner under the supervise mode below with
 #   its stdout in results.txt, judge results.txt with conformance-ingest against tests/conformance/REQUIRED and the case
 #   inventory (with --mode gate --excluded tests/conformance/EXCLUDED_IN_MODE, so that the exclusion file is validated on every gate run), run the hash sweep (hash_sweep below: the core SHA-256 against the host sha tool for every length of the runner's
@@ -143,7 +143,7 @@ run_mode() {
     exit 2
   fi
   mkdir -p "$bd" || { echo "HARNESS_ERROR cannot create $bd" >&2; exit 2; }
-  rm -rf "$bd/exclude-ids.txt" "$bd/cases.tsv" "$bd/ids.txt" "$bd/results.txt" "$bd/evidence" "$bd/records" "$bd/r1.tsv" "$bd/rules-fields.txt" "$bd/oracle.tsv" "$bd/oracle.err"
+  rm -rf "$bd/exclude-ids.txt" "$bd/cases.tsv" "$bd/ids.txt" "$bd/results.txt" "$bd/evidence" "$bd/records" "$bd/r1.tsv" "$bd/rules-fields.txt" "$bd/oracle.tsv" "$bd/oracle.err" "$bd/bankclass.tsv" "$bd/bankclass.err"
   # the traces of an earlier explicit --trace-out run (plan 03-19; D-120): the cases write none, and trace_out_check below requires the directory to be absent until it makes it itself (the gate mode only: the sanitize mode makes none)
   if [ "$mode" != sanitize ]; then rm -rf build/gate/traces; fi
 
@@ -194,6 +194,17 @@ run_mode() {
     echo "HARNESS_ERROR the oracle did not give exactly 384 rows (128 banks for each of 3 sizes)" >&2
     exit 2
   fi
+  # the independent oracle of the bank classes (plan 03-20; D-103, ER-7, T-03-55): tests/conformance/bankclass-oracle.awk re-derives the class of banks 0 to 255 from the statement of LED-CPU-0011 and is run here, in this run, before the
+  # runner starts; its 256 rows go to bankclass.tsv, which the runner reads with --bank-oracle, so a stale file is never judged. A reworded clause (ORACLE_RULE_TEXT_DRIFT) is exit 1 and nothing is judged.
+  if awk -f tests/conformance/bankclass-oracle.awk > "$bd/bankclass.tsv" 2> "$bd/bankclass.err"; then :; else
+    cat "$bd/bankclass.err"
+    rm -f "$bd/bankclass.tsv"
+    exit 1
+  fi
+  if [ "$(sed -n '$=' "$bd/bankclass.tsv")" != 256 ]; then
+    echo "HARNESS_ERROR the bank-class oracle did not give exactly 256 rows (banks 0 to 255)" >&2
+    exit 2
+  fi
 
   if [ "$mode" = sanitize ]; then
     sanitize_compiler "$bd"
@@ -208,7 +219,7 @@ run_mode() {
   # removed above), so the record-lint stage never reads a directory left by an earlier run; the runner writes DIR/ID.record.toml for every case of
   # kind accept, record_lines, record_golden or record_refusal and creates nothing else. The goldens are read from tests/conformance/golden.
   mkdir -p "$bd/records" || { echo "HARNESS_ERROR cannot create $bd/records" >&2; exit 2; }
-  if sh "$here/conformance-run" supervise --ids "$bd/ids.txt" --out "$bd/results.txt" --wall "$wall_secs" -- "$bd/ds_runner" --cases "$bd/cases.tsv" --evidence-dir "$bd/evidence" --profile-tsv "$bd/r1.tsv" --rules-fields "$bd/rules-fields.txt" --oracle "$bd/oracle.tsv" \
+  if sh "$here/conformance-run" supervise --ids "$bd/ids.txt" --out "$bd/results.txt" --wall "$wall_secs" -- "$bd/ds_runner" --cases "$bd/cases.tsv" --evidence-dir "$bd/evidence" --profile-tsv "$bd/r1.tsv" --rules-fields "$bd/rules-fields.txt" --oracle "$bd/oracle.tsv" --bank-oracle "$bd/bankclass.tsv" \
     --opcode-tsv tests/oracle/huc6280-opcodes.tsv --marker-seed "$marker_seed" --records "$bd/records" --golden-dir tests/conformance/golden $ex_args; then sup=0; else sup=$?; fi
   if [ "$sup" -eq 2 ]; then
     exit 2
@@ -433,7 +444,7 @@ controls_mode() {
     mkdir -p "$cm_bd/controls/$cm_name/evidence" || { echo "HARNESS_ERROR cannot create the evidence directory of $cm_name" >&2; exit 2; }
     cm_out="$cm_bd/controls/$cm_name/results.txt"
     # the toy fails cases on purpose, so a runner status of 1 is expected here; only a harness status (2) stops the run
-    if sh "$here/conformance-run" supervise --ids "$cm_bd/ids.txt" --out "$cm_out" -- "$cm_bd/ds_toy_$cm_name" --cases "$cm_bd/cases.tsv" --evidence-dir "$cm_bd/controls/$cm_name/evidence" --profile-tsv "$cm_bd/r1.tsv" --rules-fields "$cm_bd/rules-fields.txt" --oracle "$cm_bd/oracle.tsv" \
+    if sh "$here/conformance-run" supervise --ids "$cm_bd/ids.txt" --out "$cm_out" -- "$cm_bd/ds_toy_$cm_name" --cases "$cm_bd/cases.tsv" --evidence-dir "$cm_bd/controls/$cm_name/evidence" --profile-tsv "$cm_bd/r1.tsv" --rules-fields "$cm_bd/rules-fields.txt" --oracle "$cm_bd/oracle.tsv" --bank-oracle "$cm_bd/bankclass.tsv" \
     --opcode-tsv tests/oracle/huc6280-opcodes.tsv --marker-seed "$marker_seed" --golden-dir tests/conformance/golden > /dev/null 2> "$cm_bd/controls/$cm_name/stderr.txt"; then cm_sup=0; else cm_sup=$?; fi
     if [ "$cm_sup" -ge 2 ]; then
       cat "$cm_bd/controls/$cm_name/stderr.txt" >&2

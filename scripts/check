@@ -2285,6 +2285,71 @@ selftest() {
     fi
   fi
 
+  # (bank class) a reworded ledger clause must stop the bank-class oracle, and a wrong oracle row must turn its case red (plan 03-20; D-103, ER-7, T-03-54). A scratch directory holds a copy of ledger/entries/LED-CPU-0011.toml and a copy
+  # with the one clause "banks 0x80-0xF7 unmapped" changed to "banks 0x80-0xF6 unmapped" (the Develo-book reading; exit 2 unless the clause is found exactly once, so a rewrite of the statement cannot make this vacuous). The oracle on the
+  # unmutated copy must print 256 rows and exit 0 (so the later red cannot come from a broken script); on the mutated copy it must exit 1, print ORACLE_RULE_TEXT_DRIFT on stderr and print no row. Then the case bankclass_oracle is run with
+  # the live runner on a scratch row file from the unmutated oracle (must pass) and on a copy in which one row (bank 0x80) is changed to HUCARD (must be guest_failure). Nothing is written under tests/ or build/gate/ except by the preset build.
+  if st_want mutation-bankclass-drift; then
+    st_ran=1
+    bc="$tmp/selftest/bankclass-drift"
+    bc_ok=1
+    bc_why=""
+    rm -rf "$bc"
+    mkdir -p "$bc/ok" "$bc/mut" "$bc/cases" "$bc/ev"
+    cp ledger/entries/LED-CPU-0011.toml "$bc/ok/"
+    bc_n=$(grep -c 'banks 0x80-0xF7 unmapped' ledger/entries/LED-CPU-0011.toml || true)
+    if [ "$bc_n" -ne 1 ]; then
+      echo "HARNESS_ERROR mutation-bankclass-drift: LED-CPU-0011 must carry the clause 'banks 0x80-0xF7 unmapped' on exactly one line (found $bc_n)"
+      exit 2
+    fi
+    sed 's/banks 0x80-0xF7 unmapped/banks 0x80-0xF6 unmapped/' ledger/entries/LED-CPU-0011.toml > "$bc/mut/LED-CPU-0011.toml"
+    if cmp -s "$bc/ok/LED-CPU-0011.toml" "$bc/mut/LED-CPU-0011.toml"; then
+      echo "HARNESS_ERROR mutation-bankclass-drift: the clause edit changed nothing"
+      exit 2
+    fi
+    if awk -v ledger="$bc/ok" -f tests/conformance/bankclass-oracle.awk > "$bc/ok.tsv" 2> "$bc/ok.err"; then bc_r0=0; else bc_r0=$?; fi
+    if [ "$bc_r0" -ne 0 ] || [ "$(sed -n '$=' "$bc/ok.tsv")" != 256 ]; then
+      bc_ok=0
+      bc_why="the oracle does not print 256 rows for the unmutated ledger copy"
+    fi
+    if [ "$bc_ok" -eq 1 ]; then
+      if awk -v ledger="$bc/mut" -f tests/conformance/bankclass-oracle.awk > "$bc/mut.tsv" 2> "$bc/mut.err"; then bc_r=0; else bc_r=$?; fi
+      if [ "$bc_r" -ne 1 ] || ! grep -q '^ORACLE_RULE_TEXT_DRIFT ' "$bc/mut.err" || [ -s "$bc/mut.tsv" ]; then
+        bc_ok=0
+        bc_why="the oracle did not stop with ORACLE_RULE_TEXT_DRIFT and no row on a reworded clause (exit $bc_r)"
+      fi
+    fi
+    if [ "$bc_ok" -eq 1 ]; then
+      if cmake --preset gate > "$tmp/bc.build" 2>&1 && cmake --build --preset gate >> "$tmp/bc.build" 2>&1; then :; else
+        cat "$tmp/bc.build"
+        echo "HARNESS_ERROR mutation-bankclass-drift: the gate preset does not build"
+        exit 2
+      fi
+      cp tests/conformance/cases/bankclass_oracle.toml "$bc/cases/"
+      if sh "$here/conformance-flatten" "$bc/cases" > "$bc/cases.tsv" 2> "$tmp/st.err"; then :; else bc_ok=0; bc_why="cannot flatten the scratch case"; fi
+    fi
+    if [ "$bc_ok" -eq 1 ]; then
+      "$root/build/gate/ds_runner" --cases "$bc/cases.tsv" --evidence-dir "$bc/ev" --bank-oracle "$bc/ok.tsv" > "$bc/before.txt" 2> "$bc/before.err" || true
+      if ! awk '$1 == "RESULT" && $2 == "bankclass_oracle" && $3 == "pass" { f = 1 } END { exit !f }' "$bc/before.txt"; then
+        bc_ok=0
+        bc_why="bankclass_oracle does not pass on the unmutated oracle rows"
+      fi
+    fi
+    if [ "$bc_ok" -eq 1 ]; then
+      awk -F '\t' 'BEGIN { OFS = "\t" } $1 == "128" && $2 == "UNMAPPED" { $2 = "HUCARD"; n++ } { print } END { if (n != 1) exit 3 }' "$bc/ok.tsv" > "$bc/wrong.tsv" || { echo "HARNESS_ERROR mutation-bankclass-drift: the row of bank 128 was not found exactly once"; exit 2; }
+      "$root/build/gate/ds_runner" --cases "$bc/cases.tsv" --evidence-dir "$bc/ev" --bank-oracle "$bc/wrong.tsv" > "$bc/after.txt" 2> "$bc/after.err" || true
+      if ! awk '$1 == "RESULT" && $2 == "bankclass_oracle" && $3 == "guest_failure" { f = 1 } END { exit !f }' "$bc/after.txt"; then
+        bc_ok=0
+        bc_why="bankclass_oracle is not guest_failure when one oracle row is wrong"
+      fi
+    fi
+    if [ "$bc_ok" -eq 1 ]; then
+      echo "SELFTEST mutation-bankclass-drift PASS"
+    else
+      echo "SELFTEST mutation-bankclass-drift FAIL ($bc_why)"; failed=1
+    fi
+  fi
+
   # (x) CR-01: a gate script that pipes awk (or the hash tool) into another command reads the status of the last stage, so a program that dies
   # looks like "no violations". For every site that used to be the left side of a pipe, the script is run twice with a shim first on PATH. The
   # shim is the real awk except that it exits 2 when any argument contains the marker text of that one program, so exactly one awk call dies. The

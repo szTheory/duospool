@@ -20,7 +20,11 @@
 _Static_assert(DS_RAM8K_BYTES == 0x2000u, "the work RAM mirror mask assumes 8 KiB");
 _Static_assert(DS_MPR_COUNT == 8u, "the translate assumes eight mapping registers");
 
-enum bank_cls { BC_UNMAPPED = 0, BC_HUCARD = 1, BC_RAM = 2, BC_HWPAGE = 3 };
+/* the class names of the table are the values of enum ds_bank_class (ds_core.h), which the accessor ds_bank_class below returns */
+#define BC_UNMAPPED DS_BANK_CLASS_UNMAPPED
+#define BC_HUCARD DS_BANK_CLASS_HUCARD
+#define BC_RAM DS_BANK_CLASS_RAM
+#define BC_HWPAGE DS_BANK_CLASS_HWPAGE
 
 /* the class of each of the 256 banks, written as runs (range designators are a GNU extension); the array is unsized and its size is asserted below, so a run that is too short or too long fails the build */
 #define BC_X8(c) (c), (c), (c), (c), (c), (c), (c), (c)
@@ -34,6 +38,12 @@ static const uint8_t bank_class[] = {
     BC_HWPAGE,                                                                                                   /* $FF */
 };
 _Static_assert(sizeof bank_class == 256u, "bank_class must hold exactly one class per bank");
+
+/* the class of one bank, for the bank-class case of the conformance runner (plan 03-20; D-103): a bank above 255 is DS_BANK_CLASS_NONE. It reads the same const table as the bus and nothing else. */
+uint32_t ds_bank_class(uint32_t bank)
+{
+    return bank < 256u ? (uint32_t)bank_class[bank] : (uint32_t)DS_BANK_CLASS_NONE;
+}
 
 /* the bank index and the offset in the bank of a logical address: the only translation, computed per access from the MPRs */
 static uint32_t bank_of(const struct ds_instance *inst, uint16_t addr)
@@ -137,7 +147,7 @@ uint8_t ds_bus_read(struct ds_instance *inst, struct ds_bus *bus, uint16_t addr)
     uint32_t offset = offset_of(addr);
     uint8_t value = 0u;
 
-    switch ((enum bank_cls)bank_class[bank]) {
+    switch ((enum ds_bank_class)bank_class[bank]) {
     case BC_HUCARD:
         return ds_mapper_read(inst, bank, offset, &value) == (uint32_t)DS_MAP_OK ? value : (uint8_t)DS_UNMAPPED_READ;
     case BC_RAM:
@@ -155,7 +165,7 @@ void ds_bus_write(struct ds_instance *inst, struct ds_bus *bus, uint16_t addr, u
 {
     uint32_t bank = bank_of(inst, addr);
 
-    switch ((enum bank_cls)bank_class[bank]) {
+    switch ((enum ds_bank_class)bank_class[bank]) {
     case BC_RAM:
         inst->ram8k[offset_of(addr) & (DS_RAM8K_BYTES - 1u)] = value;
         break;

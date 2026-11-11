@@ -278,6 +278,10 @@ struct ds_bus {
     struct ds_obs_log *obs;  /* the observer log of the running ds_run call or NULL (plan 03-19): the hardware-page accesses call the dev hook through it, a hook over a const instance that cannot change the machine (D-119) */
 };
 
+/* the class of a bank (bus.c, plan 03-20; D-103, ASSUMED LED-CPU-0011): the value of the const bank_class[256] table the bus dispatches on, for the independent bank-class oracle of the runner; a bank above 255 gives DS_BANK_CLASS_NONE */
+enum ds_bank_class { DS_BANK_CLASS_UNMAPPED = 0, DS_BANK_CLASS_HUCARD = 1, DS_BANK_CLASS_RAM = 2, DS_BANK_CLASS_HWPAGE = 3, DS_BANK_CLASS_NONE = 4 };
+uint32_t ds_bank_class(uint32_t bank);
+
 uint8_t ds_bus_read(struct ds_instance *inst, struct ds_bus *bus, uint16_t addr);
 void ds_bus_write(struct ds_instance *inst, struct ds_bus *bus, uint16_t addr, uint8_t value);
 void ds_mpr_write(struct ds_instance *inst, uint32_t index, uint8_t value); /* the only writer of mpr[] */
