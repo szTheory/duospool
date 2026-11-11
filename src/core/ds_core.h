@@ -247,6 +247,7 @@ uint32_t ds_cpu_op_max_cycles(uint32_t opcode); /* the longest one opcode can ta
 uint8_t ds_bus_read(const struct ds_instance *inst, uint16_t addr);
 void ds_bus_write(struct ds_instance *inst, uint16_t addr, uint8_t value);
 void ds_mpr_write(struct ds_instance *inst, uint32_t index, uint8_t value); /* the only writer of mpr[] */
+void ds_bus_write_phys(struct ds_instance *inst, uint32_t phys, uint8_t value); /* the physical write of ST0 to ST2 (cpu.c, plan 03-14; D-106): $1FE000 | n for n in 0, 2, 3, the MPRs are never consulted; any other address is dropped, and no device sits behind it until plan 03-16 */
 
 /* NUL-terminated string equality without string.h; both arguments must be non-NULL */
 static inline int ds_streq(const char *a, const char *b)

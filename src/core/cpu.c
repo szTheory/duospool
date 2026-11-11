@@ -3,7 +3,7 @@
 /*
  * cpu.c - the HuC6280 core of the tracer slice (plan 03-01; D-90, D-92, D-96, D-102..D-104, D-114) and, until plan 03-16 moves it into bus.c, the single bus choke point.
  * Plan 03-09 replaced the hand-written subset by the 256-row table of cpu_ops.def (opcode, mnemonic, mode, bytes, cycles, access class, cite) expanded into static const metadata and a
- * mnemonic switch. A mnemonic whose semantics land in plans 03-11 to 03-14 advances PC by the table length and charges the table cycles with no other effect until then (the case labels name the plan).
+ * mnemonic switch. A mnemonic whose semantics land in a later plan (the block transfers, plan 03-25) advances PC by the table length and charges the table cycles with no other effect until then (the case labels name the plan).
  * One step is one whole instruction: all state lives in the instance, no local survives a step (D-92). The step returns the master clocks it took; ds_run adds them to the machine time.
  * A cycle is 12 master clocks at low speed and 3 at high speed (D-90). The 22 undefined opcodes are one byte, two cycles, T cleared (the length is an assumption of this project, LED-CPU-0010).
  * Bus: every CPU access translates through the eight mapping registers, phys = (mpr[a >> 13] << 13) | (a & $1FFF) (D-102). Banks below $80 read the HuCard through ds_mapper_read and
@@ -168,6 +168,19 @@ void ds_bus_write(struct ds_instance *inst, uint16_t addr, uint8_t value)
         inst->ram8k[phys & 0x1FFFu] = value;
     }
     /* ROM and every unmapped bank ignore a write (D-103, D-104) */
+}
+
+/*
+ * The physical write path of ST0, ST1 and ST2 (plan 03-14; D-106, H8-8 Table 2-2-3, S8-80 to S8-82): the address is physical $1FE000 | n with n in {0, 2, 3} and the mapping registers are never consulted.
+ * Its only caller is the ST group of ds_cpu_step_obs, and a target outside the three is dropped (T-03-40). No device exists yet: the VDC stub and the access penalty are added behind this entry by plan 03-16, so the write is accepted and has no effect here.
+ */
+void ds_bus_write_phys(struct ds_instance *inst, uint32_t phys, uint8_t value)
+{
+    (void)inst;
+    (void)value;
+    if (phys == 0x1FE000u || phys == 0x1FE002u || phys == 0x1FE003u) {
+        /* the hardware page lands in plan 03-16 */
+    }
 }
 
 void ds_mpr_write(struct ds_instance *inst, uint32_t index, uint8_t value)
@@ -548,6 +561,7 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
     int taken = 0;
     uint32_t i;
     int t_active = ((uint32_t)inst->p & P_T) != 0u; /* T as the instruction before this one left it: only ADC, AND, EOR and ORA read it (S8-17) */
+    uint32_t mclk_per_cycle = inst->speed != 0u ? DS_MCLK_PER_CYCLE_HIGH : DS_MCLK_PER_CYCLE_LOW; /* the speed this instruction starts at: CSL and CSH are charged at the old speed, the new one applies from the next instruction (D-101) */
 
     ds_obs_insn(log, inst, opcode); /* a void hook over a const instance: the observer cannot change the machine (D-119) */
     inst->p = (uint8_t)((uint32_t)inst->p & ~P_T); /* T is reset in the fetch cycle of every instruction (H8-5) */
@@ -649,6 +663,36 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
         v = inst->a;
         inst->a = inst->y;
         inst->y = (uint8_t)v;
+        break;
+    case MN_RMB0: case MN_RMB1: case MN_RMB2: case MN_RMB3: case MN_RMB4: case MN_RMB5: case MN_RMB6: case MN_RMB7: /* the specified bit of a zero-page cell is cleared, no flag changes (S8-67): one read, one write (LED-CPU-0010) */
+        ea = zp_addr(op1);
+        ds_bus_write(inst, ea, (uint8_t)((uint32_t)ds_bus_read(inst, ea) & ~(1u << (mn - (uint32_t)MN_RMB0))));
+        break;
+    case MN_SMB0: case MN_SMB1: case MN_SMB2: case MN_SMB3: case MN_SMB4: case MN_SMB5: case MN_SMB6: case MN_SMB7: /* the specified bit is set (S8-79) */
+        ea = zp_addr(op1);
+        ds_bus_write(inst, ea, (uint8_t)((uint32_t)ds_bus_read(inst, ea) | (1u << (mn - (uint32_t)MN_SMB0))));
+        break;
+    case MN_TMA: /* A <- the selected MPR, no flag changes (S8-101): the one-hot operand is the documented use; a multi-bit operand returns the highest selected index (D-105); operand 0 leaves A alone until plan 03-17 adds tma_zero */
+        for (i = 0u; i < (uint32_t)DS_MPR_COUNT; i++) {
+            if ((op1 & (1u << i)) != 0u) {
+                inst->a = inst->mpr[i];
+            }
+        }
+        break;
+    case MN_ST0: /* the immediate goes to physical $1FE000, $1FE002 or $1FE003 whatever the MPRs hold (H8-8 Table 2-2-3, S8-80 to S8-82, D-106); no flag changes */
+        ds_bus_write_phys(inst, 0x1FE000u, (uint8_t)op1);
+        break;
+    case MN_ST1:
+        ds_bus_write_phys(inst, 0x1FE002u, (uint8_t)op1);
+        break;
+    case MN_ST2:
+        ds_bus_write_phys(inst, 0x1FE003u, (uint8_t)op1);
+        break;
+    case MN_CSL: /* the speed bit is state (D-101): CSL selects low and CSH high, 1 byte and 3 cycles in the H8-25 map, no software-manual page; the cycles of this instruction are charged at the old speed below */
+        inst->speed = 0u;
+        break;
+    case MN_CSH:
+        inst->speed = 1u;
         break;
     case MN_PHX:
         push(inst, inst->x);
@@ -848,13 +892,9 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
         break;
     case MN_NOP: /* PC <- PC+1, no register or flag (S8-57) */
         break;
-    /* ---- the functionality gap: these mnemonics advance PC by the table length and charge the table cycles, with no register, flag or memory effect, until their group lands ---- */
+    /* ---- the functionality gap: the undefined opcodes and the block transfers advance PC by the table length and charge the table cycles, with no register, flag or memory effect, until the block-transfer plan lands ---- */
     case MN_UNDEF: /* D-96: one byte, two cycles, T cleared */
         break;
-    case MN_RMB0: case MN_RMB1: case MN_RMB2: case MN_RMB3: case MN_RMB4: case MN_RMB5: case MN_RMB6: case MN_RMB7:
-    case MN_SMB0: case MN_SMB1: case MN_SMB2: case MN_SMB3: case MN_SMB4: case MN_SMB5: case MN_SMB6: case MN_SMB7:
-    case MN_ST0: case MN_ST1: case MN_ST2: case MN_CSH: case MN_CSL: case MN_TMA:
-        break; /* plan 03-14: the HuC6280 additions */
     case MN_TAI: case MN_TDD: case MN_TIA: case MN_TII: case MN_TIN:
         break; /* the block-transfer plan (D-100); one step charges the table's 17 until then */
     }
@@ -864,7 +904,7 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
     }
     cycles += flag_cycles(mn, t_active, inst->p);
     inst->pc = (uint16_t)next;
-    return cycles * (inst->speed != 0u ? DS_MCLK_PER_CYCLE_HIGH : DS_MCLK_PER_CYCLE_LOW);
+    return cycles * mclk_per_cycle;
 }
 
 uint32_t ds_cpu_step(struct ds_instance *inst)
