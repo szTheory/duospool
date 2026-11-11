@@ -1198,7 +1198,7 @@ static void stim_refuse(const struct kase *k, struct ctx *c, const struct guest_
     uint32_t want = 0u;
     uint32_t i;
     const char *err;
-    char name[24];
+    char name[64];
 
     snprintf(name, sizeof name, "stim.%s", ex->reason);
     for (i = 1u; i < (uint32_t)DS_STIMREF_SLOTS; i++) {
@@ -1534,7 +1534,7 @@ static void guest_case(const struct kase *k, struct ctx *c, char *got, size_t go
         struct ctx sj;
         uint8_t blk[V_SIZE];
         unsigned diff;
-        char msg[200];
+        char msg[256];
         int ran;
 
         if (compose_request(k->val[K_REQUEST], plist[i], req, sizeof req) != 0) {

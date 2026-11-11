@@ -529,7 +529,7 @@ static void build_expected_keys(unsigned nids)
     }
     exp_add("", "stimulus", "events");
     for (i = 0u; i < exp_events; i++) {
-        char evkey[16];
+        char evkey[24];
 
         snprintf(evkey, sizeof evkey, "event_%u", (unsigned)(i + 1u));
         exp_add("", "stimulus", evkey);

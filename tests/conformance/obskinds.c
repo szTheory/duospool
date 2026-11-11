@@ -1279,7 +1279,7 @@ static void dl_guest(struct ctx *c, const char *rom, const char *request, uint64
     uint32_t icount;
     uint32_t dcount;
     unsigned i;
-    char msg[160];
+    char msg[256];
 
     if (isk == NULL || dsk == NULL || irec == NULL || drec == NULL) {
         free(isk);

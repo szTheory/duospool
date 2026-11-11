@@ -502,7 +502,7 @@ void kind_chunk_equiv(const struct kase *k, struct ctx *c, char *got, size_t got
     for (pi = 0u; pi < nprog && !c->harness; pi++) {
         struct cs_out ref;
         unsigned si;
-        char what[40];
+        char what[64];
 
         pg.index = pi;
         if (pg.random) {
