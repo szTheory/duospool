@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 3
 current_phase_name: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-current_plan: 23
+current_plan: 24
 status: planning
-stopped_at: Completed 03-18-PLAN.md
-last_updated: "2026-11-11T11:54:43.617Z"
+stopped_at: Completed 03-19-PLAN.md
+last_updated: "2026-11-11T12:21:50.376Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 2 complete, transitioned to Phase 3
-state_head: 8a6e6263ca0d32f599773db3972f656b85f93863
+state_head: fc8ed84a2269d9849c00e2374c40782643176850
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 72
-  completed_plans: 56
+  completed_plans: 57
   percent: 33
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 3 — HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-Current Plan: 23
+Current Plan: 24
 Total Plans in Phase: 38
 Status: Ready to execute
 Last activity: 2026-11-11 — Completed 03-04 (W1: optional case keys, guestkinds.c, authored fixture key, machine_time and stop on RESULT)
@@ -115,6 +115,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 03 P16 | 140min | 3 tasks | 27 files |
 | Phase 03 P17 | 70min | 3 tasks | 30 files |
 | Phase 03 P18 | 95min | 3 tasks | 39 files |
+| Phase 03 P19 | 120min | 3 tasks | 22 files |
 
 ## Accumulated Context
 
@@ -221,6 +222,9 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-17: tma_zero {bus_latch default, a_unchanged} is the one model parameter; the selection is the third byte of BUS0 (serial version 4); TAM #0 and TMA #0 do not change the one-byte latch, multi-bit TAM writes every selected MPR, multi-bit TMA returns the highest index (ASSUMED:LED-CPU-0015)
 - [Phase 03]: 03-17: ds_model_set validates name, then value, then state (machine time not 0 is model.state) and writes nothing on refusal; model refusal codes have their own def and prefix model.
 - [Phase 03]: 03-18: bound_by is a printer input (struct ds_text_run) computed from the request, not instance state; constants.def is read by the core and printed in [constants]; withheld ids line holds at most 24 ids
+- [Phase 03]: 03-19: DS_SINK_MAX_RECORDS is 1048576 records for either sink; a capacity above it is run.sink_unsupported, judged before the record range.
+- [Phase 03]: 03-19: the observer matrix stop callback folds machine time, pc, registers and the bus latch at every call, so a hook that disturbs any of them is seen at the next call.
+- [Phase 03]: 03-19: --trace-out takes a case id only; the runner builds build/gate/traces/ID.insn and .dev itself and refuses cases whose fixture is neither authored and listed nor synthetic.
 
 ### Pending Todos
 
@@ -244,6 +248,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-11T11:54:43.466Z
-Stopped at: Completed 03-18-PLAN.md
+Last session: 2026-11-11T12:21:50.211Z
+Stopped at: Completed 03-19-PLAN.md
 Resume file: None
