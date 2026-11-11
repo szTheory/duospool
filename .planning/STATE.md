@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 3
 current_phase_name: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-current_plan: 32
+current_plan: 33
 status: planning
-stopped_at: Completed 03-26-PLAN.md
-last_updated: "2026-11-11T17:24:49.699Z"
+stopped_at: Completed 03-27-PLAN.md
+last_updated: "2026-11-11T17:52:32.467Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 2 complete, transitioned to Phase 3
-state_head: 181873defaa46d3ae480242b2d893558be2547c5
+state_head: e0a476329661554f114b02777e3df924c37acc1e
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 72
-  completed_plans: 65
+  completed_plans: 66
   percent: 33
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 3 — HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-Current Plan: 32
+Current Plan: 33
 Total Plans in Phase: 38
 Status: Ready to execute
 Last activity: 2026-11-11 — Completed 03-04 (W1: optional case keys, guestkinds.c, authored fixture key, machine_time and stop on RESULT)
@@ -124,6 +124,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 03 P24 | 55min | 3 tasks | 37 files |
 | Phase 03 P25 | 95min | 3 tasks | 31 files |
 | Phase 03 P26 | 150min | 3 tasks | 27 files |
+| Phase 03 P27 | 30min | 3 tasks | 40 files |
 
 ## Accumulated Context
 
@@ -248,6 +249,9 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-25: DS_SERIAL_VERSION 6 adds region BLKT (11 bytes) after IRQS; the [withheld] ids line is at its cap of 24, so the next new ledger id needs a record layout change
 - [Phase 03]: 03-26: chunk_equiv compares the step boundary sequence (a callback that never holds, folding the block state) beside time, steps, verdict RAM and digest; seven schedules (3072 doubles as 3072k); random programs are boot bound and shaped (hashed seeds, forward branches, short block lengths)
 - [Phase 03]: 03-26: LED-CPU-0007, LED-CPU-0008 and LED-IRQ-0007 written as assumed entries pinned by cpu_blk_len0, cpu_blk and cpu_blk_irq_pending; cpu_blk_stop_resume is evidence only (one entry, one pinning case)
+- [Phase 03]: 03-27: the $1000 window is the two-button pad on the SEL and CLR protocol (D-115); a read of it makes the byte read the new io_buffer like every read in 0800-17FF; the pcetech direction-nibble order (RIGHT and DOWN swapped) is carried as a disagreement, not decided
+- [Phase 03]: 03-27: the input schedule is an immutable copy of at most 1024 events (16 bytes each) in the instance, frozen once it holds an event; ds_input_push checks queue_full, port, bits, order, then late and state, with the typed input.* refusals
+- [Phase 03]: 03-27: input scripts reach the runner only as flattened SCRIPT and INPUT rows (conformance-flatten --inputs, then --inputs FILE in every runner invocation); held is an array of lowercase button names in canonical bit order
 
 ### Pending Todos
 
@@ -271,6 +275,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-11T17:24:49.499Z
-Stopped at: Completed 03-26-PLAN.md
+Last session: 2026-11-11T17:52:32.010Z
+Stopped at: Completed 03-27-PLAN.md
 Resume file: None
