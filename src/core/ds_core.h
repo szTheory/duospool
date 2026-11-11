@@ -216,7 +216,7 @@ struct ds_run_result {
     uint32_t stop_point; /* enum ds_stop_point */
     uint32_t pad;        /* always 0 */
     uint64_t machine_time;
-    uint64_t overshoot; /* machine_time - until_mclk when positive, else 0 */
+    uint64_t overshoot; /* machine_time - until_mclk when this call took a step that ended past the deadline, else 0 (a call with 0 steps has none) */
     uint64_t steps;
 };
 

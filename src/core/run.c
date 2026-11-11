@@ -30,7 +30,7 @@ static uint32_t finish(struct ds_run_result *result, const struct ds_instance *i
         result->stop_point = (uint32_t)DS_STOP_INSTRUCTION;
         result->pad = 0u;
         result->machine_time = now;
-        result->overshoot = reason != (uint32_t)DS_RUN_REASON_REFUSED && now > until ? now - until : UINT64_C(0);
+        result->overshoot = reason != (uint32_t)DS_RUN_REASON_REFUSED && steps > UINT64_C(0) && now > until ? now - until : UINT64_C(0);
         result->steps = steps;
     }
     return reason;

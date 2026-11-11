@@ -86,9 +86,8 @@ poweron_draw_order
 poweron_seed_zero_supplied
 ref_seed_required
 ref_seed_forbidden
-advance_rules
-run_budget
-run_budget_stop
+run_until_abs
+run_chunk_sum
 poweron_domain_independence
 digest_stream_prefix
 poweron_same_seed_same_digest

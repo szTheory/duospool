@@ -301,54 +301,67 @@ static int parse_guest(const char *text, char *rom, size_t romcap, uint64_t *id,
     return have == 15 ? 0 : -1;
 }
 
+/*
+ * Boot the built authored image build/gate/fixtures/ROM.pce over the request text (the case's request key; empty gives the defaults of parse_spec).
+ * NULL and b and the accepted instance on success, otherwise why not: a fault here is a harness fault of the case, never a verdict on the guest.
+ * Shared by the guest kind and the run kinds of stepkinds.c; release_boot frees what it allocated.
+ */
+const char *boot_built_rom(const char *rom, const char *request, struct booted *b, const struct ds_instance **inst)
+{
+    char path[96];
+    struct spec s;
+    struct ds_boot_request rq;
+    struct ds_boot_result res;
+    const char *err;
+    size_t len = 0u;
+
+    snprintf(path, sizeof path, "build/gate/fixtures/%s.pce", rom);
+    b->mem = NULL;
+    b->content = read_rom(path, (size_t)DS_ROM_CAP, &len);
+    if (b->content == NULL) {
+        return "the built fixture image is missing or unreadable: run scripts/fixture-build first";
+    }
+    err = parse_spec(&s, request, len);
+    if (err != NULL || s.ptr != PTR_OK) {
+        release_boot(b);
+        return err != NULL ? err : "a guest case needs ptr=ok";
+    }
+    b->mem = (unsigned char *)malloc(ds_instance_size());
+    if (b->mem == NULL) {
+        release_boot(b);
+        return "out of memory for the instance";
+    }
+    fill_request(&rq, &s, b->content);
+    memset(&res, 0xff, sizeof res);
+    if (ds_boot(b->mem, ds_instance_size(), &rq, &res) != 0u || res.instance == NULL) {
+        release_boot(b);
+        return "the built fixture image was refused at boot";
+    }
+    *inst = res.instance;
+    return NULL;
+}
+
 void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
 {
     char rom[48];
-    char path[96];
     uint64_t id = 0u;
     uint64_t checks = 0u;
     uint64_t until = 0u;
     struct booted b;
-    struct spec s;
-    struct ds_boot_request rq;
-    struct ds_boot_result res;
     struct ds_run_request run;
     struct ds_run_result out;
-    const struct ds_instance *inst;
+    const struct ds_instance *inst = NULL;
     const char *err;
-    size_t len = 0u;
 
     if (parse_guest(k->val[K_EXPECT], rom, sizeof rom, &id, &checks, &until) != 0) {
         harness_error(c, "a guest expect is not rom=NAME;id=N;checks=N;until=N");
         return;
     }
-    snprintf(path, sizeof path, "build/gate/fixtures/%s.pce", rom);
-    b.mem = NULL;
-    b.content = read_rom(path, (size_t)DS_ROM_CAP, &len);
-    if (b.content == NULL) {
-        harness_error(c, "the built fixture image is missing or unreadable: run scripts/fixture-build first");
+    err = boot_built_rom(rom, k->val[K_REQUEST], &b, &inst);
+    if (err != NULL) {
+        harness_error(c, err);
         return;
     }
-    err = parse_spec(&s, k->val[K_REQUEST], len);
-    if (err != NULL || s.ptr != PTR_OK) {
-        harness_error(c, err != NULL ? err : "a guest case needs ptr=ok");
-        free(b.content);
-        return;
-    }
-    b.mem = (unsigned char *)malloc(ds_instance_size());
-    if (b.mem == NULL) {
-        harness_error(c, "out of memory for the instance");
-        free(b.content);
-        return;
-    }
-    fill_request(&rq, &s, b.content);
-    memset(&res, 0xff, sizeof res);
-    if (ds_boot(b.mem, ds_instance_size(), &rq, &res) != 0u || res.instance == NULL) {
-        harness_error(c, "the built fixture image was refused at boot");
-        release_boot(&b);
-        return;
-    }
-    inst = res.instance;
     /* the precondition of D-124: no verdict block is present before the first step */
     if (block_present(inst->ram8k + V_OFF)) {
         harness_error(c, "a DSV1 block is present in work RAM before the first step");

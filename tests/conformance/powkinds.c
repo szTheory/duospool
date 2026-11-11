@@ -10,7 +10,7 @@
  *                   ram=zero | ram@OFFSET=HEXBYTES | mpr=zero | psg_noise=0xN | vdc_phase=0xN | time=N | policy=NAME | seed=N|none
  *   poweron_domain  request seed=N; expect extra=A,B: the first 16 bytes of the ram8k stream are unchanged when the other domains draw
  *                   A or B values in between, the three domains' bytes differ from each other, and a boot reproduces the streams
- * (the kinds advance and run_budget are in stepkinds.c.) Test code only, never installed.
+ * (the run kinds run_until and run_chunk_sum are in stepkinds.c; the stepping that this file once covered is gone, D-91.) Test code only, never installed.
  */
 #include <stdint.h>
 #include <stdio.h>

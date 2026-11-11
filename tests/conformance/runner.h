@@ -131,14 +131,14 @@ void set_marker_seed(size_t v);
 void kind_redaction(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_redaction_leak_control(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 
-/* the power-on and stepping kinds (powkinds.c, plan 12) */
+/* the power-on kinds (powkinds.c, plan 12) and the run kinds (stepkinds.c, plan 03-02) */
 #define PK_LIST_MAX 512u
 int pk_copy_text(const char *src, char *dst, size_t cap);   /* copy a key's text into a work buffer, 0 on success */
 char *pk_next_item(char **rest, char sep);                  /* the next separator-delimited item of a list, split in place */
 void kind_splitmix(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_poweron(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
-void kind_advance(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
-void kind_run_budget(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_run_until(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_run_chunk_sum(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_poweron_domain(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 
 /* the digest and profile-hash kinds (digkinds.c, plan 13) */
@@ -177,6 +177,8 @@ void kind_spin(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 
 /* the guest kind (spinkinds.c until plan 03-04): boots a built authored ROM, runs it with ds_run and judges its DSV1 verdict block from raw RAM */
 void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+/* boot build/gate/fixtures/ROM.pce over the request text: NULL and the accepted instance, or why not (a harness fault of the case); release_boot frees it */
+const char *boot_built_rom(const char *rom, const char *request, struct booted *b, const struct ds_instance **inst);
 
 /* the --fixtures list (fixlist.c, plan 17): NAME SIZE for every recipe a case materialises and every sweep length; 0, or 2 on a fault */
 int list_fixtures(const size_t *sweep, size_t nsweep);

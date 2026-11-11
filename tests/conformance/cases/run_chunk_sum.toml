@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Chunk sum (plan 03-02; D-93, D-95, CORE-04): run(N) then run(M) to the same absolute deadline is one run to N+M. The authored fixture ds-proto runs on a fresh boot to the deadline 300000 master clocks in one call (the
+# reference, which must be past the guest's DSV1 done state) and then, on fresh boots, in calls whose deadlines advance by 1, 7, 168 and 3072 master clocks (168 is 14 low-speed cycles, 3072 is the timer step) and by those four sizes in
+# rotation (mix). Every list must end with the same machine time, the same total step count, the same CPU registers and the same digest as the reference. Steps are indivisible and the deadline is absolute, so a chunk cannot
+# change which instructions run. This compares runs with each other: evidence tier E0, repeatability only. The deadline 300000 is past the done state because the same guest is judged done at 4000000 by the ds_proto case and the kind
+# asserts the done state itself at the end of the reference. No literal here comes from a DuoSpool run.
+id = "run_chunk_sum"
+kind = "run_chunk_sum"
+fixture = "none"
+request = ""
+expect = "rom=ds-proto;until=300000;chunks=1,7,168,3072,mix"
+meaning = "Running the same guest to one absolute deadline in chunks of 1, 7, 168 and 3072 master clocks and in a rotation of them gives the machine time, step count, CPU registers and digest of the one-call run"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
