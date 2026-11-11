@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 3
 current_phase_name: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-current_plan: 12
+current_plan: 13
 status: planning
-stopped_at: Completed 03-38-PLAN.md
-last_updated: "2026-11-11T07:44:37.579Z"
+stopped_at: Completed 03-08-PLAN.md
+last_updated: "2026-11-11T08:13:33.404Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 2 complete, transitioned to Phase 3
-state_head: b67730c629bea0dddd529a7730905e825b82c62e
+state_head: 602615155fd8fc9f15db5277464ebd449cd0944c
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 72
-  completed_plans: 45
+  completed_plans: 46
   percent: 33
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 3 — HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-Current Plan: 12
+Current Plan: 13
 Total Plans in Phase: 38
 Status: Ready to execute
 Last activity: 2026-11-11 — Completed 03-04 (W1: optional case keys, guestkinds.c, authored fixture key, machine_time and stop on RESULT)
@@ -104,6 +104,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 3 P06 | 30min | 3 tasks | 21 files |
 | Phase 03 P07 | 20min | 2 tasks | 20 files |
 | Phase 3 P38 | 25min | 2 tasks | 14 files |
+| Phase 03 P08 | 30min | 3 tasks | 22 files |
 
 ## Accumulated Context
 
@@ -191,6 +192,8 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-05: fixture library (startup, verdict, check) with a DCK1 literal table at $F000; GUEST checks store an XOR mask entry; protocol faults are -D switches in verdict.inc built as variants
 - [Phase 03]: 03-37: fixture-lint pairs CHECK uses with .checks rows (UNLISTED_CHECK, ORPHAN_CHECK), FXL_COUNT is headers only, RAW line = comment word RAW with RAW:<page>, stage 1 in its own lex file
 - [Phase 3]: 03-38: docs-check DOCS_TOOL_MISSING rule skips roots without scripts/preflight; LED-CPU-0003 and LED-CPU-0004 assumed, pinned to run_until_abs and run_chunk_sum
+- [Phase 03]: 03-08: where the H8-25 grid and an instruction page disagree the machine code on the instruction page decides (opcodes 34-37, B4, B5, 7D); mode names, UNDEF rows and the 17+6x cycle string are fixed in the TSV header
+- [Phase 03]: 03-08: fixture-lint takes its mnemonic set from the opcode TSV (--tsv), not a built-in list
 
 ### Pending Todos
 
@@ -214,6 +217,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-11T07:44:37.432Z
-Stopped at: Completed 03-38-PLAN.md
+Last session: 2026-11-11T08:13:33.252Z
+Stopped at: Completed 03-08-PLAN.md
 Resume file: None
