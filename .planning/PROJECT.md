@@ -26,7 +26,15 @@ and evidenced is not supported, regardless of how it looks in a frontend.
 
 ### Validated
 
-(None yet — ship to validate)
+- ✓ HuCard content loading with explicit validation and refusal of malformed,
+  oversized, or unsupported content — Phase 2 (typed refusals, 22-member enum;
+  evidence tier E0, repeatability only; no accuracy claim)
+- ✓ A test harness that keeps outcomes distinct (pass, guest failure, timeout,
+  harness failure, skip, cancellation, missing artifact) and fails closed on
+  missing required checks, calibrated with negative controls — Phase 2
+- ✓ One documented local command (`sh scripts/check`) that matches the fast PR
+  gate, plus CI that runs the same gate — Phase 2 (first green CI run on
+  PR 1; gcc/clang/mawk/gawk evidence is CI plus a one-off local container run)
 
 ### Active
 
@@ -39,9 +47,6 @@ live in `.planning/REQUIREMENTS.md`.
 - [ ] A first named base PC Engine/TG-16 profile (region, console revision, CPU
       revision, video timing, controller signaling, content format) with
       documented evidence for each behavior claimed.
-- [ ] HuCard content loading with explicit validation and refusal of malformed,
-      oversized, or unsupported content (proposed first content path — see Key
-      Decisions).
 - [ ] Deterministic execution: scripted logical input with explicit timing, fresh
       isolated machine state, bounded execution, and repeatable outputs.
 - [ ] Separate observations of CPU/device effects, logical input, machine time,
@@ -52,13 +57,8 @@ live in `.planning/REQUIREMENTS.md`.
 - [ ] Original, rights-cleared diagnostic fixtures with a manifest (source,
       build recipe, hashes, license, notices, redistribution terms, test
       meaning) as the dependable fast test suite.
-- [ ] A test harness that keeps outcomes distinct (pass, guest failure,
-      timeout, harness failure, skip, cancellation, missing artifact) and fails
-      closed on missing required checks, calibrated with negative controls.
 - [ ] An installed-consumer/package proof: an independent consumer built
       against the installed artifact with source/build paths unavailable.
-- [ ] One documented local command that matches the fast PR gate, plus CI that
-      runs only distinct, recurring failure classes.
 - [ ] Measured, workload-identified performance tracking, with correct output
       held constant while optimizing.
 
@@ -124,7 +124,7 @@ system card + CD tracks, PC Engine palette/geometry/variable timing, audio
 cadence.
 
 **Project state.** Greenfield. At initialization the repository contained only
-planning configuration, the bootstrap pack, and `AGENTS.md`. After Phase 1 it also holds the claim ledger (`ledger/`), the first-profile record (`profiles/`), decision records (`docs/decisions/`), licence files, and a fail-closed shell gate (`scripts/check`). The core language is C11 with CMake and Ninja (record 0001). The repository is public at github.com/szTheory/duospool.
+planning configuration, the bootstrap pack, and `AGENTS.md`. After Phase 1 it holds the claim ledger (`ledger/`), the first-profile record (`profiles/`), decision records (`docs/decisions/`), licence files, and a fail-closed shell gate (`scripts/check`). The core language is C11 with CMake and Ninja (record 0001). After Phase 2 it also holds a C11 core shell (`src/core`: profile resolve, HuCard boot/refusal, mapper boundary, power-on policy, state digest), a run-record printer, a conformance runner with 104 required cases, and a 47-stage fail-closed gate. No CPU, video or audio exists yet. The repository is public at github.com/szTheory/duospool; PR 1 (Phase 2 branch) is open and unmerged.
 
 ## Constraints
 
@@ -197,4 +197,4 @@ This document evolves at phase transitions and milestone boundaries.
 5. Refresh only the sibling/LibFuturo evidence that could change the live decision
 
 ---
-*Last updated: 2026-11-09 after Phase 1 (owner decisions recorded; claim ledger, profile record and C11/CMake toolchain decision in place; repository public)*
+*Last updated: 2026-11-10 after Phase 2 (deterministic machine shell, HuCard boundary and fail-closed gate; E0 evidence only)*
