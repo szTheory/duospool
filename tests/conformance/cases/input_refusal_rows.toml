@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Input refusal rows (plan 03-27; D-116, D-117, T-03-75, T-03-76, F4): the core refuses a malformed input schedule with a typed code of src/core/input_refusals.def and leaves the instance byte-identical, whatever the script checker said. One case, one item per code, each with several variants, all bypassing the script: bits
+# (UP and DOWN together, LEFT and RIGHT together, the reserved bits 8 and above: III to VI and everything else, the full word judged), order (a time that goes back, an equal time with an equal port, an equal time with a decreasing port on an instance whose second port the harness populates), queue_full (1025 events, a NULL
+# list with a count, the largest count with a valid pointer; exactly 1024 events are accepted), state (a NULL instance, a schedule that already holds events, an empty list onto a frozen schedule) and late (a valid list, and an empty one, after the machine has run: until_mclk is 600 master clocks, enough for at least one step).
+# The kind is guest with the expect item refused=input.bits,order,queue_full,state,late; the built image of pad_2btn is booted for each and the guest is run only for late. A valid list is proven accepted, copied whole and read through the pad protocol first. A test input, E2 self-consistency. Evidence tier E0.
+id = "input_refusal_rows"
+kind = "guest"
+fixture = "authored:pad-2btn"
+request = ""
+expect = "id=14;refused=input.bits,order,queue_full,state,late"
+meaning = "Opposite directions and reserved bits (bits), unordered times (order), 1025 events (queue_full), a NULL or frozen schedule (state) and a push after the first step (late) are each refused by the core with the instance unchanged"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 600
+checks = 12

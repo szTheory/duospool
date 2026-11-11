@@ -208,3 +208,6 @@ chunk_equiv_random32
 observer_cpu_blk
 observer_random
 pad_2btn_correct
+input_port_refusal
+input_refusal_rows
+input_refusal_coverage

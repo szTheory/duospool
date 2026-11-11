@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Input port refusal row (plan 03-27; D-116, D-117, T-03-76, F4): the input schedule is validated by the core when the runner gives it over (ds_input_push, before the first step), whatever the script checker said, so an event for a port with no pad behind it is refused with the typed code input.port of
+# src/core/input_refusals.def and the instance is left byte-identical. The kind is guest with the expect item refused=input.port: the built image of pad_2btn is booted and synthetic events, which bypass every script, are pushed directly. Before the refusals a valid list is proven accepted, copied whole with every unused slot zero,
+# frozen, and read at the stamps of its events through the pad protocol (a core that refused everything or read nothing must fail). The variants: ports 2 to 5 (empty in r1, which populates port 1 only), port 0, port 6, a port that is 1 in its low byte (257) or low half (65537) and the largest word, each as the first
+# and as the last event of a list. The guest is never run. A test input, E2 self-consistency, not a claim about any pad. Evidence tier E0. The deferred case input_refusal_coverage checks that every code of the .def is observed by a row.
+id = "input_port_refusal"
+kind = "guest"
+fixture = "authored:pad-2btn"
+request = ""
+expect = "id=14;refused=input.port"
+meaning = "Events for ports 2 to 5 (empty in r1), port 0, port 6 and out-of-range ports are refused as input.port by the core with the instance unchanged, after a valid list is proven accepted and visible through the pad protocol"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 600
+checks = 12
