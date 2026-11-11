@@ -5,8 +5,8 @@
  * the boundary behaviour of its absolute deadline; nothing here is an accuracy, compatibility or hardware claim.
  * Amendment record (plan 03-02): D-68 and D-75 are SUPERSEDED by D-91. The placeholder stepping API (its advance and budgeted-run functions, its per-call cap and
  * the file src/core/advance.c) and the Phase 2 kinds that used it (advance, run_budget) are gone: every kind that steps the machine runs ds_run to an
- * absolute until_mclk, never a relative budget, so run(N) then run(M) is run(N+M) by construction. psg_noise and vdc_phase stay in the instance and in
- * the digest until plans 03-03 and 03-36 remove them, so no golden changes in this plan. The timeout-budget mini-root keeps its expect text
+ * absolute until_mclk, never a relative budget, so run(N) then run(M) is run(N+M) by construction. the two placeholder registers of the
+ * first phases left the digest in plan 03-03 and the instance in plan 03-36. The timeout-budget mini-root keeps its expect text
  * budget=N,step=M: it now means absolute deadlines in chunks of step master clocks (spinkinds.c).
  *   run_until       expect is a list of items separated by '|'. The first item is rom=NAME (a built authored image, build/gate/fixtures/NAME.pce);
  *                   every other item runs on its own fresh boot and has comma-separated keys until (absolute deadline in master clocks, required),

@@ -1,15 +1,16 @@
 /* SPDX-License-Identifier: MIT OR Apache-2.0 */
 /* SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors */
 /*
- * powkinds.c - the case kinds of power-on state and the placeholder stepping (plan 12; D-50, D-68, D-75). Every expected value in a
+ * powkinds.c - the case kinds of power-on state (plan 12; D-50, D-75; the placeholder registers and their domains left in plan 03-36, D-91). Every expected value in a
  * case is a literal derived independently of the C code (a throwaway perl script applying the D-75 derivation with arbitrary-precision
  * integers; the method is noted in the meaning key of each case). Evidence tier E0 (repeatability and a literal): these cases show the
  * implementation agrees with the project's own written rules, and claim nothing about hardware (LED-PROF-0002).
  *   splitmix        request seed=N; expect a comma-separated list of 0x outputs of successive splitmix64 steps started from state N
  *   poweron         boots the request (fixture and request key) and checks the instance against the expect items, separated by ';':
- *                   ram=zero | ram@OFFSET=HEXBYTES | mpr=zero | psg_noise=0xN | vdc_phase=0xN | time=N | policy=NAME | seed=N|none
- *   poweron_domain  request seed=N; expect extra=A,B: the first 16 bytes of the ram8k stream are unchanged when the other domains draw
- *                   A or B values in between, the three domains' bytes differ from each other, and a boot reproduces the streams
+ *                   ram=zero | ram@OFFSET=HEXBYTES | mpr=zero | time=N | policy=NAME | seed=N|none
+ *   poweron_domain  request seed=N; expect extra=A,B: the first 16 bytes of the ram8k stream are unchanged when another stream (the one
+ *                   of a value that names no domain, whose constant is 0) draws A or B values in between, that other stream's bytes
+ *                   differ from the ram8k bytes, and a boot reproduces the ram8k stream
  * (the run kinds run_until and run_chunk_sum are in stepkinds.c; the stepping that this file once covered is gone, D-91.) Test code only, never installed.
  */
 #include <stdint.h>
@@ -174,20 +175,14 @@ void kind_poweron(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
                 break;
             }
             check(c, memcmp(inst->ram8k + off, want, (size_t)n) == 0, "the work RAM differs from the independently derived literal");
-        } else if (strncmp(item, "psg_noise=", 10) == 0 || strncmp(item, "vdc_phase=", 10) == 0 || strncmp(item, "time=", 5) == 0) {
+        } else if (strncmp(item, "time=", 5) == 0) {
             char *eq = strchr(item, '=');
 
             if (parse_u64(eq + 1, &num) != 0) {
                 harness_error(c, "a numeric expect item is not a number");
                 break;
             }
-            if (item[0] == 'p') {
-                check(c, (uint64_t)inst->psg_noise == num, "psg_noise differs from the independently derived literal");
-            } else if (item[0] == 'v') {
-                check(c, (uint64_t)inst->vdc_phase == num, "vdc_phase differs from the independently derived literal");
-            } else {
-                check(c, inst->machine_time == num, "machine time is not the expected value");
-            }
+            check(c, inst->machine_time == num, "machine time is not the expected value");
         } else if (strncmp(item, "policy=", 7) == 0) {
             check(c, strcmp(inst->profile.field[DS_FIELD_powerup_policy].value, item + 7) == 0,
                   "the recorded profile value of powerup_policy differs");
@@ -210,6 +205,8 @@ void kind_poweron(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
 /* ---- kind poweron_domain ---- */
 
 #define PD_BYTES 16u
+/* a value that names no domain: ds_domain_const gives it the constant 0, so its stream is a second, independent stream of the same seed */
+#define PD_OTHER ((uint32_t)DS_DOMAIN_COUNT)
 
 void kind_poweron_domain(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
 {
@@ -219,8 +216,7 @@ void kind_poweron_domain(const struct kase *k, struct ctx *c, char *got, size_t 
     char *item;
     const char *err = parse_spec(&s, k->val[K_REQUEST], 0u);
     unsigned char base[PD_BYTES];
-    unsigned char noise16[PD_BYTES];
-    unsigned char phase16[PD_BYTES];
+    unsigned char other16[PD_BYTES];
     struct ds_stream st;
     uint64_t bare;
     unsigned runs = 0u;
@@ -232,15 +228,12 @@ void kind_poweron_domain(const struct kase *k, struct ctx *c, char *got, size_t 
         harness_error(c, err != NULL ? err : "the expect key is not extra=A,B");
         return;
     }
+    check(c, ds_domain_const(PD_OTHER) == UINT64_C(0), "a value that names no domain has a nonzero constant");
     ds_stream_init(&st, s.seed, (uint32_t)DS_DOMAIN_RAM8K);
     ds_stream_fill(&st, base, sizeof base);
-    ds_stream_init(&st, s.seed, (uint32_t)DS_DOMAIN_PSG_NOISE);
-    ds_stream_fill(&st, noise16, sizeof noise16);
-    ds_stream_init(&st, s.seed, (uint32_t)DS_DOMAIN_VDC_PHASE);
-    ds_stream_fill(&st, phase16, sizeof phase16);
-    check(c, memcmp(base, noise16, sizeof base) != 0, "the ram8k and psg_noise domains drew the same bytes");
-    check(c, memcmp(base, phase16, sizeof base) != 0, "the ram8k and vdc_phase domains drew the same bytes");
-    check(c, memcmp(noise16, phase16, sizeof base) != 0, "the psg_noise and vdc_phase domains drew the same bytes");
+    ds_stream_init(&st, s.seed, PD_OTHER);
+    ds_stream_fill(&st, other16, sizeof other16);
+    check(c, memcmp(base, other16, sizeof base) != 0, "the ram8k domain and another stream drew the same bytes");
     /* the derivation is a splitmix64 step started from (seed XOR constant): a stream that starts at the bare XOR is another stream */
     ds_stream_init(&st, s.seed, (uint32_t)DS_DOMAIN_RAM8K);
     bare = s.seed ^ ds_domain_const((uint32_t)DS_DOMAIN_RAM8K);
@@ -249,8 +242,7 @@ void kind_poweron_domain(const struct kase *k, struct ctx *c, char *got, size_t 
     while ((item = pk_next_item(&rest, ',')) != NULL) {
         uint64_t extra;
         struct ds_stream ram;
-        struct ds_stream noise;
-        struct ds_stream phase;
+        struct ds_stream other;
         unsigned char mixed[PD_BYTES];
         uint64_t i;
 
@@ -259,26 +251,21 @@ void kind_poweron_domain(const struct kase *k, struct ctx *c, char *got, size_t 
             return;
         }
         ds_stream_init(&ram, s.seed, (uint32_t)DS_DOMAIN_RAM8K);
-        ds_stream_init(&noise, s.seed, (uint32_t)DS_DOMAIN_PSG_NOISE);
-        ds_stream_init(&phase, s.seed, (uint32_t)DS_DOMAIN_VDC_PHASE);
+        ds_stream_init(&other, s.seed, PD_OTHER);
         ds_stream_fill(&ram, mixed, 8u);
         for (i = 0u; i < extra; i++) {
-            (void)ds_stream_next(&noise);
-            (void)ds_stream_next(&phase);
+            (void)ds_stream_next(&other);
         }
         ds_stream_fill(&ram, mixed + 8, 8u);
-        check(c, memcmp(mixed, base, sizeof base) == 0, "the ram8k bytes changed when another domain drew extra values");
+        check(c, memcmp(mixed, base, sizeof base) == 0, "the ram8k bytes changed when another stream drew extra values");
         runs++;
     }
     check(c, runs >= 1u, "the poweron_domain case lists no extra count");
     {
-        /* a boot with the same seed lays down exactly these streams: RAM from the ram8k domain, the registers from the first draw of theirs */
+        /* a boot with the same seed lays down exactly the ram8k stream */
         struct booted b;
         struct spec bs;
         const struct ds_instance *inst = NULL;
-        uint32_t want_noise;
-        uint32_t want_phase;
-
         char req[96];
 
         snprintf(req, sizeof req, "bind.powerup_policy=seeded-prng-v1;seed=%llu", (unsigned long long)s.seed);
@@ -288,12 +275,6 @@ void kind_poweron_domain(const struct kase *k, struct ctx *c, char *got, size_t 
             return;
         }
         check(c, memcmp(inst->ram8k, base, sizeof base) == 0, "a boot with this seed does not lay down the ram8k stream");
-        ds_stream_init(&st, s.seed, (uint32_t)DS_DOMAIN_PSG_NOISE);
-        want_noise = (uint32_t)ds_stream_next(&st);
-        ds_stream_init(&st, s.seed, (uint32_t)DS_DOMAIN_VDC_PHASE);
-        want_phase = (uint32_t)ds_stream_next(&st);
-        check(c, inst->psg_noise == (want_noise != 0u ? want_noise : 1u), "the booted psg_noise is not the first draw of its domain");
-        check(c, inst->vdc_phase == want_phase, "the booted vdc_phase is not the first draw of its domain");
         release_boot(&b);
     }
     snprintf(got, gotcap, "runs=%u", runs);

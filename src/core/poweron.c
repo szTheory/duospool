@@ -2,14 +2,13 @@
 /* SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors */
 /*
  * poweron.c - power-on state (CORE-03; D-50, D-75, D-79(b), D-83).
- * Two policies: zero (RAM zero, psg_noise 1, vdc_phase 0) and seeded-prng-v1. The seeded policy derives one stream per domain:
+ * Two policies: zero (RAM zero) and seeded-prng-v1. The seeded policy derives one stream per domain:
  *     sub    = splitmix64 step started from state (seed XOR DOMAIN_CONST)      (one step; a bare XOR with no step is not the algorithm)
  *     stream = a splitmix64 generator whose initial state is sub
  *     draws  = successive 64-bit outputs of the stream, written as little-endian bytes
- * ram8k draws 8192 bytes (1024 draws); psg_noise takes the low 32 bits of its first output (forced to 1 when that is 0, because the
- * placeholder generator that the register once fed would stay at 0 forever); vdc_phase takes the low 32 bits of its first output. The domain constants are
- * fixed 64-bit values (the ASCII-packed domain names), never enum ordinals, so reordering the enum cannot change a draw. The eight mapping
- * registers are an all-zero documented constant with an open ledger item for Phase 3.
+ * ram8k draws 8192 bytes (1024 draws). The domain constants are fixed 64-bit values (the ASCII-packed domain names), never enum ordinals,
+ * so reordering the enum cannot change a draw. The two placeholder-register domains of the first phases are gone (D-91,
+ * D-114): each domain has its own stream, so the RAM draws did not move. The eight mapping registers are an all-zero documented constant.
  * Everything here is a modelling assumption of this project (LED-PROF-0002): no value or evolution rule is a hardware claim. Intended
  * wraparound is unsigned: the sanitize preset has no -fwrapv, so a signed or implicit wrap here would be a defect (D-83).
  */
@@ -19,11 +18,9 @@
 #include "ds_core.h"
 #include "ds_poweron.h"
 
-/* ASCII-packed names, most significant byte first: "RAM8K___", "PSGNOISE", "VDCPHASE" */
+/* ASCII-packed names, most significant byte first: "RAM8K___" */
 static const uint64_t domain_const[DS_DOMAIN_COUNT] = {
     UINT64_C(0x52414D384B5F5F5F), /* ram8k */
-    UINT64_C(0x5053474E4F495345), /* psg_noise */
-    UINT64_C(0x5644435048415345), /* vdc_phase */
 };
 
 uint64_t ds_splitmix64_next(uint64_t *state)
@@ -79,20 +76,11 @@ uint32_t ds_policy_of(const char *value)
 
 void ds_poweron_apply(struct ds_instance *inst)
 {
-    /* the instance was zeroed by the caller: RAM, the mapping registers (the documented all-zero constant) and vdc_phase are 0 already */
-    inst->psg_noise = 1u;
+    /* the instance was zeroed by the caller: RAM and the mapping registers (the documented all-zero constant) are 0 already */
     if (inst->powerup_policy == (uint32_t)DS_POLICY_SEEDED) {
         struct ds_stream ram;
-        struct ds_stream noise;
-        struct ds_stream phase;
-        uint32_t first;
 
         ds_stream_init(&ram, inst->powerup_seed, (uint32_t)DS_DOMAIN_RAM8K);
         ds_stream_fill(&ram, inst->ram8k, (size_t)DS_RAM8K_BYTES);
-        ds_stream_init(&noise, inst->powerup_seed, (uint32_t)DS_DOMAIN_PSG_NOISE);
-        first = (uint32_t)ds_stream_next(&noise);
-        inst->psg_noise = first != 0u ? first : 1u;
-        ds_stream_init(&phase, inst->powerup_seed, (uint32_t)DS_DOMAIN_VDC_PHASE);
-        inst->vdc_phase = (uint32_t)ds_stream_next(&phase);
     }
 }

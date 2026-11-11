@@ -2,17 +2,18 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
 # E0 repeatability record (D-53): a 384 KiB synthetic image booted under the seeded-prng-v1 power-on policy with seed 42.
-# It shows that the same inputs print the same bytes. It does not show that the machine behaviour is right. Machine time counts placeholder
-# cycles and the power-on values are modelling assumptions (LED-PROF-0002); the profile, content and digest hashes were recomputed with the host
+# It shows that the same inputs print the same bytes. It does not show that the machine behaviour is right. Machine time counts master clocks
+# and the power-on values are modelling assumptions (LED-PROF-0002); the profile, content and digest hashes were recomputed with the host
 # sha tool over streams rebuilt without the C code. The digest line was recomputed for serial version 2 (regions PROF CONT POWR TIME RAM8 MPRS
 # CPU0, plan 03-03) with a throwaway perl script that wrote the stream of the documented rules, checked with shasum -a 256 over the stream
-# file. The runner skips this comment block and compares the rest byte for byte.
+# file. Plan 03-36 changed only three values, format_version 1 to 2, behaviour_epoch 1 to 2 and the time unit from the placeholder label to master-clocks;
+# the digest line is unchanged (the epoch is not in the digest stream). The runner skips this comment block and compares the rest byte for byte.
 [record]
-format_version = 1
+format_version = 2
 
 [core]
 build_id = "unset"
-behaviour_epoch = 1
+behaviour_epoch = 2
 
 [profile]
 id = "pce-hucard-2btn"
@@ -106,6 +107,6 @@ size_cap = 1048576
 
 [machine]
 time = 0
-time_unit = "placeholder-cycles"
+time_unit = "master-clocks"
 digest_algorithm = "sha256"
 digest = "e0ec7c318d6582e15284d1f4e9769dc7af1e2344c2fb5bdd05484f57bf1c5d2e"

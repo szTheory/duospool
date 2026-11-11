@@ -257,7 +257,7 @@ static void emit_content(struct out *o, const struct ds_instance *inst)
  *   - the ledger ids of every field that the run request bound (a run-request binding is no support claim, D-49),
  *   - the unresolved behaviours of the profile (LED-IRQ-0001, LED-VID-0002, LED-VID-0003),
  *   - the load rules that are assumptions: LED-LOAD-0003 (the 384 KiB mirror rule), LED-LOAD-0005 (the bank window and unmapped
- *     reads) and LED-PROF-0002 (the power-on values and the placeholder stepping).
+ *     reads) and LED-PROF-0002 (the power-on values).
  */
 #define WH_MAX 24u    /* a line of the record is limited to 400 characters: 24 ids of 12 characters stay well inside it */
 #define WH_ID_MAX 16u /* an id and its terminator */
@@ -391,8 +391,9 @@ static void emit_power_on(struct out *o, const struct ds_instance *inst)
 }
 
 /*
- * The machine table: the machine time with its unit and the state digest. The time is a count of placeholder cycles (D-68): the unit
- * says so, and no hardware clock is claimed (LED-PROF-0002). A digest that is equal to another is evidence of repeatability only.
+ * The machine table: the machine time with its unit and the state digest. The time is a count of master clocks of OSC1 (D-90, D-91):
+ * the unit says so, and no hardware clock accuracy is claimed (LED-PROF-0002). A digest that is equal to another is evidence of
+ * repeatability only.
  */
 static void emit_machine(struct out *o, const struct ds_instance *inst)
 {
@@ -404,7 +405,7 @@ static void emit_machine(struct out *o, const struct ds_instance *inst)
     }
     table(o, "", "machine");
     kv_u64(o, "time", inst->machine_time);
-    kv_lit(o, "time_unit", "placeholder-cycles");
+    kv_lit(o, "time_unit", "master-clocks");
     kv_lit(o, "digest_algorithm", "sha256");
     kv_hex(o, "digest", digest, DS_DIGEST_BYTES);
 }

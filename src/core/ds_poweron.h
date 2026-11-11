@@ -17,8 +17,8 @@
 
 enum ds_policy { DS_POLICY_NONE = 0, DS_POLICY_ZERO = 1, DS_POLICY_SEEDED = 2 };
 
-/* the domains of seeded-prng-v1; the order here is not the derivation (the derivation uses the fixed constants of poweron.c) */
-enum ds_domain { DS_DOMAIN_RAM8K = 0, DS_DOMAIN_PSG_NOISE = 1, DS_DOMAIN_VDC_PHASE = 2, DS_DOMAIN_COUNT };
+/* the domains of seeded-prng-v1 (RAM only since plan 03-36; the v2 domains arrive with seeded-prng-v2); the order here is not the derivation (the derivation uses the fixed constants of poweron.c) */
+enum ds_domain { DS_DOMAIN_RAM8K = 0, DS_DOMAIN_COUNT };
 
 /* one domain stream: a splitmix64 generator whose state starts at the domain's sub-seed */
 struct ds_stream {

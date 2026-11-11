@@ -19,7 +19,7 @@
 #define DS_MAPPER_NAME_MAX 16u
 #define DS_CONTENT_ID_BYTES 32u
 /* behaviour epoch (D-53): bumped by any change that can alter what a run observes; goldens compare it, never a build id */
-#define DS_BEHAVIOUR_EPOCH 1u
+#define DS_BEHAVIOUR_EPOCH 2u
 /* version of the power-on policy table (D-50): the record prints it next to the policy name; both policies are version 1 */
 #define DS_POWERON_POLICY_VERSION 1u
 /* field_index of a result that names no profile field */
@@ -117,11 +117,9 @@ struct ds_instance {
     uint32_t size_class; /* enum ds_size of ds_mapper.h: the image size is kept as an enum, never as a raw length */
     uint32_t byte_order; /* 1 pce, 2 tg16 */
     uint32_t header;     /* 1 none, 2 copier_512 */
-    /* power-on state (D-50, D-75) and two placeholder registers that nothing evolves any more (psg_noise and vdc_phase are no longer in the digest stream since plan 03-03 and leave the instance in plan 03-36); none of it is a hardware claim (LED-PROF-0002) */
+    /* power-on state (D-50, D-75, D-91): the work RAM and the mapping registers; none of it is a hardware claim (LED-PROF-0002) */
     uint8_t ram8k[DS_RAM8K_BYTES];
     uint8_t mpr[DS_MPR_COUNT]; /* a documented all-zero constant, an open ledger item for Phase 3 */
-    uint32_t psg_noise;        /* a placeholder register that only the power-on policy writes; never zero; it leaves in plan 03-36 */
-    uint32_t vdc_phase;        /* a placeholder counter that only the power-on policy writes; it leaves in plan 03-36 */
     uint32_t powerup_policy;   /* enum ds_policy of ds_poweron.h: 1 zero, 2 seeded-prng-v1 */
     uint32_t has_seed;         /* 1 when the request carried a seed */
     uint64_t powerup_seed;     /* the seed of the run, 0 when has_seed is 0 */

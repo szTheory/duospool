@@ -14,7 +14,7 @@
  * On success the text is NUL-terminated inside cap and *outlen is its length without the terminator.
  * The accept record prints, in order, the tables record, core, profile (id, rev and the resolved sha256 from ds_profile_hash), the 13
  * field_NAME tables, withheld (the sorted ledger ids that bound the run), content, power_on, limits and machine (the machine time in
- * the unit placeholder-cycles, and the state digest from ds_digest). The refusal record prints record, core and refusal (reason,
+ * the unit master-clocks, and the state digest from ds_digest). The refusal record prints record, core and refusal (reason,
  * requested_id, requested_rev) and nothing after: a run that was refused has no machine. Every value is read from the instance through
  * the core's accessors; there is no struct that repackages them. A digest and a profile hash are evidence of repeatability only.
  */
@@ -31,7 +31,7 @@
 #define DS_TEXT_REASON_MAX 40u
 
 /* version of the record layout: bumped whenever a table or a key is added, removed or reordered */
-#define DS_TEXT_FORMAT_VERSION 1u
+#define DS_TEXT_FORMAT_VERSION 2u
 
 enum ds_text_status {
     DS_TEXT_OK = 0,
