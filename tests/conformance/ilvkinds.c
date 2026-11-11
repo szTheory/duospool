@@ -1,10 +1,11 @@
 /* SPDX-License-Identifier: MIT OR Apache-2.0 */
 /* SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors */
 /*
- * ilvkinds.c - the interleave case kinds (plan 16; D-55, D-68, CORE-01): several instances live in one process, are stepped in a
- * fixed-seed pseudo-random order, and every one of them must end in the state (digest and printed record) that the same inputs give
- * when the instance runs on its own. A hidden global in the core would couple the machines and move those digests. Evidence tier E0:
- * isolation and repeatability of the placeholder stepping, nothing about hardware. The blocks are allocated here, in test code, with
+ * ilvkinds.c - the interleave case kinds (plan 16, migrated to ds_run by plan 03-02; D-55, D-91, D-93, CORE-01): several instances live in one process,
+ * are run in a fixed-seed pseudo-random order to absolute deadlines in master clocks, and every one of them must end in the state (digest and printed
+ * record) that the same inputs give when the instance runs on its own. A hidden global in the core would couple the machines and move those digests.
+ * A call that runs an instance to the next absolute deadline of its own schedule is one ds_run; the schedule numbers are master clocks, and a
+ * deadline already behind the machine time (the previous call overshot) takes no step. Evidence tier E0: isolation and repeatability of ds_run, nothing about hardware. The blocks are allocated here, in test code, with
  * canary bytes around every instance; the core allocates nothing. Test code only, never installed.
  *   interleave                       request is A||B (two requests; A is the case fixture, B is the same fixture with its own len and
  *                                    seed); expect lcg=N;steps=N. A and B are stepped alternately on the LCG schedule, each beside a
@@ -38,7 +39,7 @@
 #define IL_GUARD 64u        /* bytes of canary on each side of an instance block (rounded up to the instance alignment) */
 #define IL_SLOTS_MAX 4u
 #define IL_STEPS_MAX 256u
-#define IL_CHUNK_MOD 4093u  /* a call advances 1 + (r mod IL_CHUNK_MOD) cycles, far below DS_ADVANCE_MAX */
+#define IL_CHUNK_MOD 4093u  /* a call moves the deadline of an instance by 1 + (r mod IL_CHUNK_MOD) master clocks */
 
 /* ---- the arena: aligned instance blocks separated by guard bytes ---- */
 
@@ -321,10 +322,10 @@ static const char *request_pair(const char *text, char *a, char *b, size_t cap)
     return NULL;
 }
 
-/* the fixed-seed schedule: who steps (0 = A, 1 = B) and by how many cycles, for n steps */
+/* the fixed-seed schedule: who steps (0 = A, 1 = B) and how far the call moves that instance's deadline, in master clocks, for n steps */
 struct step {
     unsigned who;
-    uint64_t cycles;
+    uint64_t mclk; /* how far this call moves the deadline of its instance, in master clocks */
 };
 
 static void schedule_make(struct step *s, unsigned n, uint64_t seed)
@@ -336,26 +337,45 @@ static void schedule_make(struct step *s, unsigned n, uint64_t seed)
         uint64_t r = lcg_next(&x);
 
         s[i].who = (unsigned)(r & 1u);
-        s[i].cycles = chunk_of(r);
+        s[i].mclk = chunk_of(r);
     }
 }
 
-/* advance by total cycles in calls of LCG-chosen size; the number of calls (0 when a call was refused) */
-static unsigned advance_chunked(struct ds_instance *inst, uint64_t total, uint64_t *x)
+/* run an instance to one absolute deadline: true when ds_run took the request and ended on the deadline (one assertion's worth of fact) */
+static int run_to(struct ds_instance *inst, uint64_t until)
 {
-    uint64_t left = total;
+    struct ds_run_request rq;
+    struct ds_run_result out;
+
+    memset(&rq, 0, sizeof rq);
+    memset(&out, 0, sizeof out);
+    rq.struct_size = (uint32_t)sizeof rq;
+    rq.until_mclk = until;
+    return ds_run(inst, &rq, &out) == (uint32_t)DS_RUN_REASON_UNTIL;
+}
+
+/* the machine time is the first instruction boundary at or past the deadline: not before it, and less than one maximal step after it (D-94) */
+static int at_boundary(const struct ds_instance *inst, uint64_t until)
+{
+    return inst->machine_time >= until && inst->machine_time - until < ds_max_step_mclk();
+}
+
+/* run an instance from the deadline from to the deadline to in calls of LCG-chosen size, each to its own absolute deadline; the number of calls (0 when a call was refused) */
+static unsigned run_chunked(struct ds_instance *inst, uint64_t from, uint64_t to, uint64_t *x)
+{
+    uint64_t at = from;
     unsigned calls = 0u;
 
-    while (left > 0u) {
+    while (at < to) {
         uint64_t n = chunk_of(lcg_next(x));
 
-        if (n > left) {
-            n = left;
+        if (n > to - at) {
+            n = to - at;
         }
-        if (ds_advance(inst, n) != (uint32_t)DS_ADVANCE_OK) {
+        at += n;
+        if (!run_to(inst, at)) {
             return 0u;
         }
-        left -= n;
         calls++;
     }
     return calls;
@@ -382,7 +402,7 @@ static const char *ab_run(struct ctx *c, const char *fixture, const char *req_te
     struct dig first_a;
     struct dig first_b;
     struct dig now;
-    uint64_t sum[2] = {0u, 0u};
+    uint64_t tgt[2] = {0u, 0u};
     const char *err;
     unsigned i;
 
@@ -432,9 +452,8 @@ static const char *ab_run(struct ctx *c, const char *fixture, const char *req_te
         struct ds_instance *live = sched[i].who == 0u ? a : b;
         struct ds_instance *solo = sched[i].who == 0u ? a0 : b0;
 
-        check(c, ds_advance(live, sched[i].cycles) == (uint32_t)DS_ADVANCE_OK && ds_advance(solo, sched[i].cycles) == (uint32_t)DS_ADVANCE_OK,
-              "ds_advance refused a call within DS_ADVANCE_MAX");
-        sum[sched[i].who] += sched[i].cycles;
+        tgt[sched[i].who] += sched[i].mclk;
+        check(c, run_to(live, tgt[sched[i].who]) && run_to(solo, tgt[sched[i].who]), "ds_run did not end on the absolute deadline of the call");
         if (i % 8u == 7u) {
             check(c, same_digest(a, a0), "the digest of A differs from its solo run at a checkpoint");
             check(c, same_digest(b, b0), "the digest of B differs from its solo run at a checkpoint");
@@ -444,8 +463,8 @@ static const char *ab_run(struct ctx *c, const char *fixture, const char *req_te
     check(c, same_digest(b, b0), "the final digest of B differs from its solo run");
     check(c, same_record(a, a0), "the printed record of A differs from the record of its solo run");
     check(c, same_record(b, b0), "the printed record of B differs from the record of its solo run");
-    check(c, a0->machine_time == sum[0] && b0->machine_time == sum[1], "a solo copy's machine time differs from the cycles it was given");
-    check(c, dig_of(a0, &now) && !dig_eq(&now, &first_a), "the stepping did not change the digest of A: the schedule is vacuous");
+    check(c, at_boundary(a0, tgt[0]) && at_boundary(b0, tgt[1]), "a solo copy's machine time is not the first instruction boundary at or past its last deadline");
+    check(c, dig_of(a0, &now) && !dig_eq(&now, &first_a), "the run did not change the digest of A: the schedule is vacuous");
     check(c, arena_intact(&ar), "a canary byte around the instances changed");
     arena_free(&ar);
     input_free(&ia);
@@ -513,8 +532,8 @@ void kind_interleave_twins(const struct kase *k, struct ctx *c, char *got, size_
     uint64_t x;
     const char *err;
 
-    if (params_read(k->val[K_EXPECT], &p) != 0 || p.total == 0u || p.total > (uint64_t)DS_ADVANCE_MAX) {
-        harness_error(c, "an interleave_twins expect is lcg=N;total=N with total within DS_ADVANCE_MAX");
+    if (params_read(k->val[K_EXPECT], &p) != 0 || p.total == 0u || p.total > UINT64_C(0xFFFFFFFF)) {
+        harness_error(c, "an interleave_twins expect is lcg=N;total=N with total from 1 to 2^32-1 master clocks");
         return;
     }
     err = input_make(&in, k->val[K_FIXTURE], k->val[K_REQUEST]);
@@ -553,17 +572,17 @@ void kind_interleave_twins(const struct kase *k, struct ctx *c, char *got, size_
         if (n > left[who]) {
             n = left[who];
         }
-        check(c, ds_advance(t[who], n) == (uint32_t)DS_ADVANCE_OK, "ds_advance refused a call within DS_ADVANCE_MAX");
         left[who] -= n;
+        check(c, run_to(t[who], p.total - left[who]), "ds_run did not end on the absolute deadline of a twin's call");
         calls[who]++;
     }
-    check(c, ds_advance(solo, p.total) == (uint32_t)DS_ADVANCE_OK, "ds_advance refused the solo call");
+    check(c, run_to(solo, p.total), "ds_run did not end on the absolute deadline of the one-call solo run");
     check(c, calls[0] != calls[1], "the twins took the same number of calls: the call sizes do not differ");
-    check(c, t[0]->machine_time == p.total && t[1]->machine_time == p.total && solo->machine_time == p.total, "a twin's machine time differs from the total");
+    check(c, at_boundary(t[0], p.total) && at_boundary(t[1], p.total) && at_boundary(solo, p.total), "a twin's machine time is not the first instruction boundary at or past the total");
     check(c, same_digest(t[0], t[1]), "the two twins ended with different digests");
     check(c, same_digest(t[0], solo), "a twin differs from the instance that took the total in one call");
     check(c, same_record(t[0], t[1]) && same_record(t[0], solo), "the printed records of the twins differ");
-    check(c, dig_of(solo, &now) && !dig_eq(&now, &fresh), "the stepping did not change the digest: the run is vacuous");
+    check(c, dig_of(solo, &now) && !dig_eq(&now, &fresh), "the run did not change the digest: the run is vacuous");
     check(c, arena_intact(&ar), "a canary byte around the instances changed");
     snprintf(got, gotcap, "calls=%u,%u", calls[0], calls[1]);
     arena_free(&ar);
@@ -586,6 +605,7 @@ void kind_interleave_destroy_recreate(const struct kase *k, struct ctx *c, char 
     struct ds_instance *a0 = NULL;
     struct ds_instance *b0 = NULL;
     struct dig fresh_b;
+    uint64_t tgt[2] = {0u, 0u};
     struct dig now;
     const char *err;
     unsigned i;
@@ -640,6 +660,7 @@ void kind_interleave_destroy_recreate(const struct kase *k, struct ctx *c, char 
 
         if (i == at) {
             unsigned q;
+            uint64_t tb = 0u;
 
             check(c, same_digest(b, b0), "B differs from its solo copy before it is discarded");
             /* the discard: the block of B takes a stale pattern, then B is booted again over it */
@@ -655,13 +676,14 @@ void kind_interleave_destroy_recreate(const struct kase *k, struct ctx *c, char 
             check(c, dig_of(b, &now) && dig_eq(&now, &fresh_b), "B booted over stale bytes differs from its fresh boot");
             for (q = 0u; q < at; q++) {
                 if (sched[q].who == 1u) {
-                    check(c, ds_advance(b, sched[q].cycles) == (uint32_t)DS_ADVANCE_OK, "ds_advance refused a replayed call");
+                    tb += sched[q].mclk;
+                    check(c, run_to(b, tb), "ds_run did not end on the absolute deadline of a replayed call");
                 }
             }
             check(c, same_digest(b, b0), "B differs from its solo copy after its earlier calls were applied again");
         }
-        check(c, ds_advance(live, sched[i].cycles) == (uint32_t)DS_ADVANCE_OK && ds_advance(solo, sched[i].cycles) == (uint32_t)DS_ADVANCE_OK,
-              "ds_advance refused a call within DS_ADVANCE_MAX");
+        tgt[sched[i].who] += sched[i].mclk;
+        check(c, run_to(live, tgt[sched[i].who]) && run_to(solo, tgt[sched[i].who]), "ds_run did not end on the absolute deadline of the call");
     }
     if (!c->harness) {
         check(c, same_digest(a, a0), "the final digest of A differs from an uninterrupted run");
@@ -719,12 +741,12 @@ void kind_interleave_aba_order(const struct kase *k, struct ctx *c, char *got, s
     /* the order: A takes t1, then B is booted and takes t2, then A takes t3; only afterwards are the references booted and run */
     err = slot_boot(&ar, ar.slot[0], 0x00, &ia, &a);
     if (err == NULL) {
-        calls += advance_chunked(a, p.t1, &x);
+        calls += run_chunked(a, 0u, p.t1, &x);
         err = slot_boot(&ar, ar.slot[1], 0xff, &ib, &b);
     }
     if (err == NULL) {
-        calls += advance_chunked(b, p.t2, &x);
-        calls += advance_chunked(a, p.t3, &x);
+        calls += run_chunked(b, 0u, p.t2, &x);
+        calls += run_chunked(a, p.t1, p.t1 + p.t3, &x);
         err = slot_boot(&ar, ar.slot[2], 0x5a, &ia, &a_ref);
     }
     if (err == NULL) {
@@ -737,10 +759,10 @@ void kind_interleave_aba_order(const struct kase *k, struct ctx *c, char *got, s
         harness_error(c, err);
         return;
     }
-    x = p.lcg ^ 0x9e3779b97f4a7c15u; /* the references take their cycles in other call sizes */
-    check(c, advance_chunked(a_ref, p.t1 + p.t3, &x) > 0u, "ds_advance refused a call of the reference A");
-    check(c, advance_chunked(b_ref, p.t2, &x) > 0u, "ds_advance refused a call of the reference B");
-    check(c, a->machine_time == p.t1 + p.t3 && b->machine_time == p.t2, "a machine time differs from the cycles the instance was given");
+    x = p.lcg ^ 0x9e3779b97f4a7c15u; /* the references reach the same deadlines in other call sizes */
+    check(c, run_chunked(a_ref, 0u, p.t1 + p.t3, &x) > 0u, "ds_run did not end on the absolute deadline of a call of the reference A");
+    check(c, run_chunked(b_ref, 0u, p.t2, &x) > 0u, "ds_run did not end on the absolute deadline of a call of the reference B");
+    check(c, at_boundary(a, p.t1 + p.t3) && at_boundary(b, p.t2), "a machine time is not the first instruction boundary at or past the last deadline of the instance");
     check(c, same_digest(a, a_ref), "A after A, B, A differs from an uninterrupted A");
     check(c, same_digest(b, b_ref), "B differs from the B that ran after everything else");
     check(c, same_record(a, a_ref) && same_record(b, b_ref), "a printed record differs from the record of the reference run");
@@ -767,6 +789,7 @@ void kind_interleave_canaries(const struct kase *k, struct ctx *c, char *got, si
     struct ds_instance *inst[3] = {NULL, NULL, NULL};
     struct dig before;
     struct dig after;
+    uint64_t tgt[3] = {0u, 0u, 0u};
     const char *err;
     unsigned i;
     size_t j;
@@ -832,12 +855,13 @@ void kind_interleave_canaries(const struct kase *k, struct ctx *c, char *got, si
     for (i = 0u; i < (unsigned)p.steps; i++) {
         unsigned which = sched[i].who == 0u ? 0u : (i % 3u == 0u ? 2u : 1u); /* the middle block is stepped from both sides */
 
-        check(c, ds_advance(inst[which], sched[i].cycles) == (uint32_t)DS_ADVANCE_OK, "ds_advance refused a call within DS_ADVANCE_MAX");
+        tgt[which] += sched[i].mclk;
+        check(c, run_to(inst[which], tgt[which]), "ds_run did not end on the absolute deadline of the call");
         if (i % 8u == 7u) {
             check(c, arena_intact(&ar), "a canary byte changed while the instances were stepped");
         }
     }
-    check(c, arena_intact(&ar), "a canary byte changed through the stepping");
+    check(c, arena_intact(&ar), "a canary byte changed through the runs");
     /* the discard of the middle neighbour: its block takes a stale pattern, the others and the canaries must not move, and a reboot is clean too */
     check(c, dig_of(inst[0], &before), "ds_digest refused the first instance");
     for (j = 0u; j < ar.isz; j++) {

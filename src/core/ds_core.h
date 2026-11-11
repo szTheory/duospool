@@ -24,10 +24,9 @@
 #define DS_POWERON_POLICY_VERSION 1u
 /* field_index of a result that names no profile field */
 #define DS_NO_FIELD 0xffffffffu
-/* power-on state (D-50): the 8 KiB work RAM, the 8 mapping registers, and the per-call limit of the placeholder stepping (D-68) */
+/* power-on state (D-50): the 8 KiB work RAM and the 8 mapping registers */
 #define DS_RAM8K_BYTES 8192u
 #define DS_MPR_COUNT 8u
-#define DS_ADVANCE_MAX 1048576u
 
 /* ---- refusals (refusals.def) ---- */
 
@@ -111,18 +110,18 @@ uint32_t ds_resolve(const char *id, uint32_t rev, const struct ds_bindings *bind
 /* ---- instance and boot ---- */
 
 struct ds_instance {
-    uint64_t machine_time; /* master clocks of OSC1 under ds_run (D-90); the placeholder ds_advance still adds placeholder cycles until plan 03-02 */
+    uint64_t machine_time; /* master clocks of OSC1, 0 at boot, advanced only by ds_run (D-90) */
     struct ds_profile profile; /* the resolved profile of this run */
     uint8_t content_id[DS_CONTENT_ID_BYTES];
     char mapper[DS_MAPPER_NAME_MAX];
     uint32_t size_class; /* enum ds_size of ds_mapper.h: the image size is kept as an enum, never as a raw length */
     uint32_t byte_order; /* 1 pce, 2 tg16 */
     uint32_t header;     /* 1 none, 2 copier_512 */
-    /* power-on state (D-50, D-75) and the placeholder state that ds_advance evolves (D-68); none of it is a hardware claim (LED-PROF-0002) */
+    /* power-on state (D-50, D-75) and two placeholder registers that nothing evolves any more (psg_noise and vdc_phase leave in plans 03-03 and 03-36); none of it is a hardware claim (LED-PROF-0002) */
     uint8_t ram8k[DS_RAM8K_BYTES];
     uint8_t mpr[DS_MPR_COUNT]; /* a documented all-zero constant, an open ledger item for Phase 3 */
-    uint32_t psg_noise;        /* a fixed 32-bit xorshift placeholder register, never zero */
-    uint32_t vdc_phase;        /* a wrapping counter placeholder */
+    uint32_t psg_noise;        /* a placeholder register that only the power-on policy writes; never zero; it leaves in plan 03-03 */
+    uint32_t vdc_phase;        /* a placeholder counter that only the power-on policy writes; it leaves in plan 03-36 */
     uint32_t powerup_policy;   /* enum ds_policy of ds_poweron.h: 1 zero, 2 seeded-prng-v1 */
     uint32_t has_seed;         /* 1 when the request carried a seed */
     uint64_t powerup_seed;     /* the seed of the run, 0 when has_seed is 0 */
@@ -241,27 +240,6 @@ uint32_t ds_cpu_max_cycles(void);               /* the longest instruction of th
 uint8_t ds_bus_read(const struct ds_instance *inst, uint16_t addr);
 void ds_bus_write(struct ds_instance *inst, uint16_t addr, uint8_t value);
 void ds_mpr_write(struct ds_instance *inst, uint32_t index, uint8_t value); /* the only writer of mpr[] */
-
-/* ---- placeholder stepping (advance.c, D-68, D-75): fixed rules, labelled placeholder, no hardware claim (LED-PROF-0002) ---- */
-
-enum ds_advance_status { DS_ADVANCE_OK = 0, DS_ADVANCE_REFUSED = 1 };
-
-/*
- * Add cycles to the machine time, step the psg_noise register once per cycle and add the cycles to vdc_phase (wrapping). A call of
- * more than DS_ADVANCE_MAX cycles, or with a NULL instance, is refused and changes nothing.
- */
-uint32_t ds_advance(struct ds_instance *inst, uint64_t cycles);
-
-enum ds_run_status { DS_RUN_STOPPED = 1, DS_RUN_BUDGET = 2, DS_RUN_REFUSED = 3 };
-
-/*
- * The expand half of the run-API migration (D-91): the Phase 2 budgeted run keeps its behaviour under this name until plan 03-02, which
- * deletes it together with ds_advance. Run in steps of at most step cycles until stop returns nonzero (checked before the first step and
- * after every step; NULL never stops) or budget cycles have been consumed. Machine time never exceeds its start plus the budget, and a
- * stop that holds exactly when the budget is consumed is a stop. Returns DS_RUN_STOPPED, DS_RUN_BUDGET (what the runner reports as
- * timeout, D-57), or DS_RUN_REFUSED for a NULL instance or a step of 0 or above DS_ADVANCE_MAX.
- */
-uint32_t ds_run_placeholder(struct ds_instance *inst, uint64_t budget, uint64_t step, ds_stop_fn stop, void *ctx);
 
 /* NUL-terminated string equality without string.h; both arguments must be non-NULL */
 static inline int ds_streq(const char *a, const char *b)

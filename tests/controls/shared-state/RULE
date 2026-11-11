@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
-# Toy control (D-85, D-55): a stepping library with state shared by every instance, made from the live src/core/advance.c by
-# scripts/control-mutate. The anchor is the one live line that updates the psg_noise register; the replacement folds a hidden function-local
-# static counter into that update, so the register of a machine depends on how many cycles every machine in the process has stepped. A
-# deliberately aliased toy lives in build/ only, never in src/core (the boundary check of plan 15 bans exactly this in the real core, and no
-# copy of advance.c is committed). The interleave cases in EXPECT must come out guest_failure on the toy, or they prove nothing about sharing.
+# Toy control (D-85, D-55): a run library with state shared by every instance, made from the live src/core/run.c by scripts/control-mutate (plan 03-02 re-pointed it from the deleted
+# placeholder stepping). The anchor is the one live line that adds the clocks of a step to the machine time; the replacement folds a hidden function-local static counter into that
+# update (every fifth step of the whole process takes one master clock more), so the machine time of an instance depends on how many steps every instance in the process has taken. A
+# deliberately aliased toy lives in build/ only, never in src/core (the boundary check bans exactly this in the real core, and no copy of run.c is committed). The interleave cases in
+# EXPECT must come out guest_failure on the toy, or they prove nothing about sharing.
 tag=rule-shared-counter
-file=src/core/advance.c
-anchor=inst->psg_noise = noise_step(inst->psg_noise);
-replace={ static uint32_t shared_n = 0u; inst->psg_noise = noise_step(inst->psg_noise) ^ ++shared_n; }
+file=src/core/run.c
+anchor=inst->machine_time = inst->machine_time + (uint64_t)ds_cpu_step(inst);
+replace={ static uint64_t shared_n = 0u; inst->machine_time = inst->machine_time + (uint64_t)ds_cpu_step(inst) + (uint64_t)(++shared_n % 5u == 0u); }

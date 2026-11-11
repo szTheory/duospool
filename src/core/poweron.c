@@ -7,7 +7,7 @@
  *     stream = a splitmix64 generator whose initial state is sub
  *     draws  = successive 64-bit outputs of the stream, written as little-endian bytes
  * ram8k draws 8192 bytes (1024 draws); psg_noise takes the low 32 bits of its first output (forced to 1 when that is 0, because the
- * placeholder register of advance.c would stay at 0 forever); vdc_phase takes the low 32 bits of its first output. The domain constants are
+ * placeholder generator that the register once fed would stay at 0 forever); vdc_phase takes the low 32 bits of its first output. The domain constants are
  * fixed 64-bit values (the ASCII-packed domain names), never enum ordinals, so reordering the enum cannot change a draw. The eight mapping
  * registers are an all-zero documented constant with an open ledger item for Phase 3.
  * Everything here is a modelling assumption of this project (LED-PROF-0002): no value or evolution rule is a hardware claim. Intended

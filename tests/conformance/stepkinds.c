@@ -3,8 +3,8 @@
 /*
  * stepkinds.c - the case kinds of the run API (plan 03-02; D-93, D-94, D-95). Test code only. Evidence tier E0: repeatability of the run API and
  * the boundary behaviour of its absolute deadline; nothing here is an accuracy, compatibility or hardware claim.
- * Amendment record (plan 03-02): D-68 and D-75 are SUPERSEDED by D-91. The placeholder stepping API (ds_advance, ds_run_placeholder, DS_ADVANCE_MAX,
- * src/core/advance.c) and the Phase 2 kinds that used it (advance, run_budget) are gone: every kind that steps the machine runs ds_run to an
+ * Amendment record (plan 03-02): D-68 and D-75 are SUPERSEDED by D-91. The placeholder stepping API (its advance and budgeted-run functions, its per-call cap and
+ * the file src/core/advance.c) and the Phase 2 kinds that used it (advance, run_budget) are gone: every kind that steps the machine runs ds_run to an
  * absolute until_mclk, never a relative budget, so run(N) then run(M) is run(N+M) by construction. psg_noise and vdc_phase stay in the instance and in
  * the digest until plans 03-03 and 03-36 remove them, so no golden changes in this plan. The timeout-budget mini-root keeps its expect text
  * budget=N,step=M: it now means absolute deadlines in chunks of step master clocks (spinkinds.c).
