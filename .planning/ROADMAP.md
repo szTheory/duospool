@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Owner Decisions, Claim Ledger and Toolchain Spike** - Gate phase. Measured language spike, a first-profile record, and decision records for the owner to confirm. The claim ledger holds every open hardware fact (completed 2026-11-09)
 - [x] **Phase 2: Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate** - Typed accept/refuse of HuCard bytes into fresh, isolated, seeded instances. One local command and CI fail closed (completed 2026-11-10)
-- [ ] **Phase 3: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad** - Authored fixtures report guest-RAM verdicts for the CPU, MMU, timer, IRQ, and SEL/CLR pad, with negative controls and resumable bounded runs
+- [x] **Phase 3: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad** - Authored fixtures report guest-RAM verdicts for the CPU, MMU, timer, IRQ, and SEL/CLR pad, with negative controls and resumable bounded runs (completed 2026-11-11)
 - [ ] **Phase 4: VCE/VDC Raw Video** - Per-scanline raw video and guest-recorded interrupt timing, checked against literal expectations for background, sprites, DMA, palette, and dot clock
 - [ ] **Phase 5: PSG Raw Audio** - Timestamped PSG event log and PCM at a recorded format, checked by semantic properties. Can run in parallel with Phase 4
 - [ ] **Phase 6: Headless Runner, Installed-Consumer Proof and Staged Verification** - Separate observation artifacts, an independent consumer against the installed artifact, staged fuzzing, a benchmark, and a LibFuturo fit evaluation
@@ -126,7 +126,7 @@ Plans:
   3. A fixture run in bounded chunks of varying size produces outputs identical to an uninterrupted run. This includes stops mid-frame and mid-block-transfer, including a length-0 (65,536-byte) transfer. A snapshot taken at any stop point and restored into a fresh instance continues identically.
   4. Turning on the CPU instruction trace and the device-register write log leaves verdicts, machine time, and state digests unchanged.
   5. Each cycle count and access penalty in use has a ledger entry that cites its source or labels it a modelling assumption. This covers speed switching and VDC/VCE access penalties. Unresolved edges are named profile or model parameters, not silent choices: interrupt latency around block transfers and after CLI/RTI, TAM/TMA #0, power-up MPR values, and ST0-ST2 MMU bypass.
-**Plans**: 38/38 plans executed in 38 sequential waves, listed in execution order (context waves W1-W8 of 03-CONTEXT; W6-W7 are the Phase 3.1 cut line; ids 03-34..03-38 were added by the round-1 plan-check revision)
+**Plans**: 38/38 plans complete in 38 sequential waves, listed in execution order (context waves W1-W8 of 03-CONTEXT; W6-W7 are the Phase 3.1 cut line; ids 03-34..03-38 were added by the round-1 plan-check revision)
 
 Plans:
 - [x] 03-01-PLAN.md — W1 tracer: ca65 ds_proto through fixture-build, absolute-deadline ds_run in master clocks, minimal CPU and bus, DSV1 judged from guest RAM
@@ -238,7 +238,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phases 4 and 5
 |-------|----------------|--------|-----------|
 | 1. Owner Decisions, Claim Ledger and Toolchain Spike | 12/12 | Complete    | 2026-11-09 |
 | 2. Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate | 22/22 | Complete    | 2026-11-10 |
-| 3. HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad | 38/38 | In Progress | - |
+| 3. HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad | 38/38 | Complete    | 2026-11-11 |
 | 4. VCE/VDC Raw Video | 0/TBD | Not started | - |
 | 5. PSG Raw Audio | 0/TBD | Not started | - |
 | 6. Headless Runner, Installed-Consumer Proof and Staged Verification | 0/TBD | Not started | - |
