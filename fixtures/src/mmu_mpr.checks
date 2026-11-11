@@ -5,7 +5,7 @@
 # Class tags: MAN:<page> (the literal is a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model> (the expected byte is computed in the guest, the table entry is an XOR mask of $00), ASSUMED:<LED-id>.
 # The HuCard bytes the checks read are written by the fixture itself (segment BANKS: byte 0 of file bank k is k, the last byte is k xor $A5); the work RAM cells are written by the checks. A pass is not a support claim (ER-4).
 id=8
-checks=60
+checks=65
 1	bank80-reads-ff	ASSUMED:LED-CPU-0012	Bank $80 is not mapped (the run $80-$F7): a read through it returns the constant $FF
 2	bankf7-reads-ff	ASSUMED:LED-CPU-0012	Bank $F7, the last of the unmapped run, reads $FF
 3	bankfc-reads-ff	ASSUMED:LED-CPU-0012	Bank $FC, the first bank after the four work RAM banks, is not mapped and reads $FF
@@ -66,3 +66,8 @@ checks=60
 58	tma-all-bits-highest	ASSUMED:LED-CPU-0015	Operand $FF selects every register: the highest is MPR7 (reset value $00), so A = $00 and not MPR0 ($F8) or the $77 it held
 59	tma-latch-after-tma	ASSUMED:LED-CPU-0015	The one-byte latch takes the byte that a TMA with a nonzero operand returned ($F9 here), and the guest sees it through TMA #0: bus_latch gives $F9, a_unchanged leaves A ($11); each case supplies it (observe=59:VALUE)	observe
 60	tma-latch-after-tam-zero	ASSUMED:LED-CPU-0015	TAM #0 is a no-op for the latch too: after a TAM #0 with A = $C3 and A set to $22, TMA #0 gives $F9 under bus_latch (not $C3) and $22 under a_unchanged; each case supplies it (observe=60:VALUE)	observe
+61	power-up-mpr0	ASSUMED:LED-PROF-0003	The power-up byte of MPR0, read before this fixture writes any mapping register: 0 under zero and seeded-prng-v1, drawn under seeded-prng-v2; observe-only, each case says observe=61:policy	observe
+62	power-up-mpr3	ASSUMED:LED-PROF-0003	The power-up byte of MPR3, the row of the policy-diff control: mmu_mpr_policy_diff requires it to differ between zero and the v2 seeds; observe-only	observe
+63	power-up-mpr4	ASSUMED:LED-PROF-0003	The power-up byte of MPR4; observe-only, observe=63:policy	observe
+64	power-up-mpr5	ASSUMED:LED-PROF-0003	The power-up byte of MPR5; observe-only, observe=64:policy	observe
+65	power-up-mpr6	ASSUMED:LED-PROF-0003	The power-up byte of MPR6; observe-only, observe=65:policy (MPR1 and MPR2 are written by the shared startup before any fixture code, MPR7 is the constant $00 of the reset)	observe

@@ -1979,7 +1979,7 @@ selftest() {
   fi
 
   # (policies) a guest that reads power-on state must turn its case red (plan 03-11; D-127, T-03-33). A scratch mini-root holds a copy of fixture-build, of ds_proto.s and its .checks, of the linker config, of the four fixture library
-  # files and of the case ds_proto (no policies key, so the guest kind runs its default list: zero and seeded-prng-v1 seed 42). The unmutated copy is built and run first and must give RESULT ds_proto pass. Then the single line that invokes a
+  # files and of the case ds_proto (no policies key, so the guest kind runs its default list: zero and seeded-prng-v2 seeds 1 and 2, plan 03-24). The unmutated copy is built and run first and must give RESULT ds_proto pass. Then the single line that invokes a
   # CHECK macro with the argument 2 (exit 2 unless exactly one line matches) is preceded by a load of work RAM that the guest never wrote ($2500) stored as the expected byte, so the check still passes under every policy but its observed byte
   # is the power-on byte. The copy is rebuilt into the scratch directory and the same runner must give guest_failure and say that the seeded policy differs from the zero policy at check 2. Nothing is written under fixtures/ or build/gate/fixtures/.
   if st_want mutation-policies-uninit; then
@@ -2041,6 +2041,72 @@ selftest() {
       echo "SELFTEST mutation-policies-uninit PASS"
     else
       echo "SELFTEST mutation-policies-uninit FAIL ($pu_why)"; failed=1
+    fi
+  fi
+
+  # (policy-diff) the policy-diff control must turn red when the fixture stops reading power-on state (plan 03-24; D-114, D-127). A scratch mini-root holds a copy of fixture-build, of mmu_mpr.s and its .checks, of the linker config, of the four
+  # fixture library files and of the case mmu_mpr_policy_diff. The unmutated copy is built and run first and must give RESULT mmu_mpr_policy_diff pass (so the later red cannot come from a broken build). Then the single line that invokes CHECK_OBSERVE
+  # with the argument 62 (the power-up byte of MPR3; exit 2 unless exactly one line matches) is preceded by an initialisation of MPR3 (a TAM of $F8 and a TMA of the same register), so the observed byte is the same under every policy. The copy is rebuilt
+  # into the scratch directory and the same runner must give guest_failure and say that observe row 62 reads the same byte under policy zero and the seeded policy. Nothing is written under fixtures/ or build/gate/fixtures/.
+  if st_want mutation-policy-diff; then
+    st_ran=1
+    pd="$tmp/selftest/policy-diff"
+    pd_ok=1
+    pd_why=""
+    rm -rf "$pd"
+    mkdir -p "$pd/scripts" "$pd/fixtures/src" "$pd/fixtures/lib" "$pd/cases" "$pd/ev"
+    cp "$here/fixture-build" "$pd/scripts/"
+    cp fixtures/src/mmu_mpr.s fixtures/src/mmu_mpr.checks "$pd/fixtures/src/"
+    cp fixtures/lib/hucard.cfg fixtures/lib/startup.inc fixtures/lib/verdict.inc fixtures/lib/check.inc "$pd/fixtures/lib/"
+    cp tests/conformance/cases/mmu_mpr_policy_diff.toml "$pd/cases/"
+    pd_n=$(grep -cE '^[[:space:]]+CHECK_OBSERVE[[:space:]]+62([[:space:]]|;|$)' "$pd/fixtures/src/mmu_mpr.s" || true)
+    if [ "$pd_n" -ne 1 ]; then
+      echo "HARNESS_ERROR mutation-policy-diff: mmu_mpr.s must carry exactly one line that invokes CHECK_OBSERVE with the argument 62 (found $pd_n)"
+      exit 2
+    fi
+    if cmake --preset gate > "$tmp/pd.build" 2>&1 && cmake --build --preset gate >> "$tmp/pd.build" 2>&1; then :; else
+      cat "$tmp/pd.build"
+      echo "HARNESS_ERROR mutation-policy-diff: the gate preset does not build"
+      exit 2
+    fi
+    if sh "$here/conformance-flatten" "$pd/cases" > "$pd/cases.tsv" 2> "$tmp/st.err"; then :; else pd_ok=0; pd_why="cannot flatten the scratch case"; fi
+    if [ "$pd_ok" -eq 1 ]; then
+      if (cd "$pd" && sh scripts/fixture-build > fb0.out 2>&1); then :; else
+        if grep -q '^PREFLIGHT_MISSING' "$pd/fb0.out"; then cat "$pd/fb0.out"; echo "HARNESS_ERROR mutation-policy-diff: ca65 or ld65 is missing"; exit 2; fi
+        pd_ok=0
+        pd_why="the unmutated scratch fixture does not build"
+      fi
+    fi
+    if [ "$pd_ok" -eq 1 ]; then
+      (cd "$pd" && "$root/build/gate/ds_runner" --cases cases.tsv --evidence-dir ev > before.txt 2> before.err) || true
+      if ! awk '$1 == "RESULT" && $2 == "mmu_mpr_policy_diff" && $3 == "pass" { f = 1 } END { exit !f }' "$pd/before.txt"; then
+        pd_ok=0
+        pd_why="mmu_mpr_policy_diff does not pass on the unmutated scratch copy"
+      fi
+    fi
+    if [ "$pd_ok" -eq 1 ]; then
+      awk '/^[ \t]+CHECK_OBSERVE[ \t]+62([ \t]|;|$)/ { print "        lda #$F8                        ; SELFTEST: MPR3 is initialised before it is observed"; print "        tam #SL3"; print "        tma #SL3" } { print }' "$pd/fixtures/src/mmu_mpr.s" > "$pd/mmu_mpr.mutated"
+      if cmp -s "$pd/mmu_mpr.mutated" "$pd/fixtures/src/mmu_mpr.s"; then
+        echo "HARNESS_ERROR mutation-policy-diff: the edit of the check 62 line changed nothing"
+        exit 2
+      fi
+      mv "$pd/mmu_mpr.mutated" "$pd/fixtures/src/mmu_mpr.s"
+      if (cd "$pd" && sh scripts/fixture-build > fb1.out 2>&1); then :; else pd_ok=0; pd_why="the mutated scratch fixture does not build"; fi
+    fi
+    if [ "$pd_ok" -eq 1 ]; then
+      (cd "$pd" && "$root/build/gate/ds_runner" --cases cases.tsv --evidence-dir ev > after.txt 2> after.err) || true
+      if ! awk '$1 == "RESULT" && $2 == "mmu_mpr_policy_diff" && $3 == "guest_failure" { f = 1 } END { exit !f }' "$pd/after.txt"; then
+        pd_ok=0
+        pd_why="mmu_mpr_policy_diff is not guest_failure with MPR3 initialised before it is observed"
+      elif ! grep -Fq 'policy-diff: observe row 62 reads the same byte under policy zero' "$pd/after.err"; then
+        pd_ok=0
+        pd_why="the report does not name row 62 as the same byte under the policies"
+      fi
+    fi
+    if [ "$pd_ok" -eq 1 ]; then
+      echo "SELFTEST mutation-policy-diff PASS"
+    else
+      echo "SELFTEST mutation-policy-diff FAIL ($pd_why)"; failed=1
     fi
   fi
 

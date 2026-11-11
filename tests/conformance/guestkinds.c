@@ -19,8 +19,10 @@
  *                 Observe rows (plan 03-10): the optional fifth column of NAME.checks, the word observe, marks a check whose expected value legitimately differs by case; scripts/fixture-build lists
  *                 such indexes in build/gate/fixtures/NAME.observe, the guest writes its observed byte and result $50, and the case judges the byte through one item observe=IDX:VALUE per index
  *                 (id=1;observe=3:0x16). An index without an item is harness_failure (observe-missing), an item for a check that is not an observe row too (observe-unlisted).
- *                 Power-on policies (plan 03-11; D-127): the ROM is booted and run once per policy of the list (the optional key policies, request fragments separated by ||, or the built-in default of zero and
- *                 seeded-prng-v1 seed 42), and the DSV1 result bytes +10..+6F and observed bytes +80..+DF of every run must equal those of the first run; the first difference is a guest_failure naming the check.
+ *                 Plan 03-24 (D-127): observe=IDX:policy marks a row whose byte legitimately reads power-on state (recorded, exempt from the cross-policy equality, compared with no value), and the mode policy-diff=IDX with observe=IDX:differs is the
+ *                 negative control of that equality: the byte of every policy after the first must DIFFER from the first one, so a fixture that stopped reading the power-on state turns the case guest_failure (policy-diff).
+ *                 Power-on policies (plan 03-11; D-127): the ROM is booted and run once per policy of the list (the optional key policies, request fragments separated by ||, or the built-in default of zero, seeded-prng-v2 seed 1 and
+ *                 seeded-prng-v2 seed 2, plan 03-24), and the DSV1 result bytes +10..+6F and observed bytes +80..+DF of every run must equal those of the first run; the first difference is a guest_failure naming the check.
  *                 The RESULT line of a guest case ends machine_time=N stop=REASON (D-95, F11).
  *                 Outcome mapping, one reading of D-124 (the judge below and ds_proto.s carry the same layout):
  *                   harness_failure  a harness-side precondition fails: the ROM is unreadable, a key or the expect is malformed, a DSV1 block is
@@ -264,6 +266,16 @@ static int parse_item(char *item, struct guest_expect *e, int *seen_mode, int *s
         e->mode = MODE_VERDICT;
         return 0;
     }
+    if (strncmp(item, "policy-diff=", 12u) == 0) {
+        unsigned idx = 0u;
+
+        if (*seen_mode || parse_idx(item + 12, &idx) != 0) {
+            return -1;
+        }
+        *seen_mode = 1;
+        e->pdiff = idx; /* the mode stays MODE_PLAIN: the guest is judged as usual and the diff row is compared after the runs */
+        return 0;
+    }
     if (strncmp(item, "refused=stim.", 13u) == 0) {
         item += 13;
         if (*seen_mode || strlen(item) == 0u || strlen(item) >= sizeof e->reason || strspn(item, "abcdefghijklmnopqrstuvwxyz") != strlen(item)) {
@@ -279,6 +291,7 @@ static int parse_item(char *item, struct guest_expect *e, int *seen_mode, int *s
         unsigned i;
         uint64_t value = 0u;
         int differs;
+        int policy;
 
         item += 8;
         colon = strchr(item, ':');
@@ -287,7 +300,8 @@ static int parse_item(char *item, struct guest_expect *e, int *seen_mode, int *s
         }
         *colon = '\0';
         differs = strcmp(colon + 1, "differs") == 0;
-        if (parse_idx(item, &idx) != 0 || (!differs && (parse_u64(colon + 1, &value) != 0 || value > 255u))) {
+        policy = strcmp(colon + 1, "policy") == 0;
+        if (parse_idx(item, &idx) != 0 || (!differs && !policy && (parse_u64(colon + 1, &value) != 0 || value > 255u))) {
             return -1;
         }
         for (i = 0u; i < e->nobs; i++) {
@@ -297,6 +311,7 @@ static int parse_item(char *item, struct guest_expect *e, int *seen_mode, int *s
         }
         e->obs[e->nobs].idx = idx;
         e->obs[e->nobs].differs = differs;
+        e->obs[e->nobs].policy = policy;
         e->obs[e->nobs].value = (unsigned)value;
         e->nobs++;
         return 0;
@@ -449,6 +464,19 @@ void observe_cover(struct ctx *t, const struct guest_expect *e, const struct obs
         if (!found) {
             harness_error(t, "observe-unlisted: an observe=IDX:VALUE item names a check that is not an observe row of the fixture");
         }
+        if (e->obs[j].differs && (e->pdiff == 0u || e->obs[j].idx != e->pdiff)) {
+            harness_error(t, "observe-differs: observe=IDX:differs is judged only in a case that carries policy-diff=IDX for the same row");
+        }
+    }
+    if (e->pdiff != 0u) {
+        int has_differs = 0;
+
+        for (j = 0u; j < e->nobs; j++) {
+            has_differs = has_differs || (e->obs[j].idx == e->pdiff && e->obs[j].differs);
+        }
+        if (!has_differs) {
+            harness_error(t, "policy-diff: a policy-diff=IDX case needs the item observe=IDX:differs for the same row");
+        }
     }
 }
 
@@ -464,9 +492,8 @@ void observe_judge(struct ctx *t, const uint8_t *b, const struct guest_expect *e
             if (e->obs[j].idx != ol->idx[i]) {
                 continue;
             }
-            if (e->obs[j].differs) {
-                harness_error(t, "observe-differs: observe=IDX:differs is judged only in policy-diff mode, which this case does not use");
-                continue;
+            if (e->obs[j].differs || e->obs[j].policy) {
+                continue; /* judged across the runs of the policy list by kind_guest, not against a value (plan 03-24) */
             }
             snprintf(msg, sizeof msg, "the observed byte of observe row %u differs from the observe=%u:%u item of the case", ol->idx[i], ol->idx[i], e->obs[j].value);
             check(t, b[V_OBS + ol->idx[i] - 1u] == (uint8_t)e->obs[j].value, msg);
@@ -635,11 +662,11 @@ static int read_int_keys(const struct kase *k, uint64_t *until, uint64_t *checks
 /*
  * The power-on policy list of a guest case (plan 03-11; D-127, T-03-33). A guest ROM must initialise everything it reads, so the same ROM is booted and run once per policy of the list and the DSV1 result bytes (+10..+6F) and observed
  * bytes (+80..+DF) of every run must equal those of the first run: a check that read power-on state differs between a zero and a seeded power-on, and the case is guest_failure naming the check. The list is the optional case key
- * policies (request fragments separated by ||, an empty fragment is the default zero policy) or, when the key is absent, the built-in default below. Plan 03-24 switches the default to zero plus two seeded-prng-v2 seeds, so cases never
- * repeat the list. Each fragment is appended to the case's own request with a semicolon. The poison-t0 control does not run the guest, so it uses the first policy only.
+ * policies (request fragments separated by ||, an empty fragment is the default zero policy) or, when the key is absent, the built-in default below: zero plus two seeded-prng-v2 seeds since plan 03-24 (D-114, D-127), so cases never
+ * repeat the list, and a REQUIRED case with an explicit key needs a meaning that starts with policies-override: and names the reason (the guard of kind_guest, control guest_policies_guard). Each fragment is appended to the case's own request with a semicolon. The poison-t0 control does not run the guest, so it uses the first policy only.
  */
-static const char *const default_policies[] = {"", "bind.powerup_policy=seeded-prng-v1;seed=42"};
-#define GP_DEFAULT_COUNT 2u
+static const char *const default_policies[] = {"", "bind.powerup_policy=seeded-prng-v2;seed=1", "bind.powerup_policy=seeded-prng-v2;seed=2"};
+#define GP_DEFAULT_COUNT 3u
 #define GP_MAX 8u
 
 /* the policy fragments of a case into list (NULL entries never occur); returns the count, 0 when the key text is malformed */
@@ -779,17 +806,44 @@ static int guest_once(const struct gstate *g, struct ctx *c, struct ctx *judged,
     return 1;
 }
 
-/* the first check whose result or observed byte differs between two blocks (1-based), 0 when none */
-static unsigned first_block_difference(const uint8_t *a, const uint8_t *b)
+/* 1 when check idx (1-based) is an observe row that the case marks observe=IDX:policy or observe=IDX:differs: its observed byte is exempt from the cross-policy equality (plan 03-24) */
+static int row_exempt(const struct guest_expect *ex, unsigned idx)
+{
+    unsigned j;
+
+    for (j = 0u; j < ex->nobs; j++) {
+        if (ex->obs[j].idx == idx && (ex->obs[j].policy || ex->obs[j].differs)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* the first check whose result or observed byte differs between two blocks (1-based), 0 when none; the observed byte of an exempt row is not compared, its result byte still is */
+static unsigned first_block_difference(const struct guest_expect *ex, const uint8_t *a, const uint8_t *b)
 {
     unsigned i;
 
     for (i = 0u; i < V_MAX_CHECKS; i++) {
-        if (a[V_RES + i] != b[V_RES + i] || a[V_OBS + i] != b[V_OBS + i]) {
+        if (a[V_RES + i] != b[V_RES + i] || (a[V_OBS + i] != b[V_OBS + i] && !row_exempt(ex, i + 1u))) {
             return i + 1u;
         }
     }
     return 0u;
+}
+
+/* 1 when the case is a REQUIRED one: the key required = true */
+static int case_required(const struct kase *k)
+{
+    return k->has[K_REQUIRED] && strcmp(k->val[K_REQUIRED], "true") == 0;
+}
+
+/* the meaning of a case that overrides the policy list starts with policies-override: and a reason (at least one character that is not a blank after the colon) */
+static int policies_override_ok(const char *meaning)
+{
+    static const char tag[] = "policies-override:";
+
+    return strncmp(meaning, tag, sizeof tag - 1u) == 0 && strspn(meaning + sizeof tag - 1u, " ") < strlen(meaning + sizeof tag - 1u);
 }
 
 /* ---- the stimulus refusal rows of kind guest (plan 03-22; D-112, T-03-60, F4) ---- */
@@ -994,6 +1048,16 @@ void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
         harness_error(c, "a guest expect takes no exclude= item (that is a mutate_sweep item)");
         return;
     }
+    memset(&judged, 0, sizeof judged);
+    if (k->has[K_POLICIES] && case_required(k) && !policies_override_ok(k->val[K_MEANING])) {
+        /* the guard (plan 03-24, D-127): the three-policy run is the default of every guest case, so a REQUIRED case may not narrow it silently; the control guest_policies_guard declares the verdict */
+        harness_error(ex.mode == MODE_VERDICT ? &judged : c,
+                      "policies-key: a REQUIRED guest case with an explicit policies key needs a meaning that starts with policies-override: and names the reason");
+        if (ex.mode == MODE_VERDICT) {
+            expect_verdict(c, &judged, &ex, got, gotcap);
+        }
+        return;
+    }
     if (ex.mode == MODE_REFUSED) {
         if (ex.nobs != 0u) {
             harness_error(c, "a refused=stim.NAME case takes no observe= item");
@@ -1007,10 +1071,13 @@ void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
         harness_error(c, "the policies key of a guest case is request fragments separated by || (at most 8)");
         return;
     }
+    if (ex.pdiff != 0u && np < 2u) {
+        harness_error(c, "policy-diff: a policy-diff=IDX case needs at least two policies in its list");
+        return;
+    }
     if (ex.mode == MODE_POISON) {
         np = 1u; /* the planted-block control never runs the guest */
     }
-    memset(&judged, 0, sizeof judged);
     err = read_observe(rom, &ol);
     if (err != NULL) {
         harness_error(c, err);
@@ -1072,10 +1139,15 @@ void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
             check(c, 0, msg);
             continue;
         }
-        diff = first_block_difference(blk0, blk);
+        diff = first_block_difference(&ex, blk0, blk);
         if (diff != 0u) {
             snprintf(msg, sizeof msg, "policy %s differs from policy %s at check %u (result or observed byte): the guest reads power-on state", policy_name(plist[i]), policy_name(plist[0]), diff);
             check(c, 0, msg);
+        }
+        if (ex.pdiff != 0u && ex.mode == MODE_PLAIN) {
+            /* the policy-diff control: the row that reads power-on state must read a DIFFERENT byte under every policy after the first, or the comparison above could not see a dependence */
+            snprintf(msg, sizeof msg, "policy-diff: observe row %u reads the same byte under policy %s and policy %s: the control cannot see a power-on dependence", ex.pdiff, policy_name(plist[0]), policy_name(plist[i]));
+            check(c, blk[V_OBS + ex.pdiff - 1u] != blk0[V_OBS + ex.pdiff - 1u], msg);
         }
     }
 }

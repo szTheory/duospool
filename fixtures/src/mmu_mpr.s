@@ -11,7 +11,7 @@
         .setcpu "huc6280"
 
 DSV_ID = 8
-DSV_CHECKS = 60
+DSV_CHECKS = 65
 
         .include "startup.inc"
         .include "verdict.inc"
@@ -104,6 +104,11 @@ BYTE19 = $7F
         LIT 58, $00
         LIT 59, $00             ; an observe row
         LIT 60, $00             ; an observe row
+        LIT 61, $00             ; an observe row (the power-up byte of MPR0, plan 03-24)
+        LIT 62, $00             ; an observe row (MPR3)
+        LIT 63, $00             ; an observe row (MPR4)
+        LIT 64, $00             ; an observe row (MPR5)
+        LIT 65, $00             ; an observe row (MPR6)
 
 ; MAP mask, bank: write one mapping register (A is clobbered)
         .macro MAP mask, bank
@@ -127,6 +132,21 @@ BYTE19 = $7F
         .segment "CODE"
 
 fixture_main:
+; ---- the power-up values of the mapping registers (plan 03-24; D-114, D-127; ASSUMED:LED-PROF-0003): observe-only rows 61 to 65, read before anything in this fixture writes a mapping register ----
+; The reset code (startup.inc) has written MPR1 and MPR2 and the reset has set MPR7 to $00 (H8-18); MPR0 and MPR3 to MPR6 hold what the power-on policy made them: 0 under zero and seeded-prng-v1, drawn under seeded-prng-v2. The guest never compares
+; these bytes with a value (the cases say observe=IDX:policy): they exist so that the three-policy run of the guest kind has a byte that really differs between policies, and mmu_mpr_policy_diff requires that the MPR3 byte (check 62) differ between
+; zero and the v2 seeds. MPR1 and MPR2 are not observable here (the shared startup writes them first), so the mpr domain draws seven registers and this fixture sees five of them. Nothing below depends on these values: every later check maps what it reads.
+        tma #$01
+        CHECK_OBSERVE 61                ; MPR0 at power-up
+        tma #SL3
+        CHECK_OBSERVE 62                ; MPR3 at power-up (the row that mmu_mpr_policy_diff and the selftest mutation-policy-diff look at)
+        tma #SL4
+        CHECK_OBSERVE 63                ; MPR4 at power-up
+        tma #$20
+        CHECK_OBSERVE 64                ; MPR5 at power-up
+        tma #$40
+        CHECK_OBSERVE 65                ; MPR6 at power-up
+
 ; ---- unmapped banks (D-103, D-104, ASSUMED:LED-CPU-0012) ----
         MAP SL3, $80
         lda a:$6000                     ; check 1 ASSUMED:LED-CPU-0012: bank $80 is not mapped: a read returns the constant $FF
@@ -339,7 +359,7 @@ fixture_main:
         lda #$F9
         tam #$04                        ; MPR2 = $F9 again
 
-; TAM with the operand $00 is a no-op: no register changes. MPR0 is set first so that a write to it is seen (its power-on value is a policy question and is never read here).
+; TAM with the operand $00 is a no-op: no register changes. MPR0 is set first so that a write to it is seen (its power-on value is read only by the observe-only row 61 and is never compared with a value).
         lda #$F8
         tam #$01                        ; MPR0 = $F8
         lda #$FB

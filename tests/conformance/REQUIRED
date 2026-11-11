@@ -156,6 +156,8 @@ vdc_penalty_assumed
 mmu_mpr_tma_zero_latch
 mmu_mpr_tma_zero_keep
 mmu_mpr_observe_missing
+mmu_mpr_policy_diff
+guest_policies_guard
 model_refuse_unknown_name
 model_refuse_value
 model_refuse_state

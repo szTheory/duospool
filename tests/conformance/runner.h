@@ -255,7 +255,11 @@ const char *boot_content(const char *request, size_t len, struct booted *b, cons
  *   verdict=OUTCOME:REASON  a protocol control (the judge must give exactly this outcome and a reason containing the word)
  *   poison-t0               the t=0 precondition control (guest only)
  *   refused=stim.NAME       a stimulus refusal control (plan 03-22, guest only): the case's irq_stim list must be refused by ds_irq_stim_set with exactly the code NAME of src/core/stim_refusals.def, the instance unchanged, and no guest is run (observe items are not allowed)
- *   observe=IDX:VALUE       the observed byte of observe row IDX must equal VALUE (decimal or 0x hex, at most 255); observe=IDX:differs is judged only in policy-diff mode (plan 03-24)
+ *   observe=IDX:VALUE       the observed byte of observe row IDX must equal VALUE (decimal or 0x hex, at most 255)
+ *   observe=IDX:policy      (plan 03-24) the byte is recorded and compared with no value, and it is exempt from the cross-policy equality of the guest kind: the row legitimately reads power-on state (the power-up reads of mmu_mpr)
+ *   observe=IDX:differs     (plan 03-24) only in a case that carries policy-diff=IDX for the same IDX: the byte of every policy after the first must differ from the byte of the first one
+ *   policy-diff=IDX         (plan 03-24, guest only) the policy-diff negative control: the case must also carry observe=IDX:differs, and every other observe row of the case is observe=IDX:policy or has a value. A fixture that initialised the row before observing
+ *                           it makes the case guest_failure, which shows that the comparison across policies can see a difference
  *   exclude=IDX,IDX,...     the checks a mutation sweep skips (strictly ascending), which must equal the observe rows of the fixture (mutate_sweep only)
  */
 enum guest_mode { MODE_PLAIN, MODE_VERDICT, MODE_POISON, MODE_REFUSED };
@@ -269,9 +273,11 @@ struct guest_expect {
     unsigned nobs;
     struct {
         unsigned idx;
-        int differs;
+        int differs; /* observe=IDX:differs */
+        int policy;  /* observe=IDX:policy */
         unsigned value;
     } obs[GE_ITEMS_MAX];
+    unsigned pdiff; /* policy-diff=IDX (0 when the case has no such item) */
     unsigned nex;
     unsigned ex[GE_ITEMS_MAX];
 };

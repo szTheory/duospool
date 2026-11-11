@@ -3,15 +3,16 @@
 #
 # Control (plan 03-17; plan 03-10 observe-only design): the mmu_mpr case with its one defect, the missing observe=IDX:VALUE items for the observe rows 49, 59 and 60 (TMA #0 under the model parameter tma_zero). The runner must catch it as
 # harness_failure:observe-missing and never read the observed byte as a pass, so a missing expectation cannot turn an observe row into a check that asserts nothing. The case passes only when the judge gives exactly that outcome and reason. Evidence tier E0 (a control of the harness).
+# The five power-up observe rows 61 to 65 (plan 03-24) carry their observe=IDX:policy items here, so the one defect of this case stays the missing items for the rows 49, 59 and 60.
 id = "mmu_mpr_observe_missing"
 kind = "guest"
 fixture = "authored:mmu-mpr"
 request = ""
-expect = "id=8;verdict=harness_failure:observe-missing"
+expect = "id=8;verdict=harness_failure:observe-missing;observe=61:policy;observe=62:policy;observe=63:policy;observe=64:policy;observe=65:policy"
 meaning = "An observe row without an observe=IDX:VALUE item in the case is a harness failure, not a pass"
 required = true
 control = false
 expect_outcome = "pass"
 pins = []
 until_mclk = 4000000
-checks = 60
+checks = 65
