@@ -10,6 +10,7 @@
 #        conformance-run fixtures [--only NAME]
 #        conformance-run control DIR
 #        conformance-run control-signal DIR SIG
+#        conformance-run filter-cases CASES_TSV IDS_FILE OUT_TSV
 #        conformance-run supervise --ids FILE --out FILE [--wall N] -- CMD ARGS...
 # run mode (D-60, D-85): everything lives under build/NAME (default gate, the build directory of the preset NAME). The steps are
 #   (the runner also gets --records DIR/records, made empty on every run, and --golden-dir tests/conformance/golden: see plan 14, D-84b, D-86)
@@ -74,7 +75,7 @@ LC_ALL=C; export LC_ALL
 here=$(cd "$(dirname "$0")" && pwd)
 
 usage() {
-  echo "usage: conformance-run run [--preset NAME] | sanitize | fixtures [--only NAME] | control DIR | control-signal DIR SIG | supervise --ids FILE --out FILE [--wall N] -- CMD ARGS..." >&2
+  echo "usage: conformance-run run [--preset NAME] | sanitize | fixtures [--only NAME] | control DIR | control-signal DIR SIG | filter-cases CASES_TSV IDS_FILE OUT_TSV | supervise --ids FILE --out FILE [--wall N] -- CMD ARGS..." >&2
   exit 2
 }
 
@@ -91,6 +92,46 @@ flatten_cases() {
     rm -f "$fc_bd/cases.tsv"
     [ "$fc_r" -eq 1 ] || fc_r=2
     exit "$fc_r"
+  fi
+}
+
+# filter_cases CASES_TSV IDS_FILE OUT_TSV (quick task 261111-e8l): the cases TSV cut down to the cases named in IDS_FILE (one id per line, blank lines
+# and # comments ignored). The toy controls read only the case ids of their EXPECT, so each toy runs against only those cases and not the whole list.
+# The K rows of a case are kept whole and in their original order; the closing END row is rewritten with the new case count, because the runner
+# refuses a TSV whose END count differs from its case count. Fail closed: an id with no K row in CASES_TSV, a source without an END row, a row that is
+# neither K nor END, or an empty id list is a harness error (exit 2) and OUT_TSV is removed, so a filter that loses a case can never be read as a pass.
+# The mode is also the entry the gate selftest mutation-toy-filter drives on a scratch copy of this script.
+filter_cases() {
+  fl_src=$1
+  fl_ids=$2
+  fl_out=$3
+  rm -f "$fl_out"
+  if [ ! -f "$fl_src" ] || [ ! -f "$fl_ids" ]; then
+    echo "HARNESS_NO_FILE filter-cases needs the cases TSV and the id list" >&2
+    exit 2
+  fi
+  if awk -F'\t' -v ids="$fl_ids" '
+    BEGIN {
+      while ((getline line < ids) > 0) {
+        if (line ~ /^[ \t]*(#.*)?$/) { continue }
+        if (!(line in want)) { want[line] = 1; nw++ }
+      }
+      close(ids)
+      if (nw == 0) { print "HARNESS_ERROR filter-cases: the id list names no case" > "/dev/stderr"; bad = 1 }
+    }
+    $1 == "K" { if ($2 in want) { print; seen[$2] = 1 }; next }
+    $1 == "END" { if (NF == 2) { sawend = 1 } else { print "HARNESS_ERROR filter-cases: malformed END row" > "/dev/stderr"; bad = 1 }; next }
+    { print "HARNESS_ERROR filter-cases: an unexpected row in the cases TSV" > "/dev/stderr"; bad = 1 }
+    END {
+      for (id in want) { if (!(id in seen)) { print "HARNESS_ERROR filter-cases: no row for the case " id " in the filtered cases TSV" > "/dev/stderr"; bad = 1 } }
+      if (!sawend) { print "HARNESS_ERROR filter-cases: the cases TSV has no END row" > "/dev/stderr"; bad = 1 }
+      if (bad) { exit 2 }
+      n = 0
+      for (id in seen) { n++ }
+      printf "END\t%d\n", n
+    }' "$fl_src" > "$fl_out"; then :; else
+    rm -f "$fl_out"
+    exit 2
   fi
 }
 
@@ -363,7 +404,7 @@ canary_check() {
 # controls_mode PRESET BD (D-85, D-55): the liveness controls of the matrix, run after it. Every tests/controls/NAME/ holds a RULE
 # and an EXPECT. For each one: scripts/control-mutate makes the toy source from the LIVE file named by the rule (an anchor count
 # other than one is a harness error, exit 2), the toy targets ds_toy_NAME of every control are built in one cmake invocation after all sources are made (a toy that does not compile
-# is a harness error, never red), the toy runner runs the same cases TSV, oracle and profile inputs as the real one, and every case id of EXPECT
+# is a harness error, never red), the toy runner runs a cases TSV cut down to the case ids of its EXPECT (filter_cases; same oracle and profile inputs as the real one), and every case id of EXPECT
 # must have a RESULT line whose id and outcome FIELDS are that id and guest_failure (awk field match, never a whole-line match) and
 # the toy's RUNNER_DONE must be present. Printed: CONTROL NAME RED_OK, or CONTROL NAME NOT_RED (the stage then ends with status 1,
 # after every control has run). The toy runner prints only RESULT and RUNNER_DONE lines; these lines are this script's (D-80).
@@ -407,6 +448,9 @@ controls_mode() {
         exit 2
       fi
     done < "$cm_bd/controls/$cm_name.ids"
+    # the toy runs only the cases of its EXPECT (quick task 261111-e8l): a cases TSV cut down to those ids; an id the cut loses is exit 2, never a pass
+    mkdir -p "$cm_bd/controls/$cm_name" || { echo "HARNESS_ERROR cannot create $cm_bd/controls/$cm_name" >&2; exit 2; }
+    filter_cases "$cm_bd/cases.tsv" "$cm_bd/controls/$cm_name.ids" "$cm_bd/controls/$cm_name/cases.tsv"
   done
   if [ "$cm_n" -eq 0 ]; then
     echo "NO_CONTROLS tests/controls"
@@ -444,7 +488,7 @@ controls_mode() {
     mkdir -p "$cm_bd/controls/$cm_name/evidence" || { echo "HARNESS_ERROR cannot create the evidence directory of $cm_name" >&2; exit 2; }
     cm_out="$cm_bd/controls/$cm_name/results.txt"
     # the toy fails cases on purpose, so a runner status of 1 is expected here; only a harness status (2) stops the run
-    if sh "$here/conformance-run" supervise --ids "$cm_bd/ids.txt" --out "$cm_out" -- "$cm_bd/ds_toy_$cm_name" --cases "$cm_bd/cases.tsv" --evidence-dir "$cm_bd/controls/$cm_name/evidence" --profile-tsv "$cm_bd/r1.tsv" --rules-fields "$cm_bd/rules-fields.txt" --oracle "$cm_bd/oracle.tsv" --bank-oracle "$cm_bd/bankclass.tsv" \
+    if sh "$here/conformance-run" supervise --ids "$cm_bd/controls/$cm_name.ids" --out "$cm_out" -- "$cm_bd/ds_toy_$cm_name" --cases "$cm_bd/controls/$cm_name/cases.tsv" --evidence-dir "$cm_bd/controls/$cm_name/evidence" --profile-tsv "$cm_bd/r1.tsv" --rules-fields "$cm_bd/rules-fields.txt" --oracle "$cm_bd/oracle.tsv" --bank-oracle "$cm_bd/bankclass.tsv" \
     --opcode-tsv tests/oracle/huc6280-opcodes.tsv --marker-seed "$marker_seed" --golden-dir tests/conformance/golden > /dev/null 2> "$cm_bd/controls/$cm_name/stderr.txt"; then cm_sup=0; else cm_sup=$?; fi
     if [ "$cm_sup" -ge 2 ]; then
       cat "$cm_bd/controls/$cm_name/stderr.txt" >&2
@@ -728,6 +772,7 @@ case $1 in
   fixtures) shift; fixtures_mode "$@" ;;
   control) shift; [ $# -eq 1 ] || usage; control_mode "$1" ;;
   control-signal) shift; [ $# -eq 2 ] || usage; control_mode "$1" "$2" ;;
+  filter-cases) shift; [ $# -eq 3 ] || usage; filter_cases "$1" "$2" "$3"; exit 0 ;;
   supervise) shift ;;
   *) usage ;;
 esac
