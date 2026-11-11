@@ -1024,6 +1024,44 @@ XEOF
   PATH="$xn_dir/ld65:$PATH" xn_check xasm-shim-ld65 1 'XASM_ASSEMBLE' sh "$here/xasm-check" --root "$xn_ok" || xn_rc=1
   xn_check xasm-empty-path 2 'PREFLIGHT_MISSING ca65' env PATH="$xn_dir/empty" /bin/sh "$here/xasm-check" --root "$xn_ok" || xn_rc=1
   xn_check xasm-row-count 1 'XASM_TSV_SHAPE' sh "$here/xasm-check" --root "$xn_ok" --rows 234 || xn_rc=1
+  # (5) the optional WLA-DX cross-check (WR-05), with shim tools only (WLA-DX is never installed by the gate): wla-huc6280 does nothing and wlalink copies a prepared image to its output file. The image comes from the ca65 matrix of the BRK mini-root
+  # (a first run whose wlalink fails leaves matrix.bin behind and exits 2 XASM_WLA_FAILED, which is also a control). Four runs: the same image (wla=equal: the path is alive), an image whose only difference is BRK (exit 0, wla=known-diff-brk and an
+  # XASM_WLA_DIFF line, never wla=equal), an image that differs in another byte (exit 1, XASM_MISMATCH), and an awk that prints nothing for the WLA stage 2 (exit 2, XASM_STAGE_DEAD, no STATUS line: a hollow stage never reads as equal).
+  xn_brk=tests/gate/xasm/ok-tsv-brk
+  xn_w="$tmp/xasm-wla"
+  rm -rf "$xn_w"
+  mkdir -p "$xn_w/fail" "$xn_w/ok" "$xn_w/awk" "$xn_w/gen"
+  printf '#!/bin/sh\nexit 0\n' > "$xn_w/ok/wla-huc6280"
+  printf '#!/bin/sh\ncp "$XASM_WLA_BIN" "$3"\n' > "$xn_w/ok/wlalink"
+  cp "$xn_w/ok/wla-huc6280" "$xn_w/fail/wla-huc6280"
+  printf '#!/bin/sh\nexit 1\n' > "$xn_w/fail/wlalink"
+  printf '#!/bin/sh\nhollow=0\nfor a in "$@"; do\n  case $a in asm=wla|stage=2) hollow=$((hollow + 1)) ;; esac\ndone\nif [ "$hollow" -eq 2 ]; then exit 0; fi\nexec "$AWK_SHIM_REAL" "$@"\n' > "$xn_w/awk/awk"
+  chmod +x "$xn_w/ok/wla-huc6280" "$xn_w/ok/wlalink" "$xn_w/fail/wla-huc6280" "$xn_w/fail/wlalink" "$xn_w/awk/awk"
+  xn_check xasm-wla-failed 2 'XASM_WLA_FAILED' env PATH="$xn_w/fail:$PATH" sh "$here/xasm-check" --root "$xn_brk" --work "$xn_w/gen" || xn_rc=1
+  if [ -s "$xn_w/gen/matrix.bin" ]; then
+    cp "$xn_w/gen/matrix.bin" "$xn_w/equal.bin"
+    { printf '\000\000'; dd if="$xn_w/gen/matrix.bin" bs=1 skip=2 2> /dev/null; } > "$xn_w/brk.bin"
+    { dd if="$xn_w/gen/matrix.bin" bs=1 count=8 2> /dev/null; printf '\252'; dd if="$xn_w/gen/matrix.bin" bs=1 skip=9 2> /dev/null; } > "$xn_w/other.bin"
+    # xn_wla LABEL IMAGE WANT_EXIT WANT_PATTERN FORBIDDEN_PATTERN [PATH_PREFIX]: the run must exit WANT_EXIT, print WANT_PATTERN and not print FORBIDDEN_PATTERN
+    xn_wla() {
+      xw_label=$1; xw_img=$2; xw_wr=$3; xw_wp=$4; xw_fp=$5; xw_pfx=${6:-}
+      if XASM_WLA_BIN="$xn_w/$xw_img.bin" AWK_SHIM_REAL=$(command -v awk) PATH="$xw_pfx$xn_w/ok:$PATH" sh "$here/xasm-check" --root "$xn_brk" > "$tmp/xn.out" 2>&1; then xw_r=0; else xw_r=$?; fi
+      if [ "$xw_r" -ne "$xw_wr" ] || ! grep -q "$xw_wp" "$tmp/xn.out" || grep -q "$xw_fp" "$tmp/xn.out"; then
+        echo "CONTROL BROKEN $xw_label (exit $xw_r, wanted $xw_wr with $xw_wp and not $xw_fp)"
+        sed 's/^/  /' "$tmp/xn.out"
+        return 1
+      fi
+      return 0
+    }
+    xn_wla xasm-wla-equal equal 0 'STATUS xasm ok rows=2 wla=equal' 'XASM_MISMATCH' || xn_rc=1
+    xn_wla xasm-wla-brk-only brk 0 'STATUS xasm ok rows=2 wla=known-diff-brk' 'wla=equal\|XASM_MISMATCH' || xn_rc=1
+    grep -q '^XASM_WLA_DIFF opcode 00' "$tmp/xn.out" || { echo "CONTROL BROKEN xasm-wla-brk-only (no XASM_WLA_DIFF line: the difference is not recorded)"; xn_rc=1; }
+    xn_wla xasm-wla-other-diff other 1 'XASM_MISMATCH' 'STATUS xasm ok' || xn_rc=1
+    xn_wla xasm-wla-hollow-stage2 equal 2 'XASM_STAGE_DEAD stage 2 (wla form)' 'STATUS xasm ok' "$xn_w/awk:" || xn_rc=1
+  else
+    echo "CONTROL BROKEN xasm-wla-failed (the ca65 matrix image was not left behind, so the WLA shim controls cannot run)"
+    xn_rc=1
+  fi
   return "$xn_rc"
 }
 
