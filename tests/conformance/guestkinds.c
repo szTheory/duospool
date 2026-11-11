@@ -367,6 +367,12 @@ void expect_verdict(struct ctx *c, const struct ctx *s, const struct guest_expec
     check(c, strstr(s->why, e->reason) != NULL, msg);
 }
 
+int dsv1_done(const struct ds_instance *inst, void *ctx)
+{
+    (void)ctx;
+    return inst->ram8k[V_OFF + 4u] == 0xA5u && inst->ram8k[V_OFF + 5u] == 0x5Au;
+}
+
 /* the observe rows of a built fixture: build/gate/fixtures/ROM.observe, one decimal check index per line, ascending (scripts/fixture-build writes it from the fifth column of ROM's .checks) */
 const char *read_observe(const char *rom, struct obs_list *out)
 {

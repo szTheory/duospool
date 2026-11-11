@@ -23,13 +23,6 @@
 #define SW_TABLE_OFF 0x1000u /* the CHECKLIT segment: bank 0 of the image, logical $F000 (fixtures/lib/hucard.cfg) */
 #define SW_ENTRY0 (SW_TABLE_OFF + 5u)
 
-/* the DSV1 done state with its complement (verdict.inc writes the done state last, after the checksum) */
-static int sweep_done(const struct ds_instance *inst, void *ctx)
-{
-    (void)ctx;
-    return inst->ram8k[V_OFF + 4u] == 0xA5u && inst->ram8k[V_OFF + 5u] == 0x5Au;
-}
-
 struct sweep_end {
     uint8_t block[V_SIZE];
     int done;
@@ -66,10 +59,10 @@ static const char *sweep_run(const unsigned char *image, size_t len, const char 
     memset(&res, 0, sizeof res);
     rq.struct_size = (uint32_t)sizeof rq;
     rq.until_mclk = until;
-    rq.stop = sweep_done;
+    rq.stop = dsv1_done;
     end->reason = ds_run((struct ds_instance *)(void *)b.mem, &rq, &res);
     end->mclk = inst->machine_time;
-    end->done = sweep_done(inst, NULL);
+    end->done = dsv1_done(inst, NULL);
     memcpy(end->block, inst->ram8k + V_OFF, V_SIZE);
     release_boot(&b);
     if (end->reason != (uint32_t)DS_RUN_REASON_UNTIL && end->reason != (uint32_t)DS_RUN_REASON_CALLBACK) {

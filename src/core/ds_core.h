@@ -240,6 +240,7 @@ uint64_t ds_max_step_mclk(void);
 /* the CPU core (cpu.c): reset through the vector at logical $FFFE/$FFFF with MPR7 = $00 at machine_time 0, and one instruction per step */
 void ds_cpu_reset(struct ds_instance *inst);
 uint32_t ds_cpu_step(struct ds_instance *inst); /* executes one instruction and returns the master clocks it took (ds_cpu_step_obs of ds_obs.h adds the observer hook) */
+int ds_cpu_op_defined(uint32_t opcode); /* 1 when the opcode row of the table is a defined instruction, 0 for the 22 undefined rows (opcode is masked to 8 bits); the table is checked against the manual transcription by scripts/opcode-check */
 uint32_t ds_cpu_op_max_cycles(uint32_t opcode); /* the longest one opcode can take in CPU cycles: its table count plus every adder that can apply (opcode is masked to 8 bits) */
 
 /* the bus choke point (cpu.c until plan 03-16 moves it into bus.c): every CPU access translates through the MPRs (D-102) */

@@ -10,7 +10,12 @@
  *                     count = min(steps, N), lost = steps - count, seq = steps (decoded by hand, little-endian), every stored record must equal the kept pre-instruction state byte for byte (decoded by
  *                     hand, the seven spare bytes zero), and the bytes of the record memory past the count and the guard bytes around it must still hold their poison (the core wrote nothing else, and
  *                     never read the header: a poisoned header gives the same result). A capacity of 0 and of 1, a small capacity that drops (drop-newest, lost counted) and a large one that does not are the shapes.
- *   opcode_exercise   (deferred, the D-86 pattern; added by the same plan, see the section below)
+ *   opcode_exercise   a deferred kind (evaluated after the case loop, the D-86 pattern, so its RESULT line comes before RUNNER_DONE). It runs the ROM of every case of kind guest once (one run per distinct
+ *                     ROM and request, to the case's until_mclk or the DSV1 done state, whichever comes first) with an insn sink of 262144 records and collects the set of opcodes the records show as executed.
+ *                     The defined opcodes of the core's table (ds_cpu_op_defined: 234 rows, checked against the manual transcription by scripts/opcode-check) that no fixture executed are written to the
+ *                     evidence file of the case, sixteen to a line. expect is mode=report (the case passes and records the count: the inventory is a measurement) or mode=require;exclude=0xNN,0xNN,...
+ *                     (every unexercised defined opcode not in the exclude list is a guest_failure; plan 03-14 switches the case to require). A sink that lost a record (lost != 0) is harness_failure,
+ *                     because the inventory would be incomplete: the log is evidence here (D-119). E0: the inventory says which opcodes the fixtures execute, nothing about what they check.
  */
 #include <stdint.h>
 #include <stdio.h>
@@ -276,4 +281,202 @@ void kind_insn_sink_shapes(const struct kase *k, struct ctx *c, char *got, size_
     }
     free(pre);
     snprintf(got, gotcap, "steps=%llu shapes=%u", (unsigned long long)nsteps, ncaps * 2u);
+}
+
+/* ---- kind opcode_exercise (deferred) ---- */
+
+#define OX_SINK_RECORDS 262144u
+#define OX_ROMS_MAX 32u
+#define OX_PER_LINE 16u
+
+struct ox_rom {
+    char name[48];
+    const char *request;
+    uint64_t until;
+};
+
+/* the distinct (ROM, request) pairs of the guest cases, in case order; the number found is returned, or -1 for more than OX_ROMS_MAX */
+static int ox_collect(struct ox_rom *roms)
+{
+    size_t i;
+    unsigned n = 0u;
+
+    for (i = 0u; i < case_count(); i++) {
+        const struct kase *g = case_get(i);
+        struct ox_rom r;
+        unsigned j;
+        int dup = 0;
+
+        if (!g->has[K_KIND] || strcmp(g->val[K_KIND], "guest") != 0 || !g->has[K_FIXTURE] || !g->has[K_UNTIL_MCLK] || authored_name(g->val[K_FIXTURE], r.name, sizeof r.name) != 0
+            || parse_u64(g->val[K_UNTIL_MCLK], &r.until) != 0) {
+            continue;
+        }
+        r.request = g->has[K_REQUEST] ? g->val[K_REQUEST] : "";
+        for (j = 0u; j < n; j++) {
+            dup = dup || (strcmp(roms[j].name, r.name) == 0 && strcmp(roms[j].request, r.request) == 0);
+        }
+        if (dup) {
+            continue;
+        }
+        if (n >= OX_ROMS_MAX) {
+            return -1;
+        }
+        roms[n++] = r;
+    }
+    return (int)n;
+}
+
+/* mode=report | mode=require;exclude=0xNN,... (0 on success); excluded[op] is set for each listed opcode, which must be a defined one */
+static int ox_parse(const char *text, int *require, unsigned char *excluded)
+{
+    char list[PK_LIST_MAX];
+    char *rest = list;
+    char *item;
+    int have_mode = 0;
+    int have_ex = 0;
+
+    memset(excluded, 0, 256u);
+    if (pk_copy_text(text, list, sizeof list) != 0) {
+        return -1;
+    }
+    while ((item = pk_next_item(&rest, ';')) != NULL) {
+        if (strcmp(item, "mode=report") == 0 && !have_mode) {
+            *require = 0;
+            have_mode = 1;
+        } else if (strcmp(item, "mode=require") == 0 && !have_mode) {
+            *require = 1;
+            have_mode = 1;
+        } else if (strncmp(item, "exclude=", 8u) == 0 && !have_ex) {
+            char *er = item + 8;
+            char *tok;
+            unsigned count = 0u;
+
+            have_ex = 1;
+            while ((tok = pk_next_item(&er, ',')) != NULL) {
+                uint64_t v = 0u;
+
+                if (parse_u64(tok, &v) != 0 || v > 255u || ds_cpu_op_defined((uint32_t)v) == 0 || excluded[v] != 0u) {
+                    return -1;
+                }
+                excluded[v] = 1u;
+                count++;
+            }
+            if (count == 0u) {
+                return -1;
+            }
+        } else {
+            return -1;
+        }
+    }
+    return have_mode && (*require || !have_ex) ? 0 : -1;
+}
+
+void kind_opcode_exercise(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    struct ox_rom roms[OX_ROMS_MAX];
+    unsigned char seen[256];
+    unsigned char excluded[256];
+    static char detail[4096];
+    struct ds_insn_sink *sink;
+    unsigned char *records;
+    int require = 0;
+    int nroms;
+    int r;
+    unsigned op;
+    unsigned defined = 0u;
+    unsigned exercised = 0u;
+    unsigned unexercised = 0u;
+    size_t used;
+    unsigned col = 0u;
+
+    if (ox_parse(k->val[K_EXPECT], &require, excluded) != 0) {
+        harness_error(c, "an opcode_exercise expect is mode=report or mode=require;exclude=0xNN,... (excluded opcodes are defined, listed once, and only in require mode)");
+        return;
+    }
+    nroms = ox_collect(roms);
+    if (nroms < 1) {
+        harness_error(c, nroms < 0 ? "more than 32 distinct guest ROMs: raise OX_ROMS_MAX" : "no guest case with an authored ROM and an until_mclk was found");
+        return;
+    }
+    sink = (struct ds_insn_sink *)calloc(1u, sizeof *sink);
+    records = (unsigned char *)malloc((size_t)OX_SINK_RECORDS * DS_INSN_RECORD_BYTES);
+    if (sink == NULL || records == NULL) {
+        free(sink);
+        free(records);
+        harness_error(c, "out of memory for the opcode sink");
+        return;
+    }
+    memset(seen, 0, sizeof seen);
+    for (r = 0; r < nroms && !c->harness; r++) {
+        struct booted b;
+        const struct ds_instance *ci = NULL;
+        struct ds_run_request rq;
+        struct ds_run_result res;
+        const char *err = boot_built_rom(roms[r].name, roms[r].request, &b, &ci);
+        uint32_t count;
+        uint32_t i;
+
+        if (err != NULL) {
+            harness_error(c, err);
+            break;
+        }
+        sink->records = records;
+        sink->capacity = OX_SINK_RECORDS;
+        memset(&rq, 0, sizeof rq);
+        memset(&res, 0, sizeof res);
+        rq.struct_size = (uint32_t)sizeof rq;
+        rq.until_mclk = roms[r].until;
+        rq.stop = dsv1_done;
+        rq.insn = sink;
+        if (ds_run((struct ds_instance *)(void *)b.mem, &rq, &res) == (uint32_t)DS_RUN_REASON_REFUSED) {
+            release_boot(&b);
+            harness_error(c, "ds_run refused the request of the opcode inventory");
+            break;
+        }
+        release_boot(&b);
+        count = get_u32(sink->header);
+        check(c, get_u32(sink->header + 4) == 0u, "an instruction sink lost a record: the opcode inventory would be incomplete");
+        if (get_u32(sink->header + 4) != 0u) {
+            harness_error(c, "an instruction sink of the opcode inventory lost a record (lost != 0)");
+            break;
+        }
+        for (i = 0u; i < count; i++) {
+            seen[records[(size_t)i * DS_INSN_RECORD_BYTES + 10u]] = 1u;
+        }
+    }
+    free(sink);
+    free(records);
+    if (c->harness) {
+        return;
+    }
+    used = (size_t)snprintf(detail, sizeof detail, "rom_runs=%d\nunexercised defined opcodes (hex, sixteen to a line):\n", nroms);
+    for (op = 0u; op < 256u; op++) {
+        if (ds_cpu_op_defined(op) == 0) {
+            continue;
+        }
+        defined++;
+        if (seen[op] != 0u) {
+            exercised++;
+            continue;
+        }
+        unexercised++;
+        if (used + 8u < sizeof detail) {
+            used += (size_t)snprintf(detail + used, sizeof detail - used, "%s0x%02X", col == 0u ? "" : " ", op);
+            col++;
+            if (col == OX_PER_LINE) {
+                used += (size_t)snprintf(detail + used, sizeof detail - used, "\n");
+                col = 0u;
+            }
+        }
+        if (require && excluded[op] == 0u) {
+            check(c, 0, "a defined opcode is executed by no guest fixture and is not in the exclude list");
+        }
+    }
+    if (col != 0u && used + 2u < sizeof detail) {
+        (void)snprintf(detail + used, sizeof detail - used, "\n");
+    }
+    set_evidence_detail(detail);
+    check(c, defined == exercised + unexercised && exercised <= defined, "the opcode counts do not add up");
+    check(c, nroms >= 1, "no guest ROM was run");
+    snprintf(got, gotcap, "defined=%u exercised=%u unexercised=%u", defined, exercised, unexercised);
 }

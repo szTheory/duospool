@@ -594,7 +594,7 @@ void evidence_text(char *buf, size_t cap, const char *id, const char *kind, cons
 }
 
 /* text a kind wants after the standard lines of its evidence file (the refusal record); cleared before every case */
-static char ev_detail[1024];
+static char ev_detail[4096];
 
 void set_evidence_detail(const char *text)
 {
@@ -990,6 +990,7 @@ static const struct {
     {"guest", kind_guest, 0},
     {"mutate_sweep", kind_mutate_sweep, 0},
     {"insn_sink_shapes", kind_insn_sink_shapes, 0},
+    {"opcode_exercise", kind_opcode_exercise, 1},
     {"poweron_domain", kind_poweron_domain, 0},
     {"digest_stream", kind_digest_stream, 0},
     {"digest_pair", kind_digest_pair, 0},

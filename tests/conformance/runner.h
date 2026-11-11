@@ -270,6 +270,10 @@ void observe_judge(struct ctx *t, const uint8_t *b, const struct guest_expect *e
 /* the observer kinds (obskinds.c, plan 03-10) */
 void kind_insn_sink_shapes(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 
+void kind_opcode_exercise(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+/* the stop callback that holds once the guest has set the DSV1 done state with its complement (a speed aid only, D-95: the deadline stays the hard bound) */
+int dsv1_done(const struct ds_instance *inst, void *ctx);
+
 /* the mutation sweep (sweepkinds.c, plan 03-10): every literal of the DCK1 table of a built image is flipped in an in-memory copy and must flip exactly its own check */
 void kind_mutate_sweep(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 /* the NAME of a fixture key authored:NAME (0 on success; NAME is [a-z0-9-]) and the recording of a run for the machine_time and stop tail of a RESULT line */

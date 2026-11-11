@@ -117,6 +117,11 @@ uint32_t ds_cpu_op_max_cycles(uint32_t opcode)
 
 /* ---- the bus (D-102, D-103, D-104) ---- */
 
+int ds_cpu_op_defined(uint32_t opcode)
+{
+    return ops[opcode & 0xFFu].mn != (uint32_t)MN_UNDEF;
+}
+
 static uint32_t translate(const struct ds_instance *inst, uint16_t addr)
 {
     return ((uint32_t)inst->mpr[(uint32_t)addr >> 13u] << 13u) | ((uint32_t)addr & 0x1FFFu);

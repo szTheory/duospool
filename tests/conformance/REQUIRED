@@ -124,3 +124,4 @@ mutate_sweep_ds_proto
 mutate_sweep_ds_proto_bad_exclude
 run_refuse_memory_invalid
 insn_sink_shapes
+opcode_exercise
