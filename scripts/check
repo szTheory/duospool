@@ -1815,6 +1815,34 @@ selftest() {
     fi
   fi
 
+  # (v2) the cc65 rule of workflow-check is what turns the no-cc65-step and cc65-after-gate controls red (D-60, D-62 amended): each control, run with
+  # --expect WF_NO_CC65_STEP, is met on an unmutated copy of scripts/ (exit 0, EXPECT_OK); with the one line tagged rule-cc65-step deleted from the copy
+  # of the rules the code is no longer reported, so the same runs must exit 1: both controls flipped to broken.
+  if st_want mutation-workflow-cc65; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    st_alive=0
+    st_dead=0
+    for wcr in tests/workflow/no-cc65-step tests/workflow/cc65-after-gate; do
+      if sh "$cp_dir/workflow-check" --root "$wcr" --expect WF_NO_CC65_STEP > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+      if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=$((st_alive + 1)); fi
+    done
+    before=$(grep -c 'rule-cc65-step' "$cp_dir/lib/workflow-rules.awk" || true)
+    grep -v 'rule-cc65-step' "$cp_dir/lib/workflow-rules.awk" > "$cp_dir/lib/workflow-rules.mutated" || true
+    mv "$cp_dir/lib/workflow-rules.mutated" "$cp_dir/lib/workflow-rules.awk"
+    after=$(grep -c 'rule-cc65-step' "$cp_dir/lib/workflow-rules.awk" || true)
+    for wcr in tests/workflow/no-cc65-step tests/workflow/cc65-after-gate; do
+      if sh "$cp_dir/workflow-check" --root "$wcr" --expect WF_NO_CC65_STEP > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+      if [ "$r" -eq 1 ]; then st_dead=$((st_dead + 1)); fi
+    done
+    if [ "$st_alive" -eq 2 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$st_dead" -eq 2 ]; then
+      echo "SELFTEST mutation-workflow-cc65 PASS"
+    else
+      echo "SELFTEST mutation-workflow-cc65 FAIL"; failed=1
+    fi
+  fi
+
   # (w) the stale-status rule of docs-check is what turns the stale-status control red (TOOL-02): the control, run with --expect DOC_STALE_STATUS, is met
   # on an unmutated copy of scripts/ (exit 0, EXPECT_OK); with the one line tagged rule-stale deleted from the copy of the checker the code is no longer
   # reported, so the same run must exit 1: the control flipped to broken.

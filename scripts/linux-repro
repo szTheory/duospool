@@ -9,7 +9,7 @@
 # usage: sh scripts/linux-repro            (LINUX_REPRO_PARTS="NAME ..." runs only the named parts; LINUX_REPRO_IMAGE overrides the image)
 #   The working tree (without build/) is copied to a writable directory inside an ubuntu:24.04 linux/amd64 container, git safe.directory is set,
 #   and git, gcc, clang with its sanitizer runtime (libclang-rt-18-dev: the sanitizers stage links ASan and UBSan, and Ubuntu ships those runtimes
-#   apart from clang itself) and llvm-18 (the symbolizer), cmake, ninja, make, pkg-config, binutils, perl, mawk and gawk are installed. Parts, each printed as
+#   apart from clang itself) and llvm-18 (the symbolizer), cmake, ninja, make, pkg-config, binutils, perl, mawk, gawk and cc65 (the fixture assembler, from the Ubuntu archive) are installed. Parts, each printed as
 #   LINUX_REPRO <part> PASS|FAIL , in this order:
 #     default-awk       sh scripts/check and sh scripts/check --selftest with the image's stock awk (mawk, installed before gawk) and cc = gcc
 #     mawk              the same two commands with awk selected as mawk and cc = clang
@@ -57,7 +57,7 @@ cd /work
 echo "LINUX_REPRO env $(uname -sm) $(. /etc/os-release && echo "$PRETTY_NAME")"
 apt-get update -qq > /out/apt-update.log 2>&1 || { echo "LINUX_REPRO HARNESS apt-get update failed"; tail -5 /out/apt-update.log; exit 2; }
 # stock awk first: gawk is installed later, because its alternatives priority would take over the name awk
-apt-get install -y -qq --no-install-recommends git ca-certificates gcc libc6-dev clang libclang-rt-18-dev llvm-18 cmake ninja-build make pkg-config binutils perl mawk > /out/apt-install.log 2>&1 \
+apt-get install -y -qq --no-install-recommends git ca-certificates gcc libc6-dev clang libclang-rt-18-dev llvm-18 cmake ninja-build make pkg-config binutils perl mawk cc65 > /out/apt-install.log 2>&1 \
   || { echo "LINUX_REPRO HARNESS apt-get install failed"; tail -8 /out/apt-install.log; exit 2; }
 git_safe
 # llvm-symbolizer, so that a sanitizer report names functions and lines instead of offsets
