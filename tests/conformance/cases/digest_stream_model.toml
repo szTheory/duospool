@@ -7,11 +7,14 @@
 # then the version was set to 5 and the zero frames TIMR, IRQC and IRQS were appended (8588 bytes). Evidence tier E0: it pins the encoding of the selection byte and shows repeatability, never that the state is right.
 # Plan 03-25 added the region BLKT (the block transfer in progress: active, opcode, alternation state, remaining count as a u32, source and destination as u16, 11 zero bytes for a boot) and the serial version 6, so the literal changed: a throwaway python script outside the repo took the 8588-byte version 5 stream of this boot with model.tma_zero=a_unchanged
 # from the core's stream writer, checked that its sha256 equals the committed version 5 literal 69f3aae5... under shasum -a 256, set the version to 6 and appended the frame BLKT with 11 zero bytes; the 8607-byte stream it wrote hashes to the new literal. Evidence tier E0 (see above).
+# Plan 03-29 added the regions IOPT (the latch of port O and the device kind of each of the five ports, 6 bytes: FF 01 00 00 00 00 at boot) and SCHD (the declared input schedule, 1024 slots of 16 bytes and the count and a reserved word, 16392 zero bytes for a run with no input) and the serial version 7, so the literal changed: a throwaway C
+# program outside the repo booted this request and wrote the 8607-byte version 6 stream with the core's stream writer, which hashes to the committed version 6 literal f8886a15de17cc7d6272227a4a3aaef161341eac5defaa4c39cb9a72cf8bedb9 under shasum -a 256; a throwaway python script outside the repo then set the version to 7 and appended the
+# frames IOPT (6 bytes) and SCHD (16392 zero bytes) written from the rules above, and the 25021-byte stream it wrote hashes to the new literal under shasum -a 256. Evidence tier E0 (see above).
 id = "digest_stream_model"
 kind = "digest_stream"
 fixture = "plain-256k"
 request = "bind.powerup_policy=seeded-prng-v1;seed=42;model.tma_zero=a_unchanged"
-expect = "version=6;frames=PROF:32,CONT:40,POWR:16,TIME:8,RAM8:8192,MPRS:8,CPU0:8,BUS0:3,TIMR:11,IRQC:3,IRQS:160,BLKT:11;size=262144;enum=1;digest=f8886a15de17cc7d6272227a4a3aaef161341eac5defaa4c39cb9a72cf8bedb9"
+expect = "version=7;frames=PROF:32,CONT:40,POWR:16,TIME:8,RAM8:8192,MPRS:8,CPU0:8,BUS0:3,TIMR:11,IRQC:3,IRQS:160,BLKT:11,IOPT:6,SCHD:16392;size=262144;enum=1;digest=1fac93502616703c1041a183fb42324160394ea4c4f50c307e162cf34a91eac9"
 meaning = "With model.tma_zero=a_unchanged the digest stream is the one of the default boot except for the last byte of the BUS0 frame, and its SHA-256 equals the independently derived literal"
 required = true
 control = false

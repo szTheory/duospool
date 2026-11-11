@@ -16,12 +16,15 @@
 # zero bytes, IRQC 3, IRQS 160); the stream file it wrote (8588 bytes) hashes to the new literal under shasum -a 256. Evidence tier E0: it pins the encoding and shows repeatability, never that the state is right.
 # Plan 03-25 added the region BLKT (the block transfer in progress: active, opcode, alternation state, remaining count as a u32, source and destination as u16, 11 zero bytes for a boot) and the serial version 6, so the literal changed: a throwaway python script outside the repo took the 8588-byte version 5 stream of this boot
 # from the core's stream writer, checked that its sha256 equals the committed version 5 literal b10fea3a... under shasum -a 256, set the version to 6 and appended the frame BLKT with 11 zero bytes; the 8607-byte stream it wrote hashes to the new literal. Evidence tier E0 (see above).
+# Plan 03-29 added the regions IOPT (the latch of port O and the device kind of each of the five ports, 6 bytes: FF 01 00 00 00 00 at boot) and SCHD (the declared input schedule, 1024 slots of 16 bytes and the count and a reserved word, 16392 zero bytes for a run with no input) and the serial version 7, so the literal changed: a throwaway C
+# program outside the repo booted this request and wrote the 8607-byte version 6 stream with the core's stream writer, which hashes to the committed version 6 literal 518d1ebfb84edd8ecf1166d76ca9c91e5457ea3f23218dbbf2f7c215b110fa0d under shasum -a 256; a throwaway python script outside the repo then set the version to 7 and appended the
+# frames IOPT (6 bytes) and SCHD (16392 zero bytes) written from the rules above, and the 25021-byte stream it wrote hashes to the new literal under shasum -a 256. Evidence tier E0 (see above).
 id = "digest_stream_prefix"
 kind = "digest_stream"
 fixture = "plain-256k"
 request = "bind.powerup_policy=seeded-prng-v1;seed=42"
-expect = "version=6;frames=PROF:32,CONT:40,POWR:16,TIME:8,RAM8:8192,MPRS:8,CPU0:8,BUS0:3,TIMR:11,IRQC:3,IRQS:160,BLKT:11;size=262144;enum=1;digest=518d1ebfb84edd8ecf1166d76ca9c91e5457ea3f23218dbbf2f7c215b110fa0d"
-meaning = "The digest stream is the framed, little-endian stream of twelve regions behind the prefix and version, its payloads match the instance, and ds_digest is the SHA-256 of exactly that stream and of the independently derived literal"
+expect = "version=7;frames=PROF:32,CONT:40,POWR:16,TIME:8,RAM8:8192,MPRS:8,CPU0:8,BUS0:3,TIMR:11,IRQC:3,IRQS:160,BLKT:11,IOPT:6,SCHD:16392;size=262144;enum=1;digest=a24223b0f58e2f528a1d699622f09180b4df90b30fa32249a35b8f1fb0994a6b"
+meaning = "The digest stream is the framed, little-endian stream of fourteen regions behind the prefix and version, its payloads match the instance, and ds_digest is the SHA-256 of exactly that stream and of the independently derived literal"
 required = true
 control = false
 expect_outcome = "pass"

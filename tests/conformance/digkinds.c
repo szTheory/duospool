@@ -11,6 +11,8 @@
  *                   (plan 03-22): before the capture the runner writes the nonzero values timer_origin $0102030405060708, timer_counter $11, timer_reload $22, timer_enabled 1, irq_disable 5 and tiq_latch 1 into the booted instance (a test hook: the boot leaves them zero), so the encoding of the
  *                   regions TIMR and IRQC is pinned with nonzero bytes in a literal derived outside the code. A case key irq_stim is declared to the instance before the capture, so the encoding of IRQS is pinned the same way. The optional item poke=block-mid (plan 03-25)
  *                   writes a transfer in progress (active, opcode $E3, toggle 1, remaining $00010000, source $1234, destination $ABCD) so that the region BLKT is pinned with nonzero bytes, the 17th bit of the count included.
+ *                   Plan 03-29 (D-116, D-117, D-121): the regions IOPT (the latch of port O and the device kind of each of the five ports, 6 bytes) and SCHD (the declared input schedule, 1024 slots of time, port and mask and then the count and a reserved word, 16392 bytes) are checked field by field against the instance,
+ *                   and a case key input is declared to the instance before the capture, so the encoding of SCHD is pinned with nonzero bytes in a literal derived outside the code (digest_stream_input).
  *   digest_pair     request is two requests separated by "||"; the first is booted twice, into blocks prefilled with different bytes, and
  *                   the second once; the two boots of the first must agree, and expect is same (the second agrees too) or differ
  *   digest_region   boots the request, and for every region reached through ds_region_info flips one byte of live state, the first and the
@@ -35,7 +37,7 @@
 #include "runner.h"
 #include "synth.h"
 
-#define DK_CAP 16384u
+#define DK_CAP 32768u
 #define DK_LIST 400u
 
 /* the captured stream */
@@ -346,6 +348,24 @@ void kind_digest_stream(const struct kase *k, struct ctx *c, char *got, size_t g
             check(c, fw[i].len == 11u && pl[0] == inst->blk_active && pl[1] == inst->blk_opcode && pl[2] == inst->blk_toggle && rd32(pl + 3) == inst->blk_remaining &&
                          (unsigned)(pl[7] | ((unsigned)pl[8] << 8)) == (unsigned)inst->blk_src && (unsigned)(pl[9] | ((unsigned)pl[10] << 8)) == (unsigned)inst->blk_dst,
                   msg);
+        } else if (strcmp(fw[i].tag, "IOPT") == 0) {
+            /* the latch of port O and the device kind of each of the five ports (plan 03-29): 6 bytes */
+            unsigned port;
+            int same = fw[i].len == 6u && pl[0] == inst->o_latch;
+
+            for (port = 0u; same && port < 5u; port++) {
+                same = pl[1u + port] == inst->slot_type[port];
+            }
+            check(c, same, msg);
+        } else if (strcmp(fw[i].tag, "SCHD") == 0) {
+            /* 1024 slots of time (u64 little-endian), port (u32) and mask (u32), then the event count (u32) and the reserved word (u32) (plan 03-29): 16392 bytes */
+            unsigned slot;
+            int same = fw[i].len == 16392u;
+
+            for (slot = 0u; same && slot < 1024u; slot++) {
+                same = rd64(pl + 16u * slot) == inst->input_ev[slot].at && rd32(pl + 16u * slot + 8u) == inst->input_ev[slot].port && rd32(pl + 16u * slot + 12u) == inst->input_ev[slot].mask;
+            }
+            check(c, same && rd32(pl + 16384u) == inst->input_count && rd32(pl + 16388u) == inst->input_reserved, msg);
         } else {
             harness_error(c, "a digest_stream frame names a tag that the case does not know");
             break;

@@ -131,7 +131,7 @@ void ds_profile_hash(const struct ds_profile *profile, uint8_t out[DS_DIGEST_BYT
 
 /* ---- the region table ---- */
 
-enum region_id { R_PROF, R_CONT, R_POWR, R_TIME, R_RAM8, R_MPRS, R_CPU0, R_BUS0, R_TIMR, R_IRQC, R_IRQS, R_BLKT, R_COUNT };
+enum region_id { R_PROF, R_CONT, R_POWR, R_TIME, R_RAM8, R_MPRS, R_CPU0, R_BUS0, R_TIMR, R_IRQC, R_IRQS, R_BLKT, R_IOPT, R_SCHD, R_COUNT };
 
 struct region {
     char tag[5];            /* four ASCII bytes and a NUL, which is not written */
@@ -173,6 +173,15 @@ _Static_assert(offsetof(struct ds_instance, irq_stim_level) + DS_IRQ_STIM_MAX - 
  */
 _Static_assert(offsetof(struct ds_instance, blk_dst) + sizeof(uint16_t) - offsetof(struct ds_instance, blk_active) == 11u, "the block transfer fields are not the 11 bytes of the BLKT payload");
 
+/*
+ * The I/O port bytes and the declared input schedule (plan 03-29; D-116, D-117, D-121, INP-04): region IOPT is the 6 bytes o_latch and slot_type[0..4] (the latch of port O, then the device on each of the five ports), one live span in the order of the declarations of ds_core.h; region SCHD is the whole schedule, always
+ * 16392 bytes: 1024 slots of 16 bytes, each the time (u64), the port (u32) and the button mask (u32), then the event count (u32) and the reserved word (u32, always 0). An unused slot is all zero by construction of ds_input_push, so the payload is a function of the declared list alone. The live span of SCHD is input_ev, input_count and input_reserved,
+ * which struct ds_instance asserts are adjacent; the struct has no padding inside an event (a static assert), and the stream writes each field explicitly little-endian.
+ */
+_Static_assert(offsetof(struct ds_instance, slot_type) + DS_PORT_COUNT - offsetof(struct ds_instance, o_latch) == 6u, "the I/O port bytes are not the 6 bytes of the IOPT payload");
+_Static_assert(offsetof(struct ds_instance, input_reserved) + sizeof(uint32_t) - offsetof(struct ds_instance, input_ev) == DS_INPUT_MAX * 16u + 8u, "the input schedule is not the 16392 bytes of the SCHD payload");
+_Static_assert(offsetof(struct ds_input_event, at) == 0u && offsetof(struct ds_input_event, port) == 8u && offsetof(struct ds_input_event, mask) == 12u, "the fields of an input event are not at 0, 8 and 12");
+
 static const struct region regions[R_COUNT] = {
     [R_PROF] = {"PROF", DS_DIGEST_BYTES, offsetof(struct ds_instance, profile), sizeof(struct ds_profile)},
     [R_CONT] = {"CONT", DS_CONTENT_ID_BYTES + 4u + 4u, offsetof(struct ds_instance, content_id), DS_CONTENT_ID_BYTES},
@@ -187,6 +196,8 @@ static const struct region regions[R_COUNT] = {
     [R_IRQC] = {"IRQC", 3u, offsetof(struct ds_instance, irq_disable), offsetof(struct ds_instance, irq_i_sample) + 1u - offsetof(struct ds_instance, irq_disable)},
     [R_IRQS] = {"IRQS", DS_IRQ_STIM_MAX * (8u + 2u), offsetof(struct ds_instance, irq_stim_at), offsetof(struct ds_instance, irq_stim_level) + DS_IRQ_STIM_MAX - offsetof(struct ds_instance, irq_stim_at)},
     [R_BLKT] = {"BLKT", 11u, offsetof(struct ds_instance, blk_active), offsetof(struct ds_instance, blk_dst) + sizeof(uint16_t) - offsetof(struct ds_instance, blk_active)},
+    [R_IOPT] = {"IOPT", 6u, offsetof(struct ds_instance, o_latch), offsetof(struct ds_instance, slot_type) + DS_PORT_COUNT - offsetof(struct ds_instance, o_latch)},
+    [R_SCHD] = {"SCHD", DS_INPUT_MAX * 16u + 8u, offsetof(struct ds_instance, input_ev), offsetof(struct ds_instance, input_reserved) + sizeof(uint32_t) - offsetof(struct ds_instance, input_ev)},
 };
 
 /* the payload of one region: exactly regions[index].payload_len bytes, one explicit field per call, never a struct */
@@ -262,6 +273,27 @@ static void emit_payload(struct writer *w, const struct ds_instance *inst, uint3
         w_u16(w, inst->blk_src);
         w_u16(w, inst->blk_dst);
         break;
+    case R_IOPT: { /* the latch of port O, then the device kind of each of the five ports (plan 03-29; D-116, D-121), one explicit field per line */
+        uint32_t port;
+
+        w_u8(w, inst->o_latch);
+        for (port = 0u; port < DS_PORT_COUNT; port++) {
+            w_u8(w, inst->slot_type[port]);
+        }
+        break;
+    }
+    case R_SCHD: { /* the 1024 slots of the declared input schedule, each the time (u64), the port (u32) and the mask (u32), then the count and the reserved word (plan 03-29; D-117, D-121) */
+        uint32_t slot;
+
+        for (slot = 0u; slot < DS_INPUT_MAX; slot++) {
+            w_u64(w, inst->input_ev[slot].at);
+            w_u32(w, inst->input_ev[slot].port);
+            w_u32(w, inst->input_ev[slot].mask);
+        }
+        w_u32(w, inst->input_count);
+        w_u32(w, inst->input_reserved);
+        break;
+    }
     default:
         break;
     }

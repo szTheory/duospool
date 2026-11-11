@@ -23,6 +23,9 @@
 # The same plan added the constants rows block_prologue_cycles and block_irq_after_epilogue of src/core/constants.def, whose ledger ids LED-CPU-0008 and LED-IRQ-0007 joined [withheld] (24 ids, the cap of the record printer: any further id needs a layout change). The literals were written by hand from the def, not copied from printer output.
 # Plan 03-28 changed the layout, format_version 4 to 5: the table [input] (events = 0 for a boot that is given no input script, then schedule_sha256, the sha256 of the canonical encoding of the declared schedule: one line AT,PORT,MASK in decimal and one LF per event) follows [stimulus]. A no-input boot is an explicit empty script, so the identity is the sha256 of zero bytes,
 # e3b0c442..., checked with shasum -a 256 over an empty file and not taken from printer output; the block was written by hand from the layout, and no ledger id joined [withheld] (24 of 24 is unchanged). The digest line, the profile hash and the content hash did not change (the schedule is not in the digest before plan 03-29).
+# Plan 03-29 (D-116, D-117, D-121; INP-04) added the regions IOPT (the latch of port O and the device kind of each of the five ports, 6 bytes: FF 01 00 00 00 00 at boot) and SCHD (the declared input schedule: 1024 slots of 16 bytes and the count and a reserved word, 16392 zero bytes for a boot that is given no input) and the serial version
+# 7, so the digest line changed. A throwaway C program outside the repo booted this request and wrote the 8607-byte version 6 stream with the core's stream writer, which hashes to the committed version 6 digest above under shasum -a 256; a throwaway python script outside the repo set the version to 7 and appended the frames IOPT and SCHD
+# written from the rules above, and the 25021-byte stream it wrote hashes to the new digest under shasum -a 256. No other line of the record changed (the schedule is not in the printed record, which names it in [input]).
 [record]
 format_version = 5
 
@@ -166,4 +169,4 @@ size_cap = 1048576
 time = 0
 time_unit = "master-clocks"
 digest_algorithm = "sha256"
-digest = "2f6b80f666a59cb57336e528f175c9fc3b7edf4a5f6ef12621a04a52f3476e6b"
+digest = "a233ec91cd84493ee6d9241951f13a6ecfe9137d23af8c623935740e8b2a0caf"

@@ -6,12 +6,14 @@
 # not hashed): the digest must change, and putting the byte back must put the digest back. One assertion per region, so a region that is listed but dropped from the stream (the toy tests/controls/drop-region) fails here, and so does a table that changed
 # length. A seeded boot is used so that no region is all zero. Evidence tier E0.
 # Plan 03-25 added the region BLKT (the block transfer in progress, 11 bytes: active, opcode, alternation state, remaining as a u32, source and destination as u16): the tag BLKT:all flips each of its eleven bytes in turn, so the remaining count, which no first or last byte reaches, is shown to change the digest.
+# Plan 03-29 added the regions IOPT (the latch of port O and the device kind of each of the five ports, 6 bytes) and SCHD (the declared input schedule, 16392 bytes): the tag IOPT:all flips each of its six bytes in turn and SCHD, whose live span is too long to flip byte by byte (16392 digests of a 25 KB stream), has its first byte (the time
+# of the first event) and its last byte (the reserved word) flipped, as every long region does. Every slot of SCHD is compared field by field by digest_stream_input.
 id = "digest_region"
 kind = "digest_region"
 fixture = "plain-256k"
 request = "bind.powerup_policy=seeded-prng-v1;seed=42"
-expect = "tags=PROF:first,CONT,POWR,TIME,RAM8,MPRS,CPU0,BUS0,TIMR,IRQC,IRQS,BLKT:all"
-meaning = "Flipping the first and the last byte of the live state of each of the 12 regions (the first only for PROF, every byte for BLKT) changes the digest and restoring it restores the digest, in the table order PROF CONT POWR TIME RAM8 MPRS CPU0 BUS0 TIMR IRQC IRQS BLKT; each region is one live span of the instance"
+expect = "tags=PROF:first,CONT,POWR,TIME,RAM8,MPRS,CPU0,BUS0,TIMR,IRQC,IRQS,BLKT:all,IOPT:all,SCHD"
+meaning = "Flipping the first and the last byte of the live state of each of the 14 regions (the first only for PROF, every byte for BLKT and IOPT) changes the digest and restoring it restores the digest, in the table order PROF CONT POWR TIME RAM8 MPRS CPU0 BUS0 TIMR IRQC IRQS BLKT IOPT SCHD; each region is one live span of the instance"
 required = true
 control = false
 expect_outcome = "pass"
