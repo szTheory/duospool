@@ -1691,7 +1691,7 @@ selftest() {
   fi
 
   # (guest) a wrong expected literal must turn the tracer red (plan 03-01, D-125, D-126 later). A scratch mini-root holds a copy of fixture-build, of
-  # ds_proto.s and of the linker config. The unmutated copy is built and judged first and must give RESULT ds_proto pass (so the later red cannot come from
+  # ds_proto.s, of the linker config and of the three fixture library files (plan 03-05; the target line is the table entry of check 1, an XOR mask). The unmutated copy is built and judged first and must give RESULT ds_proto pass (so the later red cannot come from
   # a broken build); then the literal on the one line that carries the target marker is changed, the copy is rebuilt into the scratch directory and the
   # same runner must give guest_failure with check 1 at result byte $46. A source with no marker line, or with more than one, is a harness error (exit 2),
   # so a later rewrite of ds_proto.s cannot make this mutation vacuous. Nothing is written under fixtures/ or build/gate/fixtures/: the runner runs with
@@ -1705,7 +1705,7 @@ selftest() {
     mkdir -p "$gw/scripts" "$gw/fixtures/src" "$gw/fixtures/lib" "$gw/cases" "$gw/ev"
     cp "$here/fixture-build" "$gw/scripts/"
     cp fixtures/src/ds_proto.s "$gw/fixtures/src/"
-    cp fixtures/lib/hucard.cfg "$gw/fixtures/lib/"
+    cp fixtures/lib/hucard.cfg fixtures/lib/startup.inc fixtures/lib/verdict.inc fixtures/lib/check.inc "$gw/fixtures/lib/"
     cp tests/conformance/cases/ds_proto.toml "$gw/cases/"
     gw_n=$(grep -c '; SELFTEST-TARGET$' "$gw/fixtures/src/ds_proto.s" || true)
     if [ "$gw_n" -ne 1 ]; then
@@ -1733,9 +1733,9 @@ selftest() {
       fi
     fi
     if [ "$gw_ok" -eq 1 ]; then
-      awk '/; SELFTEST-TARGET$/ { sub(/#\$80/, "#$81") } { print }' "$gw/fixtures/src/ds_proto.s" > "$gw/ds_proto.mutated"
+      awk '/; SELFTEST-TARGET$/ { sub(/LIT 1, \$00/, "LIT 1, $01") } { print }' "$gw/fixtures/src/ds_proto.s" > "$gw/ds_proto.mutated"
       if cmp -s "$gw/ds_proto.mutated" "$gw/fixtures/src/ds_proto.s"; then
-        echo "HARNESS_ERROR mutation-guest-wrong-literal: the target line carries no literal #\$80 to change"
+        echo "HARNESS_ERROR mutation-guest-wrong-literal: the target line carries no table entry LIT 1, \$00 to change"
         exit 2
       fi
       mv "$gw/ds_proto.mutated" "$gw/fixtures/src/ds_proto.s"

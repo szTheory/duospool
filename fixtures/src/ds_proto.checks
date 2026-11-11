@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# ds_proto.checks - one row per CHECK of fixtures/src/ds_proto.s (D-125, plan 03-05). Columns separated by one TAB: check index (1-based, the entry number of the DCK1 table),
+# slug, class tag, meaning. Class tags: MAN:<page> (the literal is a manual page value), GUEST:<model> (the expected byte is computed in the guest, the table entry is an XOR mask),
+# ASSUMED:<LED-id> (the literal is DuoSpool's own model, an assumption). A manual page is a source only after an image read (ER-1); none of these rows claims one, and the
+# word pass in a conformance result is not a support claim (ER-4). The two header lines below are read by the fixture linter of a later plan.
+id=1
+checks=8
+1	xor-involution	GUEST:xor-involution	(v EOR k) EOR k gives v back; the expected byte is v copied by the guest, the table entry is an XOR mask of $00
+2	xor-self-zero	GUEST:xor-self	v EOR v gives zero; the expected byte is the guest constant zero, the table entry is an XOR mask of $00
+3	p-byte-roundtrip	MAN:H8-5	P read with PHP after A = 0 + 0 is Z and I set with B reading 1 and T reading 0 (byte $16), and PLP then PHP gives the same byte
+4	cmp-equal-flags	ASSUMED:LED-CPU-0010	CMP of equal values sets Z and C and leaves N and V clear (P byte $17); the flag formula page is not image-verified here
+5	cmp-less-flags	ASSUMED:LED-CPU-0010	CMP of a smaller value clears Z and C and sets N (P byte $94); the flag formula page is not image-verified here
+6	adc-7f-plus-01	MAN:S8-17	ADC $7F + $01 with carry clear gives $80
+7	adc-7f-plus-01-flags	MAN:S8-17	the same add leaves N and V set and Z and C clear (P byte $D4 with I set by the reset code and B reading 1)
+8	index-and-stack	GUEST:index-and-stack	the table byte reached through abs,Y and kept across PHA and PLA equals the same byte reached through abs,X; the table entry is an XOR mask of $00

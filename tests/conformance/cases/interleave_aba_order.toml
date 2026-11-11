@@ -1,14 +1,16 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
-# Order independence (CORE-01, D-55): A takes 9000 cycles, then B is booted and takes 7000, then A takes 11000 more. Afterwards a reference A is
-# booted and takes 20000 in one uninterrupted run (other call sizes) and a reference B takes 7000. A must equal the reference A and B the reference
+# Order independence (CORE-01, D-55): A takes 9000 cycles, then B is booted and takes 6000, then A takes 11000 more. Afterwards a reference A is
+# booted and takes 20000 in one uninterrupted run (other call sizes) and a reference B takes 6000. A must equal the reference A and B the reference
 # B, in digest and printed record, so that neither the presence of B nor the order of the runs matters. Evidence tier E0 (repeatability only).
+# The call sizes (9000, 6000, 11000) were chosen in plan 03-05 for the shared-state toy control: the toy adds a clock every fifth step of the process, so a single order case is red only for some counter phases.
+# The sizes 9000, 7000, 11000 were not red for two of eight phases (every case that runs the machine before this one moves the phase); 9000, 6000, 11000 was red for all eight phases tried.
 id = "interleave_aba_order"
 kind = "interleave_aba_order"
 fixture = "plain-256k"
 request = "bind.powerup_policy=seeded-prng-v1;seed=1||bind.powerup_policy=seeded-prng-v1;seed=2;len=393216"
-expect = "lcg=2718281;t1=9000;t2=7000;t3=11000"
+expect = "lcg=2718281;t1=9000;t2=6000;t3=11000"
 meaning = "Running A, then B, then A again gives A the digest and record of an uninterrupted A booted later, and B those of a B booted last"
 required = true
 control = false

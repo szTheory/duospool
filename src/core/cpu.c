@@ -12,7 +12,8 @@
  * ignores writes until the hardware page lands in plan 03-16 (D-103, D-104). Nothing here peeks: observers never read through the bus (D-108).
  * All 8 and 16 bit machine arithmetic is explicit unsigned masking: the sanitize preset has no -fwrapv (D-83, Pitfall 14).
  * Cycle counts and bytes come from the HuC6280 software manual (S8-17 ADC, S8-20 and the instruction map H8-25); the rows below are the ones
- * ds_proto needs. No expected value anywhere is derived from this core.
+ * ds_proto needs, plus the stack, subroutine and indirect-jump opcodes of the shared fixture library (plan 03-05). Their bytes and cycle counts are the usual HuC6280 instruction table values, not re-read from the manual pages
+ * in plan 03-05; the opcode oracle of plan 03-09 checks every row against the manual. No expected value anywhere is derived from this core.
  */
 #include <stddef.h>
 #include <stdint.h>
@@ -65,6 +66,20 @@ static const struct op_row op_table[] = {
     {0x70u, 2u, 2u, BRANCH_TAKEN_CYCLES}, /* BVS */
     {0x80u, 2u, 2u, BRANCH_TAKEN_CYCLES}, /* BRA */
     {0x53u, 2u, 5u, 0u},                  /* TAM #mask */
+    /* plan 03-05 (W8): the opcodes of the shared fixture library, bytes and base cycles as the software manual lists them */
+    {0xCDu, 3u, 5u, 0u}, /* CMP abs */
+    {0x4Du, 3u, 5u, 0u}, /* EOR abs */
+    {0xEEu, 3u, 7u, 0u}, /* INC abs */
+    {0xA0u, 2u, 2u, 0u}, /* LDY #imm */
+    {0x9Du, 3u, 5u, 0u}, /* STA abs,X */
+    {0xB9u, 3u, 5u, 0u}, /* LDA abs,Y */
+    {0x20u, 3u, 7u, 0u}, /* JSR abs */
+    {0x60u, 1u, 7u, 0u}, /* RTS */
+    {0x48u, 1u, 3u, 0u}, /* PHA */
+    {0x68u, 1u, 4u, 0u}, /* PLA */
+    {0x08u, 1u, 3u, 0u}, /* PHP */
+    {0x28u, 1u, 4u, 0u}, /* PLP */
+    {0x6Cu, 3u, 7u, 0u}, /* JMP (abs) */
 };
 
 #define OP_COUNT (sizeof op_table / sizeof op_table[0])
@@ -206,6 +221,19 @@ static void cmp(struct ds_instance *inst, uint32_t m)
     set_nz(inst, diff);
 }
 
+/* the stack is logical $2100 + S through the normal bus (S8-11: it wraps inside $21xx); a push writes then decrements, a pull increments then reads */
+static void push(struct ds_instance *inst, uint32_t value)
+{
+    ds_bus_write(inst, (uint16_t)(0x2100u | (uint32_t)inst->s), (uint8_t)value);
+    inst->s = (uint8_t)(((uint32_t)inst->s - 1u) & 0xFFu);
+}
+
+static uint32_t pull(struct ds_instance *inst)
+{
+    inst->s = (uint8_t)(((uint32_t)inst->s + 1u) & 0xFFu);
+    return ds_bus_read(inst, (uint16_t)(0x2100u | (uint32_t)inst->s));
+}
+
 /* the branch target: the address after the instruction plus the signed offset, with the sign extension done on unsigned values */
 static uint16_t branch_target(uint32_t next, uint32_t rel)
 {
@@ -224,6 +252,9 @@ uint32_t ds_cpu_step(struct ds_instance *inst)
     uint32_t next = (pc + bytes) & 0xFFFFu;
     uint16_t abs_addr = (uint16_t)(op1 | (op2 << 8u));
     uint16_t abs_x = (uint16_t)((uint32_t)abs_addr + (uint32_t)inst->x);
+    uint16_t abs_y = (uint16_t)((uint32_t)abs_addr + (uint32_t)inst->y);
+    uint32_t lo;
+    uint32_t hi;
     int taken = 0;
     uint32_t i;
 
@@ -294,6 +325,58 @@ uint32_t ds_cpu_step(struct ds_instance *inst)
                 ds_mpr_write(inst, i, inst->a);
             }
         }
+        break;
+    case 0xCDu: /* CMP abs */
+        cmp(inst, ds_bus_read(inst, abs_addr));
+        break;
+    case 0x4Du: /* EOR abs: N and Z (the T-mode variant is plan 03-12) */
+        inst->a = (uint8_t)((uint32_t)inst->a ^ (uint32_t)ds_bus_read(inst, abs_addr));
+        set_nz(inst, inst->a);
+        break;
+    case 0xEEu: /* INC abs: one read and one write, N and Z from the result */
+        lo = ((uint32_t)ds_bus_read(inst, abs_addr) + 1u) & 0xFFu;
+        ds_bus_write(inst, abs_addr, (uint8_t)lo);
+        set_nz(inst, lo);
+        break;
+    case 0xA0u: /* LDY #imm */
+        inst->y = (uint8_t)op1;
+        set_nz(inst, op1);
+        break;
+    case 0x9Du: /* STA abs,X */
+        ds_bus_write(inst, abs_x, inst->a);
+        break;
+    case 0xB9u: /* LDA abs,Y */
+        inst->a = ds_bus_read(inst, abs_y);
+        set_nz(inst, inst->a);
+        break;
+    case 0x20u: /* JSR abs: pushes the address of the last byte of the instruction, high byte first */
+        push(inst, ((pc + 2u) >> 8u) & 0xFFu);
+        push(inst, (pc + 2u) & 0xFFu);
+        next = abs_addr;
+        break;
+    case 0x60u: /* RTS: pulls the low byte then the high byte and adds one */
+        lo = pull(inst);
+        hi = pull(inst);
+        next = ((hi << 8u) | lo) + 1u;
+        next &= 0xFFFFu;
+        break;
+    case 0x48u: /* PHA */
+        push(inst, inst->a);
+        break;
+    case 0x68u: /* PLA: N and Z */
+        inst->a = (uint8_t)pull(inst);
+        set_nz(inst, inst->a);
+        break;
+    case 0x08u: /* PHP: B reads 1 and T reads 0 on the stack (H8-5) */
+        push(inst, ((uint32_t)inst->p & ~P_T) | 0x10u);
+        break;
+    case 0x28u: /* PLP: every flag is loaded except B, which has no stored bit (LED-CPU-0009: PLP loads T) */
+        inst->p = (uint8_t)(pull(inst) & ~0x10u);
+        break;
+    case 0x6Cu: /* JMP (abs): the high byte is read from the next address, with no 6502 page bug (assumed, LED-CPU-0010) */
+        lo = ds_bus_read(inst, abs_addr);
+        hi = ds_bus_read(inst, (uint16_t)((uint32_t)abs_addr + 1u));
+        next = (hi << 8u) | lo;
         break;
     default: /* D-96: undefined and not-yet-implemented opcodes are one byte, two cycles, T cleared */
         break;
