@@ -934,6 +934,18 @@ stage_fixture_lint_negatives() {
   run_controls --ok-prefix --require-negative tests/gate/fixture-lint tests/gate/fixture-lint sh "$here/fixture-lint" --root @DIR@ --cites fixtures/lib/cites.txt --tsv tests/oracle/huc6280-opcodes.tsv @EXPECT@
 }
 
+# input-check (INP-02, INP-04; D-51, D-117, D-131; plan 03-28): the input scripts under tests/conformance/inputs against the schema rules (scripts/lib/input-rules.awk, the same rules file that conformance-flatten --inputs runs before a script reaches the runner). Static, so it is registered before the build: format,
+# time unit, event count and the 1024 cap, table names, at digits and order, port range and empty ports, held names, order, opposite directions and reserved bits, the 64 KiB cap. A dead stage 1 or stage 2 is INP_STAGE_DEAD (exit 2), never a pass.
+stage_input_check() {
+  checker sh "$here/input-check"
+}
+
+# input-check-negatives (D-117, D-131; plan 03-28): every tests/gate/input-check/<case>/ is a mini-root (tests/conformance/inputs/*.toml): ok-<case> must pass and every other case must fail with exactly the code in its EXPECT, one directory per INP_ code (and for stage 1 and the file name).
+# A control that passes without its EXPECT met means the checker is broken.
+stage_input_check_negatives() {
+  run_controls --ok-prefix --require-negative tests/gate/input-check tests/gate/input-check sh "$here/input-check" --root @DIR@ @EXPECT@
+}
+
 # xasm (FIX-01, CPU-01, CPU-06; D-129, D-130; plan 03-08): the assembler encoding oracle. scripts/xasm-check assembles one line per defined row of tests/oracle/huc6280-opcodes.tsv (the
 # manual transcription) with ca65 and ld65 and requires the bytes to equal the TSV encodings; WLA-DX, when it happens to be on PATH, is compared in the same way, else the status line says
 # wla=optional-absent and no cross-assembler claim is made. The table must hold exactly 234 defined rows and 22 UNDEF rows (H8-1: 234 instructions). Static, so it is registered before the build; it reads only
@@ -2752,6 +2764,8 @@ run_stage inventory stage_inventory
 run_stage inventory-negatives stage_inventory_negatives
 run_stage fixture-lint stage_fixture_lint
 run_stage fixture-lint-negatives stage_fixture_lint_negatives
+run_stage input-check stage_input_check
+run_stage input-check-negatives stage_input_check_negatives
 run_stage xasm stage_xasm
 run_stage opcode-oracle stage_opcode_oracle
 run_stage opcode-oracle-negatives stage_opcode_oracle_negatives

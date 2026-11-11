@@ -11,9 +11,12 @@
 #        S<TAB>N                                  the number of events of the script (once, last but the sentinel)
 #        E<TAB>IDX<TAB>AT<TAB>PORT<TAB>MASK       one event, IDX from 1; AT is the decimal text of the script (already checked to be exact in an awk double), MASK the decimal button mask
 #        RULES<TAB>N                              the closing sentinel, N the number of records read: a dead or skipped stage 2 prints none and the caller treats that as INP_STAGE_DEAD
-# codes: INP_FORMAT (no [script] table, format not 1), INP_TIME_UNIT, INP_EVENTS_COUNT (events missing, not a plain decimal, or different from the number of [ev_NNNN] tables), INP_TOO_MANY (more than 1024 events), INP_TABLE_NAME (a table that is neither script
-#        nor the next ev_NNNN, or a root key), INP_KEY_UNKNOWN, INP_KEY_MISSING, INP_AT_NOT_DECIMAL, INP_AT_TOO_LONG, INP_AT_LEADING_ZERO, INP_ORDER (at decreases, or an equal at whose port does not increase), INP_PORT_RANGE, INP_HELD_UNKNOWN, INP_HELD_ORDER (a name out of the canonical order or repeated)
-# Opposite directions, a port with no pad and the size cap are judged by the caller and by the core (ds_input_push), which re-validates every event whatever this file says (D-117, T-03-76).
+# codes: INP_FORMAT (no [script] table, format not 1), INP_TIME_UNIT, INP_EVENTS_COUNT (events missing, not a plain decimal, or different from the number of [ev_NNNN] tables), INP_TOO_MANY (more than 1024 events, declared or present), INP_TABLE_NAME (a table that is neither script
+#        nor the next ev_NNNN, or a root key), INP_KEY_UNKNOWN, INP_KEY_MISSING, INP_AT_NOT_DECIMAL, INP_AT_TOO_LONG, INP_AT_LEADING_ZERO, INP_ORDER (at decreases, or an equal at whose port does not increase), INP_PORT_RANGE (not 1 to 5), INP_PORT_EMPTY (2 to 5 while the profile populates port 1 only, D-116),
+#        INP_HELD_UNKNOWN, INP_HELD_ORDER (a name out of the canonical order or repeated), INP_HELD_OPPOSITE (up with down, left with right), INP_HELD_RESERVED (iii, iv, v or vi: the reserved bits of a two-button pad, D-116)
+# The size cap (INP_TOO_LARGE, a property of the file) and INP_STAGE_DEAD belong to the callers (scripts/input-check and scripts/conformance-flatten --inputs), which both run this one file as stage 2: the same rules judge a script in the gate stage and on its way to the runner (one rule set).
+# The core re-validates every event in ds_input_push whatever this file says (D-117, T-03-76). Each statement that reports a code carries a tag  # rule-NAME  that the selftests of scripts/check delete to prove the matching control goes red (D-131).
+# Stage 1 must have printed its closing END row: without it this file prints no RULES row, says so on stderr and exits 3, so a dead or skipped stage 1 can never read as a clean script (CR-01).
 function viol(code, ln, detail) {
   printf "V\t%s\t%s\t%s\n", code, ln, detail
 }
@@ -21,12 +24,20 @@ BEGIN {
   FS = "\t"
   nrec = 0
   ntab = 0
+  nsent = 0
+  # the ports that have a pad behind them (D-116: r1 populates port 1 only); the core keeps its own slot_type and refuses the rest again
+  pad_ports = " 1 "
+  nres = split("iii iv v vi", resname, " ")
+  for (h = 1; h <= nres; h++) {
+    isres[resname[h]] = 1
+  }
   nhelds = split("i ii select run up right down left", hname, " ")
   for (h = 1; h <= nhelds; h++) {
     hbit[hname[h]] = h
   }
 }
-$1 == "ERR" || $1 == "END" { next }
+$1 == "END" { nsent++; next }
+$1 == "ERR" { next }
 NF == 5 {
   nrec++
   t = $1
@@ -43,7 +54,7 @@ NF == 5 {
   nk[t]++
   next
 }
-{ viol("INP_FORMAT", NR, "an unexpected stage 1 row") }
+{ viol("INP_FORMAT", NR, "an unexpected stage 1 row") }  # rule-stage1-row
 function need_keys(t, want, nwant,    w, i, j, found, ks, nks) {
   # every key of the table is one of want and every key of want is present once
   nks = split(keys[t], ks, " ")
@@ -52,43 +63,50 @@ function need_keys(t, want, nwant,    w, i, j, found, ks, nks) {
     for (j = 1; j <= nwant; j++) {
       if (ks[i] == want[j]) found = 1
     }
-    if (!found) viol("INP_KEY_UNKNOWN", lin[t SUBSEP ks[i]], "table [" t "] has the key " ks[i] ", which an input script does not use")
+    if (!found) viol("INP_KEY_UNKNOWN", lin[t SUBSEP ks[i]], "table [" t "] has the key " ks[i] ", which an input script does not use")  # rule-key-unknown
   }
   for (j = 1; j <= nwant; j++) {
     if (!((t SUBSEP want[j]) in val)) {
-      viol("INP_KEY_MISSING", 0, "table [" t "] has no key " want[j])
+      viol("INP_KEY_MISSING", 0, "table [" t "] has no key " want[j])  # rule-key-missing
       return 0
     }
   }
   return 1
 }
 END {
+  if (nsent != 1) {
+    print "input-rules: stage 1 printed no closing END row (or more than one)" > "/dev/stderr"
+    exit 3
+  }
   events = 0
   n_script = 0
   nrec_total = nrec
   # root keys belong to no table
   if (nk[""] > 0) {
-    viol("INP_TABLE_NAME", 0, "a key outside every table: an input script has the tables script and ev_NNNN only")
+    viol("INP_TABLE_NAME", 0, "a key outside every table: an input script has the tables script and ev_NNNN only")  # rule-root-key
   }
   # the script table
   if (!("script" in seen_tab)) {
-    viol("INP_FORMAT", 0, "no [script] table")
+    viol("INP_FORMAT", 0, "no [script] table")  # rule-no-script-table
   } else {
     sw[1] = "format"; sw[2] = "time_unit"; sw[3] = "events"
     if (need_keys("script", sw, 3)) {
       if (typ["script" SUBSEP "format"] != "i" || val["script" SUBSEP "format"] != "1") {
-        viol("INP_FORMAT", lin["script" SUBSEP "format"], "format must be the integer 1")
+        viol("INP_FORMAT", lin["script" SUBSEP "format"], "format must be the integer 1")  # rule-format
       }
       if (typ["script" SUBSEP "time_unit"] != "s" || val["script" SUBSEP "time_unit"] != "master_clock") {
-        viol("INP_TIME_UNIT", lin["script" SUBSEP "time_unit"], "time_unit must be the string master_clock")
+        viol("INP_TIME_UNIT", lin["script" SUBSEP "time_unit"], "time_unit must be the string master_clock")  # rule-time-unit
       }
       ev = val["script" SUBSEP "events"]
       if (typ["script" SUBSEP "events"] != "i" || ev !~ /^(0|[1-9][0-9]*)$/ || length(ev) > 6) {
-        viol("INP_EVENTS_COUNT", lin["script" SUBSEP "events"], "events must be a plain decimal integer")
+        viol("INP_EVENTS_COUNT", lin["script" SUBSEP "events"], "events must be a plain decimal integer")  # rule-events-decimal
         events = -1
       } else {
         events = ev + 0
-        if (events > 1024) viol("INP_TOO_MANY", lin["script" SUBSEP "events"], "more than 1024 events")
+        if (events > 1024) {
+          viol("INP_TOO_MANY", lin["script" SUBSEP "events"], "more than 1024 events")  # rule-too-many
+          events = -1   # the cap is the fact: the count against the tables is not judged twice
+        }
       }
     } else {
       events = -1
@@ -100,9 +118,10 @@ END {
     t = tabs[ti]
     if (t == "" || t == "script") continue
     nev++
+    if (nev == 1025) viol("INP_TOO_MANY", 0, "more than 1024 event tables")  # rule-too-many-tables
     want_name = sprintf("ev_%04d", nev)
     if (t != want_name) {
-      viol("INP_TABLE_NAME", 0, "table [" t "] where [" want_name "] was expected: the event tables are ev_0001, ev_0002, ... in order")
+      viol("INP_TABLE_NAME", 0, "table [" t "] where [" want_name "] was expected: the event tables are ev_0001, ev_0002, ... in order")  # rule-table-name
       continue
     }
     ew[1] = "at"; ew[2] = "port"; ew[3] = "held"
@@ -111,51 +130,64 @@ END {
     a = val[t SUBSEP "at"]
     ok_at = 1
     if (typ[t SUBSEP "at"] != "i" || a !~ /^[0-9]+$/) {
-      viol("INP_AT_NOT_DECIMAL", lin[t SUBSEP "at"], "at must be an unsigned decimal integer")
+      viol("INP_AT_NOT_DECIMAL", lin[t SUBSEP "at"], "at must be an unsigned decimal integer")  # rule-at-not-decimal
       ok_at = 0
     } else if (length(a) > 15) {
-      viol("INP_AT_TOO_LONG", lin[t SUBSEP "at"], "at has more than 15 digits")
+      viol("INP_AT_TOO_LONG", lin[t SUBSEP "at"], "at has more than 15 digits")  # rule-at-too-long
       ok_at = 0
     } else if (length(a) > 1 && substr(a, 1, 1) == "0") {
-      viol("INP_AT_LEADING_ZERO", lin[t SUBSEP "at"], "at has a leading zero")
+      viol("INP_AT_LEADING_ZERO", lin[t SUBSEP "at"], "at has a leading zero")  # rule-at-leading-zero
       ok_at = 0
     }
     # port
     p = val[t SUBSEP "port"]
     ok_port = 1
     if (typ[t SUBSEP "port"] != "i" || p !~ /^[1-5]$/) {
-      viol("INP_PORT_RANGE", lin[t SUBSEP "port"], "port must be an integer from 1 to 5")
+      viol("INP_PORT_RANGE", lin[t SUBSEP "port"], "port must be an integer from 1 to 5")  # rule-port-range
+      ok_port = 0
+    } else if (index(pad_ports, " " p " ") == 0) {
+      viol("INP_PORT_EMPTY", lin[t SUBSEP "port"], "port " p " has no pad behind it: the profile populates port 1 only")  # rule-port-empty
       ok_port = 0
     }
     # held
     mask = 0
     ok_held = 1
     if (typ[t SUBSEP "held"] != "a") {
-      viol("INP_HELD_UNKNOWN", lin[t SUBSEP "held"], "held must be an array of button names")
+      viol("INP_HELD_UNKNOWN", lin[t SUBSEP "held"], "held must be an array of button names")  # rule-held-array
       ok_held = 0
     } else {
       nh = split(val[t SUBSEP "held"], hv, "\037")
       last = 0
       for (j = 1; j <= nh; j++) {
+        if (hv[j] in isres) {
+          viol("INP_HELD_RESERVED", lin[t SUBSEP "held"], "button name " hv[j] " is a reserved bit: a two-button pad has i ii select run up right down left only")  # rule-held-reserved
+          ok_held = 0
+          break
+        }
         if (!(hv[j] in hbit)) {
-          viol("INP_HELD_UNKNOWN", lin[t SUBSEP "held"], "unknown button name " hv[j])
+          viol("INP_HELD_UNKNOWN", lin[t SUBSEP "held"], "unknown button name " hv[j])  # rule-held-unknown
           ok_held = 0
           break
         }
         if (hbit[hv[j]] <= last) {
-          viol("INP_HELD_ORDER", lin[t SUBSEP "held"], "button names are listed once each in the canonical bit order i ii select run up right down left")
+          viol("INP_HELD_ORDER", lin[t SUBSEP "held"], "button names are listed once each in the canonical bit order i ii select run up right down left")  # rule-held-order
           ok_held = 0
           break
         }
         last = hbit[hv[j]]
         mask += 2 ^ (last - 1)
       }
+      # opposite directions are refused (D-116): up with down, left with right (the bits 4 and 6, 5 and 7 of the mask)
+      if (ok_held && (int(mask / 16) % 2 == 1 && int(mask / 64) % 2 == 1 || int(mask / 32) % 2 == 1 && int(mask / 128) % 2 == 1)) {
+        viol("INP_HELD_OPPOSITE", lin[t SUBSEP "held"], "opposite directions (up with down, or left with right) are held together")  # rule-held-opposite
+        ok_held = 0
+      }
     }
     if (ok_at && ok_port) {
       # the order of events: at never decreases, and an equal at needs a strictly greater port than the event before (D-117)
       if (have_prev) {
         if (a + 0 < prev_at + 0 || (a + 0 == prev_at + 0 && p + 0 <= prev_port + 0)) {
-          viol("INP_ORDER", lin[t SUBSEP "at"], "events are not in order: at never decreases and an equal at needs a greater port than the event before")
+          viol("INP_ORDER", lin[t SUBSEP "at"], "events are not in order: at never decreases and an equal at needs a greater port than the event before")  # rule-at-order
         }
       }
       have_prev = 1
@@ -168,7 +200,7 @@ END {
     }
   }
   if (events >= 0 && events != nev) {
-    viol("INP_EVENTS_COUNT", lin["script" SUBSEP "events"], "events = " events " but the file holds " nev " event tables")
+    viol("INP_EVENTS_COUNT", lin["script" SUBSEP "events"], "events = " events " but the file holds " nev " event tables")  # rule-events-count
   }
   printf "S\t%d\n", nev
   for (i = 1; i <= out_n; i++) print out[i]
