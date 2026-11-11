@@ -908,6 +908,13 @@ stage_xasm() {
   checker sh "$here/xasm-check" --work build/gate/xasm --rows 234
 }
 
+# opcode-oracle (CPU-01, CPU-06; D-96, D-97; plan 03-09): the two-way check of the core's opcode table. scripts/opcode-check compares src/core/cpu_ops.def with tests/oracle/huc6280-opcodes.tsv, two
+# independent transcriptions of the manual page images, on opcode, mnemonic, mode, bytes and base cycles, with the built-in cross-check of 234 defined and 22 undefined opcodes. Static, so it is
+# registered before the build (it reads two tracked files); its stage records go to build/gate/opcode-oracle.
+stage_opcode_oracle() {
+  checker sh "$here/opcode-check" --work build/gate/opcode-oracle --partial
+}
+
 # xasm-negatives (FIX-01, D-129; plan 03-08): the encoding oracle must go red for each failure it is built to catch. Every tests/gate/xasm/<case>/ is a mini-root holding tests/oracle/huc6280-opcodes.tsv:
 # ok-<case> must pass, tsv-byte-changed (one opcode byte of the transcription changed) must give XASM_MISMATCH and tsv-bad-shape (a byte count that does not fit its mode) XASM_TSV_SHAPE. Then four probes made at run time:
 # (1) a shim ca65 placed first on PATH rewrites one instruction (lda #$11 becomes lda #$12) before calling the real assembler, so the assembled byte differs from the table: XASM_MISMATCH; the shim lives in a
@@ -2253,6 +2260,7 @@ run_stage inventory-negatives stage_inventory_negatives
 run_stage fixture-lint stage_fixture_lint
 run_stage fixture-lint-negatives stage_fixture_lint_negatives
 run_stage xasm stage_xasm
+run_stage opcode-oracle stage_opcode_oracle
 run_stage xasm-negatives stage_xasm_negatives
 run_stage workflow stage_workflow
 run_stage workflow-negatives stage_workflow_negatives

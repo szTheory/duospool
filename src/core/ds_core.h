@@ -177,6 +177,10 @@ uint32_t ds_boot(void *mem, size_t cap, const struct ds_boot_request *request, s
 #define DS_MCLK_PER_CYCLE_LOW 12u
 #define DS_MCLK_PER_CYCLE_HIGH 3u
 #define DS_INT_ENTRY_CYCLES 8u
+/* the named cycle adders of D-98, applied on top of the opcode table's base counts (ds_max_step_mclk adds them to the table maximum); the VDC and VCE penalty slots join in plan 03-16 */
+#define DS_ADDER_BRANCH_TAKEN 2u /* a taken conditional branch, BBR and BBS included (S8-20); BRA and BSR are fixed counts in the table */
+#define DS_ADDER_T_MODE 3u       /* ADC, AND, EOR, ORA with the T flag set (S8-17) */
+#define DS_ADDER_DECIMAL 1u      /* ADC and SBC with the D flag set (S8-17) */
 /* the value an unmapped read returns (D-104) */
 #define DS_UNMAPPED_READ 0xFFu
 
@@ -227,13 +231,13 @@ struct ds_run_result {
  */
 uint32_t ds_run(struct ds_instance *inst, const struct ds_run_request *request, struct ds_run_result *result);
 
-/* the longest single step in master clocks: the longest instruction of the implemented opcode table plus the interrupt entry, at low speed (D-94) */
+/* the longest single step in master clocks: the longest opcode of the table with the adders that can apply to it, plus the interrupt entry, at the low-speed cycle length, scanned from the table, never a guess (D-94) */
 uint64_t ds_max_step_mclk(void);
 
 /* the CPU core (cpu.c): reset through the vector at logical $FFFE/$FFFF with MPR7 = $00 at machine_time 0, and one instruction per step */
 void ds_cpu_reset(struct ds_instance *inst);
 uint32_t ds_cpu_step(struct ds_instance *inst); /* executes one instruction and returns the master clocks it took */
-uint32_t ds_cpu_max_cycles(void);               /* the longest instruction of the opcode table in CPU cycles, taken-branch adder included */
+uint32_t ds_cpu_op_max_cycles(uint32_t opcode); /* the longest one opcode can take in CPU cycles: its table count plus every adder that can apply (opcode is masked to 8 bits) */
 
 /* the bus choke point (cpu.c until plan 03-16 moves it into bus.c): every CPU access translates through the MPRs (D-102) */
 uint8_t ds_bus_read(const struct ds_instance *inst, uint16_t addr);

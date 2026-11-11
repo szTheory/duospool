@@ -1,0 +1,50 @@
+/* SPDX-License-Identifier: MIT OR Apache-2.0 */
+/* SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors */
+/*
+ * TRACER (plan 03-09 task 1): this file holds only the rows of the opcodes the authored fixtures use; an absent row runs as the undefined opcode and scripts/opcode-check runs with --partial. Task 2 completes it.
+ * cpu_ops.def - the HuC6280 opcode table, one row per opcode 00 to FF in order (plan 03-09; D-96, D-97, D-98, D-99).
+ * One X-macro row per line, no continuation: DS_OP(opcode, mnemonic, mode, bytes, cycles, access, "cite"). The same file is read by cpu.c (metadata and dispatch, cite dropped) and by
+ * scripts/opcode-check (awk, compared both ways with tests/oracle/huc6280-opcodes.tsv). Numbers and page labels only, no manual text (ER-9).
+ * Provenance: transcribed from page images of the HuC6280 hardware manual H8-25 (the instruction map, read cell by cell at 300 dpi) and of the software manual instruction pages S8-n.
+ * It was made without opening tests/oracle/huc6280-opcodes.tsv and without copying from the earlier hand-written switch of cpu.c. Where the printed map disagrees with an instruction page the page decides (opcodes 34 to 37, B4, B5, and the 7D mode label).
+ *   opcode    two hex digits written 0xNN
+ *   mnemonic  BBRn BBSn RMBn SMBn carry the bit number; TAM and TMA are the manual's TAMi and TMAi; NCP of the map is NOP; UNDEF marks the 22 undefined opcodes
+ *   mode      IMPLIED ACC IMM ZP ZPX ZPY ABS ABSX ABSY IND INDX INDY ABSIND ABSINDX REL ZPREL BLK MASK IMMZP IMMZPX IMMABS IMMABSX UNDEF
+ *   bytes     instruction length in bytes
+ *   cycles    the base cycle count printed by the manual (a block transfer prints 17+6x: 17 is the base here and the 6 per byte is the block step of plan D-100); the adders (taken branch, T mode, decimal) live in cpu.c
+ *   access    the bus offset class of D-92: NONE (no data access), READ, WRITE, RMW (one read then one write), STACK, MPR (TAM and TMA), BLOCK
+ *   cite      the map page, then the instruction page when that page was read as an image for this table
+ * The 22 undefined opcodes are one byte and two cycles by assumption (LED-CPU-0010): they execute as a NOP that clears T (D-96). Their row carries those values and the cite H8-25 (the empty map cell).
+ */
+DS_OP(0x08, PHP, IMPLIED, 1, 3, STACK, "H8-25")
+DS_OP(0x18, CLC, IMPLIED, 1, 2, NONE, "H8-25")
+DS_OP(0x20, JSR, ABS, 3, 7, STACK, "H8-25 S8-52")
+DS_OP(0x28, PLP, IMPLIED, 1, 4, STACK, "H8-25")
+DS_OP(0x48, PHA, IMPLIED, 1, 3, STACK, "H8-25")
+DS_OP(0x4D, EOR, ABS, 3, 5, READ, "H8-25")
+DS_OP(0x53, TAM, MASK, 2, 5, MPR, "H8-25 S8-90")
+DS_OP(0x60, RTS, IMPLIED, 1, 7, STACK, "H8-25")
+DS_OP(0x68, PLA, IMPLIED, 1, 4, STACK, "H8-25")
+DS_OP(0x69, ADC, IMM, 2, 2, NONE, "H8-25 S8-17")
+DS_OP(0x6C, JMP, ABSIND, 3, 7, READ, "H8-25 S8-51")
+DS_OP(0x70, BVS, REL, 2, 2, NONE, "H8-25")
+DS_OP(0x78, SEI, IMPLIED, 1, 2, NONE, "H8-25")
+DS_OP(0x7D, ADC, ABSX, 3, 5, READ, "S8-17")
+DS_OP(0x80, BRA, REL, 2, 4, NONE, "H8-25 S8-29")
+DS_OP(0x8D, STA, ABS, 3, 5, WRITE, "H8-25")
+DS_OP(0x9A, TXS, IMPLIED, 1, 2, NONE, "H8-25")
+DS_OP(0x9D, STA, ABSX, 3, 5, WRITE, "H8-25")
+DS_OP(0x9E, STZ, ABSX, 3, 5, WRITE, "H8-25 S8-86")
+DS_OP(0xA0, LDY, IMM, 2, 2, NONE, "H8-25 S8-55")
+DS_OP(0xA2, LDX, IMM, 2, 2, NONE, "H8-25")
+DS_OP(0xA9, LDA, IMM, 2, 2, NONE, "H8-25 S8-53")
+DS_OP(0xAD, LDA, ABS, 3, 5, READ, "H8-25 S8-53")
+DS_OP(0xB9, LDA, ABSY, 3, 5, READ, "H8-25 S8-53")
+DS_OP(0xBD, LDA, ABSX, 3, 5, READ, "H8-25 S8-53")
+DS_OP(0xC9, CMP, IMM, 2, 2, NONE, "H8-25")
+DS_OP(0xCD, CMP, ABS, 3, 5, READ, "H8-25")
+DS_OP(0xD0, BNE, REL, 2, 2, NONE, "H8-25")
+DS_OP(0xD8, CLD, IMPLIED, 1, 2, NONE, "H8-25")
+DS_OP(0xE8, INX, IMPLIED, 1, 2, NONE, "H8-25")
+DS_OP(0xEE, INC, ABS, 3, 7, RMW, "H8-25 S8-48")
+DS_OP(0xF0, BEQ, REL, 2, 2, NONE, "H8-25")

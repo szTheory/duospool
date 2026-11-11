@@ -1,19 +1,15 @@
 /* SPDX-License-Identifier: MIT OR Apache-2.0 */
 /* SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors */
 /*
- * cpu.c - the HuC6280 core of the tracer slice (plan 03-01; D-90, D-92, D-96, D-102..D-104, D-114) and, until plan 03-16 moves it into bus.c,
- * the single bus choke point. This is the minimal subset that the authored fixture ds_proto uses; plans 03-09 to 03-14 replace the table below
- * with the 256-row cpu_ops.def. Every opcode that is not in the table executes as the D-96 undefined-opcode behaviour: one byte, two cycles,
- * T cleared, nothing else changed (the length is an assumption of this project, LED-CPU-0009 and LED-CPU-0010 to come).
- * One step is one whole instruction: all state lives in the instance, no local survives a step (D-92). The step returns the master clocks it
- * took; ds_run adds them to the machine time. A cycle is 12 master clocks at low speed and 3 at high speed (D-90).
- * Bus: every CPU access translates through the eight mapping registers, phys = (mpr[a >> 13] << 13) | (a & $1FFF) (D-102). Banks below $80 read the
- * HuCard through ds_mapper_read and ignore writes; banks $F8-$FB are the 8 KiB work RAM mirrored four times; everything else reads $FF and
- * ignores writes until the hardware page lands in plan 03-16 (D-103, D-104). Nothing here peeks: observers never read through the bus (D-108).
- * All 8 and 16 bit machine arithmetic is explicit unsigned masking: the sanitize preset has no -fwrapv (D-83, Pitfall 14).
- * Cycle counts and bytes come from the HuC6280 software manual (S8-17 ADC, S8-20 and the instruction map H8-25); the rows below are the ones
- * ds_proto needs, plus the stack, subroutine and indirect-jump opcodes of the shared fixture library (plan 03-05). Their bytes and cycle counts are the usual HuC6280 instruction table values, not re-read from the manual pages
- * in plan 03-05; the opcode oracle of plan 03-09 checks every row against the manual. No expected value anywhere is derived from this core.
+ * cpu.c - the HuC6280 core of the tracer slice (plan 03-01; D-90, D-92, D-96, D-102..D-104, D-114) and, until plan 03-16 moves it into bus.c, the single bus choke point.
+ * Plan 03-09 replaced the hand-written subset by the 256-row table of cpu_ops.def (opcode, mnemonic, mode, bytes, cycles, access class, cite) expanded into static const metadata and a
+ * mnemonic switch. A mnemonic whose semantics land in plans 03-11 to 03-14 advances PC by the table length and charges the table cycles with no other effect until then (the case labels name the plan).
+ * One step is one whole instruction: all state lives in the instance, no local survives a step (D-92). The step returns the master clocks it took; ds_run adds them to the machine time.
+ * A cycle is 12 master clocks at low speed and 3 at high speed (D-90). The 22 undefined opcodes are one byte, two cycles, T cleared (the length is an assumption of this project, LED-CPU-0010).
+ * Bus: every CPU access translates through the eight mapping registers, phys = (mpr[a >> 13] << 13) | (a & $1FFF) (D-102). Banks below $80 read the HuCard through ds_mapper_read and
+ * ignore writes; banks $F8-$FB are the 8 KiB work RAM mirrored four times; everything else reads $FF and ignores writes until the hardware page lands in plan 03-16 (D-103, D-104).
+ * Nothing here peeks: observers never read through the bus (D-108). All 8 and 16 bit machine arithmetic is explicit unsigned masking: the sanitize preset has no -fwrapv (D-83, Pitfall 14).
+ * The table's bytes and cycles are checked against an independent transcription of the manual by scripts/opcode-check (stage opcode-oracle); no expected value anywhere is derived from this core.
  */
 #include <stddef.h>
 #include <stdint.h>
@@ -32,83 +28,88 @@
 
 #define UNDEFINED_BYTES 1u
 #define UNDEFINED_CYCLES 2u
-#define BRANCH_TAKEN_CYCLES 2u /* D-98: a taken branch costs two more cycles, BRA included */
 
 /* the 8 KiB work RAM is mirrored four times in banks $F8-$FB with & $1FFF (D-103): the mask is only right for this size */
 _Static_assert(DS_RAM8K_BYTES == 0x2000u, "the work RAM mirror mask assumes 8 KiB");
 _Static_assert(DS_MPR_COUNT == 8u, "the translate assumes eight mapping registers");
 
-/* one row per implemented opcode: bytes, base cycles and the adder when a branch is taken (the manual's values, S8-17, S8-20, H8-25) */
-struct op_row {
-    uint8_t opcode;
-    uint8_t bytes;
-    uint8_t cycles;
-    uint8_t taken;
+/*
+ * The opcode table (D-96): src/core/cpu_ops.def has one DS_OP row per opcode, expanded here into static const metadata. The mnemonic list below names each mnemonic once; the dispatch
+ * in ds_cpu_step is a switch over it with no default, so -Wswitch fails the build when a mnemonic has no handler. The enum order is the order of this list; no value is stored anywhere.
+ */
+#define DS_MNEMONICS(X)                                                                                                                                                            \
+    X(UNDEF) X(ADC) X(AND) X(ASL) X(BBR0) X(BBR1) X(BBR2) X(BBR3) X(BBR4) X(BBR5) X(BBR6) X(BBR7) X(BBS0) X(BBS1) X(BBS2) X(BBS3) X(BBS4) X(BBS5) X(BBS6) X(BBS7)                  \
+    X(BCC) X(BCS) X(BEQ) X(BIT) X(BMI) X(BNE) X(BPL) X(BRA) X(BRK) X(BSR) X(BVC) X(BVS) X(CLA) X(CLC) X(CLD) X(CLI) X(CLV) X(CLX) X(CLY) X(CMP) X(CPX) X(CPY) X(CSH) X(CSL)          \
+    X(DEC) X(DEX) X(DEY) X(EOR) X(INC) X(INX) X(INY) X(JMP) X(JSR) X(LDA) X(LDX) X(LDY) X(LSR) X(NOP) X(ORA) X(PHA) X(PHP) X(PHX) X(PHY) X(PLA) X(PLP) X(PLX) X(PLY)              \
+    X(RMB0) X(RMB1) X(RMB2) X(RMB3) X(RMB4) X(RMB5) X(RMB6) X(RMB7) X(ROL) X(ROR) X(RTI) X(RTS) X(SAX) X(SAY) X(SBC) X(SEC) X(SED) X(SEI) X(SET)                                \
+    X(SMB0) X(SMB1) X(SMB2) X(SMB3) X(SMB4) X(SMB5) X(SMB6) X(SMB7) X(ST0) X(ST1) X(ST2) X(STA) X(STX) X(STY) X(STZ) X(SXY) X(TAI) X(TAM) X(TAX) X(TAY) X(TDD) X(TIA) X(TII)       \
+    X(TIN) X(TMA) X(TRB) X(TSB) X(TST) X(TSX) X(TXA) X(TXS) X(TYA)
+
+enum ds_mn {
+#define DS_MN(name) MN_##name,
+    DS_MNEMONICS(DS_MN)
+#undef DS_MN
 };
 
-static const struct op_row op_table[] = {
-    {0x78u, 1u, 2u, 0u}, /* SEI */
-    {0xD8u, 1u, 2u, 0u}, /* CLD */
-    {0x18u, 1u, 2u, 0u}, /* CLC */
-    {0xA9u, 2u, 2u, 0u}, /* LDA #imm */
-    {0xADu, 3u, 5u, 0u}, /* LDA abs */
-    {0xBDu, 3u, 5u, 0u}, /* LDA abs,X */
-    {0x8Du, 3u, 5u, 0u}, /* STA abs */
-    {0x9Eu, 3u, 5u, 0u}, /* STZ abs,X */
-    {0xA2u, 2u, 2u, 0u}, /* LDX #imm */
-    {0x9Au, 1u, 2u, 0u}, /* TXS */
-    {0xE8u, 1u, 2u, 0u}, /* INX */
-    {0x69u, 2u, 2u, 0u}, /* ADC #imm */
-    {0x7Du, 3u, 5u, 0u}, /* ADC abs,X */
-    {0xC9u, 2u, 2u, 0u}, /* CMP #imm */
-    {0xD0u, 2u, 2u, BRANCH_TAKEN_CYCLES}, /* BNE */
-    {0xF0u, 2u, 2u, BRANCH_TAKEN_CYCLES}, /* BEQ */
-    {0x70u, 2u, 2u, BRANCH_TAKEN_CYCLES}, /* BVS */
-    {0x80u, 2u, 2u, BRANCH_TAKEN_CYCLES}, /* BRA */
-    {0x53u, 2u, 5u, 0u},                  /* TAM #mask */
-    /* plan 03-05 (W8): the opcodes of the shared fixture library, bytes and base cycles as the software manual lists them */
-    {0xCDu, 3u, 5u, 0u}, /* CMP abs */
-    {0x4Du, 3u, 5u, 0u}, /* EOR abs */
-    {0xEEu, 3u, 7u, 0u}, /* INC abs */
-    {0xA0u, 2u, 2u, 0u}, /* LDY #imm */
-    {0x9Du, 3u, 5u, 0u}, /* STA abs,X */
-    {0xB9u, 3u, 5u, 0u}, /* LDA abs,Y */
-    {0x20u, 3u, 7u, 0u}, /* JSR abs */
-    {0x60u, 1u, 7u, 0u}, /* RTS */
-    {0x48u, 1u, 3u, 0u}, /* PHA */
-    {0x68u, 1u, 4u, 0u}, /* PLA */
-    {0x08u, 1u, 3u, 0u}, /* PHP */
-    {0x28u, 1u, 4u, 0u}, /* PLP */
-    {0x6Cu, 3u, 7u, 0u}, /* JMP (abs) */
+/* addressing modes, the names of the opcode table; the access classes of D-92 are carried as metadata for the bus offset rule of the bus plan */
+enum ds_mode {
+    AM_IMPLIED, AM_ACC, AM_IMM, AM_ZP, AM_ZPX, AM_ZPY, AM_ABS, AM_ABSX, AM_ABSY, AM_IND, AM_INDX, AM_INDY, AM_ABSIND, AM_ABSINDX, AM_REL, AM_ZPREL, AM_BLK, AM_MASK,
+    AM_IMMZP, AM_IMMZPX, AM_IMMABS, AM_IMMABSX, AM_UNDEF
+};
+enum ds_class { CL_NONE, CL_READ, CL_WRITE, CL_RMW, CL_STACK, CL_MPR, CL_BLOCK };
+
+struct ds_op {
+    uint8_t mn;     /* enum ds_mn */
+    uint8_t mode;   /* enum ds_mode */
+    uint8_t bytes;  /* instruction length; 0 only for a row the def does not hold yet (tracer plan 03-09: such an opcode runs as the undefined one) */
+    uint8_t cycles; /* the manual's base count; a block transfer holds its 17 */
+    uint8_t cls;    /* enum ds_class */
 };
 
-#define OP_COUNT (sizeof op_table / sizeof op_table[0])
+static const struct ds_op ops[256] = {
+#define DS_OP(opcode, mn, mode, nbytes, ncycles, cls, cite) [opcode] = {(uint8_t)MN_##mn, (uint8_t)AM_##mode, nbytes, ncycles, (uint8_t)CL_##cls},
+#include "cpu_ops.def"
+#undef DS_OP
+};
 
-static const struct op_row *find_row(uint8_t opcode)
+/* the adders of D-98, each one cited in the ledger (LED-CPU-0002): they are added to the table's base count and never stored in it */
+static uint32_t taken_adder(uint32_t mn)
 {
-    size_t i;
-
-    for (i = 0u; i < OP_COUNT; i++) {
-        if (op_table[i].opcode == opcode) {
-            return &op_table[i];
-        }
+    switch ((enum ds_mn)mn) {
+    case MN_BPL: case MN_BMI: case MN_BVC: case MN_BVS: case MN_BCC: case MN_BCS: case MN_BNE: case MN_BEQ:
+    case MN_BBR0: case MN_BBR1: case MN_BBR2: case MN_BBR3: case MN_BBR4: case MN_BBR5: case MN_BBR6: case MN_BBR7:
+    case MN_BBS0: case MN_BBS1: case MN_BBS2: case MN_BBS3: case MN_BBS4: case MN_BBS5: case MN_BBS6: case MN_BBS7:
+        return DS_ADDER_BRANCH_TAKEN; /* BRA, BSR and the others are fixed counts in the table */
+    default:
+        return 0u;
     }
-    return NULL;
 }
 
-uint32_t ds_cpu_max_cycles(void)
+/* T mode (memory-to-memory through $2000+X) and decimal mode add cycles to these mnemonics only (S8-17, S8-18, S8-47, S8-58, S8-74) */
+static uint32_t flag_adders(uint32_t mn)
 {
-    uint32_t most = UNDEFINED_CYCLES;
-    size_t i;
-
-    for (i = 0u; i < OP_COUNT; i++) {
-        uint32_t len = (uint32_t)op_table[i].cycles + (uint32_t)op_table[i].taken;
-
-        if (len > most) {
-            most = len;
-        }
+    switch ((enum ds_mn)mn) {
+    case MN_ADC:
+        return DS_ADDER_T_MODE + DS_ADDER_DECIMAL;
+    case MN_AND: case MN_EOR: case MN_ORA:
+        return DS_ADDER_T_MODE;
+    case MN_SBC:
+        return DS_ADDER_DECIMAL;
+    default:
+        return 0u;
     }
-    return most;
+}
+
+/* the longest this opcode can take in cycles: the table count plus every adder that can apply to it (D-94). A block transfer counts its 17 here (the table value). */
+uint32_t ds_cpu_op_max_cycles(uint32_t opcode)
+{
+    const struct ds_op *op = &ops[opcode & 0xFFu];
+    uint32_t bytes = op->bytes;
+
+    if (bytes == 0u) {
+        return UNDEFINED_CYCLES; /* a row the def does not hold yet runs as the undefined opcode */
+    }
+    return (uint32_t)op->cycles + taken_adder(op->mn) + flag_adders(op->mn);
 }
 
 /* ---- the bus (D-102, D-103, D-104) ---- */
@@ -240,150 +241,190 @@ static uint16_t branch_target(uint32_t next, uint32_t rel)
     return (uint16_t)(next + rel - ((rel & 0x80u) != 0u ? 0x100u : 0u));
 }
 
+/* the value of an operand in the modes this plan executes: immediate and the three absolute modes. Returns 0 for every other mode: those land with their group (plans 03-11 to 03-14) and have no effect until then. */
+static int operand_value(const struct ds_instance *inst, uint32_t mode, uint32_t op1, uint16_t ea, uint32_t *value)
+{
+    if (mode == (uint32_t)AM_IMM) {
+        *value = op1;
+        return 1;
+    }
+    if (mode == (uint32_t)AM_ABS || mode == (uint32_t)AM_ABSX || mode == (uint32_t)AM_ABSY) {
+        *value = ds_bus_read(inst, ea);
+        return 1;
+    }
+    return 0;
+}
+
+static int has_ea(uint32_t mode)
+{
+    return mode == (uint32_t)AM_ABS || mode == (uint32_t)AM_ABSX || mode == (uint32_t)AM_ABSY;
+}
+
 uint32_t ds_cpu_step(struct ds_instance *inst)
 {
     uint32_t pc = inst->pc;
     uint8_t opcode = ds_bus_read(inst, inst->pc);
-    const struct op_row *row = find_row(opcode);
-    uint32_t bytes = row != NULL ? (uint32_t)row->bytes : UNDEFINED_BYTES;
-    uint32_t cycles = row != NULL ? (uint32_t)row->cycles : UNDEFINED_CYCLES;
+    const struct ds_op *op = &ops[opcode];
+    int defined = op->bytes != 0u; /* tracer plan 03-09: a row the def does not hold yet runs as the undefined opcode (D-96) */
+    uint32_t mn = defined ? (uint32_t)op->mn : (uint32_t)MN_UNDEF;
+    uint32_t mode = defined ? (uint32_t)op->mode : (uint32_t)AM_UNDEF;
+    uint32_t bytes = defined ? (uint32_t)op->bytes : UNDEFINED_BYTES;
+    uint32_t cycles = defined ? (uint32_t)op->cycles : UNDEFINED_CYCLES;
     uint32_t op1 = bytes >= 2u ? ds_bus_read(inst, (uint16_t)(pc + 1u)) : 0u;
     uint32_t op2 = bytes >= 3u ? ds_bus_read(inst, (uint16_t)(pc + 2u)) : 0u;
     uint32_t next = (pc + bytes) & 0xFFFFu;
     uint16_t abs_addr = (uint16_t)(op1 | (op2 << 8u));
-    uint16_t abs_x = (uint16_t)((uint32_t)abs_addr + (uint32_t)inst->x);
-    uint16_t abs_y = (uint16_t)((uint32_t)abs_addr + (uint32_t)inst->y);
+    uint16_t ea = mode == (uint32_t)AM_ABSX ? (uint16_t)((uint32_t)abs_addr + (uint32_t)inst->x)
+                                            : mode == (uint32_t)AM_ABSY ? (uint16_t)((uint32_t)abs_addr + (uint32_t)inst->y) : abs_addr;
+    uint32_t v = 0u;
     uint32_t lo;
     uint32_t hi;
     int taken = 0;
     uint32_t i;
 
     inst->p = (uint8_t)((uint32_t)inst->p & ~P_T); /* T is reset in the fetch cycle of every instruction (H8-5) */
-    switch (opcode) {
-    case 0x78u: /* SEI */
+    switch ((enum ds_mn)mn) {
+    case MN_SEI:
         inst->p = (uint8_t)((uint32_t)inst->p | P_I);
         break;
-    case 0xD8u: /* CLD */
+    case MN_CLD:
         inst->p = (uint8_t)((uint32_t)inst->p & ~P_D);
         break;
-    case 0x18u: /* CLC */
+    case MN_CLC:
         inst->p = (uint8_t)((uint32_t)inst->p & ~P_C);
         break;
-    case 0xA9u: /* LDA #imm */
-        inst->a = (uint8_t)op1;
-        set_nz(inst, op1);
+    case MN_LDA:
+        if (operand_value(inst, mode, op1, ea, &v) != 0) {
+            inst->a = (uint8_t)v;
+            set_nz(inst, v);
+        }
         break;
-    case 0xADu: /* LDA abs */
-        inst->a = ds_bus_read(inst, abs_addr);
-        set_nz(inst, inst->a);
+    case MN_LDX:
+        if (operand_value(inst, mode, op1, ea, &v) != 0) {
+            inst->x = (uint8_t)v;
+            set_nz(inst, v);
+        }
         break;
-    case 0xBDu: /* LDA abs,X */
-        inst->a = ds_bus_read(inst, abs_x);
-        set_nz(inst, inst->a);
+    case MN_LDY:
+        if (operand_value(inst, mode, op1, ea, &v) != 0) {
+            inst->y = (uint8_t)v;
+            set_nz(inst, v);
+        }
         break;
-    case 0x8Du: /* STA abs */
-        ds_bus_write(inst, abs_addr, inst->a);
+    case MN_STA:
+        if (has_ea(mode)) {
+            ds_bus_write(inst, ea, inst->a);
+        }
         break;
-    case 0x9Eu: /* STZ abs,X */
-        ds_bus_write(inst, abs_x, 0u);
+    case MN_STZ:
+        if (has_ea(mode)) {
+            ds_bus_write(inst, ea, 0u);
+        }
         break;
-    case 0xA2u: /* LDX #imm */
-        inst->x = (uint8_t)op1;
-        set_nz(inst, op1);
-        break;
-    case 0x9Au: /* TXS: no flags */
+    case MN_TXS: /* no flags */
         inst->s = inst->x;
         break;
-    case 0xE8u: /* INX */
+    case MN_INX:
         inst->x = (uint8_t)(((uint32_t)inst->x + 1u) & 0xFFu);
         set_nz(inst, inst->x);
         break;
-    case 0x69u: /* ADC #imm */
-        adc(inst, op1);
+    case MN_ADC: /* binary only: decimal mode and the T-mode variant are plan 03-12 */
+        if (operand_value(inst, mode, op1, ea, &v) != 0) {
+            adc(inst, v);
+        }
         break;
-    case 0x7Du: /* ADC abs,X */
-        adc(inst, ds_bus_read(inst, abs_x));
+    case MN_CMP:
+        if (operand_value(inst, mode, op1, ea, &v) != 0) {
+            cmp(inst, v);
+        }
         break;
-    case 0xC9u: /* CMP #imm */
-        cmp(inst, op1);
+    case MN_EOR: /* N and Z (the T-mode variant is plan 03-12) */
+        if (operand_value(inst, mode, op1, ea, &v) != 0) {
+            inst->a = (uint8_t)((uint32_t)inst->a ^ v);
+            set_nz(inst, inst->a);
+        }
         break;
-    case 0xD0u: /* BNE */
+    case MN_INC: /* memory forms only: one read and one write, N and Z from the result (the accumulator form is plan 03-12) */
+        if (has_ea(mode)) {
+            lo = ((uint32_t)ds_bus_read(inst, ea) + 1u) & 0xFFu;
+            ds_bus_write(inst, ea, (uint8_t)lo);
+            set_nz(inst, lo);
+        }
+        break;
+    case MN_BNE:
         taken = ((uint32_t)inst->p & P_Z) == 0u;
         break;
-    case 0xF0u: /* BEQ */
+    case MN_BEQ:
         taken = ((uint32_t)inst->p & P_Z) != 0u;
         break;
-    case 0x70u: /* BVS */
+    case MN_BVS:
         taken = ((uint32_t)inst->p & P_V) != 0u;
         break;
-    case 0x80u: /* BRA */
+    case MN_BRA: /* the table's 4 cycles already include the branch: no adder (S8-29) */
         taken = 1;
         break;
-    case 0x53u: /* TAM #mask: every selected MPR gets A (D-105: one-hot is the documented use) */
+    case MN_TAM: /* every selected MPR gets A (D-105: one-hot is the documented use) */
         for (i = 0u; i < (uint32_t)DS_MPR_COUNT; i++) {
             if ((op1 & (1u << i)) != 0u) {
                 ds_mpr_write(inst, i, inst->a);
             }
         }
         break;
-    case 0xCDu: /* CMP abs */
-        cmp(inst, ds_bus_read(inst, abs_addr));
-        break;
-    case 0x4Du: /* EOR abs: N and Z (the T-mode variant is plan 03-12) */
-        inst->a = (uint8_t)((uint32_t)inst->a ^ (uint32_t)ds_bus_read(inst, abs_addr));
-        set_nz(inst, inst->a);
-        break;
-    case 0xEEu: /* INC abs: one read and one write, N and Z from the result */
-        lo = ((uint32_t)ds_bus_read(inst, abs_addr) + 1u) & 0xFFu;
-        ds_bus_write(inst, abs_addr, (uint8_t)lo);
-        set_nz(inst, lo);
-        break;
-    case 0xA0u: /* LDY #imm */
-        inst->y = (uint8_t)op1;
-        set_nz(inst, op1);
-        break;
-    case 0x9Du: /* STA abs,X */
-        ds_bus_write(inst, abs_x, inst->a);
-        break;
-    case 0xB9u: /* LDA abs,Y */
-        inst->a = ds_bus_read(inst, abs_y);
-        set_nz(inst, inst->a);
-        break;
-    case 0x20u: /* JSR abs: pushes the address of the last byte of the instruction, high byte first */
+    case MN_JSR: /* pushes the address of the last byte of the instruction, high byte first */
         push(inst, ((pc + 2u) >> 8u) & 0xFFu);
         push(inst, (pc + 2u) & 0xFFu);
         next = abs_addr;
         break;
-    case 0x60u: /* RTS: pulls the low byte then the high byte and adds one */
+    case MN_RTS: /* pulls the low byte then the high byte and adds one */
         lo = pull(inst);
         hi = pull(inst);
         next = ((hi << 8u) | lo) + 1u;
         next &= 0xFFFFu;
         break;
-    case 0x48u: /* PHA */
+    case MN_PHA:
         push(inst, inst->a);
         break;
-    case 0x68u: /* PLA: N and Z */
+    case MN_PLA: /* N and Z */
         inst->a = (uint8_t)pull(inst);
         set_nz(inst, inst->a);
         break;
-    case 0x08u: /* PHP: B reads 1 and T reads 0 on the stack (H8-5) */
+    case MN_PHP: /* B reads 1 and T reads 0 on the stack (H8-5) */
         push(inst, ((uint32_t)inst->p & ~P_T) | 0x10u);
         break;
-    case 0x28u: /* PLP: every flag is loaded except B, which has no stored bit (LED-CPU-0009: PLP loads T) */
+    case MN_PLP: /* every flag is loaded except B, which has no stored bit (LED-CPU-0009: PLP loads T) */
         inst->p = (uint8_t)(pull(inst) & ~0x10u);
         break;
-    case 0x6Cu: /* JMP (abs): the high byte is read from the next address, with no 6502 page bug (assumed, LED-CPU-0010) */
-        lo = ds_bus_read(inst, abs_addr);
-        hi = ds_bus_read(inst, (uint16_t)((uint32_t)abs_addr + 1u));
-        next = (hi << 8u) | lo;
+    case MN_JMP: /* only (abs) so far: the high byte is read from the next address, with no 6502 page bug (assumed, LED-CPU-0010); the other two modes are plan 03-13 */
+        if (mode == (uint32_t)AM_ABSIND) {
+            lo = ds_bus_read(inst, abs_addr);
+            hi = ds_bus_read(inst, (uint16_t)((uint32_t)abs_addr + 1u));
+            next = (hi << 8u) | lo;
+        }
         break;
-    default: /* D-96: undefined and not-yet-implemented opcodes are one byte, two cycles, T cleared */
+    /* ---- the functionality gap: these mnemonics advance PC by the table length and charge the table cycles, with no register, flag or memory effect, until their group lands ---- */
+    case MN_UNDEF: /* D-96: one byte, two cycles, T cleared */
         break;
+    case MN_AND: case MN_ASL: case MN_BIT: case MN_CPX: case MN_CPY: case MN_DEC: case MN_LSR: case MN_ORA: case MN_ROL: case MN_ROR: case MN_SBC:
+    case MN_TRB: case MN_TSB: case MN_TST: case MN_SET: case MN_DEX: case MN_DEY: case MN_INY:
+        break; /* plan 03-12: arithmetic, logic, shift, compare, bit test, SET */
+    case MN_STX: case MN_STY: case MN_TAX: case MN_TAY: case MN_TSX: case MN_TXA: case MN_TYA: case MN_PHX: case MN_PHY: case MN_PLX: case MN_PLY:
+    case MN_CLA: case MN_CLX: case MN_CLY:
+        break; /* plan 03-11: stores, transfers, stack (CLA CLX CLY are register clears) */
+    case MN_BBR0: case MN_BBR1: case MN_BBR2: case MN_BBR3: case MN_BBR4: case MN_BBR5: case MN_BBR6: case MN_BBR7:
+    case MN_BBS0: case MN_BBS1: case MN_BBS2: case MN_BBS3: case MN_BBS4: case MN_BBS5: case MN_BBS6: case MN_BBS7:
+    case MN_BCC: case MN_BCS: case MN_BMI: case MN_BPL: case MN_BVC: case MN_BRK: case MN_BSR: case MN_RTI: case MN_NOP:
+    case MN_CLI: case MN_CLV: case MN_SEC: case MN_SED:
+        break; /* plan 03-13: flow, flag instructions, BRK and RTI */
+    case MN_RMB0: case MN_RMB1: case MN_RMB2: case MN_RMB3: case MN_RMB4: case MN_RMB5: case MN_RMB6: case MN_RMB7:
+    case MN_SMB0: case MN_SMB1: case MN_SMB2: case MN_SMB3: case MN_SMB4: case MN_SMB5: case MN_SMB6: case MN_SMB7:
+    case MN_SAX: case MN_SAY: case MN_SXY: case MN_ST0: case MN_ST1: case MN_ST2: case MN_CSH: case MN_CSL: case MN_TMA:
+        break; /* plan 03-14: the HuC6280 additions */
+    case MN_TAI: case MN_TDD: case MN_TIA: case MN_TII: case MN_TIN:
+        break; /* the block-transfer plan (D-100); one step charges the table's 17 until then */
     }
     if (taken) {
         next = branch_target(next, op1);
-        cycles += row != NULL ? (uint32_t)row->taken : 0u;
+        cycles += taken_adder(mn);
     }
     inst->pc = (uint16_t)next;
     return cycles * (inst->speed != 0u ? DS_MCLK_PER_CYCLE_HIGH : DS_MCLK_PER_CYCLE_LOW);
