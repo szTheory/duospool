@@ -1681,6 +1681,20 @@ void kind_snapshot_refuse(const struct kase *k, struct ctx *c, char *got, size_t
 
                 accepted++;
                 check(c, ds_snapshot(t, check_buf, size, &w2) == (uint32_t)DS_SNAPREF_NONE && w2 == size && memcmp(check_buf, edit, size) == 0, "an accepted snapshot does not re-serialise to the same bytes");
+                if (strcmp(item, "time-2-63-1") == 0) { /* T-03-84: the largest machine time that restore accepts must not be one that a run can wrap: a deadline near 2^64 is refused, and a short run from there takes steps and ends below 2^64 */
+                    struct ds_run_request rq2;
+                    struct ds_run_result res2;
+                    uint64_t at = t->machine_time;
+
+                    memset(&rq2, 0, sizeof rq2);
+                    memset(&res2, 0, sizeof res2);
+                    rq2.struct_size = (uint32_t)sizeof rq2;
+                    rq2.until_mclk = UINT64_MAX;
+                    check(c, ds_run(t, &rq2, &res2) == (uint32_t)DS_RUN_REASON_REFUSED && res2.refusal == (uint32_t)DS_RUNREF_time_wrap && t->machine_time == at, "a run to a deadline of 2^64 - 1 from a restored time of 2^63 - 1 was not refused as time_wrap with the instance unchanged");
+                    memset(&res2, 0, sizeof res2);
+                    rq2.until_mclk = at + 200u;
+                    check(c, ds_run(t, &rq2, &res2) == (uint32_t)DS_RUN_REASON_UNTIL && res2.steps > 0u && t->machine_time > at && t->machine_time < UINT64_MAX, "a short run from a restored time of 2^63 - 1 did not take steps or wrapped the machine time");
+                }
             } else {
                 emit_err("snapshot_refuse: row %s: refused as %s\n", item, ds_snapshot_refusal_name(got_code));
             }
