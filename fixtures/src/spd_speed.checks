@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# spd_speed.checks - one row per CHECK of fixtures/src/spd_speed.s (D-125, plan 03-23). Columns separated by one TAB: check index (1-based, the entry number of the DCK1 table), slug, class tag, meaning.
+# Class tags: MAN:<page> (the literal is a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model> (the expected byte is computed in the guest, the table entry is an XOR mask of $00), ASSUMED:<LED-id>.
+# The timer is the clock: it steps every 3072 master clocks (H8-20, H8-21), so a loop of known CPU cycles is measured by the counter delta. Every row that reads the counter after a counted loop is E2 self-consistency (ER-3): the clocks per CPU cycle (12 at the low speed, community-reported;
+# 3 at the high speed, the manual's prescaler, LED-CPU-0003) and the access stamp rule (LED-CPU-0004) are inputs of the expected value, which the assembler writes from the instruction counts of the source. The facts that are the manual's are the power-up speed (H8-18) and the length of CSL and CSH (H8-25);
+# the ratio of the speeds, what a switch costs and at which speed it is charged, and the VDC and VCE penalty are modelling assumptions (LED-CPU-0006, LED-CPU-0017), shown here and not proven. The cycle counts and speed bytes of the same instructions are judged from the instruction trace by the case spd_speed_trace.
+# Rows 7 and 8 are tuned: the measured interval ends 12 master clocks past a step boundary under the old-speed charge of D-101 (CSH) and 6 clocks before one (CSL), so a core that charges the switching instruction at the new speed, or not at all, reads a different counter. Rows 9 to 12 compare a loop over a hardware-page window
+# with the same loop over a work-RAM cell: the difference in steps is the reads times the penalty times the clocks per cycle over 3072, whatever the phase of the timer. A pass is not a support claim (ER-4).
+id=12
+checks=13
+1	powerup-low-speed	MAN:H8-18	Low speed mode is set by the reset: the fixed loop (2435 CPU cycles to the read) measured before anything switches the speed takes nine steps of 3072 clocks at 12 clocks per cycle, so the counter reads 118 (E2: the 12 is community-reported)
+2	csh-loop-quarter	ASSUMED:LED-CPU-0006	E2: after CSH the same loop takes 3 clocks per cycle: two steps, the counter reads 125
+3	csl-back-to-low	ASSUMED:LED-CPU-0006	E2: after CSL the same loop is back to nine steps: the counter reads 118
+4	ratio-four	GUEST:speed-ratio-e2	E2: the steps at the low speed equal four times the steps at the high speed plus the remainder of the loop length over 256 (computed in the guest from the two measurements of checks 1 and 2)
+5	csh-twice-stays-high	ASSUMED:LED-CPU-0006	E2: a CSH at the high speed leaves the speed high: the loop reads 125
+6	csl-twice-stays-low	ASSUMED:LED-CPU-0006	E2: a CSL at the low speed leaves the speed low: the loop reads 118
+7	csh-charged-at-old-speed	ASSUMED:LED-CPU-0006	E2, tuned: CSH is 3 cycles at the old (low) speed (D-101): the interval from the start access to the read is 3084 clocks, one step, so the counter reads 126; charged at the new speed it would be 3057 (127), with no switch 7872 (125)
+8	csl-charged-at-old-speed	ASSUMED:LED-CPU-0006	E2, tuned: CSL is 3 cycles at the old (high) speed: the interval is 3066 clocks, no step, so the counter reads 127; charged at the new speed it would be 3093 (126)
+9	penalty-vdc-low	ASSUMED:LED-CPU-0017	E2: 256 reads of the VDC window take one step more than the same loop over RAM at the low speed (one extra cycle of 12 clocks each, D-107)
+10	penalty-vdc-high	ASSUMED:LED-CPU-0017	E2: 1024 reads of the VDC window at the high speed take one step more (the extra cycle is at the speed in force, 3 clocks); a penalty charged at the low speed would give four
+11	penalty-vce-low	ASSUMED:LED-CPU-0017	E2: the VCE window carries the same penalty: one step more for 256 reads at the low speed
+12	penalty-psg-none	ASSUMED:LED-CPU-0017	E2: the PSG window (physical $1FE800, the first address after the VCE window) is outside the penalty range: no step more
+13	probe-ran-four-inx	MAN:H8-25	CSL and CSH are one byte each (H8-25): four INX in the probe sequence, two of them after a CSH and two after a CSL, leave X = 4

@@ -179,3 +179,7 @@ irq_stim_refuse_state
 irq_stim_refusal_coverage
 digest_stream_irq
 digest_model_irq_i_sample_differs
+spd_speed
+mutate_sweep_spd_speed
+spd_speed_trace
+observer_tim_timer

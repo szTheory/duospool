@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The speed byte and the machine time of the switching instructions, from the instruction trace (plan 03-23; D-101, ER-2, ER-7, T-03-43; the committed check that turns red when CSH or CSL does nothing): kind cycle_probe runs the authored spd-speed fixture with an instruction sink and, for each item
+# PC:OPCODE:CYCLES:SPEED, finds the record of the instruction by the pc and opcode that the ca65 listing gives (order and addresses are independent of the core), asserts that the speed byte of that record is the speed in force before the instruction, and that the start stamp of the next record minus its own equals
+# CYCLES times the master clocks per cycle of that speed (12 low, 3 high, written as literals by the kind). The record holds the state BEFORE the instruction, so the first CSH is at L and the INX behind it at H (D-101: three cycles at the old speed, the new speed from the next instruction), CSH at the high speed
+# and CSL at the low speed change nothing, and the first item is the SEI at the reset address, which runs at the power-up low speed (H8-18). The page literals: SEI 2 cycles (S8-77), INX 2 (S8-49), CSH and CSL 3 (the H8-25 map cells; the software manual has no page for them). Addresses: $E000 is the reset code, $E100 the probe
+# (fixtures/src/spd_speed.s pads the code window and an .assert pins it): CSH $E100, INX $E101, CSH $E102, INX $E103, CSL $E104, INX $E105, CSL $E106, INX $E107. The run is stopped by until_mclk soon after the probe so that the sink does not overflow (lost != 0 would be a harness fault): the timer loops of the
+# fixture come after the probe and are judged by spd_speed. What is measured is the core's own charged time against page literals; no timer is involved here. The cycle count of a CSH or CSL that actually changes the speed beyond its own three is the constant speed_switch_extra_cycles (LED-CPU-0006, open):
+# this case asserts that it is zero. Evidence tier E0; the word pass is not a support claim.
+id = "spd_speed_trace"
+kind = "cycle_probe"
+fixture = "none"
+request = ""
+expect = "rom=spd-speed;0xE000:0x78:2:L;0xE100:0xD4:3:L;0xE101:0xE8:2:H;0xE102:0xD4:3:H;0xE103:0xE8:2:H;0xE104:0x54:3:H;0xE105:0xE8:2:L;0xE106:0x54:3:L;0xE107:0xE8:2:L"
+meaning = "In the instruction trace of the spd_speed fixture the first instruction runs at the low speed, CSH and CSL cost 3 cycles at the speed in force before them, the next instruction runs at the new speed, and a switch to the speed already in force changes nothing"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 100000

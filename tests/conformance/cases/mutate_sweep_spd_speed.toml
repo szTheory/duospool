@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Mutation sweep of the spd_speed fixture (plan 03-23; D-126, ER-3, ER-7, FIX-03): the built image of fixtures/src/spd_speed.s is loaded once, its DCK1 literal table is found at file offset $1000, and for each of the 13 checks the value byte of its entry (the expected literal, or the XOR mask of $00 of a GUEST
+# check) is XORed with $FF in a fresh in-memory copy that is booted and run in this same process. The unmutated image must pass first. Each mutation must flip exactly its own check to $46 and leave the others $50: a check whose literal can be changed without flipping it is vacuous and the case is guest_failure.
+# spd_speed has no observe row, so there is nothing to exclude. The sweep covers every row, the E2 rows that read the counter after counted loops included: it shows that each literal is compared, not that the literal is right (the in-guest timer rows are E2 self-consistency, ER-3).
+# The sweep runs under the default power-on policy only. Evidence tier E0 (a mechanism check of the checks themselves): no accuracy, CPU-speed or cycle-accuracy claim, and the word pass is not a support claim.
+id = "mutate_sweep_spd_speed"
+kind = "mutate_sweep"
+fixture = "authored:spd-speed"
+request = ""
+expect = "id=12"
+meaning = "Changing the expected literal of any one of the 13 spd_speed checks flips exactly that check to fail and no other, so none of the 13 checks is vacuous"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+checks = 13
