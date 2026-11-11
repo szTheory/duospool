@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# ds_run refusal run.memory_invalid (plan 03-10; D-93, D-119, WR-02 extended, T-03-29, I4): an instruction sink whose memory the call owns or cannot use. Nine variants after the boot of the authored ds-proto has run past 600 master clocks:
+# (1) record memory inside the instance's work RAM, (2) inside the instance's copy of the content (the host content buffer itself is not known to ds_run, which keeps no pointer to it, so the machine's own ROM image stands for the content),
+# (3) over the request, (4) the record memory is the sink struct itself (header overlap), (5) the sink struct lies inside the instance, (6) a misaligned record pointer, (7) a NULL record pointer with a nonzero capacity,
+# (8) a record range that would wrap the address space, (9) record memory over the result struct. Each is refused with 0 steps and overshoot 0 and the instance (raw bytes and digest) is the same before and after.
+# Evidence tier E0 (repeatability and a literal): the refusal names and the non-mutation rule are the specification of this plan, not a hardware claim.
+id = "run_refuse_memory_invalid"
+kind = "run_refuse"
+fixture = "none"
+request = ""
+expect = "rom=ds-proto;refuse=memory_invalid"
+meaning = "A ds_run request whose instruction sink overlaps the instance, the request, the result or itself, or is misaligned or wraps the address space, is refused as run.memory_invalid and leaves the instance byte-identical"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

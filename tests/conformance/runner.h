@@ -267,6 +267,9 @@ void observe_cover(struct ctx *t, const struct guest_expect *e, const struct obs
 /* the observed byte of each observe row against its item (only when the block is judged pass) */
 void observe_judge(struct ctx *t, const uint8_t *b, const struct guest_expect *e, const struct obs_list *ol);
 
+/* the observer kinds (obskinds.c, plan 03-10) */
+void kind_insn_sink_shapes(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+
 /* the mutation sweep (sweepkinds.c, plan 03-10): every literal of the DCK1 table of a built image is flipped in an in-memory copy and must flip exactly its own check */
 void kind_mutate_sweep(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 /* the NAME of a fixture key authored:NAME (0 on success; NAME is [a-z0-9-]) and the recording of a run for the machine_time and stop tail of a RESULT line */

@@ -201,14 +201,17 @@ enum ds_run_refusal {
 /* "run.NAME" for a run refusal number, "ok" for DS_RUNREF_NONE, NULL for a number that is not a member */
 const char *ds_run_refusal_name(uint32_t number);
 
-/* the run request: an absolute deadline in master clocks, never a budget (D-93); insn and dev are the observer sinks and must be NULL until the sink plans */
+/* the instruction sink of ds_obs.h (plan 03-10); the device-register sink is not built yet (plan 03-19) and its pointer stays untyped */
+struct ds_insn_sink;
+
+/* the run request: an absolute deadline in master clocks, never a budget (D-93); insn is the caller-owned instruction sink (NULL = none, ds_obs.h), dev the device-register sink, which must be NULL until plan 03-19 */
 struct ds_run_request {
     uint32_t struct_size; /* sizeof(struct ds_run_request) */
     uint32_t reserved;    /* must be 0 */
     uint64_t until_mclk;
     ds_stop_fn stop; /* NULL never stops; checked before the first step and after every step */
     void *stop_ctx;
-    void *insn;
+    struct ds_insn_sink *insn;
     void *dev;
 };
 
@@ -226,7 +229,7 @@ struct ds_run_result {
  * Run the machine in whole instructions until machine time reaches until_mclk (UNTIL) or the stop callback holds (CALLBACK). A deadline at or
  * below the current machine time returns UNTIL with zero steps. Stops only fall between steps, so the end time can pass the deadline by less
  * than ds_max_step_mclk(). No state lives outside the instance between steps: run(N) then run(M) equals run(M) from the start (D-92).
- * A NULL instance or request, a wrong struct_size, a nonzero reserved, a non-NULL sink and a deadline that would wrap machine time are
+ * A NULL instance or request, a wrong struct_size, a nonzero reserved, a non-NULL dev sink, an insn sink that overlaps the call's own memory or is misaligned (memory_invalid) and a deadline that would wrap machine time are
  * refused with REFUSED and a refusal code; the instance is then unchanged. Returns the reason, also written to result when it is not NULL.
  */
 uint32_t ds_run(struct ds_instance *inst, const struct ds_run_request *request, struct ds_run_result *result);
@@ -236,7 +239,7 @@ uint64_t ds_max_step_mclk(void);
 
 /* the CPU core (cpu.c): reset through the vector at logical $FFFE/$FFFF with MPR7 = $00 at machine_time 0, and one instruction per step */
 void ds_cpu_reset(struct ds_instance *inst);
-uint32_t ds_cpu_step(struct ds_instance *inst); /* executes one instruction and returns the master clocks it took */
+uint32_t ds_cpu_step(struct ds_instance *inst); /* executes one instruction and returns the master clocks it took (ds_cpu_step_obs of ds_obs.h adds the observer hook) */
 uint32_t ds_cpu_op_max_cycles(uint32_t opcode); /* the longest one opcode can take in CPU cycles: its table count plus every adder that can apply (opcode is masked to 8 bits) */
 
 /* the bus choke point (cpu.c until plan 03-16 moves it into bus.c): every CPU access translates through the MPRs (D-102) */

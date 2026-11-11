@@ -8,5 +8,5 @@
 # EXPECT must come out guest_failure on the toy, or they prove nothing about sharing.
 tag=rule-shared-counter
 file=src/core/run.c
-anchor=inst->machine_time = inst->machine_time + (uint64_t)ds_cpu_step(inst);
-replace={ static uint64_t shared_n = 0u; inst->machine_time = inst->machine_time + (uint64_t)ds_cpu_step(inst) + (uint64_t)(++shared_n % 5u == 0u); }
+anchor=inst->machine_time = inst->machine_time + (uint64_t)ds_cpu_step_obs(inst, obs);
+replace={ static uint64_t shared_n = 0u; inst->machine_time = inst->machine_time + (uint64_t)ds_cpu_step_obs(inst, obs) + (uint64_t)(++shared_n % 5u == 0u); }

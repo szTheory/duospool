@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The instruction sink changes nothing (plan 03-10; D-119, D-131, CORE-06 first slice, T-03-29, T-03-30): the authored ds-proto is run to its deadline with no sink (the reference), then again with a caller-owned insn sink of
+# capacity 0, 1, 4, 64, 4096 and 131072 records, each clean and each with the header and the record memory poisoned with $A5 (and a non-NULL record pointer at capacity 0). Every run must end with the reference machine time, steps,
+# overshoot and digest, the header must read count = min(steps, capacity), lost = steps - count, seq = steps, every stored record must equal the state before its instruction (kept by a separate stepwise run, decoded by hand
+# from little-endian bytes, the spare bytes zero), and the core must write nothing else: not the record memory past the count, not the guard bytes, and it must never read the poisoned header. Drop-newest is the only overflow policy.
+# Evidence tier E0 (repeatability and non-interference): the core is compared with itself, so this is not an oracle for what an instruction does; no accuracy or compatibility claim.
+id = "insn_sink_shapes"
+kind = "insn_sink_shapes"
+fixture = "none"
+request = ""
+expect = "rom=ds-proto;caps=0,1,4,64,4096,131072"
+meaning = "An instruction sink of capacity 0, 1, 4, 64, 4096 or 131072 records, clean or poisoned, leaves the run result and digest of ds-proto unchanged and holds exactly the pre-instruction states with drop-newest and a lost count"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000

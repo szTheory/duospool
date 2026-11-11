@@ -16,6 +16,7 @@
 
 #include "ds_core.h"
 #include "ds_mapper.h"
+#include "ds_obs.h"
 
 /* processor status bits (H8-4): N V T B D I Z C; B exists only on the stack, so it has no mask here */
 #define P_N 0x80u
@@ -262,7 +263,8 @@ static int has_ea(uint32_t mode)
     return mode == (uint32_t)AM_ABS || mode == (uint32_t)AM_ABSX || mode == (uint32_t)AM_ABSY;
 }
 
-uint32_t ds_cpu_step(struct ds_instance *inst)
+/* one instruction; log is the instruction sink writer of the running ds_run call or NULL (plan 03-10): the hook is called once per executed instruction with the state before it runs (D-119) */
+uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
 {
     uint32_t pc = inst->pc;
     uint8_t opcode = ds_bus_read(inst, inst->pc);
@@ -283,6 +285,7 @@ uint32_t ds_cpu_step(struct ds_instance *inst)
     int taken = 0;
     uint32_t i;
 
+    ds_obs_insn(log, inst, opcode); /* a void hook over a const instance: the observer cannot change the machine (D-119) */
     inst->p = (uint8_t)((uint32_t)inst->p & ~P_T); /* T is reset in the fetch cycle of every instruction (H8-5) */
     switch ((enum ds_mn)mn) {
     case MN_SEI:
@@ -429,4 +432,9 @@ uint32_t ds_cpu_step(struct ds_instance *inst)
     }
     inst->pc = (uint16_t)next;
     return cycles * (inst->speed != 0u ? DS_MCLK_PER_CYCLE_HIGH : DS_MCLK_PER_CYCLE_LOW);
+}
+
+uint32_t ds_cpu_step(struct ds_instance *inst)
+{
+    return ds_cpu_step_obs(inst, NULL);
 }

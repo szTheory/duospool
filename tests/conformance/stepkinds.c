@@ -36,6 +36,7 @@
 #include <string.h>
 
 #include "ds_core.h"
+#include "ds_obs.h"
 #include "ds_serial.h"
 #include "runner.h"
 
@@ -474,16 +475,28 @@ void kind_run_chunk_sum(const struct kase *k, struct ctx *c, char *got, size_t g
 /* ---- kind run_refuse ---- */
 
 #define RR_SINK_BYTES 64u
+#define RR_REC_RECORDS 4u
 #define RR_MACHINE_TIME_FIRST 600u /* the boot is run to this deadline first, so the instance is not at its boot state */
 
 static unsigned char rr_observed[DS_RUNREF_SLOTS];
 static unsigned char rr_sink_a[RR_SINK_BYTES]; /* valid buffers that overlap nothing: the refusal must not depend on a bad pointer (W6) */
 static unsigned char rr_sink_b[RR_SINK_BYTES];
+/* a valid instruction sink (plan 03-10): the struct and 8-byte aligned record memory of RR_REC_RECORDS records, overlapping nothing */
+static struct ds_insn_sink rr_insn;
+static union {
+    uint64_t align;
+    unsigned char b[RR_REC_RECORDS * DS_INSN_RECORD_BYTES];
+} rr_rec;
 
-/* one refused call on instance arg (the live block w, or NULL) with request rq (or NULL): the refusal, the result fields and the unchanged instance */
-static void rr_call(struct ctx *c, struct ds_instance *w, const struct ds_instance *inst, struct ds_instance *arg, const struct ds_run_request *rq, uint32_t code)
+/*
+ * One refused call on instance arg (the live block w, or NULL) with request rq (or NULL): the refusal, the result fields and the unchanged instance. res is the result struct of the first call;
+ * with again set the call is repeated with a NULL result (a refusal that does not depend on the result struct does not change).
+ */
+static void rr_call_ex(struct ctx *c, struct ds_instance *w, const struct ds_instance *inst, struct ds_instance *arg, const struct ds_run_request *rq, uint32_t code, struct ds_run_result *rp,
+                       int again)
 {
-    struct ds_run_result res;
+    struct ds_run_result res_local;
+    struct ds_run_result *res = rp != NULL ? rp : &res_local;
     uint8_t before[DS_DIGEST_BYTES];
     uint8_t after[DS_DIGEST_BYTES];
     size_t size = ds_instance_size();
@@ -498,20 +511,27 @@ static void rr_call(struct ctx *c, struct ds_instance *w, const struct ds_instan
     }
     memcpy(copy, w, size);
     check(c, ds_digest(inst, before) == 0u, "the digest of the instance before the refused call was refused");
-    memset(&res, 0xAA, sizeof res);
-    reason = ds_run(arg, rq, &res);
-    check(c, reason == (uint32_t)DS_RUN_REASON_REFUSED && res.reason == (uint32_t)DS_RUN_REASON_REFUSED, "a malformed run request was not refused");
-    check(c, res.refusal == code, "the run refusal code differs from the one the row names");
+    memset(res, 0xAA, sizeof *res);
+    reason = ds_run(arg, rq, res);
+    check(c, reason == (uint32_t)DS_RUN_REASON_REFUSED && res->reason == (uint32_t)DS_RUN_REASON_REFUSED, "a malformed run request was not refused");
+    check(c, res->refusal == code, "the run refusal code differs from the one the row names");
     check(c, name != NULL && strncmp(name, "run.", 4u) == 0, "a run refusal does not print as run.NAME");
-    check(c, res.steps == 0u && res.overshoot == 0u && res.pad == 0u && res.stop_point == (uint32_t)DS_STOP_INSTRUCTION, "a refused call reported steps, overshoot or a stop point");
-    check(c, res.machine_time == (arg != NULL ? now : UINT64_C(0)), "a refused call reported a machine time other than the instance's");
-    if (res.refusal < (uint32_t)DS_RUNREF_SLOTS) {
-        rr_observed[res.refusal] = 1u;
+    check(c, res->steps == 0u && res->overshoot == 0u && res->pad == 0u && res->stop_point == (uint32_t)DS_STOP_INSTRUCTION, "a refused call reported steps, overshoot or a stop point");
+    check(c, res->machine_time == (arg != NULL ? now : UINT64_C(0)), "a refused call reported a machine time other than the instance's");
+    if (res->refusal < (uint32_t)DS_RUNREF_SLOTS) {
+        rr_observed[res->refusal] = 1u;
     }
-    check(c, ds_run(arg, rq, NULL) == (uint32_t)DS_RUN_REASON_REFUSED, "a refused call with a NULL result did not return REFUSED");
+    if (again) {
+        check(c, ds_run(arg, rq, NULL) == (uint32_t)DS_RUN_REASON_REFUSED, "a refused call with a NULL result did not return REFUSED");
+    }
     check(c, memcmp(copy, w, size) == 0, "a refused ds_run changed the instance bytes");
     check(c, ds_digest(inst, after) == 0u && memcmp(before, after, DS_DIGEST_BYTES) == 0, "a refused ds_run changed the instance digest");
     free(copy);
+}
+
+static void rr_call(struct ctx *c, struct ds_instance *w, const struct ds_instance *inst, struct ds_instance *arg, const struct ds_run_request *rq, uint32_t code)
+{
+    rr_call_ex(c, w, inst, arg, rq, code, NULL, 1);
 }
 
 static void rr_base_request(struct ds_run_request *rq, uint64_t until)
@@ -576,14 +596,62 @@ static void rr_variants(struct ctx *c, const char *code_name, struct ds_instance
     } else if (strcmp(code_name, "sink_unsupported") == 0) {
         unsigned i;
 
-        /* the dev sink alone, the insn sink alone, both: each points at a valid buffer that overlaps neither the instance nor the request (W6) */
-        for (i = 0u; i < 3u; i++) {
+        /* the dev sink alone, and the dev sink beside a valid insn sink (W6): each points at a valid buffer that overlaps neither the instance nor the request. The insn sink alone is accepted since plan 03-10. */
+        rr_insn.records = rr_rec.b;
+        rr_insn.capacity = RR_REC_RECORDS;
+        for (i = 0u; i < 2u; i++) {
             rr_base_request(&rq, until);
-            rq.insn = i != 0u ? (void *)rr_sink_a : NULL;
-            rq.dev = i != 1u ? (void *)rr_sink_b : NULL;
+            rq.insn = i != 0u ? &rr_insn : NULL;
+            rq.dev = (void *)rr_sink_b;
             rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_sink_unsupported);
             (*calls)++;
         }
+        (void)rr_sink_a;
+    } else if (strcmp(code_name, "memory_invalid") == 0) {
+        /* an insn sink whose memory the call owns or cannot use is refused with the instance byte-identical (plan 03-10; D-93, D-119, I4) */
+        struct ds_insn_sink sink;
+        struct ds_run_result own;
+        uintptr_t in_ram = ((uintptr_t)w->ram8k + (uintptr_t)(DS_INSN_ALIGN - 1u)) & ~(uintptr_t)(DS_INSN_ALIGN - 1u);
+        uintptr_t in_rom = ((uintptr_t)w->rom + (uintptr_t)(DS_INSN_ALIGN - 1u)) & ~(uintptr_t)(DS_INSN_ALIGN - 1u);
+        unsigned char saved[sizeof sink];
+
+        /* 1: record memory inside the instance (the work RAM), 2: inside the instance's copy of the content (the machine's ROM image: the host content buffer itself is not known to ds_run), 3: over the request */
+        memset(&sink, 0, sizeof sink);
+        sink.capacity = 4u;
+        sink.records = (uint8_t *)in_ram;
+        rr_base_request(&rq, until);
+        rq.insn = &sink;
+        rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+        sink.records = (uint8_t *)in_rom;
+        rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+        sink.records = (uint8_t *)(void *)&rq;
+        sink.capacity = 2u;
+        rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+        /* 4: the record memory is the sink struct itself (header overlap), 5: the sink struct lies inside the instance (its bytes are restored afterwards) */
+        sink.records = (uint8_t *)(void *)&sink;
+        sink.capacity = 1u;
+        rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+        memcpy(saved, w->ram8k + (in_ram - (uintptr_t)w->ram8k), sizeof saved);
+        sink.records = rr_rec.b;
+        sink.capacity = RR_REC_RECORDS;
+        memcpy(w->ram8k + (in_ram - (uintptr_t)w->ram8k), &sink, sizeof sink);
+        rq.insn = (struct ds_insn_sink *)in_ram;
+        rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+        memcpy(w->ram8k + (in_ram - (uintptr_t)w->ram8k), saved, sizeof saved);
+        rq.insn = &sink;
+        /* 6: a misaligned record pointer, 7: a NULL record pointer with a nonzero capacity, 8: a record range that would wrap the address space */
+        sink.records = rr_rec.b + 4;
+        sink.capacity = 1u;
+        rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+        sink.records = NULL;
+        rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+        sink.records = (uint8_t *)(UINTPTR_MAX & ~(uintptr_t)(DS_INSN_ALIGN - 1u));
+        rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+        /* 9: record memory over the result struct (a call with a result, so the second call with a NULL result is skipped) */
+        sink.records = (uint8_t *)(void *)&own;
+        sink.capacity = 2u;
+        rr_call_ex(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid, &own, 0);
+        (*calls) += 9u;
     } else if (strcmp(code_name, "time_wrap") == 0) {
         uint64_t guard = ds_max_step_mclk();
         uint64_t saved = w->machine_time;
