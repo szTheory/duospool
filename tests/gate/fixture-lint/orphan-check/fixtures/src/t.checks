@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# fixture-lint control mini-root: orphan
+id=1
+checks=2
+1	one	MAN:H8-5	listed and used
+2	two	MAN:H8-5	listed, never used

@@ -866,6 +866,20 @@ stage_inventory_negatives() {
   return "$in_rc"
 }
 
+# fixture-lint (FIX-03, CPU-06; D-125 with R-3, ER-1, ER-4, CR-01; plan 03-37): the authored fixture sources under fixtures/src against the expected-value class
+# rules and the cite registry fixtures/lib/cites.txt. Static, so it is registered before the build: one .checks row per CHECK and no orphan, a MAN:, GUEST: or
+# ASSUMED: tag per row, counts equal to checks=, .include only from fixtures/lib or build, a z:, a: or < size hint on every literal operand below $100, RAW
+# lines cited, every MAN: and RAW: page in cites.txt. A dead stage 1 or stage 2 of the linter is FXL_STAGE_DEAD (exit 2), never a pass.
+stage_fixture_lint() {
+  checker sh "$here/fixture-lint" --cites fixtures/lib/cites.txt
+}
+
+# fixture-lint-negatives (FIX-03, D-125; plan 03-37): every tests/gate/fixture-lint/<case>/ is a mini-root (fixtures/src/t.s, t.checks): ok-<case> must pass and every other
+# case must fail with exactly the code in its EXPECT, one directory per FXL code. A control that passes without its EXPECT met means the linter is broken.
+stage_fixture_lint_negatives() {
+  run_controls --ok-prefix --require-negative tests/gate/fixture-lint tests/gate/fixture-lint sh "$here/fixture-lint" --root @DIR@ --cites fixtures/lib/cites.txt @EXPECT@
+}
+
 # workflow (CI-01, D-61, D-62): the real CI definition, judged statically by scripts/workflow-check (permissions, the one pinned action, the
 # forbidden triggers, the checkout and shell settings, the gate step, the pull-request template line and the dependabot file). Static, so it
 # is registered before the build (D-60); it reads no file a build produces. actionlint is a one-off on a workflow change, not a stage.
@@ -1804,6 +1818,48 @@ selftest() {
     fi
   fi
 
+  # (y) the orphan rule of fixture-lint is what turns the orphan-check control red (T-03-17, plan 03-37): same shape as (r). The control, run with --expect
+  # FXL_ORPHAN_CHECK, is met on an unmutated copy (exit 0, EXPECT_OK); with the lines tagged rule-orphan deleted from the copy of the rules the code is no longer
+  # reported, so the same run must exit 1: the control flipped to broken.
+  if st_want mutation-fixture-lint-orphan; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    fxr="tests/gate/fixture-lint/orphan-check"
+    if sh "$cp_dir/fixture-lint" --root "$fxr" --cites fixtures/lib/cites.txt --expect FXL_ORPHAN_CHECK > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c 'rule-orphan' "$cp_dir/lib/fixture-lint-rules.awk" || true)
+    grep -v 'rule-orphan' "$cp_dir/lib/fixture-lint-rules.awk" > "$cp_dir/lib/fixture-lint-rules.mutated" || true
+    mv "$cp_dir/lib/fixture-lint-rules.mutated" "$cp_dir/lib/fixture-lint-rules.awk"
+    after=$(grep -c 'rule-orphan' "$cp_dir/lib/fixture-lint-rules.awk" || true)
+    if sh "$cp_dir/fixture-lint" --root "$fxr" --cites fixtures/lib/cites.txt --expect FXL_ORPHAN_CHECK > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -ge 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+      echo "SELFTEST mutation-fixture-lint-orphan PASS"
+    else
+      echo "SELFTEST mutation-fixture-lint-orphan FAIL"; failed=1
+    fi
+  fi
+
+  # (z) CR-01 for fixture-lint: a stage 1 that prints nothing (an emptied scratch copy of the line reader) must give FXL_STAGE_DEAD and exit 2, never a pass and never the
+  # exit 1 of a violation. The unmutated copy must pass on the clean control first, which shows the run is alive.
+  if st_want mutation-fixture-lint-dead-stage; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    fxr="tests/gate/fixture-lint/ok-fixture"
+    if sh "$cp_dir/fixture-lint" --root "$fxr" --cites fixtures/lib/cites.txt > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'STATUS fixture-lint ok' "$tmp/st.out"; then st_alive=1; fi
+    echo 'BEGIN { exit 0 }' > "$cp_dir/lib/fixture-lint-lex.awk"
+    if sh "$cp_dir/fixture-lint" --root "$fxr" --cites fixtures/lib/cites.txt > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$r" -eq 2 ] && grep -q 'FXL_STAGE_DEAD' "$tmp/st.out" && ! grep -q '^STATUS fixture-lint ok' "$tmp/st.out"; then
+      echo "SELFTEST mutation-fixture-lint-dead-stage PASS"
+    else
+      echo "SELFTEST mutation-fixture-lint-dead-stage FAIL (alive $st_alive, exit $r)"; failed=1
+    fi
+  fi
+
   # (x) CR-01: a gate script that pipes awk (or the hash tool) into another command reads the status of the last stage, so a program that dies
   # looks like "no violations". For every site that used to be the left side of a pipe, the script is run twice with a shim first on PATH. The
   # shim is the real awk except that it exits 2 when any argument contains the marker text of that one program, so exactly one awk call dies. The
@@ -1871,6 +1927,9 @@ selftest() {
       as_case core-boundary-allowlist 'STATUS core-boundary ok' "$as_dir" core-boundary.allow sh "$here/core-boundary-check" --root "$cb_ok"
       as_case core-boundary-undefined 'STATUS core-boundary ok' "$as_dir" nm.u sh "$here/core-boundary-check" --root "$cb_ok"
       as_case core-boundary-writable 'STATUS core-boundary ok' "$as_dir" nm.all sh "$here/core-boundary-check" --root "$cb_ok"
+      fl_ok="tests/gate/fixture-lint/ok-fixture"
+      as_case fixture-lint-stage1 'STATUS fixture-lint ok' "$as_dir" fixture-lint-lex sh "$here/fixture-lint" --root "$fl_ok" --cites fixtures/lib/cites.txt
+      as_case fixture-lint-stage2 'STATUS fixture-lint ok' "$as_dir" fixture-lint-rules sh "$here/fixture-lint" --root "$fl_ok" --cites fixtures/lib/cites.txt
       as_case audit-history-pairs 'audit-history: clean' "$as_dir" '$1, $3' sh "$here/audit-history" --allow "$tmp/selftest/awk-audit.allow" "$as_repo"
       as_case audit-history-tree-paths 'audit-history: clean' "$as_dir" 'split($1, m' sh "$here/audit-history" --allow "$tmp/selftest/awk-audit.allow" "$as_repo"
       as_case audit-history-hashes 'audit-history: clean' "$as_dir" '{ print $1 }' sh "$here/audit-history" --allow "$tmp/selftest/awk-audit.allow" "$as_repo"
@@ -1993,6 +2052,8 @@ run_stage rights-negatives stage_rights_negatives
 run_stage audit-synthetic stage_audit_synthetic
 run_stage inventory stage_inventory
 run_stage inventory-negatives stage_inventory_negatives
+run_stage fixture-lint stage_fixture_lint
+run_stage fixture-lint-negatives stage_fixture_lint_negatives
 run_stage workflow stage_workflow
 run_stage workflow-negatives stage_workflow_negatives
 run_stage docs-claims stage_docs_claims

@@ -1,0 +1,52 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# cites.txt - the cite registry of the fixture linter (scripts/fixture-lint; plan 03-37; D-125, ER-1, ER-9). One row per manual page that a fixture may name
+# in a MAN:<label> class tag or in a ; RAW:<label> comment. Columns separated by one TAB: label, flag, verifier, date, fact.
+#   label     H8-n (HuC6280 Hardware Manual, label n is PDF page n+3), S8-n (HuC6280 Software Manual, label n is PDF page n+2), CDBIOS-p28 (Hu7 CD BIOS Manual, printed page 28)
+#   flag      img = a person or agent read the numbers off the page image (ER-1); ocr = the OCR text layer only, so the page may back an ASSUMED-class check, never a supported entry
+#   verifier  who read it; date  the day of the read (YYYY-MM-DD); fact  a short numeric fact seen on the page, in the registrar's own words
+# ER-9: this file holds page labels and short numeric facts only. No manual text, scan or image is committed anywhere in this repository.
+# The labels follow the corrected cites of the Phase 3 research errata: ST0 to ST2 are on H8-8 (not H8-3), there is no H8-26 (the hardware manual ends at H8-25), and the block-transfer
+# cycle count 17+6x is cited from H8-6 plus S8-88 and S8-89 (the H8-25 footnote prints 17+16z, a misprint). Source: 03-RESEARCH.md, Manual Page Image Verification.
+# A later plan may add the rule that an img flag is required behind a supported ledger entry and the ledger-id rule for ASSUMED tags; neither is evaluated by the linter yet.
+H8-1	img	gsd-phase-researcher	2026-11-10	234 instructions in 89 groups; 138 ns bus cycle rating; 276 ns minimum instruction cycle; 256-byte stack; 2M physical, 64K logical
+H8-3	img	gsd-phase-researcher	2026-11-10	reset reads physical $001FFE and $001FFF; stack is logical $2100-$21FF; BRK pushes BRK+2; not the ST0-ST2 page
+H8-4	img	gsd-phase-researcher	2026-11-10	P layout N V T B D I Z C; I set and D reset by reset, interrupt and BRK; decimal adds one cycle; carry prose says borrow, use the formula pages
+H8-5	img	gsd-phase-researcher	2026-11-10	B pushed 0 for IRQ2 and 1 for BRK; B reads 1 through PHP; T reads 0 through PHP; BIT TRB TSB TST take N from bit 7 and V from bit 6
+H8-6	img	gsd-phase-researcher	2026-11-10	block transfer: length 0 means 65536; six bus cycles per byte; 17+6x cycles; A X Y restored; three stack bytes; Table 2-1-1 source and destination modes
+H8-7	img	gsd-phase-researcher	2026-11-10	Table 2-2-1: top three logical address bits select MPR0 to MPR7; the MPR byte supplies physical A13 to A20
+H8-8	img	gsd-phase-researcher	2026-11-10	reset sets MPR7 to $00 only; TAM second byte has one bit per MPR; ST0 ST1 ST2 drive A1,A0 = 00, 10, 11 with CE7 (Table 2-2-3); the ST page
+H8-9	img	gsd-phase-researcher	2026-11-10	chip enables: CE7 $1FE000, CEK $1FE400, CEP $1FE800, CET $1FEC00, CEIO $1FF000, CECG $1FF400, CER $1F0000-$1F7FFF
+H8-10	img	gsd-phase-researcher	2026-11-10	64K logical, 2M physical, 256 blocks $00-$FF; MPR1 = $F8 puts $1F0000-$1F1FFF at logical $2000-$3FFF
+H8-11	img	gsd-phase-researcher	2026-11-10	continuation of the bank and block example for MPR1 = $F8
+H8-12	img	gsd-phase-researcher	2026-11-10	interrupt inputs sampled in the last bus cycle; NMI edge sensed, vector $FFFC; entry pushes PCH, PCL, P; B pushed 0; I set; D reset
+H8-13	img	gsd-phase-researcher	2026-11-10	priority RESET, NMI, BRK, TIMER, IRQ1, IRQ2; vectors FFF6 IRQ2 and BRK, FFF8 IRQ1, FFFA timer, FFFC NMI, $001FFE reset
+H8-14	img	gsd-phase-researcher	2026-11-10	timer vector $FFFA; TIQ reset by a write; wording conditions TIQ set on I reset and TIQD 0 (differs from H8-15 and H8-21)
+H8-15	img	gsd-phase-researcher	2026-11-10	request register bit 0 IRQ2, bit 1 IRQ1, bit 2 TIQ; TIQ set by a borrow, reset by a write; reset value 0; A1,A0 = 1,1
+H8-16	img	gsd-phase-researcher	2026-11-10	disable register bit 0 IRQ2D, bit 1 IRQ1D, bit 2 TIQD; 1 disables; all 0 after reset; A1,A0 = 1,0
+H8-17	img	gsd-phase-researcher	2026-11-10	BRK vector $FFF6; B pushed 1; I set; D reset; return address BRK+2
+H8-18	img	gsd-phase-researcher	2026-11-10	reset: I set, D reset, MPR7 $00, timer stopped, disable register reset, TIQ reset, low speed, port O driven high, T reset
+H8-19	img	gsd-phase-researcher	2026-11-10	read cycle at $1FF000-$1FF3FF reads port K; write cycle outputs port O
+H8-20	img	gsd-phase-researcher	2026-11-10	timer: 7-bit downcounter and 7-bit reload; prescaler OSC1 / 3 then / 1024; control bit 0 start and stop
+H8-21	img	gsd-phase-researcher	2026-11-10	borrow sets TIQ, CPU requested if TIQD 0 and I 0; reload on borrow; 6.992 kHz tick; interval 143 usec to 18.3 msec
+H8-22	img	gsd-phase-researcher	2026-11-10	figures 2-7-1 and 2-7-2: downcounter loaded when control bit 0 changes from 0 to 1
+H8-24	img	gsd-phase-researcher	2026-11-10	device table: VDC at logical 0000, 0002, 0003 for ST0 ST1 ST2; $1402 disable, $1403 request; RAM $1F0000-$1F7FFF through MPR1 = $F8-$FB
+H8-25	img	gsd-phase-researcher	2026-11-10	instruction map: CSL (54) and CSH (D4) 1 byte 3 cycles; ST0-ST2 2 bytes 4; TAMi 2 bytes 5; TMAi 2 bytes 4; BSR 2 bytes 8; BRK 8; RTI 7; footnote prints 17+16z
+S8-11	img	gsd-phase-researcher	2026-11-10	zero page high byte is always logical $20, also for zero page indexed modes
+S8-17	img	gsd-phase-researcher	2026-11-10	ADC: immediate 2 bytes 2 cycles; zero page 4; absolute 5; T=1 adds 3 cycles; D=1 adds 1 cycle and V is unaffected; flags N V Z C
+S8-20	img	gsd-phase-researcher	2026-11-10	BBRi 3 bytes 6 cycles, 2 more when taken; machine code 10i+F
+S8-30	img	gsd-phase-researcher	2026-11-10	BRK $00, 1 byte, 8 cycles; pushes PCH, PCL, P; B pushed 1; T=0 B=1 D=0 I=1
+S8-70	img	gsd-phase-researcher	2026-11-10	RTI $40, 1 byte, 7 cycles; P pulled first, then PCL, PCH
+S8-74	img	gsd-phase-researcher	2026-11-10	SBC: A - M - not C; same cycle table as ADC; D=1 adds 1 cycle
+S8-80	img	gsd-phase-researcher	2026-11-10	ST0 $03 nn, 2 bytes, 4 cycles; CE7 asserted, (A1,A0) = (0,0)
+S8-88	img	gsd-phase-researcher	2026-11-10	TAI flowchart: Y, A, X saved; first byte post-increment, second post-decrement
+S8-89	img	gsd-phase-researcher	2026-11-10	TAI $F3, 7 bytes, 17+6x cycles, T=0; X, A, Y popped at the end
+S8-90	img	gsd-phase-researcher	2026-11-10	TAMi $53, operand 2^i, 2 bytes, 5 cycles
+S8-101	img	gsd-phase-researcher	2026-11-10	TMAi $43, 2 bytes, 4 cycles
+S8-103	img	gsd-phase-researcher	2026-11-10	TSB $04 zero page 6 cycles, $0C absolute 7 cycles; N from memory bit 7, V from bit 6
+S8-104	img	gsd-phase-researcher	2026-11-10	TST $83 $A3 3 bytes 7 cycles, $93 $B3 4 bytes 8 cycles; operand order opcode, immediate, address
+CDBIOS-p28	img	gsd-phase-researcher	2026-11-10	EX_JOYSNS output byte: bit 0 ONE, 1 TWO, 2 SELECT, 3 RUN, 4 UP, 5 RIGHT, 6 DOWN, 7 LEFT; 1 is on (printed page 28)
+S8-7	ocr	gsd-phase-researcher	2026-11-10	instruction table 2-3-1 read from the OCR text layer only; not image-read
+S8-8	ocr	gsd-phase-researcher	2026-11-10	instruction table 2-3-2 read from the OCR text layer only; not image-read
+S8-9	ocr	gsd-phase-researcher	2026-11-10	instruction table 2-3-3 read from the OCR text layer only; not image-read

@@ -1,0 +1,134 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# fixture-lint - the expected-value class linter for authored fixtures (FIX-03, CPU-06; plan 03-37; D-125 with the R-3 wording, ER-1, ER-4, CR-01).
+# It enforces the shape of fixtures/src/NAME.s and NAME.checks and the cite registry, not the meaning of any check: one .checks row per CHECK_LIT or
+# CHECK_GUEST and no orphan row, a class tag of MAN:<page>, GUEST:<model> or ASSUMED:<LED-id>, a checks= count equal to the rows, .include only from
+# fixtures/lib or build, an explicit size hint (z:, a: or <) on a literal operand below $100, RAW lines counted and cited, every MAN: and RAW: cite in cites.txt.
+# usage: fixture-lint [--expect CODE[,CODE...]] [--root DIR] [--cites FILE]
+#   --root DIR    the root that holds fixtures/src/ (default: the repository root)
+#   --cites FILE  the cite registry (default: fixtures/lib/cites.txt of this repository, whatever --root says)
+# Two stages, each writing to a file with its exit status tested (CR-01: no awk on the left of a pipe): scripts/lib/fixture-lint-lex.awk reads the sources
+# and prints an END sentinel, scripts/lib/fixture-lint-rules.awk requires it. A stage that died, or a stage 1 that printed no sentinel, is FXL_STAGE_DEAD (exit 2), never a pass.
+# Codes: FXL_ORPHAN_CHECK FXL_UNLISTED_CHECK FXL_BAD_CLASS FXL_COUNT FXL_INCLUDE_PATH FXL_SIZE_HINT FXL_RAW_UNCITED FXL_UNKNOWN_CITE (scripts/lib/fixture-lint-rules.awk).
+# stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then (clean) a line  FIXTURE_LINT fixtures=N checks=M raw=R  and  STATUS fixture-lint ok
+# stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
+# exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error (including FXL_STAGE_DEAD)
+set -eu
+LC_ALL=C; export LC_ALL
+here=$(cd "$(dirname "$0")" && pwd)
+
+usage() {
+  echo "usage: fixture-lint [--expect CODE[,CODE...]] [--root DIR] [--cites FILE]" >&2
+  exit 2
+}
+
+expect=""
+have_expect=0
+root=$(cd "$here/.." && pwd)
+cites="$root/fixtures/lib/cites.txt"
+while [ $# -gt 0 ]; do
+  case $1 in
+    --expect) [ $# -ge 2 ] || usage; expect=$2; have_expect=1; shift 2 ;;
+    --root) [ $# -ge 2 ] || usage; root=$2; shift 2 ;;
+    --cites) [ $# -ge 2 ] || usage; cites=$2; shift 2 ;;
+    *) usage ;;
+  esac
+done
+# an --expect that names no code would make a control assert nothing (WR-05): exit 2, never 0
+if [ "$have_expect" -eq 1 ] && [ -z "$(printf '%s' "$expect" | tr -d ', \t\r\n')" ]; then
+  echo "HARNESS_EMPTY_EXPECT --expect names no code" >&2
+  exit 2
+fi
+if [ ! -d "$root" ]; then
+  echo "HARNESS_NO_FILE $root" >&2
+  exit 2
+fi
+if [ ! -f "$cites" ]; then
+  echo "HARNESS_NO_FILE $cites" >&2
+  exit 2
+fi
+case $cites in /*) ;; *) cites="$(pwd)/$cites" ;; esac
+root=$(cd "$root" && pwd)
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+tab=$(printf '\t')
+
+# the cite registry: label TAB flag TAB verifier TAB date TAB fact, flag img or ocr, labels unique. A malformed registry is a harness error: a lint against a broken registry judges nothing.
+if ! awk -F'\t' '
+    /^#/ || /^[ \t]*$/ { next }
+    { n++ }
+    NF != 5 || $1 !~ /^[A-Za-z0-9][A-Za-z0-9-]*$/ || ($2 != "img" && $2 != "ocr") || $3 == "" || $4 !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/ || $5 == "" { bad = NR }
+    ($1 in seen) { bad = NR }
+    { seen[$1] = 1 }
+    END { exit (n > 0 && !bad) ? 0 : 1 }' "$cites"; then
+  echo "HARNESS_BAD_CITES $cites has no row, or a row that is not  LABEL TAB img|ocr TAB VERIFIER TAB YYYY-MM-DD TAB FACT  with a unique label" >&2
+  exit 2
+fi
+
+# the inputs: fixtures/src/*.s and *.checks, paths relative to the root. Nothing to lint is a harness error: a check of nothing never passes.
+cd "$root"
+: > "$tmp/files"
+for f in fixtures/src/*.s fixtures/src/*.checks; do
+  [ -f "$f" ] || continue
+  case $f in
+    *"$tab"*) echo "HARNESS_BAD_FILENAME a TAB in a file name" >&2; exit 2 ;;
+  esac
+  printf '%s\n' "$f" >> "$tmp/files"
+done
+if [ ! -s "$tmp/files" ]; then
+  echo "HARNESS_NO_FILE $root/fixtures/src holds no .s or .checks file: a lint of nothing never passes" >&2
+  exit 2
+fi
+set --
+while IFS= read -r f; do set -- "$@" "$f"; done < "$tmp/files"
+
+# stage 1 (a file, its status tested), then stage 2 (a file, its status tested). Either one failing is FXL_STAGE_DEAD.
+if awk -f "$here/lib/fixture-lint-lex.awk" "$@" > "$tmp/stage1" 2> "$tmp/stage1.err"; then :; else
+  echo "FXL_STAGE_DEAD stage 1 (fixture-lint-lex.awk) failed" >&2
+  exit 2
+fi
+if awk -v cites="$cites" -f "$here/lib/fixture-lint-rules.awk" "$tmp/stage1" > "$tmp/stage2" 2> "$tmp/stage2.err"; then :; else
+  echo "FXL_STAGE_DEAD stage 2 (fixture-lint-rules.awk) failed or found no END sentinel from stage 1" >&2
+  exit 2
+fi
+
+: > "$tmp/viol0"
+nsum=0
+fixtures=0; checks=0; raw=0
+while IFS="$tab" read -r tag a b c d; do
+  case $tag in
+    V) printf '%s\t%s\t%s\t%s\n' "$a" "$b" "$c" "$d" >> "$tmp/viol0" ;;
+    N) nsum=$((nsum + 1)); fixtures=$a; checks=$b; raw=$c ;;
+    *) echo "FXL_STAGE_DEAD unknown record $tag from stage 2" >&2; exit 2 ;;
+  esac
+done < "$tmp/stage2"
+# stage 2 always prints exactly one N record: its absence is a dead checker, not a pass
+if [ "$nsum" -ne 1 ]; then
+  echo "FXL_STAGE_DEAD stage 2 printed no summary record" >&2
+  exit 2
+fi
+sort -u "$tmp/viol0" > "$tmp/viol"
+
+if [ "$have_expect" -eq 1 ]; then
+  cut -f2 "$tmp/viol" > "$tmp/got.codes"
+  sort -u "$tmp/got.codes" | tr '\n' ',' | sed 's/,$//' > "$tmp/got"
+  printf '%s\n' "$expect" | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/,$//' > "$tmp/want"
+  if cmp -s "$tmp/got" "$tmp/want"; then
+    echo "EXPECT_OK"
+    exit 0
+  fi
+  echo "EXPECT_MISMATCH wanted '$(cat "$tmp/want")' got '$(cat "$tmp/got")'" >&2
+  cat "$tmp/viol" >&2
+  exit 1
+fi
+
+cat "$tmp/viol"
+if [ -s "$tmp/viol" ]; then
+  exit 1
+fi
+echo "FIXTURE_LINT fixtures=$fixtures checks=$checks raw=$raw"
+echo "STATUS fixture-lint ok"
+exit 0
