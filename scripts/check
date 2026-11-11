@@ -930,8 +930,9 @@ stage_fixture_lint() {
 
 # fixture-lint-negatives (FIX-03, D-125; plan 03-37): every tests/gate/fixture-lint/<case>/ is a mini-root (fixtures/src/t.s, t.checks): ok-<case> must pass and every other
 # case must fail with exactly the code in its EXPECT, one directory per FXL code. A control that passes without its EXPECT met means the linter is broken.
+# A mini-root without its own fixtures/lib/cites.txt or ledger/entries reads the registry and the ledger of this repository; the two ledger rules (plan 03-32) carry both inside the mini-root.
 stage_fixture_lint_negatives() {
-  run_controls --ok-prefix --require-negative tests/gate/fixture-lint tests/gate/fixture-lint sh "$here/fixture-lint" --root @DIR@ --cites fixtures/lib/cites.txt --tsv tests/oracle/huc6280-opcodes.tsv @EXPECT@
+  run_controls --ok-prefix --require-negative tests/gate/fixture-lint tests/gate/fixture-lint sh "$here/fixture-lint" --root @DIR@ --tsv tests/oracle/huc6280-opcodes.tsv @EXPECT@
 }
 
 # input-check (INP-02, INP-04; D-51, D-117, D-131; plan 03-28): the input scripts under tests/conformance/inputs against the schema rules (scripts/lib/input-rules.awk, the same rules file that conformance-flatten --inputs runs before a script reaches the runner). Static, so it is registered before the build: format,
@@ -2265,14 +2266,14 @@ selftest() {
     rm -rf "$cp_dir"
     cp -R "$here" "$cp_dir"
     fxr="tests/gate/fixture-lint/orphan-check"
-    if sh "$cp_dir/fixture-lint" --root "$fxr" --cites fixtures/lib/cites.txt --tsv tests/oracle/huc6280-opcodes.tsv --expect FXL_ORPHAN_CHECK > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    if sh "$cp_dir/fixture-lint" --root "$fxr" --cites fixtures/lib/cites.txt --ledger ledger/entries --tsv tests/oracle/huc6280-opcodes.tsv --expect FXL_ORPHAN_CHECK > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
     st_alive=0
     if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
     before=$(grep -c 'rule-orphan' "$cp_dir/lib/fixture-lint-rules.awk" || true)
     grep -v 'rule-orphan' "$cp_dir/lib/fixture-lint-rules.awk" > "$cp_dir/lib/fixture-lint-rules.mutated" || true
     mv "$cp_dir/lib/fixture-lint-rules.mutated" "$cp_dir/lib/fixture-lint-rules.awk"
     after=$(grep -c 'rule-orphan' "$cp_dir/lib/fixture-lint-rules.awk" || true)
-    if sh "$cp_dir/fixture-lint" --root "$fxr" --cites fixtures/lib/cites.txt --tsv tests/oracle/huc6280-opcodes.tsv --expect FXL_ORPHAN_CHECK > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if sh "$cp_dir/fixture-lint" --root "$fxr" --cites fixtures/lib/cites.txt --ledger ledger/entries --tsv tests/oracle/huc6280-opcodes.tsv --expect FXL_ORPHAN_CHECK > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
     if [ "$st_alive" -eq 1 ] && [ "$before" -ge 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
       echo "SELFTEST mutation-fixture-lint-orphan PASS"
     else
@@ -2287,18 +2288,82 @@ selftest() {
     rm -rf "$cp_dir"
     cp -R "$here" "$cp_dir"
     fxr="tests/gate/fixture-lint/unknown-mnemonic"
-    if sh "$cp_dir/fixture-lint" --root "$fxr" --cites fixtures/lib/cites.txt --tsv tests/oracle/huc6280-opcodes.tsv --expect FXL_UNKNOWN_MNEMONIC > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    if sh "$cp_dir/fixture-lint" --root "$fxr" --cites fixtures/lib/cites.txt --ledger ledger/entries --tsv tests/oracle/huc6280-opcodes.tsv --expect FXL_UNKNOWN_MNEMONIC > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
     st_alive=0
     if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
     before=$(grep -c 'rule-unknown-mnemonic' "$cp_dir/lib/fixture-lint-rules.awk" || true)
     grep -v 'rule-unknown-mnemonic' "$cp_dir/lib/fixture-lint-rules.awk" > "$cp_dir/lib/fixture-lint-rules.mutated" || true
     mv "$cp_dir/lib/fixture-lint-rules.mutated" "$cp_dir/lib/fixture-lint-rules.awk"
     after=$(grep -c 'rule-unknown-mnemonic' "$cp_dir/lib/fixture-lint-rules.awk" || true)
-    if sh "$cp_dir/fixture-lint" --root "$fxr" --cites fixtures/lib/cites.txt --tsv tests/oracle/huc6280-opcodes.tsv --expect FXL_UNKNOWN_MNEMONIC > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if sh "$cp_dir/fixture-lint" --root "$fxr" --cites fixtures/lib/cites.txt --ledger ledger/entries --tsv tests/oracle/huc6280-opcodes.tsv --expect FXL_UNKNOWN_MNEMONIC > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
     if [ "$st_alive" -eq 1 ] && [ "$before" -ge 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
       echo "SELFTEST mutation-fixture-lint-mnemonic PASS"
     else
       echo "SELFTEST mutation-fixture-lint-mnemonic FAIL (alive $st_alive, before $before, after $after, exit $r)"; failed=1
+    fi
+  fi
+
+  # (z6) the img-only rule of fixture-lint (plan 03-32, ER-1) is what turns the ocr-backs-supported control red: same shape as (y). Met on an unmutated copy (exit 0, EXPECT_OK); with the lines tagged
+  # rule-ocr-backs-supported deleted from the copy of the rules (the check-level and the entry-level statement) the code is no longer reported, so the same run must exit 1.
+  if st_want mutation-fixture-lint-ocr; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    fxr="tests/gate/fixture-lint/ocr-backs-supported"
+    if sh "$cp_dir/fixture-lint" --root "$fxr" --tsv tests/oracle/huc6280-opcodes.tsv --expect FXL_OCR_BACKS_SUPPORTED > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c 'rule-ocr-backs-supported' "$cp_dir/lib/fixture-lint-rules.awk" || true)
+    grep -v 'rule-ocr-backs-supported' "$cp_dir/lib/fixture-lint-rules.awk" > "$cp_dir/lib/fixture-lint-rules.mutated" || true
+    mv "$cp_dir/lib/fixture-lint-rules.mutated" "$cp_dir/lib/fixture-lint-rules.awk"
+    after=$(grep -c 'rule-ocr-backs-supported' "$cp_dir/lib/fixture-lint-rules.awk" || true)
+    if sh "$cp_dir/fixture-lint" --root "$fxr" --tsv tests/oracle/huc6280-opcodes.tsv --expect FXL_OCR_BACKS_SUPPORTED > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -ge 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+      echo "SELFTEST mutation-fixture-lint-ocr PASS"
+    else
+      echo "SELFTEST mutation-fixture-lint-ocr FAIL (alive $st_alive, before $before, after $after, exit $r)"; failed=1
+    fi
+  fi
+
+  # (z7) the ledger-id rule of fixture-lint (plan 03-32, D-125) is what turns the unknown-ledger-id control red: same shape as (y), with the lines tagged rule-unknown-ledger-id deleted.
+  if st_want mutation-fixture-lint-ledger-id; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    fxr="tests/gate/fixture-lint/unknown-ledger-id"
+    if sh "$cp_dir/fixture-lint" --root "$fxr" --cites fixtures/lib/cites.txt --ledger ledger/entries --ledger ledger/entries --tsv tests/oracle/huc6280-opcodes.tsv --expect FXL_UNKNOWN_LEDGER_ID > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c 'rule-unknown-ledger-id' "$cp_dir/lib/fixture-lint-rules.awk" || true)
+    grep -v 'rule-unknown-ledger-id' "$cp_dir/lib/fixture-lint-rules.awk" > "$cp_dir/lib/fixture-lint-rules.mutated" || true
+    mv "$cp_dir/lib/fixture-lint-rules.mutated" "$cp_dir/lib/fixture-lint-rules.awk"
+    after=$(grep -c 'rule-unknown-ledger-id' "$cp_dir/lib/fixture-lint-rules.awk" || true)
+    if sh "$cp_dir/fixture-lint" --root "$fxr" --cites fixtures/lib/cites.txt --ledger ledger/entries --ledger ledger/entries --tsv tests/oracle/huc6280-opcodes.tsv --expect FXL_UNKNOWN_LEDGER_ID > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -ge 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+      echo "SELFTEST mutation-fixture-lint-ledger-id PASS"
+    else
+      echo "SELFTEST mutation-fixture-lint-ledger-id FAIL (alive $st_alive, before $before, after $after, exit $r)"; failed=1
+    fi
+  fi
+
+  # (z8) CR-01 for the ledger reader of fixture-lint (plan 03-32): a reader whose END sentinel is removed from a scratch copy must give FXL_STAGE_DEAD and exit 2, never a pass. The unmutated copy must pass first.
+  if st_want mutation-fixture-lint-dead-ledger; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    fxr="tests/gate/fixture-lint/ok-fixture"
+    if sh "$cp_dir/fixture-lint" --root "$fxr" --cites fixtures/lib/cites.txt --ledger ledger/entries --ledger ledger/entries --tsv tests/oracle/huc6280-opcodes.tsv > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'STATUS fixture-lint ok' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c 'END { flush(); print "END" }' "$cp_dir/fixture-lint" || true)
+    sed 's/END { flush(); print "END" }/END { flush() }/' "$cp_dir/fixture-lint" > "$cp_dir/fixture-lint.mutated" || true
+    mv "$cp_dir/fixture-lint.mutated" "$cp_dir/fixture-lint"
+    after=$(grep -c 'END { flush(); print "END" }' "$cp_dir/fixture-lint" || true)
+    if sh "$cp_dir/fixture-lint" --root "$fxr" --cites fixtures/lib/cites.txt --ledger ledger/entries --ledger ledger/entries --tsv tests/oracle/huc6280-opcodes.tsv > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 2 ] && grep -q 'FXL_STAGE_DEAD' "$tmp/st.out" && ! grep -q '^STATUS fixture-lint ok' "$tmp/st.out"; then
+      echo "SELFTEST mutation-fixture-lint-dead-ledger PASS"
+    else
+      echo "SELFTEST mutation-fixture-lint-dead-ledger FAIL (alive $st_alive, before $before, after $after, exit $r)"; failed=1
     fi
   fi
 
@@ -2329,11 +2394,11 @@ selftest() {
     rm -rf "$cp_dir"
     cp -R "$here" "$cp_dir"
     fxr="tests/gate/fixture-lint/ok-fixture"
-    if sh "$cp_dir/fixture-lint" --root "$fxr" --cites fixtures/lib/cites.txt --tsv tests/oracle/huc6280-opcodes.tsv > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    if sh "$cp_dir/fixture-lint" --root "$fxr" --cites fixtures/lib/cites.txt --ledger ledger/entries --tsv tests/oracle/huc6280-opcodes.tsv > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
     st_alive=0
     if [ "$r0" -eq 0 ] && grep -qx 'STATUS fixture-lint ok' "$tmp/st.out"; then st_alive=1; fi
     echo 'BEGIN { exit 0 }' > "$cp_dir/lib/fixture-lint-lex.awk"
-    if sh "$cp_dir/fixture-lint" --root "$fxr" --cites fixtures/lib/cites.txt --tsv tests/oracle/huc6280-opcodes.tsv > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if sh "$cp_dir/fixture-lint" --root "$fxr" --cites fixtures/lib/cites.txt --ledger ledger/entries --tsv tests/oracle/huc6280-opcodes.tsv > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
     if [ "$st_alive" -eq 1 ] && [ "$r" -eq 2 ] && grep -q 'FXL_STAGE_DEAD' "$tmp/st.out" && ! grep -q '^STATUS fixture-lint ok' "$tmp/st.out"; then
       echo "SELFTEST mutation-fixture-lint-dead-stage PASS"
     else

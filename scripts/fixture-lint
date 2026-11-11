@@ -6,13 +6,14 @@
 # It enforces the shape of fixtures/src/NAME.s and NAME.checks and the cite registry, not the meaning of any check: one .checks row per CHECK_LIT or
 # CHECK_GUEST and no orphan row, a class tag of MAN:<page>, GUEST:<model> or ASSUMED:<LED-id>, a checks= count equal to the rows, .include only from
 # fixtures/lib or build, an explicit size hint (z:, a: or <) on a literal operand below $100, RAW lines counted and cited, every MAN: and RAW: cite in cites.txt.
-# usage: fixture-lint [--expect CODE[,CODE...]] [--root DIR] [--cites FILE] [--tsv FILE]
+# usage: fixture-lint [--expect CODE[,CODE...]] [--root DIR] [--cites FILE] [--ledger DIR] [--tsv FILE]
 #   --root DIR    the root that holds fixtures/src/ (default: the repository root)
-#   --cites FILE  the cite registry (default: fixtures/lib/cites.txt of this repository, whatever --root says)
+#   --cites FILE  the cite registry (default: fixtures/lib/cites.txt of the root when it has one, else of this repository; a control mini-root can carry its own registry, plan 03-32)
+#   --ledger DIR  the ledger entries whose status and FACT sources the evidence rules read (default: ledger/entries of the root when it has that directory, else of this repository; plan 03-32)
 #   --tsv FILE    the opcode table whose mnemonics a fixture may use (default: tests/oracle/huc6280-opcodes.tsv of this repository, whatever --root says; plan 03-08)
-# Two stages, each writing to a file with its exit status tested (CR-01: no awk on the left of a pipe): scripts/lib/fixture-lint-lex.awk reads the sources
-# and prints an END sentinel, scripts/lib/fixture-lint-rules.awk requires it. A stage that died, or a stage 1 that printed no sentinel, is FXL_STAGE_DEAD (exit 2), never a pass.
-# Codes: FXL_ORPHAN_CHECK FXL_UNLISTED_CHECK FXL_BAD_CLASS FXL_COUNT FXL_INCLUDE_PATH FXL_SIZE_HINT FXL_RAW_UNCITED FXL_UNKNOWN_CITE FXL_UNKNOWN_MNEMONIC FXL_BAD_OBSERVE (scripts/lib/fixture-lint-rules.awk).
+# Three stages, each writing to a file with its exit status tested (CR-01: no awk on the left of a pipe): a ledger reader (inline awk) lists every entry id, status and FACT source and prints an END sentinel,
+# scripts/lib/fixture-lint-lex.awk reads the sources and prints an END sentinel, scripts/lib/fixture-lint-rules.awk requires it. A stage that died, or a reader that printed no sentinel, is FXL_STAGE_DEAD (exit 2), never a pass.
+# Codes: FXL_ORPHAN_CHECK FXL_UNLISTED_CHECK FXL_BAD_CLASS FXL_COUNT FXL_INCLUDE_PATH FXL_SIZE_HINT FXL_RAW_UNCITED FXL_UNKNOWN_CITE FXL_UNKNOWN_MNEMONIC FXL_BAD_OBSERVE FXL_OCR_BACKS_SUPPORTED FXL_UNKNOWN_LEDGER_ID (scripts/lib/fixture-lint-rules.awk).
 # stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then (clean) a line  FIXTURE_LINT fixtures=N checks=M raw=R  and  STATUS fixture-lint ok
 # stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
 # exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error (including FXL_STAGE_DEAD)
@@ -21,20 +22,23 @@ LC_ALL=C; export LC_ALL
 here=$(cd "$(dirname "$0")" && pwd)
 
 usage() {
-  echo "usage: fixture-lint [--expect CODE[,CODE...]] [--root DIR] [--cites FILE] [--tsv FILE]" >&2
+  echo "usage: fixture-lint [--expect CODE[,CODE...]] [--root DIR] [--cites FILE] [--ledger DIR] [--tsv FILE]" >&2
   exit 2
 }
 
 expect=""
 have_expect=0
-root=$(cd "$here/.." && pwd)
-cites="$root/fixtures/lib/cites.txt"
-tsv="$root/tests/oracle/huc6280-opcodes.tsv"
+repo=$(cd "$here/.." && pwd)
+root=$repo
+cites=""
+ledger=""
+tsv="$repo/tests/oracle/huc6280-opcodes.tsv"
 while [ $# -gt 0 ]; do
   case $1 in
     --expect) [ $# -ge 2 ] || usage; expect=$2; have_expect=1; shift 2 ;;
     --root) [ $# -ge 2 ] || usage; root=$2; shift 2 ;;
     --cites) [ $# -ge 2 ] || usage; cites=$2; shift 2 ;;
+    --ledger) [ $# -ge 2 ] || usage; ledger=$2; shift 2 ;;
     --tsv) [ $# -ge 2 ] || usage; tsv=$2; shift 2 ;;
     *) usage ;;
   esac
@@ -48,8 +52,19 @@ if [ ! -d "$root" ]; then
   echo "HARNESS_NO_FILE $root" >&2
   exit 2
 fi
+# the registry and the ledger of the root when it carries them (a control mini-root), else those of this repository
+if [ -z "$cites" ]; then
+  if [ -f "$root/fixtures/lib/cites.txt" ]; then cites="$root/fixtures/lib/cites.txt"; else cites="$repo/fixtures/lib/cites.txt"; fi
+fi
+if [ -z "$ledger" ]; then
+  if [ -d "$root/ledger/entries" ]; then ledger="$root/ledger/entries"; else ledger="$repo/ledger/entries"; fi
+fi
 if [ ! -f "$cites" ]; then
   echo "HARNESS_NO_FILE $cites" >&2
+  exit 2
+fi
+if [ ! -d "$ledger" ]; then
+  echo "HARNESS_NO_FILE $ledger" >&2
   exit 2
 fi
 if [ ! -f "$tsv" ]; then
@@ -57,6 +72,7 @@ if [ ! -f "$tsv" ]; then
   exit 2
 fi
 case $cites in /*) ;; *) cites="$(pwd)/$cites" ;; esac
+case $ledger in /*) ;; *) ledger="$(pwd)/$ledger" ;; esac
 case $tsv in /*) ;; *) tsv="$(pwd)/$tsv" ;; esac
 root=$(cd "$root" && pwd)
 
@@ -86,6 +102,44 @@ if ! awk -F'\t' '
   exit 2
 fi
 
+# the ledger reader (stage 0): one I record per entry (path, id, status) and one F record per FACT source (path, id, status, ref), then an END sentinel. The entries are the strict one-line TOML subset
+# of ledger/SCHEMA.md; only the id, status and sources lines are read, and ledger-check judges the rest. No entry file is a harness error (a lint against an empty ledger judges no ASSUMED id).
+set --
+for f in "$ledger"/LED-*.toml; do
+  [ -f "$f" ] || continue
+  case $f in
+    *"$tab"*) echo "HARNESS_BAD_FILENAME a TAB in a file name" >&2; exit 2 ;;
+  esac
+  set -- "$@" "$f"
+done
+if [ $# -eq 0 ]; then
+  echo "HARNESS_NO_FILE $ledger holds no LED-*.toml entry: a lint against an empty ledger judges nothing" >&2
+  exit 2
+fi
+if awk '
+    function flush(   rest, ref) {
+      if (path == "") return
+      printf "I\t%s\t%s\t%s\n", path, id, st
+      rest = src
+      while (match(rest, /"FACT\|[^|"]*\|/)) {
+        ref = substr(rest, RSTART + 6, RLENGTH - 7)
+        printf "F\t%s\t%s\t%s\t%s\n", path, id, st, ref
+        rest = substr(rest, RSTART + RLENGTH)
+      }
+    }
+    FNR == 1 { flush(); path = FILENAME; sub(/^.*\//, "", path); path = "ledger/entries/" path; id = ""; st = ""; src = "" }
+    /^id = "/ { id = $0; sub(/^id = "/, "", id); sub(/".*$/, "", id) }
+    /^status = "/ { st = $0; sub(/^status = "/, "", st); sub(/".*$/, "", st) }
+    /^sources = \[/ { src = $0 }
+    END { flush(); print "END" }' "$@" > "$tmp/ledger0" 2> "$tmp/ledger0.err"; then :; else
+  echo "FXL_STAGE_DEAD ledger reader failed" >&2
+  exit 2
+fi
+if [ "$(tail -n 1 "$tmp/ledger0")" != "END" ]; then
+  echo "FXL_STAGE_DEAD ledger reader printed no END sentinel" >&2
+  exit 2
+fi
+
 # the inputs: fixtures/src/*.s and *.checks, paths relative to the root. Nothing to lint is a harness error: a check of nothing never passes.
 cd "$root"
 : > "$tmp/files"
@@ -108,7 +162,7 @@ if awk -f "$here/lib/fixture-lint-lex.awk" "$@" > "$tmp/stage1" 2> "$tmp/stage1.
   echo "FXL_STAGE_DEAD stage 1 (fixture-lint-lex.awk) failed" >&2
   exit 2
 fi
-if awk -v cites="$cites" -v tsv="$tsv" -f "$here/lib/fixture-lint-rules.awk" "$tmp/stage1" > "$tmp/stage2" 2> "$tmp/stage2.err"; then :; else
+if awk -v cites="$cites" -v tsv="$tsv" -v ledger="$tmp/ledger0" -f "$here/lib/fixture-lint-rules.awk" "$tmp/stage1" > "$tmp/stage2" 2> "$tmp/stage2.err"; then :; else
   echo "FXL_STAGE_DEAD stage 2 (fixture-lint-rules.awk) failed or found no END sentinel from stage 1" >&2
   exit 2
 fi

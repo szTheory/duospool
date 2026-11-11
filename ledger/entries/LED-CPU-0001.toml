@@ -1,17 +1,21 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
-# Opcode byte and base-cycle table (D-97; CPU-01, CPU-06). A documentary comparison with a page-image transcription: not a hardware measurement, and not above assumed until plan 03-32 re-reads the pages (ER-1, ER-2, R-8).
-# Page cites: the verifier, date and fact seen are in each source below and in fixtures/lib/cites.txt; plan 03-15 re-read no page. pcetech.txt lists the same 22 undefined opcodes as the complement of the 234 defined ones (agreement of a community note, not independent proof).
+# Opcode byte and base-cycle table (D-97; CPU-01, CPU-06). Supported (E1, documentary) by plan 03-32 under ER-2: a documentary comparison of the compiled table with a page transcription, not a hardware measurement.
+# ER-2 record (plan 03-32, verifier gsd-executor, 2026-11-11). Condition 1, image-verified cites: H8-25 was read as a page image (200 dpi render of PDF page 28 of the scratch copy, sha256 40a32e5d..., never committed) and every cell was transcribed again by hand without opening the TSV.
+# Condition 2, literals from the page: the expected values are the rows of tests/oracle/huc6280-opcodes.tsv, a page-image transcription made before src/core/cpu_ops.def existed; the new reading agrees with it for 234 defined cells (230 equal in bytes and cycles) and 22 empty cells, and differs only at opcodes 34 to 37 and B5.
+# Condition 2 (continued): those cells and B4 are the printing errors of the map. The instruction pages S8-18 (35 AND zp,X 2 bytes 4 cycles), S8-25 (34 BIT zp,X 2/4), S8-68 (36 ROL zp,X 2/6), S8-67 (37 RMB3 2/7), S8-55 (B4 LDY zp,X 2/4) and S8-53 (B5 LDA zp,X 2/4) were read as images and decide them.
+# Block transfers: the map cells print 7 bytes and a footnote 17+16z (a misprint of 17+6x); S8-89 (TAI F3), S8-94 (TDD C3), S8-96 (E3, printed as TAI there, TIA in the map), S8-98 (TII 73) and S8-100 (TIN D3) print 7 bytes and 17+6x, and the table holds base 17.
+# Condition 3, wording: the statement says the table equals the manual's stated values. Condition 4, withheld: hardware cycle accuracy, interrupt latency and game compatibility are listed. Condition 5, pin: TEST:opcode_table_manual, the case that compares all 256 opcodes. The S8 pages not named above were read by plan 03-08 and not again here; the statement does not rest on them.
 id = "LED-CPU-0001"
-statement = "The DuoSpool opcode byte and base-cycle table equals the manual's stated values in H8-25 and the S8 per-instruction pages: 234 defined opcodes and 22 undefined cells. This is a documentary comparison with a transcription, not a hardware measurement."
+statement = "The DuoSpool opcode table equals the manual's stated values in the instruction map H8-25: 234 defined cells with length and base cycles and 22 empty cells; for the six cells the map misprints (34 to 37, B4, B5) it equals the instruction pages. A documentary comparison, not a hardware measurement."
 profile = "pce-hucard-2btn"
-status = "assumed"
-sources = ["FACT|H8-25|map of 234 cells, 22 empty; image read by gsd-phase-researcher 2026-11-10; CSL CSH 1 byte 3 cycles", "FACT|S8-17 to S8-108|bytes and base cycles per instruction; images read by gsd-executor 2026-11-11", "UNKNOWN|22 empty cells|no page gives length or cycles: 1 byte 2 cycles is an assumption (LED-CPU-0010)"]
-evidence = ["E1|tests/conformance/cases/opcode_table_manual.toml: documentary comparison of the compiled table with the page transcription, listed here and counted only after the plan 03-32 re-read (ER-1, R-8)", "E0|tests/conformance/cases/opcode_table_manual.toml: the table and the transcription agree for all 256 opcodes, consistency of two readings by one project"]
+status = "supported"
+sources = ["FACT|H8-25|gsd-executor image 2026-11-11: 234 cells defined, 22 empty; 230 equal the transcription, 35 36 37 B5 print other numbers, 34 another mnemonic", "FACT|S8-18 S8-25 S8-53 S8-55 S8-67 S8-68 S8-89 S8-94 S8-96 S8-98 S8-100|gsd-executor images 2026-11-11: zp,X forms 2/4, RMBi 2/7, ROL zp,X 2/6, blocks 7 bytes 17+6x", "UNKNOWN|22 empty cells|no page gives length or cycles"]
+evidence = ["E1|tests/conformance/cases/opcode_table_manual.toml: the compiled table against the page transcription for all 256 opcodes; H8-25 and the S8 pages above re-read in plan 03-32 (ER-1, R-8)", "E0|tests/conformance/cases/opcode_table_manual.toml: the table and the transcription agree, consistency of two readings by one project"]
 disagreement = "H8-25 footnote prints the block-transfer cost as 17+16z, a misprint of 17+6x (H8-6, S8-88 and S8-89 print 17+6x; R-1): the table holds base 17. H8-25 misprints opcodes 34 to 37, B4, B5 and the mode of 7D, and S8-96 prints TAI at E3: the instruction pages decided."
 pinning_test = "TEST:opcode_table_manual"
 updated = "2026-11-11"
-assumption = "The compiled table and the TSV are two page-image readings by one project, so a shared misreading would not be caught by their agreement. The 22 undefined cells are compared by membership only. The entry stays assumed until the plan 03-32 image re-read (ER-1, ER-2)."
+assumption = "The compiled table and the TSV are two readings of page images by one project, so a shared misreading would not be caught by their agreement; the plan 03-32 re-read of H8-25 is a third reading by the same project. The 22 empty cells are compared by membership only."
 revisit_phase = 3
 withheld = ["any claim of hardware cycle accuracy", "any claim of interrupt latency in cycles", "any claim of game compatibility", "any TG-16 or region claim", "any claim about what the 22 undefined opcodes do on hardware"]
 origin = "03-CONTEXT D-97"

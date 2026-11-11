@@ -4,7 +4,8 @@
 # fixture-lint-rules.awk - stage 2 of scripts/fixture-lint: the expected-value class rules of D-125 (with the R-3 reading of the size-hint rule) over
 # the records of fixture-lint-lex.awk (plan 03-37). POSIX awk only.
 # input : the stage-1 records, including its END sentinel.
-# env   : -v cites=FILE  the cite registry (fixtures/lib/cites.txt: label TAB flag TAB verifier TAB date TAB fact); fixture-lint has already checked its shape
+# env   : -v ledger=FILE the ledger summary of the stage-0 reader of scripts/fixture-lint: I<TAB>path<TAB>id<TAB>status per entry, F<TAB>path<TAB>id<TAB>status<TAB>ref per FACT source, END (plan 03-32)
+#         -v cites=FILE  the cite registry (fixtures/lib/cites.txt: label TAB flag TAB verifier TAB date TAB fact); fixture-lint has already checked its shape
 #         -v tsv=FILE    the opcode table (tests/oracle/huc6280-opcodes.tsv: opcode TAB mnemonic TAB mode TAB ...): the mnemonic column, upper case, UNDEF rows skipped, is the set of instruction words a fixture may use
 # output: V<TAB>file<TAB>CODE<TAB>line<TAB>detail   one per violation
 #         N<TAB>fixtures<TAB>checks<TAB>raw          always printed once when the stage ran
@@ -17,12 +18,15 @@
 #   FXL_INCLUDE_PATH   an .include that is not a bare file name (resolved through fixtures/lib), fixtures/lib/NAME or build/PATH            rule-include-path
 #   FXL_SIZE_HINT      an instruction operand that is a literal below $100 without z:, a: or < in front (Pitfall 5; (zp) and BBR/BBS take <)  rule-size-hint
 #   FXL_RAW_UNCITED    a source line with a RAW marker in its comment that does not read RAW:<page>                                         rule-raw-uncited
-#   FXL_UNKNOWN_CITE   a MAN:<page> or RAW:<page> whose page is not in cites.txt                                                              rule-unknown-cite
+#   FXL_UNKNOWN_CITE   a MAN:<page> or RAW:<page> whose page is not in cites.txt, or a page named in a FACT source of a supported entry that cites.txt does not list                                                           rule-unknown-cite
 #   FXL_BAD_OBSERVE    a .checks fifth column other than the word observe (or a sixth column), or a row marked observe whose check is not CHECK_OBSERVE, or a CHECK_OBSERVE whose row is not marked observe     rule-bad-observe
+#   FXL_OCR_BACKS_SUPPORTED a MAN:<page> check whose page is flagged ocr in cites.txt while a supported ledger entry names that page in a FACT source, or a supported entry whose FACT source names an ocr page (ER-1)   rule-ocr-backs-supported
+#   FXL_UNKNOWN_LEDGER_ID an ASSUMED:<LED-id> whose id has no entry in the ledger (D-125)                                                   rule-unknown-ledger-id
 #   FXL_UNKNOWN_MNEMONIC a lower-case first word of a source line that is not a mnemonic of the opcode table (an assignment  name = value  is not an instruction)  rule-unknown-mnemonic
 # A RAW line is any source line whose comment holds the word RAW: raw instruction bytes written in place of an instruction. Data tables are .byte lines without the marker.
 # The mnemonic set is the table of tests/oracle/huc6280-opcodes.tsv (plan 03-08), not a list kept here, so the size-hint rule and the unknown-mnemonic rule cannot drift from the manual transcription.
-# Not here yet (the inputs do not exist): the rules that need the ledger and the cite flags, namely that a MAN: cite behind a supported entry is img and that an ASSUMED: id names a ledger entry (plan 03-32).
+# The two ledger rules (plan 03-32) read the stage-0 summary: a page named in a FACT source of a supported entry is a page that backs a support claim, and must be img in cites.txt (ER-1); a FACT ref lists page labels
+# separated by spaces and may name a range  S8-17 to S8-20  (every registered label inside the range counts). An ASSUMED:<id> tag must name an entry of the ledger that is read.
 BEGIN {
   FS = "\t"
   sentinel = 0; nfix = 0; nchk = 0; nraw = 0; nst = 0
@@ -38,8 +42,30 @@ BEGIN {
     if (tf[2] != "UNDEF") mnem[tolower(tf[2])] = 1
   }
   close(tsv)
+  while ((getline ll < ledger) > 0) {
+    n = split(ll, lf, "\t")
+    if (lf[1] == "END") ledend = 1
+    else if (lf[1] == "I") { idknown[lf[3]] = 1 }
+    else if (lf[1] == "F" && lf[4] == "supported") factrefs(lf[2], lf[5])
+  }
+  close(ledger)
   nobl = split("tai tdd tia tii tin", bl, " ")                  # block transfers take absolute operands only: their small numbers are lengths, not zero page
   for (i = 1; i <= nobl; i++) isblock[bl[i]] = 1
+}
+function islabel(t) { return (t ~ /^(H8-[0-9]+|S8-[0-9]+|CDBIOS-p[0-9]+)$/) }
+function labnum(t) { sub(/^[A-Za-z0-9]+-p?/, "", t); return t + 0 }
+function labpfx(t) { sub(/[0-9]+$/, "", t); return t }
+# one FACT ref of a supported entry: every page label (and every registered label inside a  A to B  range) is recorded as backing a support claim; it must be registered and img (ER-1)
+function factrefs(path, ref,   nt, tk, i, a, b, k, lab, pf) {
+  nt = split(ref, tk, /[ \t]+/)
+  for (i = 1; i <= nt; i++) {
+    if (!islabel(tk[i])) continue
+    if (tk[i + 1] == "to" && islabel(tk[i + 2]) && labpfx(tk[i]) == labpfx(tk[i + 2])) {
+      pf = labpfx(tk[i]); a = labnum(tk[i]); b = labnum(tk[i + 2])
+      for (k = a; k <= b; k++) { lab = pf k; supp[lab] = 1; suppfile[lab] = path }
+      i += 2
+    } else { supp[tk[i]] = 1; suppfile[tk[i]] = path; direct[tk[i]] = 1 }
+  }
 }
 function viol(f, code, ln, detail) { printf "V\t%s\t%s\t%s\t%s\n", f, code, ln, detail }
 function stemof(p) { sub(/^.*\//, "", p); sub(/\.[^.]*$/, "", p); return p }
@@ -114,12 +140,22 @@ $1 == "ROW" {
   okcls = (cls ~ /^MAN:[A-Za-z0-9][A-Za-z0-9-]*$/) || (cls ~ /^GUEST:[a-z][a-z0-9-]*$/) || (cls ~ /^ASSUMED:LED-(PROF|CPU|VID|AUD|IRQ|LOAD|IO|TOOL)-[0-9][0-9][0-9][0-9]$/)
   if (!okcls) viol($2, "FXL_BAD_CLASS", $3, "class tag '" cls "' is not MAN:<page>, GUEST:<model> or ASSUMED:<LED-id>")  # rule-bad-class
   else if (cls ~ /^MAN:/ && !(substr(cls, 5) in known)) viol($2, "FXL_UNKNOWN_CITE", $3, cls " is not in cites.txt")  # rule-unknown-cite
+  else if (cls ~ /^MAN:/ && (substr(cls, 5) in supp) && known[substr(cls, 5)] == "ocr") viol($2, "FXL_OCR_BACKS_SUPPORTED", $3, cls " backs a supported entry but its page is flagged ocr in cites.txt")  # rule-ocr-backs-supported
+  if (okcls && cls ~ /^ASSUMED:/ && !(substr(cls, 9) in idknown)) viol($2, "FXL_UNKNOWN_LEDGER_ID", $3, cls " names no entry of the ledger")  # rule-unknown-ledger-id
   next
 }
 END {
   if (!sentinel) {
     printf "X\tFXL_STAGE_DEAD\tstage 1 printed no END sentinel\n"
     exit 2
+  }
+  if (!ledend) {
+    printf "X\tFXL_STAGE_DEAD\tthe ledger summary has no END sentinel\n"
+    exit 2
+  }
+  for (lab in supp) {
+    if (!(lab in known) && (lab in direct)) viol(suppfile[lab], "FXL_UNKNOWN_CITE", 0, "a supported entry cites " lab " in a FACT source and cites.txt has no such page")  # rule-unknown-cite
+    if ((lab in known) && known[lab] == "ocr") viol(suppfile[lab], "FXL_OCR_BACKS_SUPPORTED", 0, "a supported entry cites " lab " in a FACT source and its page is flagged ocr in cites.txt")  # rule-ocr-backs-supported
   }
   for (si = 1; si <= nst; si++) {
     s = stemlist[si]

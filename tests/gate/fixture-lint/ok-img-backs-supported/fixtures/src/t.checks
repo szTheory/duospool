@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# fixture-lint control mini-root: the same page flagged img backs a supported entry: clean
+id=1
+checks=1
+1	one	MAN:S8-7	the same page flagged img backs a supported entry: clean
