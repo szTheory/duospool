@@ -38,11 +38,24 @@ S8-17	img	gsd-phase-researcher	2026-11-10	ADC: immediate 2 bytes 2 cycles; zero 
 S8-18	img	gsd-executor	2026-11-11	AND $29 $25 $35 $32 $21 $31 $2D $3D $39, 2 to 3 bytes, 2 to 7 cycles; A <- A AND M, or M(x) <- M(x) AND M with T=1 and 3 more cycles; flags N and Z, T reads 0
 S8-19	img	gsd-executor	2026-11-11	ASL: zp 06, zp,X 16, abs 0E, abs,X 1E, acc 0A; zp and abs forms 6 and 7 cycles, acc 2; bit 7 into C, 0 into bit 0; flags N Z C
 S8-20	img	gsd-phase-researcher	2026-11-10	BBRi 3 bytes 6 cycles, 2 more when taken; machine code 10i+F
+S8-21	img	gsd-executor	2026-11-11	BBSi: ZP,REL machine code 10i+8F, 3 bytes, 6 cycles, 2 more when taken; PC <- PC+3+rr if bit i of the zero-page cell is 1, PC+3 otherwise; rr = hhll-(PC+3); flags: T = 0, others unchanged
+S8-22	img	gsd-executor	2026-11-11	BCC 90, 2 bytes, 2 cycles, 2 more when taken; PC <- PC+2+rr if C=0, PC+2 otherwise; flags: T = 0, others unchanged
+S8-23	img	gsd-executor	2026-11-11	BCS B0, 2 bytes, 2 cycles, 2 more when taken; PC <- PC+2+rr if C=1, PC+2 otherwise; flags: T = 0, others unchanged
 S8-24	img	gsd-executor	2026-11-11	BEQ F0, 2 bytes, 2 cycles, 2 more when taken; PC <- PC+2+rr if Z=1, PC+2 otherwise; rr = hhll-(PC+2), -128 to 127; flags: T = 0, others unchanged
 S8-25	img	gsd-executor	2026-11-11	BIT: imm 89, zp 24, zp,X 34, abs 2C, abs,X 3C; A AND M not stored; flag row N = M7, V = M6, Z; C unchanged
+S8-26	img	gsd-executor	2026-11-11	BMI 30, 2 bytes, 2 cycles, 2 more when taken; PC <- PC+2+rr if N=1, PC+2 otherwise; flags: T = 0, others unchanged
 S8-27	img	gsd-executor	2026-11-11	BNE D0, 2 bytes, 2 cycles, 2 more when taken; PC <- PC+2+rr if Z=0, PC+2 otherwise; rr = hhll-(PC+2), -128 to 127; flags: T = 0, others unchanged
+S8-28	img	gsd-executor	2026-11-11	BPL 10, 2 bytes, 2 cycles, 2 more when taken; branches when N=0 (the two formula lines under the text print N=1 and N=0 swapped, a misprint; the text and the title are used); flags: T = 0, others unchanged
+S8-29	img	gsd-executor	2026-11-11	BRA 80, 2 bytes, 4 cycles; PC <- PC+2+rr; rr = hhll-(PC+2), -128 to 127; flags: T = 0, others unchanged
 S8-30	img	gsd-phase-researcher	2026-11-10	BRK $00, 1 byte, 8 cycles; pushes PCH, PCL, P; B pushed 1; T=0 B=1 D=0 I=1
+S8-31	img	gsd-executor	2026-11-11	BSR 44, 2 bytes, 8 cycles; PC <- PC+1, PCH then PCL pushed (the address of the last byte of the BSR), then PC <- PC+2+rr; flags: T = 0, others unchanged
+S8-32	img	gsd-executor	2026-11-11	BVC 50, 2 bytes, 2 cycles, 2 more when taken; PC <- PC+2+rr if V=0, PC+2 otherwise; flags: T = 0, others unchanged
+S8-33	img	gsd-executor	2026-11-11	BVS 70, 2 bytes, 2 cycles, 2 more when taken; PC <- PC+2+rr if V=1, PC+2 otherwise; flags: T = 0, others unchanged
 S8-34	img	gsd-executor	2026-11-11	CLA $62, 1 byte, 2 cycles; A <- $00; no flag changes (T reads 0)
+S8-35	img	gsd-executor	2026-11-11	CLC 18, 1 byte, 2 cycles; C <- 0; flag row C = 0, T = 0, others unchanged
+S8-36	img	gsd-executor	2026-11-11	CLD D8, 1 byte, 2 cycles; D <- 0; flag row D = 0, T = 0, others unchanged
+S8-37	img	gsd-executor	2026-11-11	CLI 58, 1 byte, 2 cycles; I <- 0; flag row I = 0, T = 0, others unchanged
+S8-38	img	gsd-executor	2026-11-11	CLV B8, 1 byte, 2 cycles; V <- 0; flag row V = 0, T = 0, others unchanged
 S8-39	img	gsd-executor	2026-11-11	CLX $82, 1 byte, 2 cycles; X <- $00; no flag changes
 S8-40	img	gsd-executor	2026-11-11	CLY $C2, 1 byte, 2 cycles; Y <- $00; no flag changes
 S8-41	img	gsd-executor	2026-11-11	CMP: A - M, result not stored; imm C9 and eight memory modes; flags N Z C, V unchanged
@@ -55,11 +68,13 @@ S8-47	img	gsd-executor	2026-11-11	EOR: A <- A xor M, or M(x) <- M(x) xor M with 
 S8-48	img	gsd-executor	2026-11-11	INC: M <- M + 1 or A <- A + 1; zp E6, zp,X F6, abs EE, abs,X FE, acc 1A; flags N and Z only
 S8-49	img	gsd-executor	2026-11-11	INX E8, 1 byte, 2 cycles; X <- X + 1; flags N and Z
 S8-50	img	gsd-executor	2026-11-11	INY C8, 1 byte, 2 cycles; Y <- Y + 1; flags N and Z
+S8-51	img	gsd-executor	2026-11-11	JMP: ABS 4C 3 bytes 4 cycles (PCL <- ll, PCH <- hh); (ABS) 6C 3 bytes 7 cycles (PCL <- (hhll), PCH <- (hhll+1)); (ABS,X) 7C 3 bytes 7 cycles (PCL <- (hhll+X), PCH <- (hhll+X+1))
 S8-52	img	gsd-executor	2026-11-11	JSR 20, 3 bytes, 7 cycles; PC <- PC+2, PCH pushed first then PCL (the address of the last byte of the JSR), then PC <- hhll; flags: T = 0, others unchanged
 S8-53	img	gsd-executor	2026-11-11	LDA: A <- M; immediate A9 2 bytes 2 cycles, zp 4, zp,X 4, (zp) 7, (zp,X) 7, (zp),Y 7, abs 5, abs,X 5, abs,Y 5; flags N and Z only, T reads 0
 S8-54	img	gsd-executor	2026-11-11	LDX: immediate A2 2 bytes 2 cycles, zp A6 4, zp,Y B6 4, abs AE 5, abs,Y BE 5; flags N and Z only
 S8-55	img	gsd-executor	2026-11-11	LDY: immediate A0 2 bytes 2 cycles, zp A4 4, zp,X B4 4, abs AC 5, abs,X BC 5; flags N and Z only
 S8-56	img	gsd-executor	2026-11-11	LSR: 0 into bit 7, bit 0 into C; zp 46, zp,X 56, abs 4E, abs,X 5E, acc 4A; flags N Z C
+S8-57	img	gsd-executor	2026-11-11	NOP EA, 1 byte, 2 cycles; PC <- PC+1; flag row T = 0, others unchanged
 S8-58	img	gsd-executor	2026-11-11	ORA: A <- A or M, or M(x) <- M(x) or M with T=1 and 3 more cycles; opcodes 09 05 15 12 01 11 0D 1D 19; flags N and Z
 S8-59	img	gsd-executor	2026-11-11	PHA $48, 1 byte, 3 cycles; Ms <- A, S <- S - 1; no flag changes
 S8-61	img	gsd-executor	2026-11-11	PHX $DA, 1 byte, 3 cycles; Ms <- X, S <- S - 1; no flag changes
@@ -75,6 +90,7 @@ S8-71	img	gsd-executor	2026-11-11	RTS 60, 1 byte, 7 cycles; PCL pulled first the
 S8-74	img	gsd-phase-researcher	2026-11-10	SBC: A - M - not C; same cycle table as ADC; D=1 adds 1 cycle
 S8-75	img	gsd-executor	2026-11-11	SEC $38, 1 byte, 2 cycles; C <- 1; flag row C = 1, T = 0, others unchanged
 S8-76	img	gsd-executor	2026-11-11	SED $F8, 1 byte, 2 cycles; D <- 1; flag row D = 1, T = 0, others unchanged
+S8-77	img	gsd-executor	2026-11-11	SEI 78, 1 byte, 2 cycles; I <- 1; flag row I = 1, T = 0, others unchanged
 S8-78	img	gsd-executor	2026-11-11	SET $F4, 1 byte, 2 cycles; T <- 1; flag row T = 1, others unchanged
 S8-80	img	gsd-phase-researcher	2026-11-10	ST0 $03 nn, 2 bytes, 4 cycles; CE7 asserted, (A1,A0) = (0,0)
 S8-83	img	gsd-executor	2026-11-11	STA: zp 85, zp,X 95, (zp) 92, (zp,X) 81, (zp),Y 91, abs 8D, abs,X 9D, abs,Y 99; M <- A; no flag changes

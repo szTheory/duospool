@@ -294,6 +294,16 @@ static uint16_t eff_addr(const struct ds_instance *inst, uint32_t mode, uint32_t
     }
 }
 
+/* BBR0-7 and BBS0-7 (S8-20, S8-21): the branch is taken when bit i of the zero-page cell ($2000 | zz) is 0 (BBR) or 1 (BBS); the enum keeps BBR0 to BBR7 and BBS0 to BBS7 in this order */
+static int bit_branch(const struct ds_instance *inst, uint32_t mn, uint32_t zz)
+{
+    uint32_t cell = ds_bus_read(inst, zp_addr(zz));
+    uint32_t bit = mn >= (uint32_t)MN_BBS0 ? mn - (uint32_t)MN_BBS0 : mn - (uint32_t)MN_BBR0;
+    uint32_t set = (cell >> bit) & 1u;
+
+    return mn >= (uint32_t)MN_BBS0 ? set != 0u : set == 0u;
+}
+
 /* the value of an operand: immediate, or a read of the effective address; 0 for a mode that holds no operand (those land with their group, plans 03-12 to 03-14, and have no effect until then) */
 static int operand_value(const struct ds_instance *inst, uint32_t mode, uint32_t op1, uint32_t abs_addr, uint32_t *value)
 {
@@ -781,21 +791,51 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
     case MN_PLP: /* every flag is loaded except B, which has no stored bit (LED-CPU-0009: PLP loads T) */
         inst->p = (uint8_t)(pull(inst) & ~0x10u);
         break;
-    case MN_JMP: /* only (abs) so far: the high byte is read from the next address, with no 6502 page bug (assumed, LED-CPU-0010); the other two modes are plan 03-13 */
+    case MN_JMP: /* S8-51: abs sets PC; (abs) reads PCL at hhll and PCH at hhll+1 (no 6502 page wrap: the page prints hhll+1); (abs,X) adds X to the pointer address first; 16-bit wrap by masks */
         if (mode == (uint32_t)AM_ABSIND) {
             lo = ds_bus_read(inst, (uint16_t)abs_addr);
             hi = ds_bus_read(inst, (uint16_t)(abs_addr + 1u));
             next = (hi << 8u) | lo;
+        } else if (mode == (uint32_t)AM_ABSINDX) {
+            lo = ds_bus_read(inst, (uint16_t)(abs_addr + (uint32_t)inst->x));
+            hi = ds_bus_read(inst, (uint16_t)(abs_addr + (uint32_t)inst->x + 1u));
+            next = (hi << 8u) | lo;
+        } else {
+            next = abs_addr;
         }
+        break;
+    case MN_BBR0: case MN_BBR1: case MN_BBR2: case MN_BBR3: case MN_BBR4: case MN_BBR5: case MN_BBR6: case MN_BBR7:
+    case MN_BBS0: case MN_BBS1: case MN_BBS2: case MN_BBS3: case MN_BBS4: case MN_BBS5: case MN_BBS6: case MN_BBS7:
+        taken = bit_branch(inst, mn, op1); /* three bytes: the target is PC+3+rr, with rr the third byte (S8-20, S8-21) */
+        break;
+    case MN_BSR: /* pushes the address of the last byte of the BSR (pc+1), PCH first, then branches to PC+2+rr (S8-31); the count is the table's 8, with no taken adder */
+        push(inst, ((pc + 1u) >> 8u) & 0xFFu);
+        push(inst, (pc + 1u) & 0xFFu);
+        taken = 1;
+        break;
+    case MN_BRK: /* S8-30, H8-17: pushes BRK+2 (PCH, PCL) and P with B = 1 and T = 0, sets I, clears D, then loads PC from $FFF6/$FFF7 through the bus (the IRQ2 vector); T already reads 0 here (fetch-time clear, H8-5); a pushed T of 0 is the project's reading (LED-CPU-0009) */
+        push(inst, ((pc + 2u) >> 8u) & 0xFFu);
+        push(inst, (pc + 2u) & 0xFFu);
+        push(inst, ((uint32_t)inst->p & ~P_T) | 0x10u);
+        inst->p = (uint8_t)(((uint32_t)inst->p | P_I) & ~P_D);
+        lo = ds_bus_read(inst, 0xFFF6u);
+        hi = ds_bus_read(inst, 0xFFF7u);
+        next = (hi << 8u) | lo;
+        break;
+    case MN_RTI: /* S8-70: P is pulled first, then PCL, then PCH; every flag including T is loaded from the pulled byte (D-99), and B has no stored bit */
+        inst->p = (uint8_t)(pull(inst) & ~0x10u);
+        lo = pull(inst);
+        hi = pull(inst);
+        next = (hi << 8u) | lo;
+        break;
+    case MN_CLI: /* I <- 0 (S8-37) */
+        inst->p = (uint8_t)((uint32_t)inst->p & ~P_I);
+        break;
+    case MN_NOP: /* PC <- PC+1, no register or flag (S8-57) */
         break;
     /* ---- the functionality gap: these mnemonics advance PC by the table length and charge the table cycles, with no register, flag or memory effect, until their group lands ---- */
     case MN_UNDEF: /* D-96: one byte, two cycles, T cleared */
         break;
-    case MN_BBR0: case MN_BBR1: case MN_BBR2: case MN_BBR3: case MN_BBR4: case MN_BBR5: case MN_BBR6: case MN_BBR7:
-    case MN_BBS0: case MN_BBS1: case MN_BBS2: case MN_BBS3: case MN_BBS4: case MN_BBS5: case MN_BBS6: case MN_BBS7:
-    case MN_BRK: case MN_BSR: case MN_RTI: case MN_NOP:
-    case MN_CLI:
-        break; /* plan 03-13: flow, CLI, BRK and RTI (SEC, SED and CLV are done in plan 03-12) */
     case MN_RMB0: case MN_RMB1: case MN_RMB2: case MN_RMB3: case MN_RMB4: case MN_RMB5: case MN_RMB6: case MN_RMB7:
     case MN_SMB0: case MN_SMB1: case MN_SMB2: case MN_SMB3: case MN_SMB4: case MN_SMB5: case MN_SMB6: case MN_SMB7:
     case MN_SAX: case MN_SAY: case MN_SXY: case MN_ST0: case MN_ST1: case MN_ST2: case MN_CSH: case MN_CSL: case MN_TMA:
@@ -804,7 +844,7 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
         break; /* the block-transfer plan (D-100); one step charges the table's 17 until then */
     }
     if (taken) {
-        next = branch_target(next, op1);
+        next = branch_target(next, mode == (uint32_t)AM_ZPREL ? op2 : op1);
         cycles += taken_adder(mn);
     }
     cycles += flag_cycles(mn, t_active, inst->p);

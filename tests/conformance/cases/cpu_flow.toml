@@ -10,10 +10,10 @@ kind = "guest"
 fixture = "authored:cpu-flow"
 request = ""
 expect = "id=5"
-meaning = "The authored cpu_flow fixture runs the conditional branches and subroutine calls and leaves a consistent DSV1 block whose check results are all pass"
+meaning = "The authored cpu_flow fixture runs the branches, bit branches, jumps, subroutine calls, BRK, RTI, the flag instructions and NOP and leaves a consistent DSV1 block whose check results are all pass"
 required = true
 control = false
 expect_outcome = "pass"
 pins = []
 until_mclk = 4000000
-checks = 8
+checks = 71
