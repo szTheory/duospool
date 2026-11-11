@@ -213,5 +213,35 @@ ok=0
 if [ "$rc" -eq 1 ] && has TEXT-PATTERN && has new.txt && ! has old.txt; then ok=1; fi
 verdict range-text "$ok"
 
+# ---- text-allow-kind: a TEXT-PATTERN:KIND allowance hides that kind in that path only (the owner-approved shape for the two
+# executor summaries); a second path, and a second kind in the same path, are still reported ----
+kind_allow="$work/kind.allow"
+printf 'notes.txt%sTEXT-PATTERN:home-path-mac%sexecutor summary, no credential\n' "$tab" "$tab" > "$kind_allow"
+d=$(new text-allow-kind-ok)
+printf 'see %s%s%s for notes\n' "/Us" "ers/" "someone/projects/x" > "$d/notes.txt"
+commit "$d" notes
+audit "$d" "$kind_allow"
+ok=0
+if [ "$rc" -eq 0 ] && has 'audit-history: clean'; then ok=1; fi
+verdict text-allow-kind-ok "$ok"
+
+d=$(new text-allow-kind-other-path)
+printf 'see %s%s%s for notes\n' "/Us" "ers/" "someone/projects/x" > "$d/notes.txt"
+printf 'see %s%s%s for more\n' "/Us" "ers/" "someone/projects/y" > "$d/more.txt"
+commit "$d" notes
+audit "$d" "$kind_allow"
+ok=0
+if [ "$rc" -eq 1 ] && has TEXT-PATTERN && has more.txt && ! has notes.txt; then ok=1; fi
+verdict text-allow-kind-other-path "$ok"
+
+d=$(new text-allow-kind-other-kind)
+printf 'see %s%s%s for notes\n' "/Us" "ers/" "someone/projects/x" > "$d/notes.txt"
+printf 'and %s%s%s for linux\n' "/ho" "me/" "someone/projects/z" >> "$d/notes.txt"
+commit "$d" notes
+audit "$d" "$kind_allow"
+ok=0
+if [ "$rc" -eq 1 ] && has 'home-path-linux' && ! has 'home-path-mac'; then ok=1; fi
+verdict text-allow-kind-other-kind "$ok"
+
 [ "$failed" -eq 0 ] || exit 1
 exit 0

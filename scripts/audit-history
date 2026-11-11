@@ -24,6 +24,9 @@
 #   clone. A range that cannot be resolved, or that holds no commit, is a harness failure (exit 2), never "clean".
 # allowlist: lines  path<TAB>CHECK<TAB>reason  ('#' comments). A hit is suppressed only when its path AND its CHECK match.
 #   A ROM-SIZE allowance applies only while the blob has no NUL byte.
+#   A text hit is matched by CHECK  TEXT-PATTERN  (every text-pattern kind in that path) or by the narrower  TEXT-PATTERN:KIND
+#   (only that kind in that path, KIND being the bracketed name printed with the hit, for example the home-path kind of the mac
+#   shape). Prefer the narrow form: the wide form would also hide a credential added to the same path later.
 # stdout: hits as  CHECK <size|line> <path> , then a summary; a clean history ends with the line  audit-history: clean
 # exit  : 0 clean | 1 hits | 2 harness failure (a git read failed, bad usage, empty or shallow history). Exit 2 always comes first:
 #         a failed read never reaches the clean/hit decision.
@@ -232,6 +235,7 @@ awk -F'\t' -v allowf="$allow" -v unit="$unit" '
   {
     path = $3
     if ((path SUBSEP "TEXT-PATTERN") in al) next
+    if ((path SUBSEP ("TEXT-PATTERN:" $1)) in al) next
     key = $2 "\t" path "\t" $1
     n[key]++
   }
