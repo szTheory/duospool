@@ -144,6 +144,8 @@ run_mode() {
   fi
   mkdir -p "$bd" || { echo "HARNESS_ERROR cannot create $bd" >&2; exit 2; }
   rm -rf "$bd/exclude-ids.txt" "$bd/cases.tsv" "$bd/ids.txt" "$bd/results.txt" "$bd/evidence" "$bd/records" "$bd/r1.tsv" "$bd/rules-fields.txt" "$bd/oracle.tsv" "$bd/oracle.err"
+  # the traces of an earlier explicit --trace-out run (plan 03-19; D-120): the cases write none, and trace_out_check below requires the directory to be absent until it makes it itself (the gate mode only: the sanitize mode makes none)
+  if [ "$mode" != sanitize ]; then rm -rf build/gate/traces; fi
 
   flatten_cases "$bd"
   awk -F'\t' '$1 == "K" { print $2 }' "$bd/cases.tsv" | sort -u > "$bd/ids.txt"
@@ -237,9 +239,58 @@ run_mode() {
     echo "STATUS sanitize ok n=$n"
     exit 0
   fi
+  trace_out_check "$bd"
   controls_mode "$preset" "$bd"
   echo "STATUS conformance ok n=$n"
   exit 0
+}
+
+# trace_out_check BD (plan 03-19; D-120, T-03-51, T-03-52): the runner writes a trace only on an explicit --trace-out. The cases that just ran must have left no build/gate/traces; then the explicit request for the authored case ds_proto must
+# print exactly two lines (the insn and the dev file: record count, lost count, size, sha256), the two files must exist with the size and the SHA-256 that a host tool measures (the printed values are not trusted), the insn size must be 24 bytes per
+# record with none lost, and four refused requests (an id with a slash and dot-dot, an upper-case id, a case whose fixture is none, no such case) must exit 2 and add no file. Any fault is exit 1 with a TRACE_OUT_ code, a missing tool exit 2.
+trace_out_check() {
+  to_bd=$1
+  to_dir=build/gate/traces
+  if [ -e "$to_dir" ]; then
+    echo "TRACE_OUT_UNREQUESTED the cases created $to_dir without --trace-out"
+    exit 1
+  fi
+  mkdir -p "$to_dir" || { echo "HARNESS_ERROR cannot create $to_dir" >&2; exit 2; }
+  pick_sha_tool
+  if "$to_bd/ds_runner" --cases "$to_bd/cases.tsv" --trace-out ds_proto > "$to_bd/trace-out.txt" 2> "$to_bd/trace-out.err"; then to_r=0; else to_r=$?; fi
+  if [ "$to_r" -ne 0 ]; then
+    cat "$to_bd/trace-out.err"
+    echo "TRACE_OUT_FAILED the explicit --trace-out ds_proto exited $to_r"
+    exit 1
+  fi
+  if [ "$(wc -l < "$to_bd/trace-out.txt" | tr -d ' ')" -ne 2 ]; then
+    echo "TRACE_OUT_STDOUT the trace request printed other than its two summary lines"
+    exit 1
+  fi
+  for to_k in insn dev; do
+    to_line=$(grep "^TRACE ds_proto $to_k records=" "$to_bd/trace-out.txt" || true)
+    to_recs=$(printf '%s\n' "$to_line" | sed -n 's/^TRACE ds_proto [a-z]* records=\([0-9][0-9]*\) lost=0 bytes=[0-9][0-9]* sha256=[0-9a-f]\{64\}$/\1/p')
+    to_bytes=$(printf '%s\n' "$to_line" | sed -n 's/^.* bytes=\([0-9][0-9]*\) sha256=.*$/\1/p')
+    to_sha=$(printf '%s\n' "$to_line" | sed -n 's/^.* sha256=\([0-9a-f]\{64\}\)$/\1/p')
+    if [ -z "$to_recs" ] || [ -z "$to_bytes" ] || [ -z "$to_sha" ] || [ ! -f "$to_dir/ds_proto.$to_k" ]; then
+      echo "TRACE_OUT_SHAPE the summary line or the file of ds_proto.$to_k is missing or malformed"
+      exit 1
+    fi
+    to_host_bytes=$(wc -c < "$to_dir/ds_proto.$to_k" | tr -d ' ')
+    to_host_sha=$($sha_tool "$to_dir/ds_proto.$to_k" | awk '{ print $1 }')
+    if [ "$to_host_bytes" != "$to_bytes" ] || [ "$to_host_sha" != "$to_sha" ] || [ "$to_bytes" -ne $(( to_recs * 24 )) ]; then
+      echo "TRACE_OUT_MISMATCH the printed size or sha256 of ds_proto.$to_k differs from the host tools, or its size is not 24 bytes per record"
+      exit 1
+    fi
+  done
+  for to_bad in '../x' 'Ds_proto' run_refuse_memory_invalid no_such_case; do
+    if "$to_bd/ds_runner" --cases "$to_bd/cases.tsv" --trace-out "$to_bad" > /dev/null 2> /dev/null; then to_r=0; else to_r=$?; fi
+    if [ "$to_r" -ne 2 ] || [ "$(ls "$to_dir" | wc -l | tr -d ' ')" -ne 2 ]; then
+      echo "TRACE_OUT_REFUSAL a refused request '$to_bad' did not exit 2 or left a file"
+      exit 1
+    fi
+  done
+  echo "TRACE_OUT ds_proto insn dev ok"
 }
 
 # sanitize_compiler BD (D-55): choose the compiler of the sanitize preset and export it as CC. Darwin: /usr/bin/clang, because Homebrew

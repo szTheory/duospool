@@ -27,6 +27,7 @@
  *                     each with the stamp of the insn record at that pc, the pc, kind (W, R, ST), physical address, value (a number, or A for the A register in that insn record), the flags the address implies and zero spare bytes; or
  *                     mode=windows;rom=NAME: the accesses of every window driven through the bus choke point, which logs the writes of windows 0 to 5, the reads of window 4 and the ST physical writes and nothing else, and
  *                     the drop-newest arithmetic of the hook. E0, with literals from the case (PC, physical address and immediates from the fixture source and the hardware manual), none from DuoSpool output.
+ *   trace_out_rights  (plan 03-19) the rule of the --trace-out option, below.
  */
 #include <stdint.h>
 #include <stdio.h>
@@ -36,7 +37,9 @@
 #include "ds_core.h"
 #include "ds_obs.h"
 #include "ds_serial.h"
+#include "ds_sha256.h"
 #include "runner.h"
+#include "synth.h"
 
 #define OBS_GUARD 64u
 #define OBS_CAPS_MAX 8u
@@ -1402,4 +1405,329 @@ void kind_dev_log(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
     } else {
         dl_guest(c, rom, k->val[K_REQUEST], until, items, nitems, got, gotcap);
     }
+}
+
+/* ---- --trace-out and kind trace_out_rights (plan 03-19; D-120, D-56, D-80, T-03-51, T-03-52) ----
+ * The runner writes an instruction trace and a device log only for `--trace-out CASE_ID`, only for a case whose fixture is an authored image listed in build/gate/fixtures-authored.used (written by scripts/fixture-build in the same
+ * gate run) or a synthetic recipe, and only to build/gate/traces/ID.insn and ID.dev, a path the runner builds itself from an id of the form [a-z][a-z0-9_]*. Nothing reaches stdout but ids, record counts, sizes and sha256 values. */
+
+#define TRACE_DIR "build/gate/traces/"
+#define TRACE_USED "build/gate/fixtures-authored.used"
+#define TRACE_ID_MAX 64u
+#define TRACE_DEV_CAP 65536u
+
+const char *trace_out_id;
+
+int obskinds_arg(int argc, char **argv, int *a)
+{
+    if (strcmp(argv[*a], "--trace-out") == 0 && *a + 1 < argc) {
+        trace_out_id = argv[*a + 1];
+        *a += 1;
+        return 1;
+    }
+    return 0;
+}
+
+enum { TR_OK = 0, TR_BAD_ID = 1, TR_NO_CASE = 2, TR_NOT_PERMITTED = 3, TR_NO_DEADLINE = 4, TR_FAILED = 5 };
+
+static const char *trace_reason(int r)
+{
+    switch (r) {
+    case TR_BAD_ID:
+        return "the id is not of the form [a-z][a-z0-9_]* with at most 64 characters";
+    case TR_NO_CASE:
+        return "no case carries that id";
+    case TR_NOT_PERMITTED:
+        return "the fixture of the case is neither an authored image listed in build/gate/fixtures-authored.used nor a synthetic recipe";
+    case TR_NO_DEADLINE:
+        return "the case has no until_mclk to run to";
+    default:
+        return "the trace could not be produced";
+    }
+}
+
+static int trace_id_valid(const char *id)
+{
+    size_t n = strlen(id);
+
+    return n >= 1u && n <= TRACE_ID_MAX && id[0] >= 'a' && id[0] <= 'z' && strspn(id, "abcdefghijklmnopqrstuvwxyz0123456789_") == n;
+}
+
+/* 1 when NAME is the first token of a line of the authored used list (a missing or unreadable list lists nothing: the rule fails closed) */
+static int trace_authored_listed(const char *name)
+{
+    char *text = read_file(TRACE_USED);
+    char *line = text;
+    size_t n = strlen(name);
+    int found = 0;
+
+    while (text != NULL && *line != '\0' && !found) {
+        char *nl = strchr(line, '\n');
+
+        found = strncmp(line, name, n) == 0 && line[n] == ' ';
+        line = nl != NULL ? nl + 1 : line + strlen(line);
+    }
+    free(text);
+    return found;
+}
+
+static int trace_fixture_permit(const char *fixture)
+{
+    char name[48];
+
+    if (authored_name(fixture, name, sizeof name) == 0) {
+        return trace_authored_listed(name) ? TR_OK : TR_NOT_PERMITTED;
+    }
+    return synth_size(fixture) != 0u ? TR_OK : TR_NOT_PERMITTED;
+}
+
+/* the paths the runner derives from a valid id: 0 on success */
+static int trace_paths(const char *id, char *insn, char *dev, size_t cap)
+{
+    int a;
+    int b;
+
+    if (!trace_id_valid(id)) {
+        return -1;
+    }
+    a = snprintf(insn, cap, TRACE_DIR "%s.insn", id);
+    b = snprintf(dev, cap, TRACE_DIR "%s.dev", id);
+    return a > 0 && b > 0 && (size_t)a < cap && (size_t)b < cap ? 0 : -1;
+}
+
+/* the checks that come before any file is opened: the id, the case, its fixture and its deadline */
+static int trace_request(const char *id, const struct kase **kout, uint64_t *until)
+{
+    size_t i;
+
+    if (!trace_id_valid(id)) {
+        return TR_BAD_ID;
+    }
+    for (i = 0u; i < case_count(); i++) {
+        const struct kase *k = case_get(i);
+
+        if (strcmp(k->val[K_ID], id) == 0) {
+            if (!k->has[K_FIXTURE] || trace_fixture_permit(k->val[K_FIXTURE]) != TR_OK) {
+                return TR_NOT_PERMITTED;
+            }
+            if (!k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], until) != 0 || *until == 0u) {
+                return TR_NO_DEADLINE;
+            }
+            *kout = k;
+            return TR_OK;
+        }
+    }
+    return TR_NO_CASE;
+}
+
+static void trace_hex(const uint8_t *d, size_t n, char *out)
+{
+    static const char digits[] = "0123456789abcdef";
+    size_t i;
+
+    for (i = 0u; i < n; i++) {
+        out[2u * i] = digits[(d[i] >> 4u) & 0xFu];
+        out[2u * i + 1u] = digits[d[i] & 0xFu];
+    }
+    out[2u * n] = '\0';
+}
+
+/* write bytes to path and print the line of that file: record count, lost count, size and sha256 (0 on success) */
+static int trace_file(const char *id, const char *what, const char *path, const unsigned char *rec, uint32_t count, uint32_t lost, size_t unit)
+{
+    size_t bytes = (size_t)count * unit;
+    FILE *fp = fopen(path, "wb");
+    uint8_t digest[DS_SHA256_BYTES];
+    char hex[2u * DS_SHA256_BYTES + 1u];
+    int ok;
+
+    if (fp == NULL) {
+        return -1;
+    }
+    ok = (bytes == 0u || fwrite(rec, 1u, bytes, fp) == bytes) && fclose(fp) == 0;
+    if (!ok) {
+        return -1;
+    }
+    ds_sha256(rec != NULL ? rec : (const uint8_t *)"", bytes, digest);
+    trace_hex(digest, DS_SHA256_BYTES, hex);
+    emit_out("TRACE %s %s records=%u lost=%u bytes=%llu sha256=%s\n", id, what, (unsigned)count, (unsigned)lost, (unsigned long long)bytes, hex);
+    return 0;
+}
+
+/* the whole request: validate, run the case's image to its deadline with both sinks, write the two files; 0 or a TR_ code (nothing is opened before the request is permitted) */
+static int trace_out_do(const char *id)
+{
+    const struct kase *k = NULL;
+    uint64_t until = 0u;
+    char ipath[128];
+    char dpath[128];
+    char name[48];
+    struct booted b;
+    struct spec s;
+    const struct ds_instance *ci = NULL;
+    struct ds_insn_sink *isk;
+    struct ds_dev_sink *dsk;
+    unsigned char *irec;
+    unsigned char *drec;
+    struct ds_run_request rq;
+    struct ds_run_result res;
+    const char *err;
+    int r = trace_request(id, &k, &until);
+
+    if (r != TR_OK) {
+        return r;
+    }
+    if (trace_paths(id, ipath, dpath, sizeof ipath) != 0) {
+        return TR_BAD_ID;
+    }
+    if (authored_name(k->val[K_FIXTURE], name, sizeof name) == 0) {
+        err = boot_built_rom(name, k->val[K_REQUEST], &b, &ci);
+    } else {
+        err = boot_accepted(k->val[K_FIXTURE], k->val[K_REQUEST], &b, &s, &ci);
+    }
+    if (err != NULL) {
+        return TR_FAILED;
+    }
+    isk = (struct ds_insn_sink *)calloc(1u, sizeof *isk);
+    dsk = (struct ds_dev_sink *)calloc(1u, sizeof *dsk);
+    irec = (unsigned char *)malloc((size_t)DS_SINK_MAX_RECORDS * DS_INSN_RECORD_BYTES);
+    drec = (unsigned char *)malloc((size_t)TRACE_DEV_CAP * DS_DEV_RECORD_BYTES);
+    if (isk == NULL || dsk == NULL || irec == NULL || drec == NULL) {
+        r = TR_FAILED;
+    } else {
+        isk->records = irec;
+        isk->capacity = DS_SINK_MAX_RECORDS;
+        dsk->records = drec;
+        dsk->capacity = TRACE_DEV_CAP;
+        memset(&rq, 0, sizeof rq);
+        memset(&res, 0, sizeof res);
+        rq.struct_size = (uint32_t)sizeof rq;
+        rq.until_mclk = until;
+        rq.insn = isk;
+        rq.dev = dsk;
+        if (ds_run((struct ds_instance *)(void *)b.mem, &rq, &res) == (uint32_t)DS_RUN_REASON_REFUSED
+            || trace_file(id, "insn", ipath, irec, get_u32(isk->header), get_u32(isk->header + 4), DS_INSN_RECORD_BYTES) != 0
+            || trace_file(id, "dev", dpath, drec, get_u32(dsk->header), get_u32(dsk->header + 4), DS_DEV_RECORD_BYTES) != 0) {
+            r = TR_FAILED;
+        }
+    }
+    free(isk);
+    free(dsk);
+    free(irec);
+    free(drec);
+    release_boot(&b);
+    return r;
+}
+
+int trace_out_main(void)
+{
+    int r = trace_out_do(trace_out_id);
+
+    if (r != TR_OK) {
+        emit_err("HARNESS --trace-out refused: %s\n", trace_reason(r));
+        return 2;
+    }
+    return 0;
+}
+
+/* a file at path exists and can be opened for reading */
+static int file_exists(const char *path)
+{
+    FILE *fp = fopen(path, "rb");
+
+    if (fp == NULL) {
+        return 0;
+    }
+    fclose(fp);
+    return 1;
+}
+
+/*
+ * kind trace_out_rights: expect is a list of items separated by ';', each at most 40 characters, at least one of each of the first four:
+ *   allow_fixture=KEY  the fixture key is permitted (authored and listed, or a synthetic recipe)      deny_fixture=KEY  it is not (an unlisted authored image, none, a path, a commercial name)
+ *   allow_case=ID      the request for the case passes every check that comes before a file is opened, and the paths are TRACE_DIR/ID.insn and .dev with no further slash
+ *   deny_case=ID       the request is refused (a case whose fixture is not permitted, or no such case) and no file appears        bad_id=ID  the id is not of the form [a-z][a-z0-9_]* and is refused with no path built and no file at any naive join
+ * Nothing is written by this kind: the writing of an allowed request is the --trace-out run of scripts/conformance-run. E0: the rule is a literal one of this plan.
+ */
+void kind_trace_out_rights(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    char list[PK_LIST_MAX];
+    char *rest = list;
+    char *item;
+    unsigned classes = 0u;
+    unsigned n = 0u;
+    char msg[160];
+
+    if (pk_copy_text(k->val[K_EXPECT], list, sizeof list) != 0) {
+        harness_error(c, "the trace_out_rights expect list is too long");
+        return;
+    }
+    while ((item = pk_next_item(&rest, ';')) != NULL) {
+        char *eq = strchr(item, '=');
+        const char *v;
+        char ipath[128];
+        char dpath[128];
+
+        if (eq == NULL || strlen(eq + 1) > 40u) {
+            harness_error(c, "a trace_out_rights item is KEY=VALUE with a value of at most 40 characters");
+            return;
+        }
+        *eq = '\0';
+        v = eq + 1;
+        n++;
+        if (strcmp(item, "allow_fixture") == 0) {
+            classes |= 1u;
+            snprintf(msg, sizeof msg, "the fixture key %s is refused but is authored and listed or a synthetic recipe", v);
+            check(c, trace_fixture_permit(v) == TR_OK, msg);
+        } else if (strcmp(item, "deny_fixture") == 0) {
+            classes |= 2u;
+            snprintf(msg, sizeof msg, "the fixture key %s is permitted but is neither authored and listed nor a synthetic recipe", v);
+            check(c, trace_fixture_permit(v) == TR_NOT_PERMITTED, msg);
+        } else if (strcmp(item, "allow_case") == 0) {
+            const struct kase *kk = NULL;
+            uint64_t until = 0u;
+            int ok;
+
+            classes |= 4u;
+            snprintf(msg, sizeof msg, "the trace request for case %s is refused before any file is opened", v);
+            check(c, trace_request(v, &kk, &until) == TR_OK, msg);
+            ok = trace_paths(v, ipath, dpath, sizeof ipath) == 0 && strncmp(ipath, TRACE_DIR, strlen(TRACE_DIR)) == 0 && strncmp(dpath, TRACE_DIR, strlen(TRACE_DIR)) == 0 && strchr(ipath + strlen(TRACE_DIR), '/') == NULL
+                 && strchr(dpath + strlen(TRACE_DIR), '/') == NULL && strstr(ipath, "..") == NULL && strstr(dpath, "..") == NULL;
+            snprintf(msg, sizeof msg, "the paths of case %s are not directly under build/gate/traces/", v);
+            check(c, ok, msg);
+        } else if (strcmp(item, "deny_case") == 0) {
+            int before;
+
+            classes |= 8u;
+            snprintf(ipath, sizeof ipath, TRACE_DIR "%s.insn", v);
+            snprintf(dpath, sizeof dpath, TRACE_DIR "%s.dev", v);
+            before = file_exists(ipath) || file_exists(dpath); /* a file of an earlier explicit request (or of a case-folded name on a case-insensitive filesystem) may be there: the refusal must not create one */
+            snprintf(msg, sizeof msg, "the trace request for case %s was not refused with the not-permitted or no-such-case reason", v);
+            check(c, trace_out_do(v) == TR_NOT_PERMITTED || trace_out_do(v) == TR_NO_CASE, msg);
+            snprintf(msg, sizeof msg, "a refused trace request for case %s left a file", v);
+            check(c, before || (!file_exists(ipath) && !file_exists(dpath)), msg);
+        } else if (strcmp(item, "bad_id") == 0) {
+            char ipath2[128];
+            int before;
+
+            classes |= 16u;
+            snprintf(ipath, sizeof ipath, TRACE_DIR "%s.insn", v);
+            snprintf(ipath2, sizeof ipath2, "%s.insn", v);
+            snprintf(dpath, sizeof dpath, TRACE_DIR "%s.dev", v);
+            before = file_exists(ipath) || file_exists(ipath2) || file_exists(dpath);
+            snprintf(msg, sizeof msg, "the id '%s' was accepted or a path was built for it", v);
+            check(c, !trace_id_valid(v) && trace_paths(v, ipath, dpath, sizeof ipath) != 0 && trace_out_do(v) == TR_BAD_ID, msg);
+            snprintf(ipath, sizeof ipath, TRACE_DIR "%s.insn", v);
+            snprintf(msg, sizeof msg, "a refused id '%s' left a file at a naive join of the id", v);
+            check(c, before || (!file_exists(ipath) && !file_exists(ipath2) && !file_exists(dpath)), msg);
+        } else {
+            harness_error(c, "a trace_out_rights item is allow_fixture, deny_fixture, allow_case, deny_case or bad_id");
+            return;
+        }
+    }
+    if (classes != 31u) {
+        harness_error(c, "a trace_out_rights case needs at least one item of each of the five kinds");
+        return;
+    }
+    snprintf(got, gotcap, "items=%u", n);
 }

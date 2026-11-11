@@ -30,6 +30,8 @@
  *        ds_runner --hash RECIPE     prints the SHA-256 of a recipe's bytes computed by the core, 64 lowercase hex characters
  *        ds_runner --spec            prints the generator spec string that is part of every recipe
  *        ds_runner --cases FILE --fixtures   prints NAME SIZE for every recipe the gate emits, cases and sweep (fixlist.c, plan 17)
+ *        ds_runner --cases FILE --trace-out CASE_ID   writes build/gate/traces/CASE_ID.insn and .dev (the instruction trace and the device log of the case's image, run to its deadline) and prints only record counts, sizes and sha256 values;
+ *                     refused (exit 2) unless the case's fixture is an authored image listed in build/gate/fixtures-authored.used or a synthetic recipe, or when CASE_ID is not [a-z][a-z0-9_]* (obskinds.c, plan 03-19; D-120); the directory must exist
  *   scripts/conformance-run compares --hash with the host sha tool over --emit for every sweep length (HASH_SWEEP_MISMATCH).
  * exit : 0 every case ran and RUNNER_DONE was printed (the verdict is the ingest's), 2 usage or harness error (no case ran)
  */
@@ -1013,6 +1015,7 @@ static const struct {
     {"insn_sink_shapes", kind_insn_sink_shapes, 0},
     {"observer", kind_observer, 0},
     {"dev_log", kind_dev_log, 0},
+    {"trace_out_rights", kind_trace_out_rights, 0},
     {"opcode_table", kind_opcode_table, 0},
     {"cycle_probe", kind_cycle_probe, 0},
     {"opcode_exercise", kind_opcode_exercise, 1},
@@ -1200,16 +1203,17 @@ int main(int argc, char **argv)
             rules_fields_path = argv[++a];
         } else if (strcmp(argv[a], "--oracle") == 0 && a + 1 < argc) {
             oracle_path = argv[++a];
-        } else if (cpukinds_arg(argc, argv, &a)) {
+        } else if (cpukinds_arg(argc, argv, &a) || obskinds_arg(argc, argv, &a)) {
             continue;
         } else {
             cases_path = NULL;
             break;
         }
     }
-    if (cases_path == NULL || (evdir == NULL && !list_fx)) {
+    if (cases_path == NULL || (evdir == NULL && !list_fx && trace_out_id == NULL)) {
         emit_err("usage: ds_runner --cases FILE --evidence-dir DIR [--profile-tsv FILE] [--rules-fields FILE]\n"
                         "                 [--oracle FILE] [--opcode-tsv FILE] [--exclude-ids FILE] [--only ID] [--marker-seed N] [--records DIR] [--golden-dir DIR]\n"
+                        "       ds_runner --cases FILE --trace-out CASE_ID   (writes build/gate/traces/CASE_ID.insn and .dev for an authored or synthetic case)\n"
                         "       ds_runner --sweep-lengths | --spec | --emit RECIPE | --hash RECIPE\n");
         return 2;
     }
@@ -1230,6 +1234,9 @@ int main(int argc, char **argv)
     }
     if (list_fx) {
         return list_fixtures(sweep_len, sizeof sweep_len / sizeof sweep_len[0]);
+    }
+    if (trace_out_id != NULL) {
+        return trace_out_main();
     }
     if (exclude_path != NULL) {
         char *xt = read_file(exclude_path);

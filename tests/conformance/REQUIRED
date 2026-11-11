@@ -128,6 +128,7 @@ observer_ds_proto
 observer_cyc_probe
 dev_log_records
 dev_log_windows
+trace_out_rights
 opcode_exercise
 cpu_ldst
 mutate_sweep_cpu_ldst
