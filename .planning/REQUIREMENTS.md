@@ -33,7 +33,7 @@ E4 = differential vs another emulator (finds disagreements, decides nothing).
 - [x] **CPU-03**: The timer (reload, decrement rate tied to the master clock, IRQ) and interrupt controller (disable/status registers, documented priority, sampling point) behave as documented, verified by fixtures that report results in guest RAM.
 - [x] **CPU-04**: High/low CPU speed switching changes instruction timing on the master-clock timeline, and VDC/VCE access penalties are applied as documented.
 - [x] **CPU-05**: Block-transfer instructions are resumable at byte granularity. A bounded run can stop mid-transfer and continue with identical results to an uninterrupted run, and interrupt handling around block transfers follows the recorded model.
-- [ ] **CPU-06**: Instruction and cycle claims cite their source. Any cycle count without a primary source or E2/E3 evidence is labeled as a modelling assumption in the ledger.
+- [x] **CPU-06**: Instruction and cycle claims cite their source. Any cycle count without a primary source or E2/E3 evidence is labeled as a modelling assumption in the ledger.
 
 ### Video (HuC6270 VDC / HuC6260 VCE)
 
@@ -77,9 +77,9 @@ E4 = differential vs another emulator (finds disagreements, decides nothing).
 
 ### Fixtures & Verification
 
-- [ ] **FIX-01**: Diagnostic fixtures are original, authored HuC6280 assembly sources with project-owned startup code. Their recorded build recipe uses an external, license-checked assembler, with a cross-assembler byte-identity check where practical.
+- [x] **FIX-01**: Diagnostic fixtures are original, authored HuC6280 assembly sources with project-owned startup code. Their recorded build recipe uses an external, license-checked assembler, with a cross-assembler byte-identity check where practical.
 - [x] **FIX-02**: Every fixture has a manifest entry (source, build recipe, toolchain version, byte hash, license, notices, redistribution terms, test meaning, expected verdict source). A manifest check fails closed on any missing field or unlisted fixture.
-- [ ] **FIX-03**: Fixture verdicts come from documented behavior or an independent verdict computed in the guest, never from DuoSpool's own recorded output.
+- [x] **FIX-03**: Fixture verdicts come from documented behavior or an independent verdict computed in the guest, never from DuoSpool's own recorded output.
 - [x] **FIX-04**: The required-test inventory fails closed: a missing, skipped, or evidence-free required check fails the gate, calibrated by a named negative control that is shown to fail.
 - [x] **FIX-05**: No commercial ROMs, firmware/system cards, disc images, or private saves are committed, used in CI, or written to CI logs/artifacts, enforced by a repository check.
 
@@ -165,7 +165,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CPU-03 | Phase 3 | Complete |
 | CPU-04 | Phase 3 | Complete |
 | CPU-05 | Phase 3 | Complete |
-| CPU-06 | Phase 3 | Pending |
+| CPU-06 | Phase 3 | Complete |
 | VID-01 | Phase 4 | Pending |
 | VID-02 | Phase 4 | Pending |
 | VID-03 | Phase 4 | Pending |
@@ -191,9 +191,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CORE-06 | Phase 3 | Complete |
 | RUN-01 | Phase 6 | Pending |
 | RUN-02 | Phase 2 | Complete |
-| FIX-01 | Phase 3 | Pending |
+| FIX-01 | Phase 3 | Complete |
 | FIX-02 | Phase 2 | Complete |
-| FIX-03 | Phase 3 | Pending |
+| FIX-03 | Phase 3 | Complete |
 | FIX-04 | Phase 2 | Complete |
 | FIX-05 | Phase 2 | Complete |
 | TOOL-01 | Phase 1 | Complete |

@@ -3,17 +3,17 @@ gsd_state_version: "1.0"
 current_phase: 3
 current_phase_name: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
 current_plan: 38
-status: planning
-stopped_at: Completed 03-32-PLAN.md
-last_updated: "2026-11-11T20:43:07.252Z"
+status: verifying
+stopped_at: Completed 03-33-PLAN.md
+last_updated: "2026-11-11T22:26:37.302Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 2 complete, transitioned to Phase 3
-state_head: 35f7ea523ce264900e327f9773f434202e47d4a3
+state_head: 8fb4bb3728aebf49328bc1a27079d8bbd371dfc1
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 72
-  completed_plans: 71
+  completed_plans: 72
   percent: 33
 ---
 
@@ -31,8 +31,8 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 Phase: 3 — HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
 Current Plan: 38
 Total Plans in Phase: 38
-Status: Ready to execute
-Last activity: 2026-11-11 — Completed 03-04 (W1: optional case keys, guestkinds.c, authored fixture key, machine_time and stop on RESULT)
+Status: Phase complete — ready for verification
+Last activity: 2026-11-11 — Completed 03-33 (W8 close: README wording gated against the ledger, timing and CI budget review, timeout 20, Linux and WLA one-offs, owner hand-off list)
 
 Progress: [███░░░░░░░] 33%
 
@@ -130,6 +130,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 03 P30 | 110min | 3 tasks | 27 files |
 | Phase 03 P31 | 75min | 3 tasks | 12 files |
 | Phase 03 P32 | 190min | 3 tasks | 43 files |
+| Phase 03 P33 | 330min | 3 tasks | 30 files |
 
 ## Accumulated Context
 
@@ -265,6 +266,9 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-30: snapshot is the canonical digest stream; ds_restore is validate-then-commit with one decoder per region; refusal set snapshot.* (14 codes); remaining 0 while a block transfer is active is legal (plan row replaced by nonzero while inactive); tail_pad[6] added so the hand-written tiling list sums to sizeof
 - [Phase 03]: 03-31: hostile snapshot corpus of 529 inputs is generated in memory from one mid-block snapshot with the hand-kept layout (refused with target byte-identical or accepted and re-serialised, then run bounded); chunk_equiv restore=N restores at drawn stops of the 32 random programs; toys snapshot-drop-t and snapshot-drop-blkt anchor on the restore lines of snapshot.c, skip-a-field is the selftest mutation-restore-skip-field
 - [Phase 03]: 03-32: seven of eight ER-2 candidates supported (E1 documentary); LED-CPU-0007 stays assumed because its cost clause has only E2 evidence
+- [Phase 03]: 03-33: README supported-entry list is gated against the ledger (DOCS_SUPPORTED_LIST/MEANING) and the withheld claim words are legal only quoted on one policy line (DOCS_CLAIM_WORD)
+- [Phase 03]: 03-33: gate job timeout-minutes raised from 10 to 20 (estimated Phase 3 job 6 to 10 min, no CI row yet); second awk run stays a whole gate run (52 of 56 stages run awk); sanitizers-under-clang is a note for the owner, review after the first CI row
+- [Phase 03]: 03-33: WLA-DX one-off run gave 233 of 234 rows equal, BRK differs, no cross-assembler claim; tool uninstalled because the optional xasm path turns the gate red while it is on PATH
 
 ### Pending Todos
 
@@ -288,6 +292,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-11T20:43:06.302Z
-Stopped at: Completed 03-32-PLAN.md
+Last session: 2026-11-11T22:26:36.867Z
+Stopped at: Completed 03-33-PLAN.md
 Resume file: None
