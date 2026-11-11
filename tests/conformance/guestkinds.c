@@ -9,7 +9,12 @@
  *                 The ROM is named by the fixture key as authored:NAME (NAME is lowercase letters, digits and hyphens; the loader reads only
  *                 build/gate/fixtures/NAME.pce and never a path from the case, T-03-12). The deadline is the integer key until_mclk (absolute
  *                 from boot, master clocks) and the check count the integer key checks; both are optional for other kinds but required here.
- *                 expect is "id=N" (the fixture id that the guest writes into its DSV1 block).
+ *                 expect is "id=N" (the fixture id that the guest writes into its DSV1 block), optionally followed by one protocol-control mode (plan 03-05, D-124):
+ *                   ;verdict=OUTCOME:REASON  the guest is a deliberate protocol fault. The case passes only when the judge gives exactly the outcome OUTCOME
+ *                                            (pass, guest_failure, harness_failure or timeout) and its reason text contains the word REASON (lowercase letters,
+ *                                            digits, hyphens and underscores); any other verdict, or the right outcome for another reason, is a guest_failure
+ *                   ;poison-t0               the runner writes the DSV1 magic and the done state into work RAM after boot and before the first step; the
+ *                                            t=0 precondition must then give harness_failure ("before the first step"), and the guest is not run at all
  *                 The RESULT line of a guest case ends machine_time=N stop=REASON (D-95, F11).
  *                 Outcome mapping, one reading of D-124 (the judge below and ds_proto.s carry the same layout):
  *                   harness_failure  a harness-side precondition fails: the ROM is unreadable, a key or the expect is malformed, a DSV1 block is
@@ -219,10 +224,93 @@ void note_run(struct ctx *c, uint64_t machine_time, uint32_t reason)
     c->run_stop = stop_name(reason);
 }
 
-/* id=N into the fixture id; 0 on success */
-static int parse_id(const char *text, uint64_t *id)
+/* the expect of a guest case: id=N, then nothing, ;verdict=OUTCOME:REASON or ;poison-t0 */
+enum guest_mode { MODE_PLAIN, MODE_VERDICT, MODE_POISON };
+
+struct guest_expect {
+    uint64_t id;
+    enum guest_mode mode;
+    char outcome[24];
+    char reason[48];
+};
+
+/* 0 on success */
+static int parse_guest_expect(const char *text, struct guest_expect *e)
 {
-    return strncmp(text, "id=", 3u) == 0 && parse_u64(text + 3, id) == 0 && *id <= 255u ? 0 : -1;
+    size_t n;
+    const char *rest;
+    const char *colon;
+
+    memset(e, 0, sizeof *e);
+    if (strncmp(text, "id=", 3u) != 0) {
+        return -1;
+    }
+    n = strspn(text + 3, "0123456789");
+    if (n == 0u || n > 3u) {
+        return -1;
+    }
+    {
+        char num[4];
+
+        memcpy(num, text + 3, n);
+        num[n] = '\0';
+        if (parse_u64(num, &e->id) != 0 || e->id > 255u) {
+            return -1;
+        }
+    }
+    rest = text + 3 + n;
+    e->mode = MODE_PLAIN;
+    if (*rest == '\0') {
+        return 0;
+    }
+    if (strcmp(rest, ";poison-t0") == 0) {
+        e->mode = MODE_POISON;
+        memcpy(e->outcome, "harness_failure", 16u);
+        memcpy(e->reason, "before the first step", 22u);
+        return 0;
+    }
+    if (strncmp(rest, ";verdict=", 9u) != 0) {
+        return -1;
+    }
+    rest += 9;
+    colon = strchr(rest, ':');
+    if (colon == NULL || colon == rest || (size_t)(colon - rest) >= sizeof e->outcome || strlen(colon + 1) == 0u || strlen(colon + 1) >= sizeof e->reason
+        || strspn(colon + 1, "abcdefghijklmnopqrstuvwxyz0123456789-_") != strlen(colon + 1)) {
+        return -1;
+    }
+    memcpy(e->outcome, rest, (size_t)(colon - rest));
+    e->outcome[colon - rest] = '\0';
+    memcpy(e->reason, colon + 1, strlen(colon + 1) + 1u);
+    e->mode = MODE_VERDICT;
+    return 0;
+}
+
+/* the outcome name of a context, by the same precedence as outcome_of in runner.c (harness, then timeout unless failed, then failure or no assertion) */
+static const char *ctx_outcome(const struct ctx *c)
+{
+    if (c->harness) {
+        return "harness_failure";
+    }
+    if (c->timeout && !c->failed) {
+        return "timeout";
+    }
+    if (c->failed || c->n == 0u) {
+        return "guest_failure";
+    }
+    return "pass";
+}
+
+/* a protocol-control case: the scratch context s holds what the judge (or the t=0 precondition) concluded; the case passes only on the declared outcome and reason */
+static void expect_verdict(struct ctx *c, const struct ctx *s, const struct guest_expect *e, char *got, size_t gotcap)
+{
+    const char *seen = ctx_outcome(s);
+    char msg[160];
+
+    snprintf(got, gotcap, "verdict=%s", seen);
+    snprintf(msg, sizeof msg, "the protocol fault gave the outcome %s, not the declared %s", seen, e->outcome);
+    check(c, strcmp(seen, e->outcome) == 0, msg);
+    snprintf(msg, sizeof msg, "the outcome is the declared one but its reason does not contain '%s'", e->reason);
+    check(c, strstr(s->why, e->reason) != NULL, msg);
 }
 
 /*
@@ -274,12 +362,13 @@ static int read_int_keys(const struct kase *k, uint64_t *until, uint64_t *checks
 void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
 {
     char rom[48];
-    uint64_t id = 0u;
+    struct guest_expect ex;
     uint64_t checks = 0u;
     uint64_t until = 0u;
     struct booted b;
     struct ds_run_request run;
     struct ds_run_result out;
+    struct ctx judged;
     const struct ds_instance *inst = NULL;
     const char *err;
     uint32_t reason;
@@ -292,8 +381,8 @@ void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
         harness_error(c, "a guest case needs the integer keys until_mclk and checks (checks at most 255)");
         return;
     }
-    if (parse_id(k->val[K_EXPECT], &id) != 0) {
-        harness_error(c, "a guest expect is id=N");
+    if (parse_guest_expect(k->val[K_EXPECT], &ex) != 0) {
+        harness_error(c, "a guest expect is id=N, optionally followed by ;verdict=OUTCOME:REASON or ;poison-t0");
         return;
     }
     err = boot_built_rom(rom, k->val[K_REQUEST], &b, &inst);
@@ -301,9 +390,29 @@ void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
         harness_error(c, err);
         return;
     }
+    memset(&judged, 0, sizeof judged);
+    if (ex.mode == MODE_POISON) {
+        /* the runner-side control of the t=0 precondition (D-124): plant the magic and the done state, as a stale or hostile block would be */
+        uint8_t *ram = ((struct ds_instance *)(void *)b.mem)->ram8k;
+
+        ram[V_OFF + 0u] = 0x44u;
+        ram[V_OFF + 1u] = 0x53u;
+        ram[V_OFF + 2u] = 0x56u;
+        ram[V_OFF + 3u] = 0x31u;
+        ram[V_OFF + 4u] = 0xA5u;
+        ram[V_OFF + 5u] = 0x5Au;
+    }
     /* the precondition of D-124: no verdict block is present before the first step */
     if (block_present(inst->ram8k + V_OFF)) {
-        harness_error(c, "a DSV1 block is present in work RAM before the first step");
+        harness_error(ex.mode == MODE_POISON ? &judged : c, "a DSV1 block is present in work RAM before the first step");
+        if (ex.mode == MODE_POISON) {
+            expect_verdict(c, &judged, &ex, got, gotcap);
+        }
+        release_boot(&b);
+        return;
+    }
+    if (ex.mode == MODE_POISON) {
+        check(c, 0, "the t=0 precondition did not see the planted DSV1 block");
         release_boot(&b);
         return;
     }
@@ -318,6 +427,13 @@ void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
         release_boot(&b);
         return;
     }
-    judge_dsv1(c, inst->ram8k + V_OFF, (unsigned)id, (unsigned)checks, got, gotcap);
+    if (ex.mode == MODE_VERDICT) {
+        char seen[64];
+
+        judge_dsv1(&judged, inst->ram8k + V_OFF, (unsigned)ex.id, (unsigned)checks, seen, sizeof seen);
+        expect_verdict(c, &judged, &ex, got, gotcap);
+    } else {
+        judge_dsv1(c, inst->ram8k + V_OFF, (unsigned)ex.id, (unsigned)checks, got, gotcap);
+    }
     release_boot(&b);
 }

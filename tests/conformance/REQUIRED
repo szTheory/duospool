@@ -107,6 +107,11 @@ interleave_aba_order
 interleave_canaries
 liveness_shared_state_selfcheck
 ds_proto
+ds_proto_predone
+ds_proto_nodone
+ds_proto_badsum
+ds_proto_wrongid
+ds_proto_t0_poisoned
 run_refuse_struct_size
 run_refuse_instance_null
 run_refuse_request_null

@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# DSV1 protocol control (plan 03-05, D-124, D-95; the reading of D-124 recorded in plan 03-01): the variant writes the fixture id 2 while the case demands 1, and the judge gives harness_failure because the id differs from the case.
+# The ROM is one of the variants of fixtures/src/ds_proto.s that scripts/fixture-build assembles in the gate (never committed). The case passes only when the judge gives exactly the
+# declared outcome and reason, so a judge that missed the fault would turn the case red. Evidence tier E0 (repeatability and a mechanism check of the verdict judge): no accuracy,
+# compatibility or hardware claim, and the word pass here means the declared fault was caught.
+id = "ds_proto_wrongid"
+kind = "guest"
+fixture = "authored:ds-proto-wrongid"
+request = ""
+expect = "id=1;verdict=harness_failure:differs"
+meaning = "A block with another fixture id than the case demands is caught: the judge gives harness_failure, never a pass"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+checks = 8
