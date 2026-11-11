@@ -524,13 +524,13 @@ const struct recrow *find_row(const struct recrow *rows, size_t n, const char *k
 }
 
 /* does the printer refuse (error status, empty text, zero length) the instance copy as it stands; garbage is pre-filled */
-static int refuses_with(const struct ds_instance *t, enum ds_text_status want, char *buf, size_t cap)
+static int refuses_with(const struct ds_instance *t, const struct ds_text_run *run, enum ds_text_status want, char *buf, size_t cap)
 {
     size_t len = 12345u;
     enum ds_text_status st;
 
     memset(buf, 0x7f, cap);
-    st = ds_text_record(t, NULL, buf, cap, &len);
+    st = ds_text_record(t, run, buf, cap, &len);
     return st == want && len == 0u && buf[0] == '\0';
 }
 
@@ -692,6 +692,9 @@ void kind_record_lines(const struct kase *k, struct ctx *c, char *got, size_t go
         check(c, rl != NULL && value_is(rl->val, ds_model_ledger(f)), "a model ledger line differs from the row of model_params.def");
         check(c, rs != NULL && value_is(rs->val, ds_model_status(f)), "a model status line differs from the row of model_params.def");
         check(c, rb != NULL && value_is(rb->val, bound ? "run-request" : "default"), "a model bound_by line differs from the request");
+        snprintf(key, sizeof key, "\"%s\"", ds_model_ledger(f));
+        rv = find_row(rows, nrows, "withheld.ids");
+        check(c, rv != NULL && strstr(rv->val, key) != NULL, "the ledger id of a model row is not in the withheld list");
     }
 
     /* the profile text is an exact part of the record, followed by the content table */
@@ -711,7 +714,7 @@ void kind_record_lines(const struct kase *k, struct ctx *c, char *got, size_t go
     /* the capacity edge: len + 1 bytes fit, len bytes do not, and the failed print leaves nothing */
     st = ds_text_record(inst, &run, scratch, len + 1u, &plen);
     check(c, st == DS_TEXT_OK && plen == len && memcmp(scratch, text, len + 1u) == 0, "a buffer of exactly len + 1 bytes did not fit the record");
-    check(c, refuses_with(inst, DS_TEXT_ERR_CAPACITY, scratch, len), "a buffer one byte short did not give capacity and an empty text");
+    check(c, refuses_with(inst, &run, DS_TEXT_ERR_CAPACITY, scratch, len), "a buffer one byte short did not give capacity and an empty text");
     plen = 99u;
     check(c, ds_text_record(inst, &run, NULL, 0u, &plen) == DS_TEXT_ERR_ARGUMENT && plen == 0u, "a NULL buffer is not an argument error");
 
@@ -722,34 +725,375 @@ void kind_record_lines(const struct kase *k, struct ctx *c, char *got, size_t go
     } else {
         memcpy(tmp, inst, sizeof *tmp);
         tmp->profile.field[DS_FIELD_media_slot].value[0] = '"';
-        check(c, refuses_with(tmp, DS_TEXT_ERR_STRING, scratch, sizeof scratch), "a double quote in a field value was not refused");
+        check(c, refuses_with(tmp, &run, DS_TEXT_ERR_STRING, scratch, sizeof scratch), "a double quote in a field value was not refused");
         memcpy(tmp, inst, sizeof *tmp);
         tmp->profile.field[DS_FIELD_lines_per_frame].value[0] = '\\';
-        check(c, refuses_with(tmp, DS_TEXT_ERR_STRING, scratch, sizeof scratch), "a backslash in a field value was not refused");
+        check(c, refuses_with(tmp, &run, DS_TEXT_ERR_STRING, scratch, sizeof scratch), "a backslash in a field value was not refused");
         memcpy(tmp, inst, sizeof *tmp);
         tmp->mapper[1] = '"';
-        check(c, refuses_with(tmp, DS_TEXT_ERR_STRING, scratch, sizeof scratch), "a double quote in the mapper name was not refused");
+        check(c, refuses_with(tmp, &run, DS_TEXT_ERR_STRING, scratch, sizeof scratch), "a double quote in the mapper name was not refused");
         memcpy(tmp, inst, sizeof *tmp);
         tmp->profile.id[2] = '\\';
-        check(c, refuses_with(tmp, DS_TEXT_ERR_STRING, scratch, sizeof scratch), "a backslash in the profile id was not refused");
+        check(c, refuses_with(tmp, &run, DS_TEXT_ERR_STRING, scratch, sizeof scratch), "a backslash in the profile id was not refused");
         memcpy(tmp, inst, sizeof *tmp);
         tmp->profile.field[DS_FIELD_vpc].value[0] = (char)0x80;
-        check(c, refuses_with(tmp, DS_TEXT_ERR_STRING, scratch, sizeof scratch), "a non-ASCII byte in a field value was not refused");
+        check(c, refuses_with(tmp, &run, DS_TEXT_ERR_STRING, scratch, sizeof scratch), "a non-ASCII byte in a field value was not refused");
         memcpy(tmp, inst, sizeof *tmp);
         memset(tmp->mapper, 'x', sizeof tmp->mapper);
-        check(c, refuses_with(tmp, DS_TEXT_ERR_STRING, scratch, sizeof scratch), "an unterminated mapper name was not refused");
+        check(c, refuses_with(tmp, &run, DS_TEXT_ERR_STRING, scratch, sizeof scratch), "an unterminated mapper name was not refused");
         memcpy(tmp, inst, sizeof *tmp);
         tmp->profile.field[DS_FIELD_chip_revision].status = 9u;
-        check(c, refuses_with(tmp, DS_TEXT_ERR_STATE, scratch, sizeof scratch), "an unknown field status was not refused");
+        check(c, refuses_with(tmp, &run, DS_TEXT_ERR_STATE, scratch, sizeof scratch), "an unknown field status was not refused");
         memcpy(tmp, inst, sizeof *tmp);
         tmp->byte_order = 7u;
-        check(c, refuses_with(tmp, DS_TEXT_ERR_STATE, scratch, sizeof scratch), "an unknown byte order was not refused");
+        check(c, refuses_with(tmp, &run, DS_TEXT_ERR_STATE, scratch, sizeof scratch), "an unknown byte order was not refused");
         memcpy(tmp, inst, sizeof *tmp);
         tmp->tma_zero = 9u;
-        check(c, refuses_with(tmp, DS_TEXT_ERR_STATE, scratch, sizeof scratch), "a model selection outside its allowed list was not refused");
+        check(c, refuses_with(tmp, &run, DS_TEXT_ERR_STATE, scratch, sizeof scratch), "a model selection outside its allowed list was not refused");
         free(tmp);
     }
     snprintf(got, gotcap, "rows=%u", (unsigned)nrows);
     record_emit(k, c, text, len); /* --records: the record of this case, text only */
+    release_boot(&b);
+}
+
+/* ---- kinds record_run and record_constants (plan 03-18; D-53 amended, D-95, D-113) ---- */
+
+/* print the record of inst with the run description into text, copy it to work and split it into rows; 0 on success, else a harness fault has been raised */
+static int print_rows(struct ctx *c, const struct ds_instance *inst, const struct ds_text_run *tr, char *text, char *work, struct recrow *rows, size_t *nrows)
+{
+    size_t len = 0u;
+    const char *err;
+
+    if (ds_text_record(inst, tr, text, REC_CAP, &len) != DS_TEXT_OK || len != strlen(text)) {
+        harness_error(c, "ds_text_record failed on an accepted instance");
+        return -1;
+    }
+    memcpy(work, text, len + 1u);
+    err = parse_record(work, rows, nrows);
+    if (err != NULL) {
+        harness_error(c, err);
+        return -1;
+    }
+    return 0;
+}
+
+/* the decimal value of a row of the record, 0 on success */
+static int row_u64(const struct recrow *rows, size_t n, const char *key, uint64_t *out)
+{
+    const struct recrow *r = find_row(rows, n, key);
+
+    return r != NULL && parse_u64(r->val, out) == 0 ? 0 : -1;
+}
+
+static int stop_at_once(const struct ds_instance *inst, void *ctx)
+{
+    (void)inst;
+    (void)ctx;
+    return 1;
+}
+
+/*
+ * kind record_run: boot the built authored image NAME (fixture = authored:NAME, request as given), run it with ds_run to the absolute deadline of the key until_mclk and print the record with the run result. expect is TABLE.KEY=VALUE items
+ * (run.reason=until;run.stop_point=instruction), the literals of the case. Structural assertions that name no DuoSpool-derived number: [run] steps is above 0, overshoot is below ds_max_step_mclk() and is the machine time past the deadline,
+ * machine.time is at or past the deadline. The same instance is then printed with no run named (reason none, 0, none, 0), after a run that a stop callback ended at once (callback, 0 steps) and after a refused run (refused): the table
+ * follows the result it is given and nothing else. Evidence tier E0: the record repeats what the run reported; it says nothing about the machine. No file is written (D-86).
+ */
+void kind_record_run(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    static char text[REC_CAP];
+    static char work[REC_CAP];
+    struct recrow rows[REC_MAX_ROWS];
+    struct booted b;
+    struct spec s;
+    struct ds_text_run tr;
+    struct ds_run_request rq;
+    struct ds_run_result res;
+    struct ds_run_result res2;
+    const struct ds_instance *inst = NULL;
+    struct ds_instance *w;
+    char rom[64];
+    uint64_t until = 0u;
+    uint64_t steps = 0u;
+    uint64_t over = 0u;
+    uint64_t when = 0u;
+    size_t nrows = 0u;
+    const char *err;
+
+    if (authored_name(k->val[K_FIXTURE], rom, sizeof rom) != 0) {
+        harness_error(c, "a record_run case names its ROM as fixture = authored:NAME");
+        return;
+    }
+    if (!k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until == 0u) {
+        harness_error(c, "a record_run case needs the integer key until_mclk above 0");
+        return;
+    }
+    err = parse_spec(&s, k->val[K_REQUEST], 262144u);
+    if (err != NULL) {
+        harness_error(c, err);
+        return;
+    }
+    err = boot_built_rom(rom, k->val[K_REQUEST], &b, &inst);
+    if (err != NULL) {
+        harness_error(c, err);
+        return;
+    }
+    w = (struct ds_instance *)(void *)b.mem;
+    memset(&rq, 0, sizeof rq);
+    rq.struct_size = (uint32_t)sizeof rq;
+    rq.until_mclk = until;
+    memset(&res, 0xff, sizeof res);
+    check(c, ds_run(w, &rq, &res) == (uint32_t)DS_RUN_REASON_UNTIL && res.reason == (uint32_t)DS_RUN_REASON_UNTIL, "the run to the deadline did not end with the until reason");
+    note_run(c, w->machine_time, res.reason);
+    tr = run_of(&s, &res);
+    if (print_rows(c, inst, &tr, text, work, rows, &nrows) == 0) {
+        check_items(c, rows, nrows, k->val[K_EXPECT]);
+        check(c, row_u64(rows, nrows, "run.steps", &steps) == 0 && steps > 0u, "the run table shows no step after a run to a deadline");
+        check(c, row_u64(rows, nrows, "run.overshoot", &over) == 0 && over < ds_max_step_mclk(), "the run table shows an overshoot that is not below ds_max_step_mclk");
+        check(c, row_u64(rows, nrows, "machine.time", &when) == 0 && when >= until, "the machine time of the record is below the deadline");
+        check(c, when >= until && over == when - until, "the overshoot of the record is not the machine time past the deadline");
+        check(c, steps == res.steps && over == res.overshoot && when == res.machine_time, "the run table differs from the result the run returned");
+        snprintf(got, gotcap, "steps=%llu", (unsigned long long)steps);
+    }
+    /* no run named: the table says so, whatever the machine did before */
+    tr = run_of(&s, NULL);
+    if (print_rows(c, inst, &tr, text, work, rows, &nrows) == 0) {
+        check_items(c, rows, nrows, "run.reason=none;run.overshoot=0;run.stop_point=none;run.steps=0");
+    }
+    /* a stop callback that holds before the first step: callback, no step, no overshoot */
+    rq.until_mclk = w->machine_time + 1000000u;
+    rq.stop = stop_at_once;
+    memset(&res2, 0xff, sizeof res2);
+    check(c, ds_run(w, &rq, &res2) == (uint32_t)DS_RUN_REASON_CALLBACK && res2.steps == 0u, "a stop callback that holds at once did not end the run with the callback reason");
+    tr = run_of(&s, &res2);
+    if (print_rows(c, inst, &tr, text, work, rows, &nrows) == 0) {
+        check_items(c, rows, nrows, "run.reason=callback;run.overshoot=0;run.stop_point=instruction;run.steps=0");
+    }
+    /* a refused run: the reason says so */
+    rq.stop = NULL;
+    rq.struct_size = 0u;
+    memset(&res2, 0xff, sizeof res2);
+    check(c, ds_run(w, &rq, &res2) == (uint32_t)DS_RUN_REASON_REFUSED, "a run request with a wrong struct_size was not refused");
+    tr = run_of(&s, &res2);
+    if (print_rows(c, inst, &tr, text, work, rows, &nrows) == 0) {
+        check_items(c, rows, nrows, "run.reason=refused;run.steps=0");
+    }
+    /* a result that holds a reason or a stop point outside the sets is a state error, never a guess */
+    res2.reason = 9u;
+    tr = run_of(&s, &res2);
+    check(c, ds_text_record(inst, &tr, text, REC_CAP, &nrows) == DS_TEXT_ERR_STATE && nrows == 0u && text[0] == '\0', "a run reason outside the set was printed");
+    release_boot(&b);
+}
+
+/* one row of constants.def read as text: NAME, VALUE and LEDGER as the strings between the separators */
+struct crow {
+    char name[48];
+    char value[16];
+    char ledger[16];
+};
+#define CROWS_MAX 40u
+
+/* copy the field starting at p and ending at the first stop character into out (cap bytes, terminated); the end pointer, or NULL when it does not fit or no stop character follows */
+static const char *take_field(const char *p, char stop, char *out, size_t cap)
+{
+    size_t n = 0u;
+
+    while (p[n] != '\0' && p[n] != stop && p[n] != '\n') {
+        n++;
+    }
+    if (p[n] != stop || n == 0u || n >= cap) {
+        return NULL;
+    }
+    memcpy(out, p, n);
+    out[n] = '\0';
+    return p + n;
+}
+
+/* the rows of constants.def: every line that starts in column 0 with DS_CONST( is NAME, VALUE, "LEDGER"); returns the count, or -1 when a row is malformed or there are too many */
+static int parse_constants_def(const char *text, struct crow *rows, unsigned max)
+{
+    const char *p = text;
+    unsigned n = 0u;
+
+    while (*p != '\0') {
+        const char *nl = strchr(p, '\n');
+
+        if (strncmp(p, "DS_CONST(", 9u) == 0) {
+            const char *q;
+
+            if (n == max) {
+                return -1;
+            }
+            q = take_field(p + 9, ',', rows[n].name, sizeof rows[n].name);
+            if (q == NULL || strncmp(q, ", ", 2u) != 0) {
+                return -1;
+            }
+            q = take_field(q + 2, ',', rows[n].value, sizeof rows[n].value);
+            if (q == NULL || strncmp(q, ", \"", 3u) != 0 || strspn(rows[n].value, "0123456789") != strlen(rows[n].value)) {
+                return -1;
+            }
+            q = take_field(q + 3, '"', rows[n].ledger, sizeof rows[n].ledger);
+            if (q == NULL || q[1] != ')') { /* q is at the closing quote */
+                return -1;
+            }
+            n++;
+        }
+        if (nl == NULL) {
+            break;
+        }
+        p = nl + 1;
+    }
+    return (int)n;
+}
+
+/* do the lines of the [constants] table equal the rows, in order and in full: one NAME = "VALUE LEDGER" line per row and no other line */
+static int constants_match(const struct recrow *rows, size_t nrows, const struct crow *def, unsigned ndef)
+{
+    unsigned seen = 0u;
+    size_t i;
+
+    for (i = 0u; i < nrows; i++) {
+        if (strncmp(rows[i].key, "constants.", 10u) != 0) {
+            continue;
+        }
+        if (seen >= ndef) {
+            return 0;
+        }
+        {
+            char want_key[KEY_MAX];
+            char want_val[48];
+
+            snprintf(want_key, sizeof want_key, "constants.%s", def[seen].name);
+            snprintf(want_val, sizeof want_val, "%s %s", def[seen].value, def[seen].ledger);
+            if (strcmp(rows[i].key, want_key) != 0 || !value_is(rows[i].val, want_val)) {
+                return 0;
+            }
+        }
+        seen++;
+    }
+    return seen == ndef;
+}
+
+/* the value of the named row, 0 when absent (a harness fault of the case follows from a missing name) */
+static const struct crow *crow_named(const struct crow *def, unsigned ndef, const char *name)
+{
+    unsigned i;
+
+    for (i = 0u; i < ndef; i++) {
+        if (strcmp(def[i].name, name) == 0) {
+            return &def[i];
+        }
+    }
+    return NULL;
+}
+
+/*
+ * kind record_constants: the [constants] table of the record of the accepted request (fixture a synthetic recipe, request as given) equals src/core/constants.def read as text: the same names in the same order, each as "VALUE LEDGER", and every
+ * ledger id is in the [withheld] list (so are the ids of the model rows). Controls: a def with a changed ledger id, a changed value, a dropped row and an added row each fail the comparison (a comparison that cannot fail proves nothing). The values in use
+ * are checked against the def as well: the header macros DS_MCLK_PER_CYCLE_LOW and _HIGH, DS_UNMAPPED_READ and DS_ADDER_VDC_ACCESS, the machine time of a fresh boot (the reset cost) and the bytes and cycles of every undefined opcode row of cpu_ops.def.
+ * expect names the def path and is not otherwise read. Evidence tier E0: the printed value is the value in use; whether the value is right is the ledger's question. No file is written (D-86).
+ */
+void kind_record_constants(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    static char text[REC_CAP];
+    static char work[REC_CAP];
+    struct recrow rows[REC_MAX_ROWS];
+    struct crow def[CROWS_MAX];
+    struct crow mut[CROWS_MAX];
+    struct booted b;
+    struct spec s;
+    struct ds_text_run tr;
+    const struct ds_instance *inst = NULL;
+    const struct recrow *wh;
+    const struct crow *cr;
+    char *defs;
+    size_t nrows = 0u;
+    int ndef;
+    unsigned n;
+    unsigned i;
+    unsigned undefined = 0u;
+    uint32_t op;
+    const char *err;
+
+    if (strcmp(k->val[K_EXPECT], "src/core/constants.def") != 0) {
+        harness_error(c, "the expect of a record_constants case is the path src/core/constants.def");
+        return;
+    }
+    defs = read_file(k->val[K_EXPECT]);
+    if (defs == NULL) {
+        harness_error(c, "src/core/constants.def cannot be read");
+        return;
+    }
+    ndef = parse_constants_def(defs, def, CROWS_MAX);
+    free(defs);
+    if (ndef < 1) {
+        harness_error(c, "src/core/constants.def holds no row or a row that is not DS_CONST(name, number, \"LEDGER\")");
+        return;
+    }
+    n = (unsigned)ndef;
+    err = boot_accepted(k->val[K_FIXTURE], k->val[K_REQUEST], &b, &s, &inst);
+    if (err != NULL) {
+        harness_error(c, err);
+        return;
+    }
+    tr = run_of(&s, NULL);
+    if (print_rows(c, inst, &tr, text, work, rows, &nrows) == 0) {
+        check(c, constants_match(rows, nrows, def, n), "the [constants] table differs from src/core/constants.def");
+        wh = find_row(rows, nrows, "withheld.ids");
+        check(c, wh != NULL, "the record has no withheld list");
+        for (i = 0u; wh != NULL && i < n; i++) {
+            char quoted[24];
+
+            snprintf(quoted, sizeof quoted, "\"%s\"", def[i].ledger);
+            check(c, strstr(wh->val, quoted) != NULL, "the ledger id of a constants row is not in the withheld list");
+        }
+        for (i = 0u; wh != NULL && i < (unsigned)DS_MODEL_COUNT; i++) {
+            char quoted[24];
+
+            snprintf(quoted, sizeof quoted, "\"%s\"", ds_model_ledger(i));
+            check(c, strstr(wh->val, quoted) != NULL, "the ledger id of a model row is not in the withheld list");
+        }
+        /* the controls: the comparison fails for each kind of drift */
+        memcpy(mut, def, n * sizeof def[0]);
+        mut[0].ledger[strlen(mut[0].ledger) - 1u] = mut[0].ledger[strlen(mut[0].ledger) - 1u] == '9' ? '8' : '9';
+        check(c, !constants_match(rows, nrows, mut, n), "a changed ledger id in constants.def was not noticed");
+        memcpy(mut, def, n * sizeof def[0]);
+        mut[n - 1u].value[0] = mut[n - 1u].value[0] == '7' ? '6' : '7';
+        check(c, !constants_match(rows, nrows, mut, n), "a changed value in constants.def was not noticed");
+        check(c, !constants_match(rows, nrows, def, n - 1u), "a dropped row of constants.def was not noticed");
+        memcpy(mut, def, n * sizeof def[0]);
+        memcpy(&mut[n], &def[0], sizeof def[0]);
+        check(c, n + 1u <= CROWS_MAX && !constants_match(rows, nrows, mut, n + 1u), "an added row of constants.def was not noticed");
+    }
+    /* the values in use are the values of the def */
+    cr = crow_named(def, n, "cycle_mclk_low");
+    check(c, cr != NULL && strtoul(cr->value, NULL, 10) == (unsigned long)DS_MCLK_PER_CYCLE_LOW, "cycle_mclk_low is not the value DS_MCLK_PER_CYCLE_LOW has");
+    cr = crow_named(def, n, "cycle_mclk_high");
+    check(c, cr != NULL && strtoul(cr->value, NULL, 10) == (unsigned long)DS_MCLK_PER_CYCLE_HIGH, "cycle_mclk_high is not the value DS_MCLK_PER_CYCLE_HIGH has");
+    cr = crow_named(def, n, "unmapped_read");
+    check(c, cr != NULL && strtoul(cr->value, NULL, 10) == (unsigned long)DS_UNMAPPED_READ, "unmapped_read is not the value DS_UNMAPPED_READ has");
+    cr = crow_named(def, n, "vdc_vce_penalty_cycles");
+    check(c, cr != NULL && strtoul(cr->value, NULL, 10) == (unsigned long)DS_ADDER_VDC_ACCESS, "vdc_vce_penalty_cycles is not the value DS_ADDER_VDC_ACCESS has");
+    cr = crow_named(def, n, "reset_cost_mclk");
+    check(c, cr != NULL && strtoull(cr->value, NULL, 10) == (unsigned long long)inst->machine_time, "reset_cost_mclk is not the machine time of a fresh boot");
+    {
+        const struct crow *nb = crow_named(def, n, "undefined_opcode_bytes");
+        const struct crow *nc = crow_named(def, n, "undefined_opcode_cycles");
+
+        check(c, nb != NULL && nc != NULL, "constants.def has no undefined_opcode_bytes or undefined_opcode_cycles row");
+        for (op = 0u; nb != NULL && nc != NULL && op < 256u; op++) {
+            uint32_t bytes = 0u;
+            uint32_t cycles = 0u;
+
+            if (ds_cpu_op_defined(op)) {
+                continue;
+            }
+            ds_op_meta(op, &bytes, &cycles);
+            undefined++;
+            check(c, bytes == (uint32_t)strtoul(nb->value, NULL, 10) && cycles == (uint32_t)strtoul(nc->value, NULL, 10), "an undefined opcode row of cpu_ops.def differs from the undefined opcode constants");
+        }
+        check(c, undefined == 22u, "the opcode table does not hold 22 undefined opcodes");
+    }
+    snprintf(got, gotcap, "rows=%u", n);
     release_boot(&b);
 }

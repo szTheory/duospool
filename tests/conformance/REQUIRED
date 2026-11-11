@@ -149,3 +149,6 @@ model_param_refusal
 digest_stream_model
 digest_model_tma_zero_differs
 digest_model_default_same
+record_model_bound
+record_run_shown
+record_constants_shown

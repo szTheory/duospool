@@ -193,6 +193,8 @@ struct recrow {
 const char *parse_record(char *text, struct recrow *rows, size_t *nrows);
 const struct recrow *find_row(const struct recrow *rows, size_t n, const char *key);
 void kind_record_lines(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_record_run(const struct kase *k, struct ctx *c, char *got, size_t gotcap);       /* plan 03-18: the [run] table after a real ds_run */
+void kind_record_constants(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 03-18: the [constants] table against src/core/constants.def */
 
 /* the content identity kinds (hashkinds.c, moved from runner.c by plan 03-03); hash_recipe is also read by main for --hash */
 int hash_recipe(const char *recipe, char *hex);

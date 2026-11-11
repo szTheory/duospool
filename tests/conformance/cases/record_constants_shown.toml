@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The [constants] table against its source (plan 03-18; D-113, I6, W6): src/core/constants.def is read as text by the kind and every row must appear in the record as NAME = "VALUE LEDGER", in order, with no other line in the table; every ledger id of a row
+# (and of a model row) is in [withheld]. Four controls change a copy of the def (a ledger id, a value, a dropped row, an added row) and the comparison must fail for each. The values in use are checked against the def: the header macros of the cycle lengths,
+# the unmapped read and the VDC and VCE penalty, the machine time of a fresh boot (the reset cost) and every undefined opcode row of the opcode table. Evidence tier E0: the printed value is the value in use; whether it is right is the ledger's question.
+id = "record_constants_shown"
+kind = "record_constants"
+fixture = "plain-256k"
+request = ""
+expect = "src/core/constants.def"
+meaning = "Each row of the record's [constants] table equals the matching row of src/core/constants.def, every ledger id of the def is in the withheld list, and the values the core uses (cycle lengths, unmapped read, VDC and VCE penalty, reset cost, undefined opcode rows) are the values the def names"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

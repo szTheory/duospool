@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Model binding in the run record (plan 03-18; D-113, T-03-50): the request names model.tma_zero=a_unchanged, so the record's [model_tma_zero] table must show that value, the ledger id and status of the row, and bound_by run-request. The literals
+# are the case's own: the value is the one the request names, the ledger id and the status are the words of src/core/model_params.def and of ASSUMED:LED-CPU-0015. The default binding (value bus_latch, bound_by default) is shown by the two goldens.
+# A printer that reports every row as bound by the default, or as bound by the request, goes red here or in the goldens. Evidence tier E0: the record repeats the request; it says nothing about the machine.
+id = "record_model_bound"
+kind = "record_lines"
+fixture = "plain-256k"
+request = "model.tma_zero=a_unchanged"
+expect = "model_tma_zero.value=a_unchanged;model_tma_zero.ledger=LED-CPU-0015;model_tma_zero.status=assumed;model_tma_zero.bound_by=run-request"
+meaning = "A request that sets the model parameter tma_zero to a_unchanged prints a [model_tma_zero] table with the value a_unchanged, its ledger id and status assumed, and bound_by run-request, and the record keeps the skeleton of every other table"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

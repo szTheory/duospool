@@ -982,6 +982,8 @@ static const struct {
     {"accept", kind_boot, 0},
     {"resolve", kind_resolve, 0},
     {"record_lines", kind_record_lines, 0},
+    {"record_run", kind_record_run, 0},
+    {"record_constants", kind_record_constants, 0},
     {"profile_equal", kind_profile_equal, 0},
     {"names_both_ways", kind_names_both_ways, 0},
     {"field_flip", kind_field_flip, 0},
