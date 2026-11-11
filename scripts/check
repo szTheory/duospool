@@ -902,9 +902,10 @@ stage_fixture_lint_negatives() {
 
 # xasm (FIX-01, CPU-01, CPU-06; D-129, D-130; plan 03-08): the assembler encoding oracle. scripts/xasm-check assembles one line per defined row of tests/oracle/huc6280-opcodes.tsv (the
 # manual transcription) with ca65 and ld65 and requires the bytes to equal the TSV encodings; WLA-DX, when it happens to be on PATH, is compared in the same way, else the status line says
-# wla=optional-absent and no cross-assembler claim is made. Static, so it is registered before the build; it reads only the tracked TSV, and its generated files go to build/gate/xasm.
+# wla=optional-absent and no cross-assembler claim is made. The table must hold exactly 234 defined rows and 22 UNDEF rows (H8-1: 234 instructions). Static, so it is registered before the build; it reads only
+# the tracked TSV, and its generated files go to build/gate/xasm.
 stage_xasm() {
-  checker sh "$here/xasm-check" --work build/gate/xasm
+  checker sh "$here/xasm-check" --work build/gate/xasm --rows 234
 }
 
 # workflow (CI-01, D-61, D-62): the real CI definition, judged statically by scripts/workflow-check (permissions, the one pinned action, the

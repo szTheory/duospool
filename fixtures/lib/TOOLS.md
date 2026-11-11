@@ -15,7 +15,7 @@ This file records the external tools that build the authored HuCard fixtures und
 | Local package | Homebrew core bottle `cc65` 2.19 (`brew install cc65`) |
 | CI package | Ubuntu 24.04 `cc65` 2.19-1 (`sudo apt-get install -y cc65`); the CI step is added by a later plan, and no install script is kept in this repository |
 | Version string | Every build above prints `ca65 V2.18` (the V2.19 tag builds a binary that reports V2.18, and the Ubuntu package prints `V2.18 - Ubuntu 2.19-1`). Never read `--version` to identify the tool. |
-| Identity | By behaviour: the bytes of the encoding matrix that `scripts/xasm-check` (plan 03-08) assembles and compares with the manual transcription, plus the image hash pins in `fixtures/manifest/ds_proto*.toml`. A tool that prints the right version and encodes a byte differently fails there. |
+| Identity | By behaviour: the bytes of the encoding matrix that `scripts/xasm-check` (plan 03-08) assembles and compares with the manual transcription (`tests/oracle/huc6280-opcodes.tsv`), plus the image hash pins in `fixtures/manifest/ds_proto*.toml`. A tool that prints the right version and encodes a byte differently fails there. The gate stage `xasm` runs it on every gate run. |
 | Presence | `scripts/preflight` requires `ca65` and `ld65` by default and `scripts/fixture-build` refuses to run without them (`PREFLIGHT_MISSING`, exit 2). A missing assembler is never a skip. |
 
 ### What was measured, and what was not
@@ -24,7 +24,12 @@ This file records the external tools that build the authored HuCard fixtures und
 - Plan 03-06 (2026-11-11) measured the committed sources on the Homebrew bottle only: `ds_proto.s` and its four protocol variants gave the same five hashes on two consecutive builds, from a build in the working tree and from a build of the same files
   extracted to a different directory, and for the sources as they were at commit `2b09d68` (plan 03-05) and at plan 03-06. The pins in the manifest are those hashes. The hashes quoted in the plan 03-05 summary do not reproduce and should be ignored;
   the manifest is the record.
+- Plan 03-08 (2026-11-11) ran the encoding matrix on the Homebrew bottle (`ca65 V2.18`): all 234 defined rows of the manual transcription assemble to the transcribed bytes (opcode plus fixed placeholder operands), `STATUS xasm ok rows=234 wla=optional-absent`. The matrix covers every defined opcode in every mode the manual lists, so it is a byte-level identity check of the assembler against the transcription, not a check of cycles or behaviour. WLA-DX was absent, so no second-assembler claim is made.
 - Not measured here: the Ubuntu package on these sources. The pins are repeatability evidence on one package family (E0). Until a run on the apt package shows the same hashes (needs a push, which is an owner decision), CI and local identity is an assumption recorded in `LED-TOOL-0001`.
+
+## The opcode table: numeric data from the manual pages
+
+`tests/oracle/huc6280-opcodes.tsv` is numeric data transcribed from the cited manual pages (the H8-25 opcode map and the S8 instruction pages, with the flag tables S8-7 to S8-9), read as page images by an agent on 2026-11-11 (method, verifier and the printing errors found are in the file header). It holds opcodes, mnemonics, mode names, byte and cycle counts, flag strings and page labels. It never holds page text or an image (ER-9), and it is licensed 0BSD like the other numeric data of the repository. It is the independent second table for the core opcode table (plan 03-09) and the matrix input of `scripts/xasm-check`.
 
 ## WLA-DX: optional, verify-only
 
