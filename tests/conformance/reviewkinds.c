@@ -93,7 +93,7 @@ static int rv_parse_log(const char *text, unsigned char *want, unsigned *n)
 {
     char buf[64];
     char *tok;
-    char *save = NULL;
+    char *comma;
     uint64_t v;
 
     *n = 0u;
@@ -101,9 +101,15 @@ static int rv_parse_log(const char *text, unsigned char *want, unsigned *n)
         return -1;
     }
     memcpy(buf, text + 4, strlen(text + 4) + 1u);
-    for (tok = strtok_r(buf, ",", &save); tok != NULL; tok = strtok_r(NULL, ",", &save)) {
+    /* Split on commas by hand: strtok_r is POSIX, not ISO C11, so a strict -std=c11 build (gcc on Linux) does not declare it. */
+    tok = buf;
+    for (;;) {
         char hex[8];
 
+        comma = strchr(tok, ',');
+        if (comma != NULL) {
+            *comma = '\0';
+        }
         if (*n >= 8u || strlen(tok) < 1u || strlen(tok) > 2u) {
             return -1;
         }
@@ -112,6 +118,10 @@ static int rv_parse_log(const char *text, unsigned char *want, unsigned *n)
             return -1;
         }
         want[(*n)++] = (unsigned char)v;
+        if (comma == NULL) {
+            break;
+        }
+        tok = comma + 1;
     }
     return *n >= 2u ? 0 : -1;
 }
