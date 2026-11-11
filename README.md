@@ -8,9 +8,10 @@ DuoSpool is a working name and is not trademark-cleared.
 
 ## Status
 
-Phase 2: a deterministic machine shell that accepts or refuses plain HuCard bytes under a named profile. It has no CPU,
-video or audio, and nothing is claimed as supported. Every accept or refuse outcome comes from a fresh, headless,
-repeatable run, and a matching hash proves repeatability only.
+Phase 3 is in progress. The core is a deterministic machine shell that accepts or refuses plain HuCard bytes under a named
+profile, and it runs authored fixture programs through a bounded run measured in master clocks. Nothing is claimed as supported:
+there is no accuracy claim, no compatibility claim and no boot claim. Every outcome comes from a fresh, headless, repeatable run,
+and a matching hash proves repeatability only.
 
 ## Local gate
 
@@ -36,7 +37,8 @@ Exit codes: 0 every stage passed, 1 a stage failed or a control was broken, 2 a 
 mutation name, a dead checker, a missing tool).
 
 Tool prerequisites: a POSIX `sh`, cmake, ninja, a C11 compiler reachable as `cc` (clang or gcc), `nm`, perl, iconv, awk,
-git, and a sha256 tool (`sha256sum` or `shasum`). The stage `preflight` reports a missing one by name. The `sanitizers` stage
+git, a sha256 tool (`sha256sum` or `shasum`), and the cc65 assembler tools `ca65` and `ld65` (`brew install cc65` locally,
+`apt-get install cc65` in CI; they build the authored fixtures, which are never committed as binaries). The stage `preflight` reports a missing one by name. The `sanitizers` stage
 also links the compiler's AddressSanitizer and UndefinedBehaviorSanitizer runtimes: gcc ships them with its libraries, while
 Ubuntu's clang needs the separate package `libclang-rt-18-dev` (a link error naming `libclang_rt.asan` means it is missing).
 

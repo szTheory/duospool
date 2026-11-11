@@ -1,0 +1,4 @@
+#!/bin/sh
+# Stub of scripts/preflight for the docs-check mini root: only the default tool list line is read by docs-check, never run.
+tools="cmake ninja cc nm perl iconv awk git sha256sum|shasum ca65 ld65"
+exit 0

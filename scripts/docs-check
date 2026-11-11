@@ -10,6 +10,9 @@
 #     DOC_NO_GATE_AGENTS       ROOT/AGENTS.md does not contain the string  sh scripts/check
 #     DOC_STALE_STATUS         ROOT/README.md still says there is no emulator code yet (the retired Phase 1 status sentence)
 #     DOC_FLAG_UNDOCUMENTED    a --flag named in the usage line of ROOT/scripts/check does not appear in ROOT/README.md
+#     DOCS_TOOL_MISSING        a tool on the default list of ROOT/scripts/preflight (the line  tools="..." ) is not named as a word in
+#                              ROOT/README.md; for an entry a|b one alternative named is enough. Skipped when ROOT has no scripts/preflight
+#                              (the older mini roots); the real repository always has it and its preflight stage fails without it.
 # stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then (clean) the line  STATUS docs ok
 # stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
 # exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error
@@ -78,6 +81,34 @@ fi
 for fl in $flags; do
   grep -qF -e "$fl" "$readme" || addv README.md DOC_FLAG_UNDOCUMENTED 0 "usage flag $fl is not in README.md"
 done
+
+# every tool of the default preflight list is named in the README (ER-6: a documented prerequisite list must be the true one)
+pre="$root/scripts/preflight"
+if [ -f "$pre" ]; then
+  tl=$(grep -m 1 '^tools="' "$pre" || true)
+  tl=${tl#tools=\"}
+  tl=${tl%%\"*}
+  if [ -z "$tl" ]; then
+    echo "HARNESS_NO_TOOLS scripts/preflight has no tools=\"...\" default line" >&2
+    exit 2
+  fi
+  set -f
+  for entry in $tl; do
+    named=0
+    rest=$entry
+    while [ -n "$rest" ]; do
+      case $rest in
+        *'|'*) alt=${rest%%'|'*}; rest=${rest#*'|'} ;;
+        *) alt=$rest; rest="" ;;
+      esac
+      [ -n "$alt" ] || continue
+      # a name is a word: not glued to a letter, digit, underscore or hyphen (so cc is not found inside cc65)
+      if grep -qE "(^|[^A-Za-z0-9_-])$alt([^A-Za-z0-9_-]|\$)" "$readme"; then named=1; fi
+    done
+    [ "$named" -eq 1 ] || addv README.md DOCS_TOOL_MISSING 0 "preflight tool $entry is not named in README.md" # rule-tool-named
+  done
+  set +f
+fi
 
 sort -u "$viol0" > "$viol"
 
