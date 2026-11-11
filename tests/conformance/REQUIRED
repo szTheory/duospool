@@ -107,3 +107,4 @@ interleave_aba_order
 interleave_canaries
 liveness_shared_state_selfcheck
 ds_proto
+run_refuse_struct_size

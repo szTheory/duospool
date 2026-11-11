@@ -1503,6 +1503,7 @@ static const struct {
     {"poweron", kind_poweron, 0},
     {"run_until", kind_run_until, 0},
     {"run_chunk_sum", kind_run_chunk_sum, 0},
+    {"run_refuse", kind_run_refuse, 0},
     {"budget_spin", kind_spin, 0},
     {"spin_forever", kind_spin, 0},
     {"guest", kind_guest, 0},

@@ -13,6 +13,26 @@
 
 #include "ds_core.h"
 
+#define DS_RUNREF(name, number) [number] = "run." #name,
+static const char *const ds_run_refusal_names[DS_RUNREF_SLOTS] = {
+    [0] = "ok",
+#include "run_refusals.def"
+};
+#undef DS_RUNREF
+
+/* the slot ceiling (F4): the rows are numbered 1..N without a gap or a reuse, so N is the row count and must leave a slot below DS_RUNREF_SLOTS */
+#define DS_RUNREF(name, number) +1
+enum { DS_RUNREF_ROWS = 0
+#include "run_refusals.def"
+};
+#undef DS_RUNREF
+_Static_assert(DS_RUNREF_ROWS < (int)DS_RUNREF_SLOTS, "run_refusals.def has more rows than DS_RUNREF_SLOTS slots");
+
+const char *ds_run_refusal_name(uint32_t number)
+{
+    return number < (uint32_t)DS_RUNREF_SLOTS ? ds_run_refusal_names[number] : NULL;
+}
+
 uint64_t ds_max_step_mclk(void)
 {
     /* the longest instruction of the implemented table plus the interrupt entry, in cycles, at the low-speed cycle length (D-94) */
@@ -55,11 +75,11 @@ uint32_t ds_run(struct ds_instance *inst, const struct ds_run_request *request, 
         return finish(result, inst, (uint32_t)DS_RUN_REASON_REFUSED, (uint32_t)DS_RUNREF_reserved, UINT64_C(0), steps);
     }
     if (request->insn != NULL || request->dev != NULL) {
-        return finish(result, inst, (uint32_t)DS_RUN_REASON_REFUSED, (uint32_t)DS_RUNREF_sink, UINT64_C(0), steps);
+        return finish(result, inst, (uint32_t)DS_RUN_REASON_REFUSED, (uint32_t)DS_RUNREF_sink_unsupported, UINT64_C(0), steps);
     }
     /* a step can end up to guard clocks past the deadline: a deadline or a machine time within one step of 2^64 would wrap (Pitfall 20) */
     if (request->until_mclk > UINT64_MAX - guard || inst->machine_time > UINT64_MAX - guard) {
-        return finish(result, inst, (uint32_t)DS_RUN_REASON_REFUSED, (uint32_t)DS_RUNREF_deadline, UINT64_C(0), steps);
+        return finish(result, inst, (uint32_t)DS_RUN_REASON_REFUSED, (uint32_t)DS_RUNREF_time_wrap, UINT64_C(0), steps);
     }
     if (request->until_mclk <= inst->machine_time) {
         return finish(result, inst, reason, (uint32_t)DS_RUNREF_NONE, request->until_mclk, steps);

@@ -19,6 +19,11 @@
  *                   1, 7, 168 and 3072 in rotation). The reference runs once to the absolute deadline until, which must lie past the guest's DSV1
  *                   done state (D-95). Every list then runs on a fresh boot to deadlines d1 = c, d2 = d1 + c, ... capped at until, and must end with the
  *                   same machine time, total steps, CPU registers and digest as the reference. This compares runs with each other: E0 repeatability.
+ *   run_refuse      expect is rom=NAME;refuse=CODE where CODE is a name of run_refusals.def (plan 03-35; D-93, F4). On a fresh boot of the built image that has
+ *                   run to a nonzero machine time, ds_run is called with each malformed request of that CODE (a table of variants in this file). Every call must
+ *                   return REFUSED with refusal run.CODE, take 0 steps, report overshoot 0 and leave the whole instance, digest and raw bytes, unchanged; a
+ *                   second call with a NULL result must return REFUSED too. The codes every row observed are kept for run_refusal_coverage.
+ *   run_refusal_coverage  DEFERRED (D-86 pattern, evaluated after the case loop): every member of run_refusals.def must have been observed by a run_refuse row.
  */
 #include <stdint.h>
 #include <stdio.h>
@@ -336,4 +341,137 @@ void kind_run_chunk_sum(const struct kase *k, struct ctx *c, char *got, size_t g
     }
     check(c, n >= 1u, "the run_chunk_sum case lists no chunk size");
     snprintf(got, gotcap, "lists=%u", n);
+}
+
+/* ---- kind run_refuse ---- */
+
+#define RR_SINK_BYTES 64u
+#define RR_MACHINE_TIME_FIRST 600u /* the boot is run to this deadline first, so the instance is not at its boot state */
+
+static unsigned char rr_observed[DS_RUNREF_SLOTS];
+
+/* one refused call on instance arg (the live block w, or NULL) with request rq (or NULL): the refusal, the result fields and the unchanged instance */
+static void rr_call(struct ctx *c, struct ds_instance *w, const struct ds_instance *inst, struct ds_instance *arg, const struct ds_run_request *rq, uint32_t code)
+{
+    struct ds_run_result res;
+    uint8_t before[DS_DIGEST_BYTES];
+    uint8_t after[DS_DIGEST_BYTES];
+    size_t size = ds_instance_size();
+    unsigned char *copy = (unsigned char *)malloc(size);
+    uint64_t now = inst->machine_time;
+    const char *name = ds_run_refusal_name(code);
+    uint32_t reason;
+
+    if (copy == NULL) {
+        harness_error(c, "out of memory for the instance copy");
+        return;
+    }
+    memcpy(copy, w, size);
+    check(c, ds_digest(inst, before) == 0u, "the digest of the instance before the refused call was refused");
+    memset(&res, 0xAA, sizeof res);
+    reason = ds_run(arg, rq, &res);
+    check(c, reason == (uint32_t)DS_RUN_REASON_REFUSED && res.reason == (uint32_t)DS_RUN_REASON_REFUSED, "a malformed run request was not refused");
+    check(c, res.refusal == code, "the run refusal code differs from the one the row names");
+    check(c, name != NULL && strncmp(name, "run.", 4u) == 0, "a run refusal does not print as run.NAME");
+    check(c, res.steps == 0u && res.overshoot == 0u && res.pad == 0u && res.stop_point == (uint32_t)DS_STOP_INSTRUCTION, "a refused call reported steps, overshoot or a stop point");
+    check(c, res.machine_time == (arg != NULL ? now : UINT64_C(0)), "a refused call reported a machine time other than the instance's");
+    if (res.refusal < (uint32_t)DS_RUNREF_SLOTS) {
+        rr_observed[res.refusal] = 1u;
+    }
+    check(c, ds_run(arg, rq, NULL) == (uint32_t)DS_RUN_REASON_REFUSED, "a refused call with a NULL result did not return REFUSED");
+    check(c, memcmp(copy, w, size) == 0, "a refused ds_run changed the instance bytes");
+    check(c, ds_digest(inst, after) == 0u && memcmp(before, after, DS_DIGEST_BYTES) == 0, "a refused ds_run changed the instance digest");
+    free(copy);
+}
+
+static void rr_base_request(struct ds_run_request *rq, uint64_t until)
+{
+    memset(rq, 0, sizeof *rq);
+    rq->struct_size = (uint32_t)sizeof *rq;
+    rq->until_mclk = until;
+}
+
+/* the variants of one code; the base request is a valid one that would run the machine if it were accepted */
+static void rr_variants(struct ctx *c, const char *code_name, struct ds_instance *w, const struct ds_instance *inst, unsigned *calls)
+{
+    struct ds_run_request rq;
+    uint64_t until = inst->machine_time + UINT64_C(600);
+
+    if (strcmp(code_name, "struct_size") == 0) {
+        const uint32_t size[5] = {(uint32_t)sizeof rq - 1u, (uint32_t)sizeof rq + 1u, (uint32_t)sizeof rq + 4u, 0u, 0xFFFFFFFFu};
+        unsigned i;
+
+        for (i = 0u; i < 5u; i++) {
+            rr_base_request(&rq, until);
+            rq.struct_size = size[i];
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_struct_size);
+            (*calls)++;
+        }
+    } else {
+        harness_error(c, "the run_refuse code is not one of run_refusals.def, or its variants are not written yet");
+    }
+}
+
+void kind_run_refuse(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    char list[PK_LIST_MAX];
+    char rom[48];
+    char code[32];
+    char *rest = list;
+    char *kv;
+    int have = 0;
+    struct booted b;
+    const struct ds_instance *inst = NULL;
+    struct ds_run_result r;
+    unsigned calls = 0u;
+    const char *err;
+
+    rom[0] = '\0';
+    code[0] = '\0';
+    if (pk_copy_text(k->val[K_EXPECT], list, sizeof list) != 0) {
+        harness_error(c, "the expect list is too long");
+        return;
+    }
+    while ((kv = pk_next_item(&rest, ';')) != NULL) {
+        char *eq = strchr(kv, '=');
+
+        if (eq == NULL) {
+            harness_error(c, "a run_refuse expect is rom=NAME;refuse=CODE");
+            return;
+        }
+        *eq = '\0';
+        if (strcmp(kv, "rom") == 0 && strlen(eq + 1) > 0u && strlen(eq + 1) < sizeof rom
+            && strspn(eq + 1, "abcdefghijklmnopqrstuvwxyz0123456789-") == strlen(eq + 1)) {
+            memcpy(rom, eq + 1, strlen(eq + 1) + 1u);
+            have |= 1;
+        } else if (strcmp(kv, "refuse") == 0 && strlen(eq + 1) > 0u && strlen(eq + 1) < sizeof code
+                   && strspn(eq + 1, "abcdefghijklmnopqrstuvwxyz0123456789_") == strlen(eq + 1)) {
+            memcpy(code, eq + 1, strlen(eq + 1) + 1u);
+            have |= 2;
+        } else {
+            harness_error(c, "a run_refuse expect is rom=NAME;refuse=CODE");
+            return;
+        }
+    }
+    if (have != 3) {
+        harness_error(c, "a run_refuse expect is rom=NAME;refuse=CODE");
+        return;
+    }
+    err = boot_built_rom(rom, k->val[K_REQUEST], &b, &inst);
+    if (err != NULL) {
+        harness_error(c, err);
+        return;
+    }
+    memset(&r, 0, sizeof r);
+    {
+        struct ds_run_request first;
+
+        rr_base_request(&first, RR_MACHINE_TIME_FIRST);
+        check(c, ds_run((struct ds_instance *)(void *)b.mem, &first, &r) == (uint32_t)DS_RUN_REASON_UNTIL && inst->machine_time >= RR_MACHINE_TIME_FIRST,
+              "the valid first run of the run_refuse boot did not reach its deadline");
+    }
+    rr_variants(c, code, (struct ds_instance *)(void *)b.mem, inst, &calls);
+    check(c, calls >= 1u, "the run_refuse case made no refused call");
+    release_boot(&b);
+    snprintf(got, gotcap, "calls=%u", calls);
 }

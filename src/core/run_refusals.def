@@ -1,0 +1,22 @@
+/* SPDX-License-Identifier: MIT OR Apache-2.0 */
+/* SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors */
+/*
+ * run_refusals.def - the closed refusal set of ds_run (D-93, plan 03-35; F4), defined once.
+ * One X-macro row per refusal: DS_RUNREF(name, number). 0 is "no refusal" and has no row. The string form is run.NAME, never load.NAME: these
+ * codes are not boot refusals and do not belong in refusals.def. Numbers are stable and never reused; a new refusal takes the next free number,
+ * and the name table has DS_RUNREF_SLOTS slots (a number at or above it fails to compile).
+ *
+ * name             number  returned when
+ * instance_null    1       the instance pointer is NULL
+ * request_null     2       the request pointer is NULL
+ * struct_size      3       request->struct_size is not sizeof(struct ds_run_request)
+ * reserved         4       request->reserved is not 0
+ * sink_unsupported 5       an observer sink pointer (insn or dev) is set and the build or the request cannot take it
+ * time_wrap        6       the deadline or the machine time is within one maximum step of 2^64, so a step could wrap machine time (Pitfall 20)
+ */
+DS_RUNREF(instance_null, 1)
+DS_RUNREF(request_null, 2)
+DS_RUNREF(struct_size, 3)
+DS_RUNREF(reserved, 4)
+DS_RUNREF(sink_unsupported, 5)
+DS_RUNREF(time_wrap, 6)

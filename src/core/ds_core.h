@@ -187,16 +187,17 @@ typedef int (*ds_stop_fn)(const struct ds_instance *inst, void *ctx);
 enum ds_run_reason { DS_RUN_REASON_UNTIL = 1, DS_RUN_REASON_CALLBACK = 2, DS_RUN_REASON_REFUSED = 3 };
 enum ds_stop_point { DS_STOP_INSTRUCTION = 1, DS_STOP_BLOCK_BYTE = 2 /* reserved for plan W5: nothing returns it yet */ };
 
-/* the refusal codes of a run request; plan 03-35 moves them into their own .def (they are not load refusals) */
+/* the refusal codes of a run request (run_refusals.def, plan 03-35; F4): their own set and prefix, never part of refusals.def */
 enum ds_run_refusal {
     DS_RUNREF_NONE = 0,
-    DS_RUNREF_instance_null = 1,
-    DS_RUNREF_request_null = 2,
-    DS_RUNREF_struct_size = 3,
-    DS_RUNREF_reserved = 4,
-    DS_RUNREF_sink = 5,
-    DS_RUNREF_deadline = 6
+#define DS_RUNREF(name, number) DS_RUNREF_##name = number,
+#include "run_refusals.def"
+#undef DS_RUNREF
+    DS_RUNREF_SLOTS = 16 /* the name table has this many slots: a number at or above it fails to compile */
 };
+
+/* "run.NAME" for a run refusal number, "ok" for DS_RUNREF_NONE, NULL for a number that is not a member */
+const char *ds_run_refusal_name(uint32_t number);
 
 /* the run request: an absolute deadline in master clocks, never a budget (D-93); insn and dev are the observer sinks and must be NULL until the sink plans */
 struct ds_run_request {
