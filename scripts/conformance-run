@@ -299,8 +299,8 @@ canary_check() {
 
 # controls_mode PRESET BD (D-85, D-55): the liveness controls of the matrix, run after it. Every tests/controls/NAME/ holds a RULE
 # and an EXPECT. For each one: scripts/control-mutate makes the toy source from the LIVE file named by the rule (an anchor count
-# other than one is a harness error, exit 2), the toy target ds_toy_NAME is built from it (a toy that does not compile is a harness
-# error, never red), the toy runner runs the same cases TSV, oracle and profile inputs as the real one, and every case id of EXPECT
+# other than one is a harness error, exit 2), the toy targets ds_toy_NAME of every control are built in one cmake invocation after all sources are made (a toy that does not compile
+# is a harness error, never red), the toy runner runs the same cases TSV, oracle and profile inputs as the real one, and every case id of EXPECT
 # must have a RESULT line whose id and outcome FIELDS are that id and guest_failure (awk field match, never a whole-line match) and
 # the toy's RUNNER_DONE must be present. Printed: CONTROL NAME RED_OK, or CONTROL NAME NOT_RED (the stage then ends with status 1,
 # after every control has run). The toy runner prints only RESULT and RUNNER_DONE lines; these lines are this script's (D-80).
@@ -349,6 +349,8 @@ controls_mode() {
     echo "NO_CONTROLS tests/controls"
     exit 1
   fi
+  # every toy source is generated first, then every toy target is built in ONE cmake invocation (a build per toy paid the cmake start and the dependency scan once per control; plan 03-12), then each toy runs
+  cm_targets=""
   for cm_dir in tests/controls/*/; do
     [ -d "$cm_dir" ] || continue
     cm_name=$(basename "$cm_dir")
@@ -360,11 +362,18 @@ controls_mode() {
       [ "$cm_r" -eq 2 ] || cm_r=2
       exit "$cm_r"
     fi
-    if cmake --build --preset "$cm_preset" --target "ds_toy_$cm_name" > "$cm_bd/controls/$cm_name.build" 2>&1; then :; else
-      cat "$cm_bd/controls/$cm_name.build"
-      echo "HARNESS_ERROR CONTROL_BUILD_FAILED $cm_name: the toy does not compile, which is a broken control and not a red one" >&2
-      exit 2
-    fi
+    cm_targets="$cm_targets ds_toy_$cm_name"
+  done
+  # a toy that does not compile is a harness error, never red; the log of the one build names the target that failed
+  # shellcheck disable=SC2086 (the target list is a set of words by construction: control directory names are checked above)
+  if cmake --build --preset "$cm_preset" --target $cm_targets > "$cm_bd/controls/build.txt" 2>&1; then :; else
+    cat "$cm_bd/controls/build.txt"
+    echo "HARNESS_ERROR CONTROL_BUILD_FAILED: a toy does not compile, which is a broken control and not a red one" >&2
+    exit 2
+  fi
+  for cm_dir in tests/controls/*/; do
+    [ -d "$cm_dir" ] || continue
+    cm_name=$(basename "$cm_dir")
     if [ ! -x "$cm_bd/ds_toy_$cm_name" ]; then
       echo "HARNESS_ERROR $cm_bd/ds_toy_$cm_name is missing after its build" >&2
       exit 2

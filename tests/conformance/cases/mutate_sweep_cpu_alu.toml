@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Mutation sweep of the arithmetic, logic, shift, compare and bit-test fixture (plan 03-12; D-126, ER-7, FIX-03): the built image of fixtures/src/cpu_alu.s is loaded once, its DCK1 literal table is found at file offset $1000, and for each of the 96
+# checks the value byte of its entry is XORed with $FF in a fresh in-memory copy that is booted and run in this same process. The unmutated image must pass first. Each mutation must flip exactly its own check to $46 and leave the
+# others $50: a check whose literal can be changed without flipping it is vacuous and the case is guest_failure. The model checks (GUEST class) patch an XOR mask, so a patched mask turns the aggregated difference check red. No check of cpu_alu is an observe row, so there is
+# nothing to exclude. The sweep runs under the default power-on policy only (the policy comparison is the guest kind's job). Evidence tier E0 (a mechanism check of the checks themselves): no accuracy or compatibility claim.
+id = "mutate_sweep_cpu_alu"
+kind = "mutate_sweep"
+fixture = "authored:cpu-alu"
+request = ""
+expect = "id=4"
+meaning = "Changing the expected literal of any one of the 96 cpu_alu checks flips exactly that check to fail and no other, so none of the 96 checks is vacuous"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+checks = 96
