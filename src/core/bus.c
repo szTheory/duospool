@@ -14,6 +14,7 @@
 
 #include "ds_core.h"
 #include "ds_mapper.h"
+#include "ds_obs.h"
 
 /* the 8 KiB work RAM is mirrored four times in banks $F8-$FB with & $1FFF (D-103): the mask is only right for this size */
 _Static_assert(DS_RAM8K_BYTES == 0x2000u, "the work RAM mirror mask assumes 8 KiB");
@@ -68,6 +69,17 @@ static void charge_penalty(struct ds_bus *bus, uint32_t offset)
     }
 }
 
+/* the base of the hardware page: physical $1FE000 (H8-9, H8-24) */
+#define HW_PAGE_PHYS 0x1FE000u
+
+/* one dev record for an access to the page at offset: a NULL bus (the reset reads, a test) logs nothing, like it charges nothing */
+static void log_dev(const struct ds_instance *inst, const struct ds_bus *bus, uint32_t offset, uint32_t value, uint32_t kind)
+{
+    if (bus != NULL) {
+        ds_obs_dev(bus->obs, inst, HW_PAGE_PHYS | offset, value, kind, (offset < 0x800u ? (uint32_t)DS_DEV_FLAG_PENALTY : 0u) | (kind == (uint32_t)DS_DEV_ST ? (uint32_t)DS_DEV_FLAG_PHYS : 0u));
+    }
+}
+
 static uint8_t hw_read(struct ds_instance *inst, struct ds_bus *bus, uint32_t offset)
 {
     uint32_t reg = offset & 0x3FFu;
@@ -94,10 +106,14 @@ static uint8_t hw_read(struct ds_instance *inst, struct ds_bus *bus, uint32_t of
         return value;
     }
     inst->io_buffer = value;
+    if ((enum hw_window)(offset >> 10u) == HW_IO) { /* the $1000 window is the one whose reads are logged (D-119) */
+        log_dev(inst, bus, offset, value, (uint32_t)DS_DEV_READ);
+    }
     return value;
 }
 
-static void hw_write(struct ds_instance *inst, struct ds_bus *bus, uint32_t offset, uint8_t value)
+/* kind is DS_DEV_WRITE for a write through the mapping registers and DS_DEV_ST for the physical write of ST0 to ST2 */
+static void hw_write(struct ds_instance *inst, struct ds_bus *bus, uint32_t offset, uint8_t value, uint32_t kind)
 {
     charge_penalty(bus, offset);
     switch ((enum hw_window)(offset >> 10u)) {
@@ -109,6 +125,9 @@ static void hw_write(struct ds_instance *inst, struct ds_bus *bus, uint32_t offs
         break;
     default: /* the VDC and VCE windows (stubs: the write is dropped) and the empty windows */
         break;
+    }
+    if ((offset >> 10u) <= (uint32_t)HW_IRQ) { /* every write to windows 0 to 5 is logged, a device or not (D-119); windows 6 and 7 have none */
+        log_dev(inst, bus, offset, value, kind);
     }
 }
 
@@ -141,7 +160,7 @@ void ds_bus_write(struct ds_instance *inst, struct ds_bus *bus, uint16_t addr, u
         inst->ram8k[offset_of(addr) & (DS_RAM8K_BYTES - 1u)] = value;
         break;
     case BC_HWPAGE:
-        hw_write(inst, bus, offset_of(addr), value);
+        hw_write(inst, bus, offset_of(addr), value, (uint32_t)DS_DEV_WRITE);
         break;
     case BC_HUCARD: /* ROM and every unmapped bank ignore a write (D-103, D-104) */
     case BC_UNMAPPED:
@@ -157,7 +176,7 @@ void ds_bus_write(struct ds_instance *inst, struct ds_bus *bus, uint16_t addr, u
 void ds_bus_write_phys(struct ds_instance *inst, struct ds_bus *bus, uint32_t phys, uint8_t value)
 {
     if (phys == 0x1FE000u || phys == 0x1FE002u || phys == 0x1FE003u) {
-        hw_write(inst, bus, phys & 0x1FFFu, value); /* the VDC window: a stub that drops the byte until Phase 4 */
+        hw_write(inst, bus, phys & 0x1FFFu, value, (uint32_t)DS_DEV_ST); /* the VDC window: a stub that drops the byte until Phase 4 */
     }
 }
 

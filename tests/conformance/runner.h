@@ -283,6 +283,9 @@ void observe_judge(struct ctx *t, const uint8_t *b, const struct guest_expect *e
 void kind_insn_sink_shapes(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 
 void kind_opcode_exercise(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+/* plan 03-19: the observer non-interference matrix and the device-register log (obskinds.c) */
+void kind_observer(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_dev_log(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 /* the stop callback that holds once the guest has set the DSV1 done state with its complement (a speed aid only, D-95: the deadline stays the hard bound) */
 int dsv1_done(const struct ds_instance *inst, void *ctx);
 

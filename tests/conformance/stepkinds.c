@@ -479,14 +479,18 @@ void kind_run_chunk_sum(const struct kase *k, struct ctx *c, char *got, size_t g
 #define RR_MACHINE_TIME_FIRST 600u /* the boot is run to this deadline first, so the instance is not at its boot state */
 
 static unsigned char rr_observed[DS_RUNREF_SLOTS];
-static unsigned char rr_sink_a[RR_SINK_BYTES]; /* valid buffers that overlap nothing: the refusal must not depend on a bad pointer (W6) */
-static unsigned char rr_sink_b[RR_SINK_BYTES];
-/* a valid instruction sink (plan 03-10): the struct and 8-byte aligned record memory of RR_REC_RECORDS records, overlapping nothing */
+/* a valid instruction sink (plan 03-10) and a valid device-register sink (plan 03-19): each a struct and 8-byte aligned record memory of RR_REC_RECORDS records, overlapping nothing; the oversized variants point at this
+ * memory too, so the refusal never depends on a bad pointer (W6) */
 static struct ds_insn_sink rr_insn;
+static struct ds_dev_sink rr_dev;
 static union {
     uint64_t align;
     unsigned char b[RR_REC_RECORDS * DS_INSN_RECORD_BYTES];
 } rr_rec;
+static union {
+    uint64_t align;
+    unsigned char b[RR_REC_RECORDS * DS_DEV_RECORD_BYTES];
+} rr_drec;
 
 /*
  * One refused call on instance arg (the live block w, or NULL) with request rq (or NULL): the refusal, the result fields and the unchanged instance. res is the result struct of the first call;
@@ -594,19 +598,49 @@ static void rr_variants(struct ctx *c, const char *code_name, struct ds_instance
             (*calls)++;
         }
     } else if (strcmp(code_name, "sink_unsupported") == 0) {
-        unsigned i;
+        /* a sink whose capacity exceeds DS_SINK_MAX_RECORDS (plan 03-19; D-119): the insn sink alone, the dev sink alone, each beside a valid other sink (W6), the largest capacity of all, and a NULL record pointer (the capacity is judged
+         * before the record range, so the refusal is sink_unsupported, not memory_invalid). A capacity of exactly DS_SINK_MAX_RECORDS is not unsupported: with a NULL record pointer it is memory_invalid, which is the boundary. */
+        struct ds_insn_sink big_insn;
+        struct ds_dev_sink big_dev;
 
-        /* the dev sink alone, and the dev sink beside a valid insn sink (W6): each points at a valid buffer that overlaps neither the instance nor the request. The insn sink alone is accepted since plan 03-10. */
         rr_insn.records = rr_rec.b;
         rr_insn.capacity = RR_REC_RECORDS;
-        for (i = 0u; i < 2u; i++) {
-            rr_base_request(&rq, until);
-            rq.insn = i != 0u ? &rr_insn : NULL;
-            rq.dev = (void *)rr_sink_b;
-            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_sink_unsupported);
-            (*calls)++;
-        }
-        (void)rr_sink_a;
+        rr_dev.records = rr_drec.b;
+        rr_dev.capacity = RR_REC_RECORDS;
+        memset(&big_insn, 0, sizeof big_insn);
+        memset(&big_dev, 0, sizeof big_dev);
+        big_insn.records = rr_rec.b;
+        big_dev.records = rr_drec.b;
+        big_insn.capacity = (uint32_t)DS_SINK_MAX_RECORDS + 1u;
+        big_dev.capacity = (uint32_t)DS_SINK_MAX_RECORDS + 1u;
+        rr_base_request(&rq, until);
+        rq.insn = &big_insn;
+        rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_sink_unsupported);
+        rr_base_request(&rq, until);
+        rq.dev = &big_dev;
+        rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_sink_unsupported);
+        rr_base_request(&rq, until);
+        rq.insn = &rr_insn;
+        rq.dev = &big_dev;
+        rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_sink_unsupported);
+        rr_base_request(&rq, until);
+        rq.insn = &big_insn;
+        rq.dev = &rr_dev;
+        rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_sink_unsupported);
+        big_insn.capacity = UINT32_MAX;
+        big_dev.capacity = UINT32_MAX;
+        rr_base_request(&rq, until);
+        rq.insn = &big_insn;
+        rq.dev = &big_dev;
+        rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_sink_unsupported);
+        big_dev.capacity = (uint32_t)DS_SINK_MAX_RECORDS + 1u;
+        big_dev.records = NULL;
+        rr_base_request(&rq, until);
+        rq.dev = &big_dev;
+        rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_sink_unsupported);
+        big_dev.capacity = (uint32_t)DS_SINK_MAX_RECORDS;
+        rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+        (*calls) += 7u;
     } else if (strcmp(code_name, "memory_invalid") == 0) {
         /* an insn sink whose memory the call owns or cannot use is refused with the instance byte-identical (plan 03-10; D-93, D-119, I4) */
         struct ds_insn_sink sink;
@@ -652,6 +686,54 @@ static void rr_variants(struct ctx *c, const char *code_name, struct ds_instance
         sink.capacity = 2u;
         rr_call_ex(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid, &own, 0);
         (*calls) += 9u;
+        /* the device-register sink (plan 03-19), the same rules and the two sinks against each other: (10) dev record memory inside the instance, (11) over the request, (12) the dev struct inside the instance, (13) a misaligned record
+         * pointer, (14) a NULL record pointer with a nonzero capacity, (15) the dev struct over the insn struct, (16) dev records over the insn records, (17) dev records over the insn struct, (18) the dev struct inside the insn records */
+        {
+            struct ds_dev_sink dsk;
+
+            _Static_assert(sizeof(struct ds_dev_sink) == sizeof(struct ds_insn_sink), "the saved sink bytes of the variants serve both structs");
+            memset(&dsk, 0, sizeof dsk);
+            memset(rr_rec.b, 0, sizeof rr_rec.b); /* variant 18 reads the dev struct out of these bytes: a zero capacity there */
+            rr_insn.records = rr_rec.b;
+            rr_insn.capacity = RR_REC_RECORDS;
+            rr_base_request(&rq, until);
+            rq.insn = &rr_insn;
+            rq.dev = &dsk;
+            dsk.capacity = 4u;
+            dsk.records = (uint8_t *)in_ram;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+            dsk.records = (uint8_t *)(void *)&rq;
+            dsk.capacity = 2u;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+            memcpy(saved, w->ram8k + (in_ram - (uintptr_t)w->ram8k), sizeof saved);
+            dsk.records = rr_drec.b;
+            dsk.capacity = RR_REC_RECORDS;
+            memcpy(w->ram8k + (in_ram - (uintptr_t)w->ram8k), &dsk, sizeof dsk);
+            rq.dev = (struct ds_dev_sink *)in_ram;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+            memcpy(w->ram8k + (in_ram - (uintptr_t)w->ram8k), saved, sizeof saved);
+            rq.dev = &dsk;
+            dsk.records = rr_drec.b + 4;
+            dsk.capacity = 1u;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+            dsk.records = NULL;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+            dsk.records = rr_drec.b;
+            dsk.capacity = RR_REC_RECORDS;
+            rq.dev = (struct ds_dev_sink *)(void *)&rr_insn;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+            rq.dev = &dsk;
+            dsk.records = rr_rec.b;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+            dsk.records = (uint8_t *)(void *)&rr_insn;
+            dsk.capacity = 1u;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+            rr_dev.records = rr_drec.b;
+            rr_dev.capacity = RR_REC_RECORDS;
+            rq.dev = (struct ds_dev_sink *)(void *)(rr_rec.b + 8);
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+            (*calls) += 9u;
+        }
     } else if (strcmp(code_name, "time_wrap") == 0) {
         uint64_t guard = ds_max_step_mclk();
         uint64_t saved = w->machine_time;

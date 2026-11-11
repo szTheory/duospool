@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The observer non-interference matrix on the authored ds-proto (plan 03-19; D-119, D-131, CORE-06, success criterion 4, T-03-53). The machine is run with no sink (the reference) and with both sinks (the instruction sink and the device-register sink)
+# in each sink configuration: large (never drops), drop4 (4 records each, drop-newest), poison (large, header and record memory poisoned with $A5), cap0 (capacity 0 with a non-NULL record pointer, poisoned) and cap1 (capacity 1, poisoned);
+# each in three run modes: whole (one call to the deadline), chunk:7 (seven calls to equal parts of the deadline) and stop:5000 (a stop callback that holds at its 5000th invocation). Every run must give the reference stop reason, machine time, steps,
+# overshoot, verdict RAM (the DSV1 block at $1F00), digest and stop sequence (the number of calls of the stop callback and a fold of the machine time, pc, registers and bus latch at each). The sinks are checked as well: consistent headers, untouched guard bytes
+# and record memory past the count, the records of a limited sink the first records of the large sink, and the logs accumulated over seven chunks equal to the logs of the whole run. ds-proto writes no hardware-page register, so its device log is empty
+# here (case observer_cyc_probe gives the device sink records to drop). Later plans add tim_timer, cpu_blk, the random-program set and pad_2btn to this kind as further cases. The toy control trace-hook-mutates (a hook that increments the A register)
+# must turn this case red. Evidence tier E0 (repeatability and non-interference: the core is compared with itself): no accuracy, compatibility or hardware claim, and the word pass is not a support claim.
+id = "observer_ds_proto"
+kind = "observer"
+fixture = "authored:ds-proto"
+request = ""
+expect = "compare=verdict,machine_time,stops,digest"
+meaning = "Enabling the instruction sink and the device-register sink in any of five configurations (large, 4-record drop-newest, poisoned header, capacity 0, capacity 1), whole or in 7 chunks or stopped by the callback, changes neither the verdict RAM, the machine time, the stop sequence nor the digest of ds-proto"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+sinks = "large,drop4,poison,cap0,cap1"
+chunks = "whole,chunk:7,stop:5000"

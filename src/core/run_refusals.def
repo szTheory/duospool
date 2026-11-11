@@ -11,9 +11,9 @@
  * request_null     2       the request pointer is NULL
  * struct_size      3       request->struct_size is not sizeof(struct ds_run_request)
  * reserved         4       request->reserved is not 0
- * sink_unsupported 5       the device-register sink pointer (dev) is set: it is not built until plan 03-19 (the insn sink is built, plan 03-10)
+ * sink_unsupported 5       the capacity of the insn sink or the dev sink exceeds DS_SINK_MAX_RECORDS (plan 03-19; D-119): checked after the sink structs and before the record ranges
  * time_wrap        6       the deadline or the machine time is within one maximum step of 2^64, so a step could wrap machine time (Pitfall 20)
- * memory_invalid   7       the insn sink overlaps the instance, the request, the result or itself, is misaligned, has a NULL record pointer with a nonzero capacity, or its record range wraps the address space (plan 03-10; D-119, WR-02 extended)
+ * memory_invalid   7       the insn sink or the dev sink overlaps the instance, the request, the result, itself or the other sink, is misaligned, has a NULL record pointer with a nonzero capacity, or its record range wraps the address space (plans 03-10 and 03-19; D-119, WR-02 extended)
  */
 DS_RUNREF(instance_null, 1)
 DS_RUNREF(request_null, 2)

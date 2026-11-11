@@ -4,9 +4,9 @@
  * run.c - ds_run, the bounded run of the machine in whole instructions to an absolute deadline in master clocks (plan 03-01; D-90, D-92,
  * D-93, D-94, D-95). Steps are indivisible and the deadline is absolute, so run(N) followed by run(M) takes the same steps as run(M) from the start:
  * chunk invariance holds by construction. Nothing but the instance survives a step; there is no local cache of CPU state between steps.
- * Order of a call: refuse a malformed request (NULL instance or request, wrong struct_size, nonzero reserved, the dev sink, an insn sink that is not valid memory (plan 03-10), a deadline that would wrap
- * the 64-bit machine time), then (with an insn sink) overwrite its header, return UNTIL with zero steps when the deadline is not ahead, then check the stop callback before the first step
- * and after every step. The insn hook sees each instruction once, before it runs, and cannot change the instance (ds_obs.h). A stop that holds at the step where the deadline is reached is a stop (CALLBACK), as in the Phase 2 budgeted run.
+ * Order of a call: refuse a malformed request (NULL instance or request, wrong struct_size, nonzero reserved, a sink that is oversized or not valid memory (plans 03-10 and 03-19: ds_obs_sinks_check), a deadline that would wrap
+ * the 64-bit machine time), then (with a sink) overwrite its header, return UNTIL with zero steps when the deadline is not ahead, then check the stop callback before the first step
+ * and after every step. The insn hook sees each instruction once, before it runs, the dev hook each logged hardware-page access, and neither can change the instance (ds_obs.h). A stop that holds at the step where the deadline is reached is a stop (CALLBACK), as in the Phase 2 budgeted run.
  */
 #include <stddef.h>
 #include <stdint.h>
@@ -74,6 +74,7 @@ uint32_t ds_run(struct ds_instance *inst, const struct ds_run_request *request, 
     uint32_t reason = (uint32_t)DS_RUN_REASON_UNTIL;
     struct ds_obs_log log;
     struct ds_obs_log *obs = NULL;
+    uint32_t refusal;
 
     if (inst == NULL) {
         return finish(result, NULL, (uint32_t)DS_RUN_REASON_REFUSED, (uint32_t)DS_RUNREF_instance_null, UINT64_C(0), steps);
@@ -87,19 +88,17 @@ uint32_t ds_run(struct ds_instance *inst, const struct ds_run_request *request, 
     if (request->reserved != 0u) {
         return finish(result, inst, (uint32_t)DS_RUN_REASON_REFUSED, (uint32_t)DS_RUNREF_reserved, UINT64_C(0), steps);
     }
-    if (request->dev != NULL) {
-        return finish(result, inst, (uint32_t)DS_RUN_REASON_REFUSED, (uint32_t)DS_RUNREF_sink_unsupported, UINT64_C(0), steps);
-    }
-    if (request->insn != NULL && !ds_obs_insn_sink_valid(request->insn, inst, request, result)) {
-        return finish(result, inst, (uint32_t)DS_RUN_REASON_REFUSED, (uint32_t)DS_RUNREF_memory_invalid, UINT64_C(0), steps);
+    refusal = ds_obs_sinks_check(request, inst, result);
+    if (refusal != (uint32_t)DS_RUNREF_NONE) {
+        return finish(result, inst, (uint32_t)DS_RUN_REASON_REFUSED, refusal, UINT64_C(0), steps);
     }
     /* a step can end up to guard clocks past the deadline: a deadline or a machine time within one step of 2^64 would wrap (Pitfall 20) */
     if (request->until_mclk > UINT64_MAX - guard || inst->machine_time > UINT64_MAX - guard) {
         return finish(result, inst, (uint32_t)DS_RUN_REASON_REFUSED, (uint32_t)DS_RUNREF_time_wrap, UINT64_C(0), steps);
     }
-    if (request->insn != NULL) {
+    if (request->insn != NULL || request->dev != NULL) {
         obs = &log;
-        ds_obs_begin(obs, request->insn);
+        ds_obs_begin(obs, request->insn, request->dev);
     }
     if (request->until_mclk <= inst->machine_time) {
         return finish(result, inst, reason, (uint32_t)DS_RUNREF_NONE, request->until_mclk, steps);

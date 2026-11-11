@@ -223,10 +223,12 @@ enum ds_run_refusal {
 /* "run.NAME" for a run refusal number, "ok" for DS_RUNREF_NONE, NULL for a number that is not a member */
 const char *ds_run_refusal_name(uint32_t number);
 
-/* the instruction sink of ds_obs.h (plan 03-10); the device-register sink is not built yet (plan 03-19) and its pointer stays untyped */
+/* the instruction sink and the device-register sink of ds_obs.h (plans 03-10 and 03-19) and the running log of one ds_run call, whose layouts live there */
 struct ds_insn_sink;
+struct ds_dev_sink;
+struct ds_obs_log;
 
-/* the run request: an absolute deadline in master clocks, never a budget (D-93); insn is the caller-owned instruction sink (NULL = none, ds_obs.h), dev the device-register sink, which must be NULL until plan 03-19 */
+/* the run request: an absolute deadline in master clocks, never a budget (D-93); insn is the caller-owned instruction sink and dev the caller-owned device-register sink (NULL = none, ds_obs.h) */
 struct ds_run_request {
     uint32_t struct_size; /* sizeof(struct ds_run_request) */
     uint32_t reserved;    /* must be 0 */
@@ -234,7 +236,7 @@ struct ds_run_request {
     ds_stop_fn stop; /* NULL never stops; checked before the first step and after every step */
     void *stop_ctx;
     struct ds_insn_sink *insn;
-    void *dev;
+    struct ds_dev_sink *dev;
 };
 
 struct ds_run_result {
@@ -251,7 +253,7 @@ struct ds_run_result {
  * Run the machine in whole instructions until machine time reaches until_mclk (UNTIL) or the stop callback holds (CALLBACK). A deadline at or
  * below the current machine time returns UNTIL with zero steps. Stops only fall between steps, so the end time can pass the deadline by less
  * than ds_max_step_mclk(). No state lives outside the instance between steps: run(N) then run(M) equals run(M) from the start (D-92).
- * A NULL instance or request, a wrong struct_size, a nonzero reserved, a non-NULL dev sink, an insn sink that overlaps the call's own memory or is misaligned (memory_invalid) and a deadline that would wrap machine time are
+ * A NULL instance or request, a wrong struct_size, a nonzero reserved, a sink with a capacity above DS_SINK_MAX_RECORDS (sink_unsupported), a sink that overlaps the call's own memory, the other sink or itself or is misaligned (memory_invalid) and a deadline that would wrap machine time are
  * refused with REFUSED and a refusal code; the instance is then unchanged. Returns the reason, also written to result when it is not NULL.
  */
 uint32_t ds_run(struct ds_instance *inst, const struct ds_run_request *request, struct ds_run_result *result);
@@ -272,7 +274,8 @@ void ds_op_meta(uint32_t opcode, uint32_t *bytes, uint32_t *cycles); /* the tabl
  * Reads change state (io_buffer, D-104), so the instance is not const here, and no observer ever reads through the bus (D-108).
  */
 struct ds_bus {
-    uint32_t penalty; /* CPU cycles added by accesses to physical $1FE000-$1FE7FF during this step (D-107): DS_ADDER_VDC_ACCESS per access */
+    uint32_t penalty;        /* CPU cycles added by accesses to physical $1FE000-$1FE7FF during this step (D-107): DS_ADDER_VDC_ACCESS per access */
+    struct ds_obs_log *obs;  /* the observer log of the running ds_run call or NULL (plan 03-19): the hardware-page accesses call the dev hook through it, a hook over a const instance that cannot change the machine (D-119) */
 };
 
 uint8_t ds_bus_read(struct ds_instance *inst, struct ds_bus *bus, uint16_t addr);

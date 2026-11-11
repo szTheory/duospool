@@ -124,6 +124,10 @@ mutate_sweep_ds_proto
 mutate_sweep_ds_proto_bad_exclude
 run_refuse_memory_invalid
 insn_sink_shapes
+observer_ds_proto
+observer_cyc_probe
+dev_log_records
+dev_log_windows
 opcode_exercise
 cpu_ldst
 mutate_sweep_cpu_ldst

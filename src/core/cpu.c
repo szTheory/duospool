@@ -501,7 +501,7 @@ static uint16_t tst_addr(const struct ds_instance *inst, uint32_t mode, uint32_t
 /* one instruction; log is the instruction sink writer of the running ds_run call or NULL (plan 03-10): the hook is called once per executed instruction with the state before it runs (D-119) */
 uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
 {
-    struct ds_bus bus_state = {0u}; /* what this instruction's bus accesses add to it: a local of the step, nothing survives it (D-92) */
+    struct ds_bus bus_state = {0u, log}; /* what this instruction's bus accesses add to it and the observer log they report to: a local of the step, nothing survives it (D-92) */
     struct ds_bus *bus = &bus_state;
     uint32_t pc = inst->pc;
     uint8_t opcode = ds_bus_read(inst, bus, inst->pc);
