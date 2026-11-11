@@ -1690,6 +1690,74 @@ selftest() {
     fi
   fi
 
+  # (guest) a wrong expected literal must turn the tracer red (plan 03-01, D-125, D-126 later). A scratch mini-root holds a copy of fixture-build, of
+  # ds_proto.s and of the linker config. The unmutated copy is built and judged first and must give RESULT ds_proto pass (so the later red cannot come from
+  # a broken build); then the literal on the one line that carries the target marker is changed, the copy is rebuilt into the scratch directory and the
+  # same runner must give guest_failure with check 1 at result byte $46. A source with no marker line, or with more than one, is a harness error (exit 2),
+  # so a later rewrite of ds_proto.s cannot make this mutation vacuous. Nothing is written under fixtures/ or build/gate/fixtures/: the runner runs with
+  # the mini-root as its working directory, and the kind reads its image from build/gate/fixtures/ there.
+  if st_want mutation-guest-wrong-literal; then
+    st_ran=1
+    gw="$tmp/selftest/guest-wrong-literal"
+    gw_ok=1
+    gw_why=""
+    rm -rf "$gw"
+    mkdir -p "$gw/scripts" "$gw/fixtures/src" "$gw/fixtures/lib" "$gw/cases" "$gw/ev"
+    cp "$here/fixture-build" "$gw/scripts/"
+    cp fixtures/src/ds_proto.s "$gw/fixtures/src/"
+    cp fixtures/lib/hucard.cfg "$gw/fixtures/lib/"
+    cp tests/conformance/cases/ds_proto.toml "$gw/cases/"
+    gw_n=$(grep -c '; SELFTEST-TARGET$' "$gw/fixtures/src/ds_proto.s" || true)
+    if [ "$gw_n" -ne 1 ]; then
+      echo "HARNESS_ERROR mutation-guest-wrong-literal: ds_proto.s must carry exactly one line ending in the target marker (found $gw_n)"
+      exit 2
+    fi
+    if cmake --preset gate > "$tmp/gw.build" 2>&1 && cmake --build --preset gate >> "$tmp/gw.build" 2>&1; then :; else
+      cat "$tmp/gw.build"
+      echo "HARNESS_ERROR mutation-guest-wrong-literal: the gate preset does not build"
+      exit 2
+    fi
+    if sh "$here/conformance-flatten" "$gw/cases" > "$gw/cases.tsv" 2> "$tmp/st.err"; then :; else gw_ok=0; gw_why="cannot flatten the scratch case"; fi
+    if [ "$gw_ok" -eq 1 ]; then
+      if (cd "$gw" && sh scripts/fixture-build > fb0.out 2>&1); then :; else
+        if grep -q '^PREFLIGHT_MISSING' "$gw/fb0.out"; then cat "$gw/fb0.out"; echo "HARNESS_ERROR mutation-guest-wrong-literal: ca65 or ld65 is missing"; exit 2; fi
+        gw_ok=0
+        gw_why="the unmutated scratch fixture does not build"
+      fi
+    fi
+    if [ "$gw_ok" -eq 1 ]; then
+      (cd "$gw" && "$root/build/gate/ds_runner" --cases cases.tsv --evidence-dir ev > before.txt 2> before.err) || true
+      if ! awk '$1 == "RESULT" && $2 == "ds_proto" && $3 == "pass" { f = 1 } END { exit !f }' "$gw/before.txt"; then
+        gw_ok=0
+        gw_why="ds_proto does not pass on the unmutated scratch copy"
+      fi
+    fi
+    if [ "$gw_ok" -eq 1 ]; then
+      awk '/; SELFTEST-TARGET$/ { sub(/#\$80/, "#$81") } { print }' "$gw/fixtures/src/ds_proto.s" > "$gw/ds_proto.mutated"
+      if cmp -s "$gw/ds_proto.mutated" "$gw/fixtures/src/ds_proto.s"; then
+        echo "HARNESS_ERROR mutation-guest-wrong-literal: the target line carries no literal #\$80 to change"
+        exit 2
+      fi
+      mv "$gw/ds_proto.mutated" "$gw/fixtures/src/ds_proto.s"
+      if (cd "$gw" && sh scripts/fixture-build > fb1.out 2>&1); then :; else gw_ok=0; gw_why="the mutated scratch fixture does not build"; fi
+    fi
+    if [ "$gw_ok" -eq 1 ]; then
+      (cd "$gw" && "$root/build/gate/ds_runner" --cases cases.tsv --evidence-dir ev > after.txt 2> after.err) || true
+      if ! awk '$1 == "RESULT" && $2 == "ds_proto" && $3 == "guest_failure" { f = 1 } END { exit !f }' "$gw/after.txt"; then
+        gw_ok=0
+        gw_why="ds_proto is not guest_failure with the wrong literal"
+      elif ! grep -Fq 'check 1 of the guest did not pass (result byte $46)' "$gw/after.err"; then
+        gw_ok=0
+        gw_why="the failing check is not check 1 at result byte \$46"
+      fi
+    fi
+    if [ "$gw_ok" -eq 1 ]; then
+      echo "SELFTEST mutation-guest-wrong-literal PASS"
+    else
+      echo "SELFTEST mutation-guest-wrong-literal FAIL ($gw_why)"; failed=1
+    fi
+  fi
+
   # (v) the pin rule of workflow-check is what turns the tag-pinned-action control red (T-02-41): the control, run with --expect WF_UNPINNED_ACTION,
   # is met on an unmutated copy of scripts/ (exit 0, EXPECT_OK); with the one line tagged rule-pin deleted from the copy of the rules the code is no longer
   # reported, so the same run must exit 1: the control flipped to broken.
