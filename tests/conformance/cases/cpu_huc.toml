@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The HuC6280-specific instruction fixture (plan 03-14; D-101, D-105, D-106, D-124, D-125, D-127): the authored fixture fixtures/src/cpu_huc.s is assembled by ca65 in the gate (never committed), boots on the core, runs to the absolute
+# deadline until_mclk (master clocks) and writes a DSV1 verdict block that the runner judges from raw RAM. The expected literals are in the literal table of fixtures/lib/check.inc and classed in fixtures/src/cpu_huc.checks:
+# a manual page (MAN), an in-guest computation (GUEST) or an assumed ledger entry (ASSUMED); none comes from DuoSpool output. The case has no policies key, so the guest kind runs the ROM under its default policy list (D-127).
+# Evidence tier E0, a mechanism check: no accuracy or compatibility claim, no cycle claim, no speed-switch timing claim, and the word pass is not a support claim.
+id = "cpu_huc"
+kind = "guest"
+fixture = "authored:cpu-huc"
+request = ""
+expect = "id=6"
+meaning = "The authored cpu_huc fixture runs the HuC6280 register swaps and clears and leaves a consistent DSV1 block whose check results are all pass"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+checks = 14

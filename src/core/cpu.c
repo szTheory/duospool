@@ -635,6 +635,21 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
     case MN_CLY:
         inst->y = 0u;
         break;
+    case MN_SXY: /* X and Y exchange, no flag changes (S8-87); SAX and SAY exchange A with X or Y, no flag changes (S8-72, S8-73) */
+        v = inst->x;
+        inst->x = inst->y;
+        inst->y = (uint8_t)v;
+        break;
+    case MN_SAX:
+        v = inst->a;
+        inst->a = inst->x;
+        inst->x = (uint8_t)v;
+        break;
+    case MN_SAY:
+        v = inst->a;
+        inst->a = inst->y;
+        inst->y = (uint8_t)v;
+        break;
     case MN_PHX:
         push(inst, inst->x);
         break;
@@ -838,7 +853,7 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
         break;
     case MN_RMB0: case MN_RMB1: case MN_RMB2: case MN_RMB3: case MN_RMB4: case MN_RMB5: case MN_RMB6: case MN_RMB7:
     case MN_SMB0: case MN_SMB1: case MN_SMB2: case MN_SMB3: case MN_SMB4: case MN_SMB5: case MN_SMB6: case MN_SMB7:
-    case MN_SAX: case MN_SAY: case MN_SXY: case MN_ST0: case MN_ST1: case MN_ST2: case MN_CSH: case MN_CSL: case MN_TMA:
+    case MN_ST0: case MN_ST1: case MN_ST2: case MN_CSH: case MN_CSL: case MN_TMA:
         break; /* plan 03-14: the HuC6280 additions */
     case MN_TAI: case MN_TDD: case MN_TIA: case MN_TII: case MN_TIN:
         break; /* the block-transfer plan (D-100); one step charges the table's 17 until then */

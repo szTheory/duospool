@@ -131,3 +131,4 @@ cpu_alu
 mutate_sweep_cpu_alu
 cpu_flow
 mutate_sweep_cpu_flow
+cpu_huc

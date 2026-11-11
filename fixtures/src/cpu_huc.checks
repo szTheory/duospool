@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# cpu_huc.checks - one row per CHECK of fixtures/src/cpu_huc.s (D-125, plan 03-14). Columns separated by one TAB: check index (1-based, the entry number of the DCK1 table), slug, class tag, meaning.
+# Class tags: MAN:<page> (the literal is a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model> (the expected byte is computed in the guest from a value the guest wrote itself, the table entry is an XOR mask of $00),
+# ASSUMED:<LED-id> (the literal is DuoSpool's own model, an assumption; the ledger entry is written in plan 03-15).
+# P is read through PHP, PLA and a mask: B and T are not part of the literal. No row asserts a cycle count, the speed-switch timing or the VDC penalty (plans 03-16, 03-21, 03-23). A pass is not a support claim (ER-4).
+id=6
+checks=14
+1	sxy-x	MAN:S8-87	SXY exchanges X and Y: X = $12 and Y = $34 before, X reads $34 after (S8-87)
+2	sxy-y	MAN:S8-87	SXY exchanges X and Y: X = $12 and Y = $34 before, Y reads $12 after (S8-87)
+3	sax-a	MAN:S8-72	SAX exchanges A and X: A = $56 and X = $78 before, A reads $78 after (S8-72)
+4	sax-x	MAN:S8-72	SAX exchanges A and X: A = $56 and X = $78 before, X reads $56 after (S8-72)
+5	say-a	MAN:S8-73	SAY exchanges A and Y: A = $9A and Y = $BC before, A reads $BC after (S8-73)
+6	say-y	MAN:S8-73	SAY exchanges A and Y: A = $9A and Y = $BC before, Y reads $9A after (S8-73)
+7	swaps-keep-flags-set	MAN:S8-87	SXY, SAX and SAY change no flag (flag rows of S8-72, S8-73, S8-87 are T = 0 and dashes): P = N V Z C set, positive non-zero registers, the masked P byte stays $C3
+8	swaps-keep-flags-clear	MAN:S8-87	SXY, SAX and SAY change no flag: P = N V Z C clear, registers that would set N and Z ($80, $00, $FF), the masked P byte stays $00
+9	cla	MAN:S8-34	CLA sets A to $00: A = $FF before (S8-34)
+10	clx	MAN:S8-39	CLX sets X to $00: X = $FF before (S8-39)
+11	cly	MAN:S8-40	CLY sets Y to $00: Y = $FF before (S8-40)
+12	cla-keep-flags	MAN:S8-34	CLA changes no flag (S8-34): P = N V C set and Z clear, the masked P byte stays $C1 (a core that set Z for the zero result reads $C3)
+13	clx-keep-flags	MAN:S8-39	CLX changes no flag (S8-39): P = N V C set and Z clear, the masked P byte stays $C1
+14	cly-keep-flags	MAN:S8-40	CLY changes no flag (S8-40): P = N V C set and Z clear, the masked P byte stays $C1

@@ -83,20 +83,27 @@ S8-63	img	gsd-executor	2026-11-11	PLA $68, 1 byte, 4 cycles; S <- S + 1, A <- Ms
 S8-64	img	gsd-executor	2026-11-11	PLP $28, 1 byte, 4 cycles; S <- S + 1, P <- Ms; the flag row reads RESTORED
 S8-65	img	gsd-executor	2026-11-11	PLX $FA, 1 byte, 4 cycles; S <- S + 1, X <- Ms; flags N and Z
 S8-66	img	gsd-executor	2026-11-11	PLY $7A, 1 byte, 4 cycles; S <- S + 1, Y <- Ms; flags N and Z
+S8-67	img	gsd-executor	2026-11-11	RMBi: zero page only, machine code 10i+7 and the zero-page address, 2 bytes, 7 cycles; the specified bit of the zero-page cell is reset (Mi <- 0); flag row T = 0, others unchanged
 S8-68	img	gsd-executor	2026-11-11	ROL: C into bit 0, bit 7 into C; zp 26, zp,X 36, abs 2E, abs,X 3E, acc 2A; flags N Z C
 S8-69	img	gsd-executor	2026-11-11	ROR: C into bit 7, bit 0 into C; zp 66, zp,X 76, abs 6E, abs,X 7E, acc 6A; flags N Z C
 S8-70	img	gsd-phase-researcher	2026-11-10	RTI $40, 1 byte, 7 cycles; P pulled first, then PCL, PCH
 S8-71	img	gsd-executor	2026-11-11	RTS 60, 1 byte, 7 cycles; PCL pulled first then PCH, then PC <- PC+1; flags: T = 0, others unchanged
+S8-72	img	gsd-executor	2026-11-11	SAX $22, 1 byte, 3 cycles; A and X exchange (A <-> X); flag row T = 0, others unchanged
+S8-73	img	gsd-executor	2026-11-11	SAY $42, 1 byte, 3 cycles; A and Y exchange (A <-> Y); flag row T = 0, others unchanged
 S8-74	img	gsd-phase-researcher	2026-11-10	SBC: A - M - not C; same cycle table as ADC; D=1 adds 1 cycle
 S8-75	img	gsd-executor	2026-11-11	SEC $38, 1 byte, 2 cycles; C <- 1; flag row C = 1, T = 0, others unchanged
 S8-76	img	gsd-executor	2026-11-11	SED $F8, 1 byte, 2 cycles; D <- 1; flag row D = 1, T = 0, others unchanged
 S8-77	img	gsd-executor	2026-11-11	SEI 78, 1 byte, 2 cycles; I <- 1; flag row I = 1, T = 0, others unchanged
 S8-78	img	gsd-executor	2026-11-11	SET $F4, 1 byte, 2 cycles; T <- 1; flag row T = 1, others unchanged
+S8-79	img	gsd-executor	2026-11-11	SMBi: zero page only, machine code 10i+87 and the zero-page address, 2 bytes, 7 cycles; the specified bit of the zero-page cell is set (Mi <- 1); flag row T = 0, others unchanged
 S8-80	img	gsd-phase-researcher	2026-11-10	ST0 $03 nn, 2 bytes, 4 cycles; CE7 asserted, (A1,A0) = (0,0)
+S8-81	img	gsd-executor	2026-11-11	ST1 $13 nn, 2 bytes, 4 cycles; CE7 asserted, (A1,A0) = (1,0)
+S8-82	img	gsd-executor	2026-11-11	ST2 $23 nn, 2 bytes, 4 cycles; CE7 asserted, (A1,A0) = (1,1)
 S8-83	img	gsd-executor	2026-11-11	STA: zp 85, zp,X 95, (zp) 92, (zp,X) 81, (zp),Y 91, abs 8D, abs,X 9D, abs,Y 99; M <- A; no flag changes
 S8-84	img	gsd-executor	2026-11-11	STX: zp 86, zp,Y 96, abs 8E; M <- X; no flag changes
 S8-85	img	gsd-executor	2026-11-11	STY: zp 84, zp,X 94, abs 8C; M <- Y; no flag changes
 S8-86	img	gsd-executor	2026-11-11	STZ: zp 64, zp,X 74, abs 9C, abs,X 9E; M <- $00; no flag changes
+S8-87	img	gsd-executor	2026-11-11	SXY $02, 1 byte, 3 cycles; X and Y exchange (X <-> Y); flag row T = 0, others unchanged
 S8-88	img	gsd-phase-researcher	2026-11-10	TAI flowchart: Y, A, X saved; first byte post-increment, second post-decrement
 S8-89	img	gsd-phase-researcher	2026-11-10	TAI $F3, 7 bytes, 17+6x cycles, T=0; X, A, Y popped at the end
 S8-90	img	gsd-phase-researcher	2026-11-10	TAMi $53, operand 2^i, 2 bytes, 5 cycles
