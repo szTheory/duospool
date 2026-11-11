@@ -17,4 +17,4 @@ meaning = "The closed-form timer equals a naive per-clock model for every reload
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-IRQ-0002"]
