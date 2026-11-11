@@ -134,3 +134,6 @@ mutate_sweep_cpu_flow
 cpu_huc
 mutate_sweep_cpu_huc
 opcode_table_manual
+cyc_probe
+mutate_sweep_cyc_probe
+cycle_adders_manual

@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Single-instruction cycle counts against page literals (plan 03-15; D-98, D-101, ER-2, ER-7, T-03-43): kind cycle_probe runs the authored cyc_probe fixture with an instruction sink and, for each item, takes the start stamp of the
+# instruction (its record in the trace, found by the pc and opcode that the assembler listing gives) and of the next instruction; the difference in master clocks must equal CYCLES times the clocks per cycle of the speed in force (12 low, 3 high,
+# D-90). Each item is PC:OPCODE:CYCLES:SPEED. The record holds the state before the instruction, so CSH itself is at L and the INX after it at H (D-101: three cycles at the old speed, the new speed from the next instruction).
+# Every CYCLES literal below is a number printed on a manual page, written here by the author of the case; none comes from src/core/cpu_ops.def, from a run, or from another emulator. The pages (image-read facts in fixtures/lib/cites.txt):
+#   0xE10F ADC #imm, no flag mode: 2 (S8-17: immediate 2 cycles)            0xE111 BEQ not taken: 2 (S8-24: 2 cycles, 2 more when taken)       0xE118 BEQ taken: 4 (S8-24: 2 + 2)
+#   0xE11E BBR0 not taken: 6 (S8-20)                                         0xE125 BBR1 taken: 8 (S8-20: 6 + 2 when taken)                       0xE12F SET: 2 (S8-78)
+#   0xE130 ADC #imm in T mode: 5 (S8-17: 2 + 3 when T = 1)                   0xE13B SED: 2 (S8-76)                                                0xE13C ADC #imm in decimal mode: 3 (S8-17: 2 + 1 when D = 1)
+#   0xE141 SBC #imm in decimal mode: 3 (S8-74: the cycle table of ADC, D = 1 adds 1)                                                            0xE149 TAM: 5 (S8-90)               0xE14D TMA: 4 (S8-101)
+#   0xE15C BRK: 8 (S8-30)                                                    0xE17D RTI: 7 (S8-70)                                                0xE16D CSH at low speed: 3 (H8-25 map cell: 1 byte, 3 cycles; the software manual has no page for it)
+#   0xE16E INX at high speed: 2 (S8-49)                                      0xE16F CSL at high speed: 3 (H8-25 map cell)                         0xE170 INX at low speed again: 2 (S8-49)
+# The adders are measured, not read: the core charges them in cpu.c and this case compares the charged time with the pages. What is not asserted: the page-cross penalty of a branch (ledger LED-CPU-0010 assumption), the VDC penalty (plan 03-16),
+# T mode combined with decimal mode (+4 is the project's reading, LED-CPU-0002) and the block-transfer cost (plan 03-25). Evidence tier E0 for what is measured; the expected values are documentary page literals (E1 only after the image re-read of
+# plan 03-32). The word pass is not a support claim; no accuracy, compatibility or hardware claim, and no timer is used (the timer arrives in plan 03-21).
+id = "cycle_adders_manual"
+kind = "cycle_probe"
+fixture = "none"
+request = ""
+expect = "rom=cyc-probe;0xE10F:0x69:2:L;0xE111:0xF0:2:L;0xE118:0xF0:4:L;0xE11E:0x0F:6:L;0xE125:0x1F:8:L;0xE12F:0xF4:2:L;0xE130:0x69:5:L;0xE13B:0xF8:2:L;0xE13C:0x69:3:L;0xE141:0xE9:3:L;0xE149:0x53:5:L;0xE14D:0x43:4:L;0xE15C:0x00:8:L;0xE17D:0x40:7:L;0xE16D:0xD4:3:L;0xE16E:0xE8:2:H;0xE16F:0x54:3:H;0xE170:0xE8:2:L"
+meaning = "In the instruction trace of the cyc_probe fixture the measured cycle counts equal the manual page literals: a taken branch adds 2, T mode adds 3, decimal mode adds 1, and BRK, RTI, TAM, TMA, CSH and CSL cost 8, 7, 5, 4, 3 and 3 cycles at the speed in force"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000

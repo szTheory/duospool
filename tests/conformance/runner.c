@@ -992,6 +992,7 @@ static const struct {
     {"mutate_sweep", kind_mutate_sweep, 0},
     {"insn_sink_shapes", kind_insn_sink_shapes, 0},
     {"opcode_table", kind_opcode_table, 0},
+    {"cycle_probe", kind_cycle_probe, 0},
     {"opcode_exercise", kind_opcode_exercise, 1},
     {"poweron_domain", kind_poweron_domain, 0},
     {"digest_stream", kind_digest_stream, 0},

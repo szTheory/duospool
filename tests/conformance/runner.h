@@ -284,6 +284,7 @@ void note_run(struct ctx *c, uint64_t machine_time, uint32_t reason);
 extern const char *opcode_tsv_path;
 int cpukinds_arg(int argc, char **argv, int *a);
 void kind_opcode_table(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_cycle_probe(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 
 /* the --fixtures list (fixlist.c, plan 17): NAME SIZE for every recipe a case materialises and every sweep length; 0, or 2 on a fault */
 int list_fixtures(const size_t *sweep, size_t nsweep);

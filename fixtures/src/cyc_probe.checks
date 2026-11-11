@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# cyc_probe.checks - one row per CHECK of fixtures/src/cyc_probe.s (D-125, plan 03-15). Columns separated by one TAB: check index (1-based, the entry number of the DCK1 table), slug, class tag, meaning.
+# Class tags: MAN:<page> (the literal is a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model> (the expected byte is computed in the guest, the table entry is an XOR mask of $00), ASSUMED:<LED-id>.
+# These twelve checks show that the probe sequence completed and took the paths the manual defines. No check here counts a cycle: the cycle counts of the sequence are judged by the runner kind cycle_probe from the instruction trace
+# (cases cycle_adders_manual and cyc_probe), against literals from the pages. A pass is not a support claim (ER-4).
+id=7
+checks=12
+1	beq-not-taken-path	MAN:S8-24	BEQ does not branch when Z is 0 (A = $02 before it): the fall-through INC ran once, so the marker reads $01
+2	beq-taken-skips	MAN:S8-24	BEQ branches when Z is 1 (A = $00 before it): the INC behind it did not run, so the marker reads $00
+3	bbr-not-taken-path	MAN:S8-20	BBR0 does not branch when bit 0 of the zero-page cell is 1 (the cell holds $01): the fall-through INC ran once, so the marker reads $01
+4	bbr-taken-skips	MAN:S8-20	BBR1 branches when bit 1 of the zero-page cell is 0 (the cell holds $01): the INC behind it did not run, so the marker reads $00
+5	t-mode-cell	MAN:S8-17	With T set ADC adds the immediate to the zero-page cell selected by X (S8-17): X = $10, the cell holds $20, the immediate is $01 and C is clear, so the cell reads $21
+6	decimal-adc-sum	MAN:S8-17	ADC in decimal mode (D set, C clear): $09 + $01 gives the packed decimal sum $10
+7	decimal-sbc-diff	MAN:S8-74	SBC in decimal mode: A - M - not C with A = $10, M = $01 and C clear (no carry out of the ADC) gives $08
+8	tam-tma-roundtrip	MAN:S8-101	TMA reads into A the MPR that TAM wrote (S8-90, S8-101): TAM with the operand $04 stored $F9 in MPR2, TMA with $04 reads $F9
+9	brk-handler-ran	MAN:S8-30	BRK jumps through the IRQ2 and BRK vector (S8-30): the handler installed in the RAM vector slot ran once
+10	rti-returns-after-signature	MAN:S8-70	RTI pulls P, PCL, PCH (S8-70) and BRK pushed its own address plus 2 (S8-30): the instruction behind the signature byte ran once and the signature byte was not executed
+11	csh-csl-length	MAN:H8-25	CSH and CSL are one byte each (H8-25 map): X = $00, an INX after CSH and an INX after CSL leave X = $02
+12	probe-end-marker	GUEST:probe-end-marker	The last store of the probe wrote the byte $5A into a cell that the guest had cleared; the model is the byte $5A kept in GEXP before the read
