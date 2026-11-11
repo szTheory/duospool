@@ -988,6 +988,7 @@ static const struct {
     {"budget_spin", kind_spin, 0},
     {"spin_forever", kind_spin, 0},
     {"guest", kind_guest, 0},
+    {"mutate_sweep", kind_mutate_sweep, 0},
     {"poweron_domain", kind_poweron_domain, 0},
     {"digest_stream", kind_digest_stream, 0},
     {"digest_pair", kind_digest_pair, 0},

@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Red control of the sweep's exclude rule (plan 03-10; D-126, NW4): the case lists exclude=3, but ds_proto has no observe row (build/gate/fixtures/ds-proto.observe is empty), so the exclude list differs from the fixture's observe rows.
+# The sweep must refuse the mismatch as harness_failure with the word exclude-mismatch, and this case passes only on exactly that verdict: a sweep that skipped check 3 on the case's word alone (and so hid a vacuous check)
+# would turn this case red. Plan 03-17 adds the control for an observe row without an expectation. Evidence tier E0 (a mechanism check of the harness).
+id = "mutate_sweep_ds_proto_bad_exclude"
+kind = "mutate_sweep"
+fixture = "authored:ds-proto"
+request = ""
+expect = "id=1;exclude=3;verdict=harness_failure:exclude-mismatch"
+meaning = "A mutation sweep whose exclude list names a check that the fixture does not mark observe is refused as harness_failure (exclude-mismatch) instead of skipping the check"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+checks = 8

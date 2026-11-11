@@ -212,6 +212,63 @@ void kind_spin(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 /* boot build/gate/fixtures/ROM.pce over the request text: NULL and the accepted instance, or why not (a harness fault of the case); release_boot frees it */
 const char *boot_built_rom(const char *rom, const char *request, struct booted *b, const struct ds_instance **inst);
+/* the two halves of boot_built_rom (plan 03-10): load_image reads build/gate/fixtures/ROM.pce into a heap buffer (NULL and *len 0 when it cannot); boot_content boots the buffer
+ * b->content (heap memory the caller set, len bytes, freed by release_boot) over the request text. The mutation sweep patches a copy of the image between the two. */
+unsigned char *load_image(const char *rom, size_t *len);
+const char *boot_content(const char *request, size_t len, struct booted *b, const struct ds_instance **inst);
+
+/* the DSV1 verdict block (guestkinds.c has the layout): its offset in work RAM, its size, the result and observed byte bases and the two result values */
+#define V_OFF 0x1F00u
+#define V_SIZE 0x100u
+#define V_MAX_CHECKS 96u
+#define V_RES 0x10u
+#define V_OBS 0x80u
+#define R_PASS 0x50u
+#define R_FAIL 0x46u
+
+/*
+ * The expect of a guest or mutate_sweep case (plan 03-10): id=N, then items separated by semicolons, in any order, each at most once:
+ *   verdict=OUTCOME:REASON  a protocol control (the judge must give exactly this outcome and a reason containing the word)
+ *   poison-t0               the t=0 precondition control (guest only)
+ *   observe=IDX:VALUE       the observed byte of observe row IDX must equal VALUE (decimal or 0x hex, at most 255); observe=IDX:differs is judged only in policy-diff mode (plan 03-24)
+ *   exclude=IDX,IDX,...     the checks a mutation sweep skips (strictly ascending), which must equal the observe rows of the fixture (mutate_sweep only)
+ */
+enum guest_mode { MODE_PLAIN, MODE_VERDICT, MODE_POISON };
+#define GE_ITEMS_MAX 32u
+
+struct guest_expect {
+    uint64_t id;
+    enum guest_mode mode;
+    char outcome[24];
+    char reason[48];
+    unsigned nobs;
+    struct {
+        unsigned idx;
+        int differs;
+        unsigned value;
+    } obs[GE_ITEMS_MAX];
+    unsigned nex;
+    unsigned ex[GE_ITEMS_MAX];
+};
+
+/* the observe rows of a built fixture (build/gate/fixtures/ROM.observe, one decimal check index per line, ascending): NULL on success, otherwise why not */
+struct obs_list {
+    unsigned n;
+    unsigned idx[GE_ITEMS_MAX];
+};
+const char *read_observe(const char *rom, struct obs_list *out);
+int parse_guest_expect(const char *text, struct guest_expect *e); /* 0 on success */
+/* judge the DSV1 block b (256 bytes of raw work RAM) on c: exactly one outcome; got receives the observed summary */
+void judge_dsv1(struct ctx *c, const uint8_t *b, unsigned want_id, unsigned want_checks, char *got, size_t gotcap);
+/* a protocol-control case: s is the scratch context the judge filled; c passes only on the declared outcome and a reason containing the declared word */
+void expect_verdict(struct ctx *c, const struct ctx *s, const struct guest_expect *e, char *got, size_t gotcap);
+/* every observe row of the fixture needs an observe=IDX:VALUE item and every item an observe row: harness_failure (observe-missing, observe-unlisted) on t otherwise */
+void observe_cover(struct ctx *t, const struct guest_expect *e, const struct obs_list *ol, unsigned nchk);
+/* the observed byte of each observe row against its item (only when the block is judged pass) */
+void observe_judge(struct ctx *t, const uint8_t *b, const struct guest_expect *e, const struct obs_list *ol);
+
+/* the mutation sweep (sweepkinds.c, plan 03-10): every literal of the DCK1 table of a built image is flipped in an in-memory copy and must flip exactly its own check */
+void kind_mutate_sweep(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 /* the NAME of a fixture key authored:NAME (0 on success; NAME is [a-z0-9-]) and the recording of a run for the machine_time and stop tail of a RESULT line */
 int authored_name(const char *fixture, char *out, size_t cap);
 void note_run(struct ctx *c, uint64_t machine_time, uint32_t reason);

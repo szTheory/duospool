@@ -18,6 +18,7 @@
 #   FXL_SIZE_HINT      an instruction operand that is a literal below $100 without z:, a: or < in front (Pitfall 5; (zp) and BBR/BBS take <)  rule-size-hint
 #   FXL_RAW_UNCITED    a source line with a RAW marker in its comment that does not read RAW:<page>                                         rule-raw-uncited
 #   FXL_UNKNOWN_CITE   a MAN:<page> or RAW:<page> whose page is not in cites.txt                                                              rule-unknown-cite
+#   FXL_BAD_OBSERVE    a .checks fifth column other than the word observe (or a sixth column), or a row marked observe whose check is not CHECK_OBSERVE, or a CHECK_OBSERVE whose row is not marked observe     rule-bad-observe
 #   FXL_UNKNOWN_MNEMONIC a lower-case first word of a source line that is not a mnemonic of the opcode table (an assignment  name = value  is not an instruction)  rule-unknown-mnemonic
 # A RAW line is any source line whose comment holds the word RAW: raw instruction bytes written in place of an instruction. Data tables are .byte lines without the marker.
 # The mnemonic set is the table of tests/oracle/huc6280-opcodes.tsv (plan 03-08), not a list kept here, so the size-hint rule and the unknown-mnemonic rule cannot drift from the manual transcription.
@@ -60,7 +61,7 @@ $1 == "F" {
 $1 == "CHK" {
   s = stemof($2); k = keyof($4); nchk++
   chkn[s, k]++
-  if (chkn[s, k] == 1) { chkline[s, k] = $3; nk[s]++; klist[s, nk[s]] = k }
+  if (chkn[s, k] == 1) { chkline[s, k] = $3; chkword[s, k] = $5; nk[s]++; klist[s, nk[s]] = k }
   else dupline[s, k] = $3
   next
 }
@@ -107,7 +108,8 @@ $1 == "HDR" {
 $1 == "ROW" {
   s = stemof($2)
   nr[s]++
-  rowidx[s, nr[s]] = keyof($4); rowline[s, nr[s]] = $3; rowfile[s] = $2
+  rowidx[s, nr[s]] = keyof($4); rowline[s, nr[s]] = $3; rowfile[s] = $2; rowobs[s, nr[s]] = ($6 + 0 == 5 && $7 == "observe")
+  if ($6 + 0 > 5 || ($6 + 0 == 5 && $7 != "observe")) viol($2, "FXL_BAD_OBSERVE", $3, "the fifth column of a .checks row is only the word observe, and there is no sixth")  # rule-bad-observe
   cls = $5
   okcls = (cls ~ /^MAN:[A-Za-z0-9][A-Za-z0-9-]*$/) || (cls ~ /^GUEST:[a-z][a-z0-9-]*$/) || (cls ~ /^ASSUMED:LED-(PROF|CPU|VID|AUD|IRQ|LOAD|IO|TOOL)-[0-9][0-9][0-9][0-9]$/)
   if (!okcls) viol($2, "FXL_BAD_CLASS", $3, "class tag '" cls "' is not MAN:<page>, GUEST:<model> or ASSUMED:<LED-id>")  # rule-bad-class
@@ -133,6 +135,7 @@ END {
       k = rowidx[s, r]
       seen[s, k]++
       if (!((s, k) in chkn) || seen[s, k] > 1) viol(rowfile[s], "FXL_ORPHAN_CHECK", rowline[s, r], "row " k " matches no CHECK of " s ".s, or repeats an earlier row")  # rule-orphan
+      else if (rowobs[s, r] != (chkword[s, k] == "CHECK_OBSERVE")) viol(rowfile[s], "FXL_BAD_OBSERVE", rowline[s, r], "row " k " and its CHECK disagree: observe in the fifth column goes with CHECK_OBSERVE and with nothing else")  # rule-bad-observe
     }
     if (s in hasc) {
       if (!((s, "id") in hdr) || hdr[s, "id"] !~ /^[1-9][0-9]*$/) viol(hasc[s], "FXL_COUNT", 0, "id= header missing or not a positive number")  # rule-count

@@ -120,3 +120,5 @@ run_refuse_reserved
 run_refuse_sink_unsupported
 run_refuse_time_wrap
 run_refusal_coverage
+mutate_sweep_ds_proto
+mutate_sweep_ds_proto_bad_exclude

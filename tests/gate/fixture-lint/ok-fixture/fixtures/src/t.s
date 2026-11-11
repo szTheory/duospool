@@ -3,7 +3,7 @@
 ; fixture-lint control mini-root: a clean source: every rule met, one cited raw-byte line
         .setcpu "huc6280"
 DSV_ID = 1
-DSV_CHECKS = 3
+DSV_CHECKS = 4
 
         .include "startup.inc"
         .include "verdict.inc"
@@ -22,5 +22,6 @@ fixture_main:
         .byte $53, $01                  ; RAW:H8-8 TAM with a one-bit operand
 skip:   lda #$10                        ; immediates need no hint
         CHECK_LIT 3
+        CHECK_OBSERVE 4, a:kv           ; check 4 GUEST:observe-only row
         rts
 kv:     .byte $A5

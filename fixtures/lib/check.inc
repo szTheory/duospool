@@ -9,6 +9,10 @@
 ;   CHECK_LIT k     A = the observed byte; the entry value is the expected byte itself (a MAN-class or ASSUMED-class literal)
 ;   CHECK_GUEST k   A = the observed byte; the guest has stored its own computed expected byte in GEXP; the entry value is an XOR mask
 ;                   ($00 in the shipped fixture) applied to GEXP, so a patched mask turns the check red (a GUEST-class check)
+;   CHECK_OBSERVE k, actual   an observe-only row (plan 03-10): a check whose expected value legitimately differs by case (a model parameter value, a policy, a variant). It does NOT compare: it stores
+;                   the observed byte (the operand `actual` loaded into A, or A itself when the operand is left out) at +80+(k-1) and $50 at +10+(k-1), and tallies a pass. The runner judges the byte
+;                   from the case (the item observe=IDX:VALUE of the expect). The table still holds the entry for k (a fixture writes LIT k, $00 as for every check, so the table stays one entry
+;                   per check and the build fails when it is missing), and the sweep skips the index (the fifth column of NAME.checks is the word observe). The macro emits nothing until it is used.
 ; Each macro stores the observed byte at +80+(k-1), then writes the result byte ($50 pass, $46 fail) at +10+(k-1) and tallies pass, fail,
 ; notrun and progress through ck_pass or ck_fail. X and A are clobbered. A fixture calls CHECK_TABLE n once, before its first LIT.
 ; Macro parameters are parenthesised where they enter an expression (Pitfall 5); the check number is a plain number so that .string can
@@ -58,6 +62,16 @@ done:
         eor a:.ident(.concat("cklit_", .string(k))) + 1
         cmp a:VERDICT+$80+(k)-1         ; equal when the observed byte is the expected byte
         CHECK_RESULT
+        .endmacro
+
+        .macro CHECK_OBSERVE k, actual
+        .assert .ident(.concat("cklit_", .string(k))) - cklit_hdr = 5 + 2 * ((k) - 1), error, "an observe row still needs its LIT entry in check order"
+        .ifnblank actual
+        lda actual                      ; the observed byte
+        .endif
+        ldx #((k) - 1)
+        sta a:VERDICT+$80,x             ; the observed byte
+        jsr ck_pass                     ; result $50: nothing is compared here, the runner judges the byte
         .endmacro
 
 ; ck_pass and ck_fail: X = the zero-based check index. They write the result byte, count it, and tally progress.

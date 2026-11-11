@@ -1818,7 +1818,7 @@ selftest() {
     rm -rf "$gw"
     mkdir -p "$gw/scripts" "$gw/fixtures/src" "$gw/fixtures/lib" "$gw/cases" "$gw/ev"
     cp "$here/fixture-build" "$gw/scripts/"
-    cp fixtures/src/ds_proto.s "$gw/fixtures/src/"
+    cp fixtures/src/ds_proto.s fixtures/src/ds_proto.checks "$gw/fixtures/src/"
     cp fixtures/lib/hucard.cfg fixtures/lib/startup.inc fixtures/lib/verdict.inc fixtures/lib/check.inc "$gw/fixtures/lib/"
     cp tests/conformance/cases/ds_proto.toml "$gw/cases/"
     gw_n=$(grep -c '; SELFTEST-TARGET$' "$gw/fixtures/src/ds_proto.s" || true)
@@ -1869,6 +1869,73 @@ selftest() {
       echo "SELFTEST mutation-guest-wrong-literal PASS"
     else
       echo "SELFTEST mutation-guest-wrong-literal FAIL ($gw_why)"; failed=1
+    fi
+  fi
+
+  # (sweep) a check that cannot flip must turn the mutation sweep red (plan 03-10; D-126, ER-7). A scratch mini-root holds a copy of fixture-build, of ds_proto.s and its .checks, of the linker config, of the
+  # four fixture library files and of the case mutate_sweep_ds_proto. The unmutated copy is built and swept first and must give RESULT mutate_sweep_ds_proto pass (so the later red cannot come from a broken
+  # build). Then the single line of ds_proto.s that invokes a CHECK macro with the literal argument 3 (matched by the macro name and the number, exit 2 unless exactly one line matches, so a rewrite of ds_proto
+  # cannot make this vacuous) is replaced by the expansion of CHECK_LIT with an immediate compare instead of the read of its literal-table entry. Its literal is then dead: the copy is rebuilt into the scratch
+  # directory and the same runner must give guest_failure and say that check 3 did not flip because it is vacuous. Nothing is written under fixtures/ or build/gate/fixtures/.
+  if st_want mutation-sweep-vacuous; then
+    st_ran=1
+    sv="$tmp/selftest/sweep-vacuous"
+    sv_ok=1
+    sv_why=""
+    rm -rf "$sv"
+    mkdir -p "$sv/scripts" "$sv/fixtures/src" "$sv/fixtures/lib" "$sv/cases" "$sv/ev"
+    cp "$here/fixture-build" "$sv/scripts/"
+    cp fixtures/src/ds_proto.s fixtures/src/ds_proto.checks "$sv/fixtures/src/"
+    cp fixtures/lib/hucard.cfg fixtures/lib/startup.inc fixtures/lib/verdict.inc fixtures/lib/check.inc "$sv/fixtures/lib/"
+    cp tests/conformance/cases/mutate_sweep_ds_proto.toml "$sv/cases/"
+    sv_n=$(grep -cE '^[[:space:]]+CHECK_(LIT|GUEST)[[:space:]]+3([[:space:]]|;|$)' "$sv/fixtures/src/ds_proto.s" || true)
+    if [ "$sv_n" -ne 1 ]; then
+      echo "HARNESS_ERROR mutation-sweep-vacuous: ds_proto.s must carry exactly one line that invokes a CHECK macro with the argument 3 (found $sv_n)"
+      exit 2
+    fi
+    if cmake --preset gate > "$tmp/sv.build" 2>&1 && cmake --build --preset gate >> "$tmp/sv.build" 2>&1; then :; else
+      cat "$tmp/sv.build"
+      echo "HARNESS_ERROR mutation-sweep-vacuous: the gate preset does not build"
+      exit 2
+    fi
+    if sh "$here/conformance-flatten" "$sv/cases" > "$sv/cases.tsv" 2> "$tmp/st.err"; then :; else sv_ok=0; sv_why="cannot flatten the scratch case"; fi
+    if [ "$sv_ok" -eq 1 ]; then
+      if (cd "$sv" && sh scripts/fixture-build > fb0.out 2>&1); then :; else
+        if grep -q '^PREFLIGHT_MISSING' "$sv/fb0.out"; then cat "$sv/fb0.out"; echo "HARNESS_ERROR mutation-sweep-vacuous: ca65 or ld65 is missing"; exit 2; fi
+        sv_ok=0
+        sv_why="the unmutated scratch fixture does not build"
+      fi
+    fi
+    if [ "$sv_ok" -eq 1 ]; then
+      (cd "$sv" && "$root/build/gate/ds_runner" --cases cases.tsv --evidence-dir ev > before.txt 2> before.err) || true
+      if ! awk '$1 == "RESULT" && $2 == "mutate_sweep_ds_proto" && $3 == "pass" { f = 1 } END { exit !f }' "$sv/before.txt"; then
+        sv_ok=0
+        sv_why="mutate_sweep_ds_proto does not pass on the unmutated scratch copy"
+      fi
+    fi
+    if [ "$sv_ok" -eq 1 ]; then
+      awk '/^[ \t]+CHECK_(LIT|GUEST)[ \t]+3([ \t]|;|$)/ { print "        ldx #(3 - 1)"; print "        sta a:VERDICT+$80,x"; print "        cmp #$16"; print "        CHECK_RESULT"; next } { print }' "$sv/fixtures/src/ds_proto.s" > "$sv/ds_proto.mutated"
+      if cmp -s "$sv/ds_proto.mutated" "$sv/fixtures/src/ds_proto.s"; then
+        echo "HARNESS_ERROR mutation-sweep-vacuous: the edit of the check 3 line changed nothing"
+        exit 2
+      fi
+      mv "$sv/ds_proto.mutated" "$sv/fixtures/src/ds_proto.s"
+      if (cd "$sv" && sh scripts/fixture-build > fb1.out 2>&1); then :; else sv_ok=0; sv_why="the mutated scratch fixture does not build"; fi
+    fi
+    if [ "$sv_ok" -eq 1 ]; then
+      (cd "$sv" && "$root/build/gate/ds_runner" --cases cases.tsv --evidence-dir ev > after.txt 2> after.err) || true
+      if ! awk '$1 == "RESULT" && $2 == "mutate_sweep_ds_proto" && $3 == "guest_failure" { f = 1 } END { exit !f }' "$sv/after.txt"; then
+        sv_ok=0
+        sv_why="mutate_sweep_ds_proto is not guest_failure with a vacuous check 3"
+      elif ! grep -Fq 'did not flip check 3' "$sv/after.err" || ! grep -Fq 'the check is vacuous' "$sv/after.err"; then
+        sv_ok=0
+        sv_why="the report does not name check 3 as vacuous"
+      fi
+    fi
+    if [ "$sv_ok" -eq 1 ]; then
+      echo "SELFTEST mutation-sweep-vacuous PASS"
+    else
+      echo "SELFTEST mutation-sweep-vacuous FAIL ($sv_why)"; failed=1
     fi
   fi
 

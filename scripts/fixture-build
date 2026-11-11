@@ -10,6 +10,7 @@
 #   protocol controls of ds_proto (plan 03-05). Every image is hashed and measured with host tools only (the SHA-256 tool the gate picks,
 #   wc -c) and one line  NAME SIZE SHA256  per image is written to OUT/fixtures-authored.used. That second file belongs to this script alone:
 #   the synthetic list OUT/fixtures.used stays with the fixtures mode of conformance-run (F3). Everything this script makes is removed first, so a stale image is never read.
+#   Beside every image it writes OUT/fixtures/NAME.observe, the observe rows of the fixture's .checks file (write_observe below; plan 03-10).
 #   Assembler identity is by behaviour (the encoding matrix of a later plan and the image hash pins), never by --version: the V2.19 tag prints
 #   V2.18 (D-128).
 # stdout: PREFLIGHT_MISSING NAME for each missing tool, or on success the marker line  STATUS fixture-build ok n=N
@@ -74,6 +75,26 @@ rm -rf "$out/fx" "$out/fixtures" "$out/fixtures-authored.used"
 mkdir -p "$out/fx" "$out/fixtures" || { echo "HARNESS_ERROR cannot create $out" >&2; exit 2; }
 : > "$out/fixtures-authored.used"
 
+# write_observe STEM NAME (plan 03-10; D-126): OUT/fixtures/NAME.observe lists, one decimal check index per line in ascending order, the rows of SRC/STEM.checks whose optional fifth column is
+# the word observe (a check whose expected value legitimately differs by case: the guest writes its observed byte and result $50). The file is empty for a fixture with no such row. The runner reads it:
+# the guest kind needs an observe=IDX:VALUE item for every index, and the mutation sweep must be told to exclude exactly these indexes. A missing .checks file, a fifth column other than observe,
+# a sixth column or an index that is not a number is a harness error (exit 2), never an empty list. awk runs with its status tested and nothing on the left of a pipe (CR-01).
+write_observe() {
+  wo_checks=$src/$1.checks
+  [ -f "$wo_checks" ] || { echo "HARNESS_NO_FILE $wo_checks" >&2; exit 2; }
+  if awk -F '\t' '
+    /^[ \t]*#/ || /^[ \t]*$/ { next }
+    /^[a-z_]+=/ { next }
+    NF >= 5 { if (NF > 5 || $5 != "observe" || $1 !~ /^[0-9]+$/ || ($1 + 0) < 1) { bad = 1; next } print $1 + 0 }
+    END { exit bad }
+  ' "$wo_checks" > "$out/fx/$2.observe.raw" && sort -n -u "$out/fx/$2.observe.raw" > "$out/fixtures/$2.observe"; then
+    :
+  else
+    echo "HARNESS_ERROR $wo_checks has a row with a fifth column other than observe, a sixth column or a bad index"
+    exit 2
+  fi
+}
+
 # build_one STEM NAME [ca65 flags...]: assemble SRC/STEM.s and link it into OUT/fixtures/NAME.pce, then hash and measure the image and append its used-list line
 build_one() {
   b_stem=$1
@@ -97,6 +118,7 @@ build_one() {
     exit 2
   fi
   printf '%s %s %s\n' "$b_name" "$bytes" "$sha" >> "$out/fixtures-authored.used"
+  write_observe "$b_stem" "$b_name"
   n=$((n + 1))
 }
 

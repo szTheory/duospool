@@ -9,12 +9,15 @@
  *                 The ROM is named by the fixture key as authored:NAME (NAME is lowercase letters, digits and hyphens; the loader reads only
  *                 build/gate/fixtures/NAME.pce and never a path from the case, T-03-12). The deadline is the integer key until_mclk (absolute
  *                 from boot, master clocks) and the check count the integer key checks; both are optional for other kinds but required here.
- *                 expect is "id=N" (the fixture id that the guest writes into its DSV1 block), optionally followed by one protocol-control mode (plan 03-05, D-124):
+ *                 expect is "id=N" (the fixture id that the guest writes into its DSV1 block), optionally followed by one protocol-control mode (plan 03-05, D-124) and observe items (the grammar is in runner.h):
  *                   ;verdict=OUTCOME:REASON  the guest is a deliberate protocol fault. The case passes only when the judge gives exactly the outcome OUTCOME
  *                                            (pass, guest_failure, harness_failure or timeout) and its reason text contains the word REASON (lowercase letters,
  *                                            digits, hyphens and underscores); any other verdict, or the right outcome for another reason, is a guest_failure
  *                   ;poison-t0               the runner writes the DSV1 magic and the done state into work RAM after boot and before the first step; the
  *                                            t=0 precondition must then give harness_failure ("before the first step"), and the guest is not run at all
+ *                 Observe rows (plan 03-10): the optional fifth column of NAME.checks, the word observe, marks a check whose expected value legitimately differs by case; scripts/fixture-build lists
+ *                 such indexes in build/gate/fixtures/NAME.observe, the guest writes its observed byte and result $50, and the case judges the byte through one item observe=IDX:VALUE per index
+ *                 (id=1;observe=3:0x16). An index without an item is harness_failure (observe-missing), an item for a check that is not an observe row too (observe-unlisted).
  *                 The RESULT line of a guest case ends machine_time=N stop=REASON (D-95, F11).
  *                 Outcome mapping, one reading of D-124 (the judge below and ds_proto.s carry the same layout):
  *                   harness_failure  a harness-side precondition fails: the ROM is unreadable, a key or the expect is malformed, a DSV1 block is
@@ -40,14 +43,6 @@
 
 /* ---- the DSV1 judge ---- */
 
-#define V_OFF 0x1F00u
-#define V_SIZE 0x100u
-#define V_MAX_CHECKS 96u
-#define V_RES 0x10u
-#define V_OBS 0x80u
-#define R_PASS 0x50u
-#define R_FAIL 0x46u
-
 /* a block is present when its magic is there, or when it is in the done state with a valid complement (a precondition fault before the first step) */
 static int has_magic(const uint8_t *b)
 {
@@ -66,7 +61,7 @@ static void fault(struct ctx *c, const char *what)
 }
 
 /* the verdict block that the run left in b (256 bytes); want_id and want_checks come from the case. Sets exactly one outcome on c. */
-static void judge_dsv1(struct ctx *c, const uint8_t *b, unsigned want_id, unsigned want_checks, char *got, size_t gotcap)
+void judge_dsv1(struct ctx *c, const uint8_t *b, unsigned want_id, unsigned want_checks, char *got, size_t gotcap)
 {
     unsigned state = b[4];
     unsigned nchk = b[7];
@@ -224,64 +219,123 @@ void note_run(struct ctx *c, uint64_t machine_time, uint32_t reason)
     c->run_stop = stop_name(reason);
 }
 
-/* the expect of a guest case: id=N, then nothing, ;verdict=OUTCOME:REASON or ;poison-t0 */
-enum guest_mode { MODE_PLAIN, MODE_VERDICT, MODE_POISON };
-
-struct guest_expect {
-    uint64_t id;
-    enum guest_mode mode;
-    char outcome[24];
-    char reason[48];
-};
-
-/* 0 on success */
-static int parse_guest_expect(const char *text, struct guest_expect *e)
+/* one decimal check index 1..255 at s (the whole text), 0 on success */
+static int parse_idx(const char *s, unsigned *out)
 {
-    size_t n;
-    const char *rest;
-    const char *colon;
+    uint64_t v = 0u;
 
-    memset(e, 0, sizeof *e);
-    if (strncmp(text, "id=", 3u) != 0) {
+    if (strlen(s) == 0u || strlen(s) > 3u || strspn(s, "0123456789") != strlen(s) || parse_u64(s, &v) != 0 || v < 1u || v > 255u) {
         return -1;
     }
-    n = strspn(text + 3, "0123456789");
-    if (n == 0u || n > 3u) {
-        return -1;
-    }
-    {
-        char num[4];
+    *out = (unsigned)v;
+    return 0;
+}
 
-        memcpy(num, text + 3, n);
-        num[n] = '\0';
-        if (parse_u64(num, &e->id) != 0 || e->id > 255u) {
+/* one item of the expect after id=N; each kind of item at most once for the modes, observe rows by index (0 on success) */
+static int parse_item(char *item, struct guest_expect *e, int *seen_mode, int *seen_exclude)
+{
+    char *colon;
+
+    if (strcmp(item, "poison-t0") == 0) {
+        if (*seen_mode) {
             return -1;
         }
-    }
-    rest = text + 3 + n;
-    e->mode = MODE_PLAIN;
-    if (*rest == '\0') {
-        return 0;
-    }
-    if (strcmp(rest, ";poison-t0") == 0) {
+        *seen_mode = 1;
         e->mode = MODE_POISON;
         memcpy(e->outcome, "harness_failure", 16u);
         memcpy(e->reason, "before the first step", 22u);
         return 0;
     }
-    if (strncmp(rest, ";verdict=", 9u) != 0) {
+    if (strncmp(item, "verdict=", 8u) == 0) {
+        item += 8;
+        colon = strchr(item, ':');
+        if (*seen_mode || colon == NULL || colon == item || (size_t)(colon - item) >= sizeof e->outcome || strlen(colon + 1) == 0u || strlen(colon + 1) >= sizeof e->reason
+            || strspn(colon + 1, "abcdefghijklmnopqrstuvwxyz0123456789-_") != strlen(colon + 1)) {
+            return -1;
+        }
+        *seen_mode = 1;
+        memcpy(e->outcome, item, (size_t)(colon - item));
+        e->outcome[colon - item] = '\0';
+        memcpy(e->reason, colon + 1, strlen(colon + 1) + 1u);
+        e->mode = MODE_VERDICT;
+        return 0;
+    }
+    if (strncmp(item, "observe=", 8u) == 0) {
+        unsigned idx = 0u;
+        unsigned i;
+        uint64_t value = 0u;
+        int differs;
+
+        item += 8;
+        colon = strchr(item, ':');
+        if (colon == NULL || e->nobs >= GE_ITEMS_MAX) {
+            return -1;
+        }
+        *colon = '\0';
+        differs = strcmp(colon + 1, "differs") == 0;
+        if (parse_idx(item, &idx) != 0 || (!differs && (parse_u64(colon + 1, &value) != 0 || value > 255u))) {
+            return -1;
+        }
+        for (i = 0u; i < e->nobs; i++) {
+            if (e->obs[i].idx == idx) {
+                return -1;
+            }
+        }
+        e->obs[e->nobs].idx = idx;
+        e->obs[e->nobs].differs = differs;
+        e->obs[e->nobs].value = (unsigned)value;
+        e->nobs++;
+        return 0;
+    }
+    if (strncmp(item, "exclude=", 8u) == 0) {
+        char *rest = item + 8;
+        char *tok;
+
+        if (*seen_exclude) {
+            return -1;
+        }
+        *seen_exclude = 1;
+        while ((tok = pk_next_item(&rest, ',')) != NULL) {
+            unsigned idx = 0u;
+
+            if (e->nex >= GE_ITEMS_MAX || parse_idx(tok, &idx) != 0 || (e->nex > 0u && idx <= e->ex[e->nex - 1u])) {
+                return -1;
+            }
+            e->ex[e->nex++] = idx;
+        }
+        return e->nex > 0u ? 0 : -1;
+    }
+    return -1;
+}
+
+/* the expect of a guest or mutate_sweep case: id=N, then items (see runner.h); 0 on success */
+int parse_guest_expect(const char *text, struct guest_expect *e)
+{
+    char list[PK_LIST_MAX];
+    char *rest = list;
+    char *item;
+    int seen_mode = 0;
+    int seen_exclude = 0;
+    size_t n;
+
+    memset(e, 0, sizeof *e);
+    e->mode = MODE_PLAIN;
+    if (pk_copy_text(text, list, sizeof list) != 0 || strncmp(text, "id=", 3u) != 0) {
         return -1;
     }
-    rest += 9;
-    colon = strchr(rest, ':');
-    if (colon == NULL || colon == rest || (size_t)(colon - rest) >= sizeof e->outcome || strlen(colon + 1) == 0u || strlen(colon + 1) >= sizeof e->reason
-        || strspn(colon + 1, "abcdefghijklmnopqrstuvwxyz0123456789-_") != strlen(colon + 1)) {
+    item = pk_next_item(&rest, ';');
+    if (item == NULL) {
         return -1;
     }
-    memcpy(e->outcome, rest, (size_t)(colon - rest));
-    e->outcome[colon - rest] = '\0';
-    memcpy(e->reason, colon + 1, strlen(colon + 1) + 1u);
-    e->mode = MODE_VERDICT;
+    n = strspn(item + 3, "0123456789");
+    if (n == 0u || n > 3u || item[3u + n] != '\0' || parse_u64(item + 3, &e->id) != 0 || e->id > 255u) {
+        return -1;
+    }
+    while ((item = pk_next_item(&rest, ';')) != NULL) {
+        if (parse_item(item, e, &seen_mode, &seen_exclude) != 0) {
+            return -1;
+        }
+    }
     return 0;
 }
 
@@ -301,7 +355,7 @@ static const char *ctx_outcome(const struct ctx *c)
 }
 
 /* a protocol-control case: the scratch context s holds what the judge (or the t=0 precondition) concluded; the case passes only on the declared outcome and reason */
-static void expect_verdict(struct ctx *c, const struct ctx *s, const struct guest_expect *e, char *got, size_t gotcap)
+void expect_verdict(struct ctx *c, const struct ctx *s, const struct guest_expect *e, char *got, size_t gotcap)
 {
     const char *seen = ctx_outcome(s);
     char msg[160];
@@ -313,26 +367,115 @@ static void expect_verdict(struct ctx *c, const struct ctx *s, const struct gues
     check(c, strstr(s->why, e->reason) != NULL, msg);
 }
 
-/*
- * Boot the built authored image build/gate/fixtures/ROM.pce over the request text (the case's request key; empty gives the defaults of parse_spec).
- * NULL and b and the accepted instance on success, otherwise why not: a fault here is a harness fault of the case, never a verdict on the guest.
- * Shared by the guest kind and the run kinds of stepkinds.c; release_boot frees what it allocated.
- */
-const char *boot_built_rom(const char *rom, const char *request, struct booted *b, const struct ds_instance **inst)
+/* the observe rows of a built fixture: build/gate/fixtures/ROM.observe, one decimal check index per line, ascending (scripts/fixture-build writes it from the fifth column of ROM's .checks) */
+const char *read_observe(const char *rom, struct obs_list *out)
 {
     char path[96];
+    char *text;
+    char *line;
+
+    out->n = 0u;
+    snprintf(path, sizeof path, "build/gate/fixtures/%s.observe", rom);
+    text = read_file(path);
+    if (text == NULL) {
+        return "the built observe list is missing: run scripts/fixture-build first";
+    }
+    line = text;
+    while (*line != '\0') {
+        char *nl = strchr(line, '\n');
+        unsigned idx = 0u;
+
+        if (nl == NULL) {
+            free(text);
+            return "the built observe list does not end in a newline";
+        }
+        *nl = '\0';
+        if (parse_idx(line, &idx) != 0 || out->n >= GE_ITEMS_MAX || (out->n > 0u && idx <= out->idx[out->n - 1u])) {
+            free(text);
+            return "the built observe list holds a line that is not an ascending check index";
+        }
+        out->idx[out->n++] = idx;
+        line = nl + 1;
+    }
+    free(text);
+    return NULL;
+}
+
+/* every observe row of the fixture has an observe=IDX:VALUE item, every item names an observe row of the fixture (and a check of the case); harness_failure on t otherwise */
+void observe_cover(struct ctx *t, const struct guest_expect *e, const struct obs_list *ol, unsigned nchk)
+{
+    unsigned i;
+    unsigned j;
+
+    for (i = 0u; i < ol->n; i++) {
+        int found = 0;
+
+        for (j = 0u; j < e->nobs; j++) {
+            found = found || e->obs[j].idx == ol->idx[i];
+        }
+        if (!found) {
+            harness_error(t, "observe-missing: an observe row of the fixture has no observe=IDX:VALUE item in the case expect");
+        }
+        if (ol->idx[i] > nchk) {
+            harness_error(t, "observe-missing: an observe row of the fixture is above the checks count of the case");
+        }
+    }
+    for (j = 0u; j < e->nobs; j++) {
+        int found = 0;
+
+        for (i = 0u; i < ol->n; i++) {
+            found = found || e->obs[j].idx == ol->idx[i];
+        }
+        if (!found) {
+            harness_error(t, "observe-unlisted: an observe=IDX:VALUE item names a check that is not an observe row of the fixture");
+        }
+    }
+}
+
+/* the observed byte of each observe row against its item; the block is a judged pass, so every result byte is $50 already */
+void observe_judge(struct ctx *t, const uint8_t *b, const struct guest_expect *e, const struct obs_list *ol)
+{
+    unsigned i;
+    unsigned j;
+    char msg[160];
+
+    for (i = 0u; i < ol->n; i++) {
+        for (j = 0u; j < e->nobs; j++) {
+            if (e->obs[j].idx != ol->idx[i]) {
+                continue;
+            }
+            if (e->obs[j].differs) {
+                harness_error(t, "observe-differs: observe=IDX:differs is judged only in policy-diff mode, which this case does not use");
+                continue;
+            }
+            snprintf(msg, sizeof msg, "the observed byte of observe row %u differs from the observe=%u:%u item of the case", ol->idx[i], ol->idx[i], e->obs[j].value);
+            check(t, b[V_OBS + ol->idx[i] - 1u] == (uint8_t)e->obs[j].value, msg);
+        }
+    }
+}
+
+/* the built image build/gate/fixtures/ROM.pce in a heap buffer of at most DS_ROM_CAP bytes (NULL, with *len 0, when it is missing or unreadable) */
+unsigned char *load_image(const char *rom, size_t *len)
+{
+    char path[96];
+
+    *len = 0u;
+    snprintf(path, sizeof path, "build/gate/fixtures/%s.pce", rom);
+    return read_rom(path, (size_t)DS_ROM_CAP, len);
+}
+
+/*
+ * Boot the image in b->content (len bytes, heap memory the caller set; release_boot frees it) over the request text (the case's request key; empty gives the defaults of parse_spec).
+ * NULL and b and the accepted instance on success, otherwise why not: a fault here is a harness fault of the case, never a verdict on the guest. On a fault b is released.
+ */
+const char *boot_content(const char *request, size_t len, struct booted *b, const struct ds_instance **inst)
+{
     struct spec s;
     struct ds_boot_request rq;
     struct ds_boot_result res;
     const char *err;
-    size_t len = 0u;
 
-    snprintf(path, sizeof path, "build/gate/fixtures/%s.pce", rom);
     b->mem = NULL;
-    b->content = read_rom(path, (size_t)DS_ROM_CAP, &len);
-    if (b->content == NULL) {
-        return "the built fixture image is missing or unreadable: run scripts/fixture-build first";
-    }
     err = parse_spec(&s, request, len);
     if (err != NULL || s.ptr != PTR_OK) {
         release_boot(b);
@@ -353,6 +496,19 @@ const char *boot_built_rom(const char *rom, const char *request, struct booted *
     return NULL;
 }
 
+/* Boot the built authored image build/gate/fixtures/ROM.pce: load_image, then boot_content. Shared by the guest kind and the run kinds of stepkinds.c; release_boot frees what it allocated. */
+const char *boot_built_rom(const char *rom, const char *request, struct booted *b, const struct ds_instance **inst)
+{
+    size_t len = 0u;
+
+    b->mem = NULL;
+    b->content = load_image(rom, &len);
+    if (b->content == NULL) {
+        return "the built fixture image is missing or unreadable: run scripts/fixture-build first";
+    }
+    return boot_content(request, len, b, inst);
+}
+
 /* the two integer keys of the case (until_mclk and checks, both at most the limit), 0 on success */
 static int read_int_keys(const struct kase *k, uint64_t *until, uint64_t *checks)
 {
@@ -369,6 +525,7 @@ void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
     struct ds_run_request run;
     struct ds_run_result out;
     struct ctx judged;
+    struct obs_list ol;
     const struct ds_instance *inst = NULL;
     const char *err;
     uint32_t reason;
@@ -382,15 +539,35 @@ void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
         return;
     }
     if (parse_guest_expect(k->val[K_EXPECT], &ex) != 0) {
-        harness_error(c, "a guest expect is id=N, optionally followed by ;verdict=OUTCOME:REASON or ;poison-t0");
+        harness_error(c, "a guest expect is id=N, optionally followed by ;verdict=OUTCOME:REASON or ;poison-t0, and ;observe=IDX:VALUE items");
         return;
+    }
+    if (ex.nex != 0u) {
+        harness_error(c, "a guest expect takes no exclude= item (that is a mutate_sweep item)");
+        return;
+    }
+    memset(&judged, 0, sizeof judged);
+    err = read_observe(rom, &ol);
+    if (err != NULL) {
+        harness_error(c, err);
+        return;
+    }
+    if (ex.mode != MODE_POISON) {
+        /* an observe row of the fixture without an expectation is a fault of the case (observe-missing), before the guest runs; a verdict control may declare it */
+        observe_cover(ex.mode == MODE_VERDICT ? &judged : c, &ex, &ol, (unsigned)checks);
+        if (ex.mode == MODE_VERDICT && judged.harness) {
+            expect_verdict(c, &judged, &ex, got, gotcap);
+            return;
+        }
+        if (c->harness) {
+            return;
+        }
     }
     err = boot_built_rom(rom, k->val[K_REQUEST], &b, &inst);
     if (err != NULL) {
         harness_error(c, err);
         return;
     }
-    memset(&judged, 0, sizeof judged);
     if (ex.mode == MODE_POISON) {
         /* the runner-side control of the t=0 precondition (D-124): plant the magic and the done state, as a stale or hostile block would be */
         uint8_t *ram = ((struct ds_instance *)(void *)b.mem)->ram8k;
@@ -431,9 +608,15 @@ void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
         char seen[64];
 
         judge_dsv1(&judged, inst->ram8k + V_OFF, (unsigned)ex.id, (unsigned)checks, seen, sizeof seen);
+        if (!judged.harness && !judged.failed && !judged.timeout) {
+            observe_judge(&judged, inst->ram8k + V_OFF, &ex, &ol);
+        }
         expect_verdict(c, &judged, &ex, got, gotcap);
     } else {
         judge_dsv1(c, inst->ram8k + V_OFF, (unsigned)ex.id, (unsigned)checks, got, gotcap);
+        if (!c->harness && !c->failed && !c->timeout) {
+            observe_judge(c, inst->ram8k + V_OFF, &ex, &ol);
+        }
     }
     release_boot(&b);
 }
