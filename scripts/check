@@ -891,13 +891,13 @@ stage_inventory_negatives() {
 # ASSUMED: tag per row, counts equal to checks=, .include only from fixtures/lib or build, a z:, a: or < size hint on every literal operand below $100, RAW
 # lines cited, every MAN: and RAW: page in cites.txt. A dead stage 1 or stage 2 of the linter is FXL_STAGE_DEAD (exit 2), never a pass.
 stage_fixture_lint() {
-  checker sh "$here/fixture-lint" --cites fixtures/lib/cites.txt
+  checker sh "$here/fixture-lint" --cites fixtures/lib/cites.txt --tsv tests/oracle/huc6280-opcodes.tsv
 }
 
 # fixture-lint-negatives (FIX-03, D-125; plan 03-37): every tests/gate/fixture-lint/<case>/ is a mini-root (fixtures/src/t.s, t.checks): ok-<case> must pass and every other
 # case must fail with exactly the code in its EXPECT, one directory per FXL code. A control that passes without its EXPECT met means the linter is broken.
 stage_fixture_lint_negatives() {
-  run_controls --ok-prefix --require-negative tests/gate/fixture-lint tests/gate/fixture-lint sh "$here/fixture-lint" --root @DIR@ --cites fixtures/lib/cites.txt @EXPECT@
+  run_controls --ok-prefix --require-negative tests/gate/fixture-lint tests/gate/fixture-lint sh "$here/fixture-lint" --root @DIR@ --cites fixtures/lib/cites.txt --tsv tests/oracle/huc6280-opcodes.tsv @EXPECT@
 }
 
 # xasm (FIX-01, CPU-01, CPU-06; D-129, D-130; plan 03-08): the assembler encoding oracle. scripts/xasm-check assembles one line per defined row of tests/oracle/huc6280-opcodes.tsv (the
@@ -906,6 +906,62 @@ stage_fixture_lint_negatives() {
 # the tracked TSV, and its generated files go to build/gate/xasm.
 stage_xasm() {
   checker sh "$here/xasm-check" --work build/gate/xasm --rows 234
+}
+
+# xasm-negatives (FIX-01, D-129; plan 03-08): the encoding oracle must go red for each failure it is built to catch. Every tests/gate/xasm/<case>/ is a mini-root holding tests/oracle/huc6280-opcodes.tsv:
+# ok-<case> must pass, tsv-byte-changed (one opcode byte of the transcription changed) must give XASM_MISMATCH and tsv-bad-shape (a byte count that does not fit its mode) XASM_TSV_SHAPE. Then four probes made at run time:
+# (1) a shim ca65 placed first on PATH rewrites one instruction (lda #$11 becomes lda #$12) before calling the real assembler, so the assembled byte differs from the table: XASM_MISMATCH; the shim lives in a
+# scratch directory and is never committed. (2) PATH set to an empty directory: PREFLIGHT_MISSING ca65, exit 2 and no STATUS line, never a skip (D-129). (3) --rows 234 against the five-row table: XASM_TSV_SHAPE,
+# which shows the pinned row count is enforced. (4) a shim ld65 that cannot link is XASM_ASSEMBLE (exit 1), not a pass.
+xn_check() {
+  # xn_check LABEL WANT_EXIT WANT_PATTERN CMD... : run CMD with output in $tmp/xn.out and report a broken control
+  xn_label=$1; xn_wr=$2; xn_wp=$3
+  shift 3
+  if "$@" > "$tmp/xn.out" 2>&1; then xn_r=0; else xn_r=$?; fi
+  if [ "$xn_r" -ne "$xn_wr" ] || ! grep -q "$xn_wp" "$tmp/xn.out" || grep -q '^STATUS xasm ok' "$tmp/xn.out"; then
+    echo "CONTROL BROKEN $xn_label (exit $xn_r, wanted $xn_wr with $xn_wp and no STATUS line)"
+    sed 's/^/  /' "$tmp/xn.out"
+    return 1
+  fi
+  return 0
+}
+stage_xasm_negatives() {
+  xn_rc=0
+  run_controls --ok-prefix --require-negative tests/gate/xasm tests/gate/xasm sh "$here/xasm-check" --root @DIR@ @EXPECT@ || xn_rc=$?
+  xn_ok=tests/gate/xasm/ok-tsv
+  xn_dir="$tmp/xasm-shims"
+  rm -rf "$xn_dir"
+  mkdir -p "$xn_dir/ca65" "$xn_dir/ld65" "$xn_dir/empty"
+  xn_ca=$(command -v ca65 || true)
+  xn_ld=$(command -v ld65 || true)
+  if [ -z "$xn_ca" ] || [ -z "$xn_ld" ]; then
+    echo "PREFLIGHT_MISSING ca65 or ld65: the shim controls need the real tools"
+    return 2
+  fi
+  cat > "$xn_dir/ca65/ca65" <<'XEOF'
+#!/bin/sh
+# control shim: rewrite one instruction of the generated source, then call the real assembler (the last argument is the source file)
+n=$#
+i=0
+for a in "$@"; do
+  i=$((i + 1))
+  if [ "$i" -eq "$n" ]; then
+    sed 's/lda #\$11/lda #$12/' "$a" > "$a.mut"
+    set -- "$@" "$a.mut"
+  else
+    set -- "$@" "$a"
+  fi
+done
+shift "$n"
+exec "$XASM_SHIM_REAL" "$@"
+XEOF
+  printf '#!/bin/sh\necho "ld65-shim: forced failure" >&2\nexit 1\n' > "$xn_dir/ld65/ld65"
+  chmod +x "$xn_dir/ca65/ca65" "$xn_dir/ld65/ld65"
+  XASM_SHIM_REAL="$xn_ca" PATH="$xn_dir/ca65:$PATH" xn_check xasm-shim-ca65 1 'XASM_MISMATCH' sh "$here/xasm-check" --root "$xn_ok" || xn_rc=1
+  PATH="$xn_dir/ld65:$PATH" xn_check xasm-shim-ld65 1 'XASM_ASSEMBLE' sh "$here/xasm-check" --root "$xn_ok" || xn_rc=1
+  xn_check xasm-empty-path 2 'PREFLIGHT_MISSING ca65' env PATH="$xn_dir/empty" /bin/sh "$here/xasm-check" --root "$xn_ok" || xn_rc=1
+  xn_check xasm-row-count 1 'XASM_TSV_SHAPE' sh "$here/xasm-check" --root "$xn_ok" --rows 234 || xn_rc=1
+  return "$xn_rc"
 }
 
 # workflow (CI-01, D-61, D-62): the real CI definition, judged statically by scripts/workflow-check (permissions, the one pinned action, the
@@ -1882,18 +1938,40 @@ selftest() {
     rm -rf "$cp_dir"
     cp -R "$here" "$cp_dir"
     fxr="tests/gate/fixture-lint/orphan-check"
-    if sh "$cp_dir/fixture-lint" --root "$fxr" --cites fixtures/lib/cites.txt --expect FXL_ORPHAN_CHECK > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    if sh "$cp_dir/fixture-lint" --root "$fxr" --cites fixtures/lib/cites.txt --tsv tests/oracle/huc6280-opcodes.tsv --expect FXL_ORPHAN_CHECK > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
     st_alive=0
     if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
     before=$(grep -c 'rule-orphan' "$cp_dir/lib/fixture-lint-rules.awk" || true)
     grep -v 'rule-orphan' "$cp_dir/lib/fixture-lint-rules.awk" > "$cp_dir/lib/fixture-lint-rules.mutated" || true
     mv "$cp_dir/lib/fixture-lint-rules.mutated" "$cp_dir/lib/fixture-lint-rules.awk"
     after=$(grep -c 'rule-orphan' "$cp_dir/lib/fixture-lint-rules.awk" || true)
-    if sh "$cp_dir/fixture-lint" --root "$fxr" --cites fixtures/lib/cites.txt --expect FXL_ORPHAN_CHECK > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if sh "$cp_dir/fixture-lint" --root "$fxr" --cites fixtures/lib/cites.txt --tsv tests/oracle/huc6280-opcodes.tsv --expect FXL_ORPHAN_CHECK > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
     if [ "$st_alive" -eq 1 ] && [ "$before" -ge 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
       echo "SELFTEST mutation-fixture-lint-orphan PASS"
     else
       echo "SELFTEST mutation-fixture-lint-orphan FAIL"; failed=1
+    fi
+  fi
+
+  # (z5) the unknown-mnemonic rule of fixture-lint (plan 03-08, D-125) is what turns the unknown-mnemonic control red: same shape as (y). Met on an unmutated copy (exit 0, EXPECT_OK); with the lines
+  # tagged rule-unknown-mnemonic deleted from the copy of the rules the code is no longer reported, so the same run must exit 1.
+  if st_want mutation-fixture-lint-mnemonic; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    fxr="tests/gate/fixture-lint/unknown-mnemonic"
+    if sh "$cp_dir/fixture-lint" --root "$fxr" --cites fixtures/lib/cites.txt --tsv tests/oracle/huc6280-opcodes.tsv --expect FXL_UNKNOWN_MNEMONIC > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c 'rule-unknown-mnemonic' "$cp_dir/lib/fixture-lint-rules.awk" || true)
+    grep -v 'rule-unknown-mnemonic' "$cp_dir/lib/fixture-lint-rules.awk" > "$cp_dir/lib/fixture-lint-rules.mutated" || true
+    mv "$cp_dir/lib/fixture-lint-rules.mutated" "$cp_dir/lib/fixture-lint-rules.awk"
+    after=$(grep -c 'rule-unknown-mnemonic' "$cp_dir/lib/fixture-lint-rules.awk" || true)
+    if sh "$cp_dir/fixture-lint" --root "$fxr" --cites fixtures/lib/cites.txt --tsv tests/oracle/huc6280-opcodes.tsv --expect FXL_UNKNOWN_MNEMONIC > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -ge 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+      echo "SELFTEST mutation-fixture-lint-mnemonic PASS"
+    else
+      echo "SELFTEST mutation-fixture-lint-mnemonic FAIL (alive $st_alive, before $before, after $after, exit $r)"; failed=1
     fi
   fi
 
@@ -1924,15 +2002,56 @@ selftest() {
     rm -rf "$cp_dir"
     cp -R "$here" "$cp_dir"
     fxr="tests/gate/fixture-lint/ok-fixture"
-    if sh "$cp_dir/fixture-lint" --root "$fxr" --cites fixtures/lib/cites.txt > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    if sh "$cp_dir/fixture-lint" --root "$fxr" --cites fixtures/lib/cites.txt --tsv tests/oracle/huc6280-opcodes.tsv > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
     st_alive=0
     if [ "$r0" -eq 0 ] && grep -qx 'STATUS fixture-lint ok' "$tmp/st.out"; then st_alive=1; fi
     echo 'BEGIN { exit 0 }' > "$cp_dir/lib/fixture-lint-lex.awk"
-    if sh "$cp_dir/fixture-lint" --root "$fxr" --cites fixtures/lib/cites.txt > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if sh "$cp_dir/fixture-lint" --root "$fxr" --cites fixtures/lib/cites.txt --tsv tests/oracle/huc6280-opcodes.tsv > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
     if [ "$st_alive" -eq 1 ] && [ "$r" -eq 2 ] && grep -q 'FXL_STAGE_DEAD' "$tmp/st.out" && ! grep -q '^STATUS fixture-lint ok' "$tmp/st.out"; then
       echo "SELFTEST mutation-fixture-lint-dead-stage PASS"
     else
       echo "SELFTEST mutation-fixture-lint-dead-stage FAIL (alive $st_alive, exit $r)"; failed=1
+    fi
+  fi
+
+  # (z3) the byte comparison of the encoding oracle is what turns the tsv-byte-changed control red (T-03-25, plan 03-08): same shape as (y). The control, run with --expect XASM_MISMATCH, is met on an
+  # unmutated copy (exit 0, EXPECT_OK); with the line tagged rule-compare deleted from the copy of the awk program the mismatch is no longer reported, so the same run must exit 1: the control flipped.
+  if st_want mutation-xasm-compare; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    xr="tests/gate/xasm/tsv-byte-changed"
+    if sh "$cp_dir/xasm-check" --root "$xr" --expect XASM_MISMATCH > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c 'rule-compare' "$cp_dir/lib/xasm-matrix.awk" || true)
+    grep -v 'rule-compare' "$cp_dir/lib/xasm-matrix.awk" > "$cp_dir/lib/xasm-matrix.mutated" || true
+    mv "$cp_dir/lib/xasm-matrix.mutated" "$cp_dir/lib/xasm-matrix.awk"
+    after=$(grep -c 'rule-compare' "$cp_dir/lib/xasm-matrix.awk" || true)
+    if sh "$cp_dir/xasm-check" --root "$xr" --expect XASM_MISMATCH > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -ge 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+      echo "SELFTEST mutation-xasm-compare PASS"
+    else
+      echo "SELFTEST mutation-xasm-compare FAIL (alive $st_alive, before $before, after $after, exit $r)"; failed=1
+    fi
+  fi
+
+  # (z4) CR-01 for xasm-check: a stage 1 that prints nothing (an emptied scratch copy of the awk program) must give XASM_STAGE_DEAD and exit 2, never a pass and never the exit 1 of a violation.
+  # The unmutated copy must pass on the clean control first, which shows the run is alive.
+  if st_want mutation-xasm-dead-stage; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    xr="tests/gate/xasm/ok-tsv"
+    if sh "$cp_dir/xasm-check" --root "$xr" > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -q '^STATUS xasm ok' "$tmp/st.out"; then st_alive=1; fi
+    echo 'BEGIN { exit 0 }' > "$cp_dir/lib/xasm-matrix.awk"
+    if sh "$cp_dir/xasm-check" --root "$xr" > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$r" -eq 2 ] && grep -q 'XASM_STAGE_DEAD' "$tmp/st.out" && ! grep -q '^STATUS xasm ok' "$tmp/st.out"; then
+      echo "SELFTEST mutation-xasm-dead-stage PASS"
+    else
+      echo "SELFTEST mutation-xasm-dead-stage FAIL (alive $st_alive, exit $r)"; failed=1
     fi
   fi
 
@@ -2004,8 +2123,11 @@ selftest() {
       as_case core-boundary-undefined 'STATUS core-boundary ok' "$as_dir" nm.u sh "$here/core-boundary-check" --root "$cb_ok"
       as_case core-boundary-writable 'STATUS core-boundary ok' "$as_dir" nm.all sh "$here/core-boundary-check" --root "$cb_ok"
       fl_ok="tests/gate/fixture-lint/ok-fixture"
-      as_case fixture-lint-stage1 'STATUS fixture-lint ok' "$as_dir" fixture-lint-lex sh "$here/fixture-lint" --root "$fl_ok" --cites fixtures/lib/cites.txt
-      as_case fixture-lint-stage2 'STATUS fixture-lint ok' "$as_dir" fixture-lint-rules sh "$here/fixture-lint" --root "$fl_ok" --cites fixtures/lib/cites.txt
+      as_case fixture-lint-stage1 'STATUS fixture-lint ok' "$as_dir" fixture-lint-lex sh "$here/fixture-lint" --root "$fl_ok" --cites fixtures/lib/cites.txt --tsv tests/oracle/huc6280-opcodes.tsv
+      as_case fixture-lint-stage2 'STATUS fixture-lint ok' "$as_dir" fixture-lint-rules sh "$here/fixture-lint" --root "$fl_ok" --cites fixtures/lib/cites.txt --tsv tests/oracle/huc6280-opcodes.tsv
+      xa_ok="tests/gate/xasm/ok-tsv"
+      as_case xasm-stage1 'STATUS xasm ok' "$as_dir" 'stage=1' sh "$here/xasm-check" --root "$xa_ok"
+      as_case xasm-stage2 'STATUS xasm ok' "$as_dir" 'stage=2' sh "$here/xasm-check" --root "$xa_ok"
       as_case audit-history-pairs 'audit-history: clean' "$as_dir" '$1, $3' sh "$here/audit-history" --allow "$tmp/selftest/awk-audit.allow" "$as_repo"
       as_case audit-history-tree-paths 'audit-history: clean' "$as_dir" 'split($1, m' sh "$here/audit-history" --allow "$tmp/selftest/awk-audit.allow" "$as_repo"
       as_case audit-history-hashes 'audit-history: clean' "$as_dir" '{ print $1 }' sh "$here/audit-history" --allow "$tmp/selftest/awk-audit.allow" "$as_repo"
@@ -2131,6 +2253,7 @@ run_stage inventory-negatives stage_inventory_negatives
 run_stage fixture-lint stage_fixture_lint
 run_stage fixture-lint-negatives stage_fixture_lint_negatives
 run_stage xasm stage_xasm
+run_stage xasm-negatives stage_xasm_negatives
 run_stage workflow stage_workflow
 run_stage workflow-negatives stage_workflow_negatives
 run_stage docs-claims stage_docs_claims

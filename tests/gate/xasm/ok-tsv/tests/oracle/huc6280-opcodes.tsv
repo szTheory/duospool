@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# xasm-check control mini-root: five rows of the opcode table (ST0, BBR0, TAM, TST, LDA immediate), the clean case. Numeric data with page cites only (ER-9).
+03	ST0	IMM	2	4	--0-----	H8-25+S8-80+S8-9
+0F	BBR0	ZPREL	3	6	--0-----	H8-25+S8-20+S8-7
+53	TAM	MASK	2	5	--0-----	H8-25+S8-90+S8-9
+83	TST	IMMZP	3	7	760---Z-	H8-25+S8-104+S8-9
+A9	LDA	IMM	2	2	N-0---Z-	H8-25+S8-53+S8-8

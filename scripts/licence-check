@@ -11,7 +11,8 @@
 #   Every regular file under ROOT/scripts/ must carry both SPDX lines in its first five lines (SPDX_HEADER_MISSING). So must every
 #   .c, .h and .def file under ROOT/src/ and ROOT/tests/ (D-71), with the same MIT OR Apache-2.0 id; the one exclusion is
 #   ROOT/tests/licence/, which holds deliberately headerless controls (a control must be able to lack a header). Every regular
-#   file under ROOT/fixtures/ must carry the holder line and the id 0BSD (fixture sources are 0BSD, D-01).
+#   file under ROOT/fixtures/ must carry the holder line and the id 0BSD (fixture sources are 0BSD, D-01). So must every regular file under ROOT/tests/oracle/
+#   (numeric data transcribed from cited manual pages, 0BSD like the fixtures; plan 03-08, D-131).
 # stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then one line  RECORDS n
 # stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
 # exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error
@@ -123,6 +124,12 @@ spdx_scan "$tmp/code.list" "$spdx_id"
 if [ -d "$root/fixtures" ]; then
   find "$root/fixtures" -type f > "$tmp/fixtures.list"
   spdx_scan "$tmp/fixtures.list" "$spdx_fixture_id"
+fi
+
+# tests/oracle/: every regular file, 0BSD (the opcode table transcribed from manual page images is numeric data, plan 03-08)
+if [ -d "$root/tests/oracle" ]; then
+  find "$root/tests/oracle" -type f > "$tmp/oracle.list"
+  spdx_scan "$tmp/oracle.list" "$spdx_fixture_id"
 fi
 
 sort -u "$viol0" > "$viol"

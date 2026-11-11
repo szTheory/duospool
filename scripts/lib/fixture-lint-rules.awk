@@ -5,6 +5,7 @@
 # the records of fixture-lint-lex.awk (plan 03-37). POSIX awk only.
 # input : the stage-1 records, including its END sentinel.
 # env   : -v cites=FILE  the cite registry (fixtures/lib/cites.txt: label TAB flag TAB verifier TAB date TAB fact); fixture-lint has already checked its shape
+#         -v tsv=FILE    the opcode table (tests/oracle/huc6280-opcodes.tsv: opcode TAB mnemonic TAB mode TAB ...): the mnemonic column, upper case, UNDEF rows skipped, is the set of instruction words a fixture may use
 # output: V<TAB>file<TAB>CODE<TAB>line<TAB>detail   one per violation
 #         N<TAB>fixtures<TAB>checks<TAB>raw          always printed once when the stage ran
 #         X<TAB>FXL_STAGE_DEAD<TAB>detail            when the stage-1 sentinel is missing; exit status 2 (a dead stage 1 must never read as a pass)
@@ -17,9 +18,10 @@
 #   FXL_SIZE_HINT      an instruction operand that is a literal below $100 without z:, a: or < in front (Pitfall 5; (zp) and BBR/BBS take <)  rule-size-hint
 #   FXL_RAW_UNCITED    a source line with a RAW marker in its comment that does not read RAW:<page>                                         rule-raw-uncited
 #   FXL_UNKNOWN_CITE   a MAN:<page> or RAW:<page> whose page is not in cites.txt                                                              rule-unknown-cite
+#   FXL_UNKNOWN_MNEMONIC a lower-case first word of a source line that is not a mnemonic of the opcode table (an assignment  name = value  is not an instruction)  rule-unknown-mnemonic
 # A RAW line is any source line whose comment holds the word RAW: raw instruction bytes written in place of an instruction. Data tables are .byte lines without the marker.
-# Not here yet (the inputs do not exist): the mnemonics-subset-of-the-opcode-TSV rule (plan 03-08), and the rules that need the ledger and the cite flags, namely
-# that a MAN: cite behind a supported entry is img and that an ASSUMED: id names a ledger entry (plan 03-32).
+# The mnemonic set is the table of tests/oracle/huc6280-opcodes.tsv (plan 03-08), not a list kept here, so the size-hint rule and the unknown-mnemonic rule cannot drift from the manual transcription.
+# Not here yet (the inputs do not exist): the rules that need the ledger and the cite flags, namely that a MAN: cite behind a supported entry is img and that an ASSUMED: id names a ledger entry (plan 03-32).
 BEGIN {
   FS = "\t"
   sentinel = 0; nfix = 0; nchk = 0; nraw = 0; nst = 0
@@ -29,9 +31,12 @@ BEGIN {
     known[cf[1]] = cf[2]
   }
   close(cites)
-  n = split("adc and asl bcc bcs beq bit bmi bne bpl bra brk bsr bvc bvs clc cld cli clv cmp cpx cpy csh csl dec dex dey eor inc inx iny jmp jsr lda ldx ldy lsr nop ora pha php phx phy pla plp plx ply rol ror rti rts sax say sbc sec sed sei set sta stx sty stz sxy tam tax tay tma trb tsb tsx txa txs tya tst st0 st1 st2 cla clx cly", ml, " ")
-  for (i = 1; i <= n; i++) mnem[ml[i]] = 1
-  for (i = 0; i <= 7; i++) { mnem["bbr" i] = 1; mnem["bbs" i] = 1; mnem["rmb" i] = 1; mnem["smb" i] = 1 }
+  while ((getline tl < tsv) > 0) {
+    if (tl ~ /^#/ || tl ~ /^[ \t]*$/) continue
+    split(tl, tf, "\t")
+    if (tf[2] != "UNDEF") mnem[tolower(tf[2])] = 1
+  }
+  close(tsv)
   nobl = split("tai tdd tia tii tin", bl, " ")                  # block transfers take absolute operands only: their small numbers are lengths, not zero page
   for (i = 1; i <= nobl; i++) isblock[bl[i]] = 1
 }
@@ -67,7 +72,11 @@ $1 == "INC" {
 }
 $1 == "INS" {
   mn = $4
-  if (!(mn in mnem) || (mn in isblock)) next
+  if (!(mn in mnem)) {
+    if ($5 !~ /^:?=/) viol($2, "FXL_UNKNOWN_MNEMONIC", $3, mn " is not a mnemonic of the opcode table")  # rule-unknown-mnemonic
+    next
+  }
+  if (mn in isblock) next
   np = split($5, pc, ",")
   for (i = 1; i <= np; i++) {
     p = pc[i]
