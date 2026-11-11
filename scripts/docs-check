@@ -147,7 +147,8 @@ if [ -d "$led" ]; then
       grep -m 1 '^id = "' "$f" | sed 's/^id = "//; s/".*$//'
     fi
   done | sort -u | tr '\n' ' ')
-  listed=$(awk '
+  # CR-01 shape: awk writes a file and its status is tested, only then is the file sorted
+  awk '
     /^Supported entries/ { inpar = 1 }
     /^[ \t]*$/ { inpar = 0 }
     inpar {
@@ -157,7 +158,8 @@ if [ -d "$led" ]; then
         s = substr(s, RSTART + RLENGTH)
       }
     }
-  ' "$readme" | sort -u | tr '\n' ' ')
+  ' "$readme" > "$tmp/listed.raw" || { echo "HARNESS_AWK_FAILED docs-check (README supported list)" >&2; exit 2; }
+  listed=$(sort -u "$tmp/listed.raw" | tr '\n' ' ')
   [ "$sup" = "$listed" ] || addv README.md DOCS_SUPPORTED_LIST 0 "README lists [$listed] but the ledger has supported [$sup]" # rule-supported-list
   if [ -n "$sup" ]; then
     # the text is joined first: the README wraps its lines, and the phrases may break across one

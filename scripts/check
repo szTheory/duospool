@@ -3190,6 +3190,14 @@ selftest() {
       rl_ok="tests/gate/record-lint/ok-accept"
       as_case record-lint-violations 'STATUS record-lint ok' "$as_dir" '$2 != "P"' sh "$here/record-lint" "$rl_ok/record.toml"
       as_case record-lint-codes 'EXPECT_OK' "$as_dir" '{ print $2 }' sh "$here/record-lint" --expect REC_PATH tests/gate/record-lint/path-in-value/record.toml
+      # IN-01: the README list of docs-check (awk then sort) and the defined-symbols scan of core-boundary-check (nm on the left of a pipe: a failing nm only shrinks the allowed set). The nm shim is the real nm unless it is called with -g.
+      as_case docs-check-supported-list 'STATUS docs ok' "$as_dir" 'Supported entries' sh "$here/docs-check" --root tests/docs/ok-supported
+      as_nm="$tmp/selftest/nm-shim"
+      rm -rf "$as_nm"
+      mkdir -p "$as_nm"
+      printf '#!/bin/sh\nfor a in "$@"; do\n  case $a in *"$AWK_SHIM_FAIL_ON"*) echo "nm-shim: forced failure" >&2; exit 2 ;; esac\ndone\nexec "%s" "$@"\n' "$(command -v nm)" > "$as_nm/nm"
+      chmod +x "$as_nm/nm"
+      as_case core-boundary-defined 'STATUS core-boundary ok' "$as_nm" '-g' sh "$here/core-boundary-check" --root "$cb_ok"
       fl_ok="tests/gate/fixture-lint/ok-fixture"
       as_case fixture-lint-stage1 'STATUS fixture-lint ok' "$as_dir" fixture-lint-lex sh "$here/fixture-lint" --root "$fl_ok" --cites fixtures/lib/cites.txt --tsv tests/oracle/huc6280-opcodes.tsv
       as_case fixture-lint-stage2 'STATUS fixture-lint ok' "$as_dir" fixture-lint-rules sh "$here/fixture-lint" --root "$fl_ok" --cites fixtures/lib/cites.txt --tsv tests/oracle/huc6280-opcodes.tsv
@@ -3207,6 +3215,48 @@ selftest() {
       as_case audit-history-pairs 'audit-history: clean' "$as_dir" '$1, $3' sh "$here/audit-history" --allow "$tmp/selftest/awk-audit.allow" "$as_repo"
       as_case audit-history-tree-paths 'audit-history: clean' "$as_dir" 'split($1, m' sh "$here/audit-history" --allow "$tmp/selftest/awk-audit.allow" "$as_repo"
       as_case audit-history-hashes 'audit-history: clean' "$as_dir" '{ print $1 }' sh "$here/audit-history" --allow "$tmp/selftest/awk-audit.allow" "$as_repo"
+      # IN-01: the three guarded sites that used to pipe awk into sort (the case-id lists of determinism-run and of the run and control modes of conformance-run). They run in a scratch root (a copy of scripts/ and a link to tests/, with stub build files for
+      # determinism-run) so that nothing of the real build is touched; the later steps of each command fail or stop at once there, which does not matter: the benign run must leave the awk output (a non-empty list) and not print the message,
+      # and the forced run must exit 2 with the message of the file-and-status form (the old pipe form would have exited 2 on its own later guard with another message, or not at all, which this case reads as FAIL).
+      as_site() {
+        as_label=$1; as_sfile=$2; as_smsg=$3; shift 3
+        rm -rf "$as_scratch/build" "$as_scratch/ctl"
+        as_site_prep
+        if (cd "$as_scratch" && AWK_SHIM_REAL="$as_real" AWK_SHIM_FAIL_ON=NO_SUCH_PROGRAM_TEXT_ANYWHERE PATH="$as_dir:$PATH" "$@") > "$tmp/st.out" 2>&1; then as_r0=0; else as_r0=$?; fi
+        as_alive=0
+        if [ -s "$as_scratch/$as_sfile" ] && ! grep -q "$as_smsg" "$tmp/st.out"; then as_alive=1; fi
+        rm -rf "$as_scratch/build" "$as_scratch/ctl"
+        as_site_prep
+        if (cd "$as_scratch" && AWK_SHIM_REAL="$as_real" AWK_SHIM_FAIL_ON='$1 == "K"' PATH="$as_dir:$PATH" "$@") > "$tmp/st.out" 2>&1; then as_r=0; else as_r=$?; fi
+        if [ "$as_alive" -eq 1 ] && [ "$as_r" -eq 2 ] && grep -q "$as_smsg" "$tmp/st.out"; then
+          echo "SELFTEST awk-exit-status $as_label PASS"
+        else
+          echo "SELFTEST awk-exit-status $as_label FAIL (alive $as_alive, benign exit $as_r0, forced exit $as_r)"; failed=1
+        fi
+      }
+      as_scratch="$tmp/selftest/awk-site-root"
+      rm -rf "$as_scratch"
+      mkdir -p "$as_scratch"
+      cp -R "$here" "$as_scratch/scripts"
+      ln -s "$root/tests" "$as_scratch/tests"
+      as_site_prep() { :; }
+      as_site_prep_det() {
+        mkdir -p "$as_scratch/build/gate"
+        for as_f in r1.tsv oracle.tsv bankclass.tsv inputs.tsv rules-fields.txt ids.txt; do : > "$as_scratch/build/gate/$as_f"; done
+        printf 'K\tfoo\t1\tkind\t1\taccept\n' > "$as_scratch/build/gate/cases.tsv"
+        printf '#!/bin/sh\nexit 7\n' > "$as_scratch/build/gate/ds_runner"
+        chmod +x "$as_scratch/build/gate/ds_runner"
+      }
+      as_site_prep_ctl() {
+        mkdir -p "$as_scratch/ctl"
+        cp -R tests/gate/wrong-literal "$as_scratch/ctl/wrong-literal"
+      }
+      as_site_prep() { as_site_prep_det; }
+      as_site determinism-run-cases build/gate/determinism/want.names 'could not be derived (awk failed)' sh scripts/determinism-run run
+      as_site_prep() { :; }
+      as_site conformance-run-ids build/gate/ids.txt 'could not be derived (awk failed)' sh scripts/conformance-run run
+      as_site_prep() { as_site_prep_ctl; }
+      as_site conformance-run-control-ids build/gate/control/wrong-literal/ids.txt 'of the control could not be derived (awk failed)' env CONFORMANCE_RUN_ROOT="$as_scratch" sh scripts/conformance-run control "$as_scratch/ctl/wrong-literal"
       # rights-check: the hash tool, not awk, is the failing stage; the benign run has no shim at all (an empty directory)
       as_empty="$tmp/selftest/empty-shim"
       mkdir -p "$as_empty"

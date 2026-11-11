@@ -175,7 +175,9 @@ run_mode() {
   rm -rf "$dd"
   mkdir -p "$dd/cwd2" "$dd/tmp2"
   # the record-producing cases, derived from the kind column and never from a literal count (D-86)
-  awk -F'\t' '$1 == "K" && $4 == "kind" && ($6 == "accept" || $6 == "record_lines" || $6 == "record_golden" || $6 == "record_refusal") { print $2 ".record.toml" }' "$bd/cases.tsv" | sort -u > "$dd/want.names"
+  # CR-01 shape: awk writes a file and its status is tested, only then is the file sorted (the emptiness test below is not load-bearing for a dead awk)
+  awk -F'\t' '$1 == "K" && $4 == "kind" && ($6 == "accept" || $6 == "record_lines" || $6 == "record_golden" || $6 == "record_refusal") { print $2 ".record.toml" }' "$bd/cases.tsv" > "$dd/want.raw" || { echo "HARNESS_ERROR the record-producing case list could not be derived (awk failed)" >&2; exit 2; }
+  sort -u "$dd/want.raw" > "$dd/want.names"
   n_rec=$(sed -n '$=' "$dd/want.names")
   if [ -z "$n_rec" ]; then
     echo "HARNESS_ERROR build/gate/cases.tsv holds no case of a record-producing kind: a determinism run over no record is a dead check" >&2

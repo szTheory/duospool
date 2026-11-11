@@ -227,7 +227,8 @@ command -v nm > /dev/null 2>&1 || harness "HARNESS_NO_TOOL nm"
 # file, and a name such as clock or malloc that no core object defines is still reported.
 : > "$tmp/defined.raw"
 while IFS="$(printf '\t')" read -r rel o; do
-  nm -P -g "$o" 2> /dev/null | awk -v os="$os" '$2 != "U" { s = $1; if (os == "Darwin" && substr(s, 1, 1) == "_") s = substr(s, 2); print s }' >> "$tmp/defined.raw" || harness "HARNESS_ERROR nm -P -g failed on the object of $rel"
+  nm -P -g "$o" > "$tmp/nm.g" 2> /dev/null || harness "HARNESS_ERROR nm -P -g failed on the object of $rel"
+  awk -v os="$os" '$2 != "U" { s = $1; if (os == "Darwin" && substr(s, 1, 1) == "_") s = substr(s, 2); print s }' "$tmp/nm.g" >> "$tmp/defined.raw" || harness "HARNESS_AWK_FAILED core-boundary-check (defined symbols of $rel)"
 done < "$tmp/objs"
 cat "$tmp/allow" "$tmp/defined.raw" | sort -u > "$tmp/allowed"
 nscan=0

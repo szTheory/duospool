@@ -208,7 +208,8 @@ run_mode() {
 
   flatten_cases "$bd"
   flatten_inputs "$bd"
-  awk -F'\t' '$1 == "K" { print $2 }' "$bd/cases.tsv" | sort -u > "$bd/ids.txt"
+  awk -F'\t' '$1 == "K" { print $2 }' "$bd/cases.tsv" > "$bd/ids.raw" || { echo "HARNESS_ERROR the case id list could not be derived (awk failed)" >&2; exit 2; }
+  sort -u "$bd/ids.raw" > "$bd/ids.txt"
   if [ ! -s "$bd/ids.txt" ]; then
     echo "HARNESS_NO_CASES the flattened inventory holds no case" >&2
     exit 2
@@ -693,7 +694,8 @@ control_mode() {
   rm -rf "$ctl_wd"
   mkdir -p "$ctl_wd/evidence" || { echo "HARNESS_ERROR cannot create $ctl_wd" >&2; exit 2; }
   flatten_cases "$ctl_wd" "$ctl_dir/tests/conformance/cases"
-  awk -F'\t' '$1 == "K" { print $2 }' "$ctl_wd/cases.tsv" | sort -u > "$ctl_wd/ids.txt"
+  awk -F'\t' '$1 == "K" { print $2 }' "$ctl_wd/cases.tsv" > "$ctl_wd/ids.raw" || { echo "HARNESS_ERROR the case id list of the control could not be derived (awk failed)" >&2; exit 2; }
+  sort -u "$ctl_wd/ids.raw" > "$ctl_wd/ids.txt"
   if [ ! -s "$ctl_wd/ids.txt" ]; then
     echo "HARNESS_NO_CASES the control $ctl_name holds no case" >&2
     exit 2
