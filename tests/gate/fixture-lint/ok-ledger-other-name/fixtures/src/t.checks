@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# fixture-lint control mini-root: an ASSUMED tag naming an entry whose file is not named LED-*.toml
+id=1
+checks=1
+1	one	ASSUMED:LED-CPU-0001	an ASSUMED tag naming an entry whose file is not named LED-*.toml

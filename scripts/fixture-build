@@ -39,7 +39,7 @@ here=$(cd "$here" && pwd)
 root=$(cd "$here/.." && pwd)
 
 usage() {
-  echo "usage: fixture-build [--src DIR] [--out DIR]" >&2
+  echo "usage: fixture-build [--partial] [--src DIR] [--out DIR]" >&2
   exit 2
 }
 
@@ -57,12 +57,30 @@ cpu_blk cpu-blk-irq 32 -D BLK_IRQ'
 
 src=$root/fixtures/src
 out=$root/build/gate
+partial=0
 while [ $# -gt 0 ]; do
   case $1 in
     --src) [ $# -ge 2 ] || usage; src=$2; shift 2 ;;
     --out) [ $# -ge 2 ] || usage; out=$2; shift 2 ;;
+    --partial) partial=1; shift ;;
     *) usage ;;
   esac
+done
+# IN-04: the cleanup below removes three names under $out, so an empty or root-like --out would remove /fx, /fixtures and /fixtures-authored.used (or the same names in the repository root or the home directory). Refuse an empty value, a value that is / (or only slashes), . or .. , a path with a .. component, and a directory that is the repository root or the home directory; an empty --src is refused too.
+for g_opt in src out; do
+  eval "g_val=\$$g_opt"
+  g_trim=$g_val
+  while [ "${g_trim%/}" != "$g_trim" ]; do g_trim=${g_trim%/}; done
+  case $g_trim in
+    '' | . | .. | ../* | */.. | */../*) echo "HARNESS_BAD_ARG --$g_opt '$g_val' is empty or root-like (refused: the cleanup of the output directory must not be able to reach the root, the repository root or a parent)" >&2; exit 2 ;;
+  esac
+  if [ -d "$g_val" ]; then
+    g_abs=$(cd "$g_val" && pwd)
+    if [ "$g_opt" = out ] && { [ "$g_abs" = "$root" ] || [ "$g_abs" = "${HOME:-/nonexistent}" ] || [ "$g_abs" = / ]; }; then
+      echo "HARNESS_BAD_ARG --out '$g_val' is the repository root, the home directory or /: refused" >&2
+      exit 2
+    fi
+  fi
 done
 
 if command -v sha256sum > /dev/null 2>&1; then
@@ -155,9 +173,11 @@ build_one() {
 }
 
 n=0
+seen_stems=" "
 for s in "$src"/*.s; do
   [ -f "$s" ] || continue
   stem=$(basename "$s" .s)
+  seen_stems="$seen_stems$stem "
   case $stem in
     '' | *[!a-z0-9_]*) echo "HARNESS_ERROR the fixture source name '$stem' is outside a-z 0-9 _" >&2; exit 2 ;;
   esac
@@ -182,6 +202,18 @@ done
 if [ "$n" -eq 0 ]; then
   echo "FIXTURE_BUILD_EMPTY no fixtures/src/*.s source was found"
   exit 1
+fi
+# IN-04: a variants-list line whose source does not exist would silently drop its images (the later manifest and used-list comparison is the only other place that would notice). Every stem of the list must have a source, unless --partial says this is a scratch root with only a few (the selftests build one source).
+if [ "$partial" -eq 0 ]; then
+  while read -r v_stem v_rest; do
+    [ -n "$v_stem" ] || continue
+    case $seen_stems in
+      *" $v_stem "*) ;;
+      *) echo "HARNESS_ERROR the variants list names the source $v_stem, which is not in $src: its images would silently vanish" >&2; exit 2 ;;
+    esac
+  done <<VARIANTCHECK
+$variants
+VARIANTCHECK
 fi
 echo "STATUS fixture-build ok n=$n"
 exit 0

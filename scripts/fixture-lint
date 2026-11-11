@@ -105,7 +105,7 @@ fi
 # the ledger reader (stage 0): one I record per entry (path, id, status) and one F record per FACT source (path, id, status, ref), then an END sentinel. The entries are the strict one-line TOML subset
 # of ledger/SCHEMA.md; only the id, status and sources lines are read, and ledger-check judges the rest. No entry file is a harness error (a lint against an empty ledger judges no ASSUMED id).
 set --
-for f in "$ledger"/LED-*.toml; do
+for f in "$ledger"/*.toml; do  # the same glob as scripts/inventory-check reads (IN-04): an entry under another name is visible to both or to neither
   [ -f "$f" ] || continue
   case $f in
     *"$tab"*) echo "HARNESS_BAD_FILENAME a TAB in a file name" >&2; exit 2 ;;
@@ -113,7 +113,7 @@ for f in "$ledger"/LED-*.toml; do
   set -- "$@" "$f"
 done
 if [ $# -eq 0 ]; then
-  echo "HARNESS_NO_FILE $ledger holds no LED-*.toml entry: a lint against an empty ledger judges nothing" >&2
+  echo "HARNESS_NO_FILE $ledger holds no *.toml entry: a lint against an empty ledger judges nothing" >&2
   exit 2
 fi
 if awk '

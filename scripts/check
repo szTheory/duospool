@@ -705,7 +705,29 @@ stage_fixture_build() {
     sed 's/^/  /' "$tmp/fb.out"
     return 1
   fi
-  return 0
+  # IN-04: an empty or root-like --out must be refused before anything is removed (the cleanup would otherwise remove /fx, /fixtures and /fixtures-authored.used); each of these exits 2 with HARNESS_BAD_ARG and no STATUS line.
+  fb_rc=0
+  for fb_bad in '' / . .. ../x "$root"; do
+    if sh "$here/fixture-build" --out "$fb_bad" > "$tmp/fb.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$r" -ne 2 ] || ! grep -q '^HARNESS_BAD_ARG --out' "$tmp/fb.out" || grep -q '^STATUS fixture-build' "$tmp/fb.out"; then
+      echo "CONTROL BROKEN fixture-build-bad-out (--out '$fb_bad' exit $r, wanted 2 with HARNESS_BAD_ARG and no STATUS line)"
+      sed 's/^/  /' "$tmp/fb.out"
+      fb_rc=1
+    fi
+  done
+  # IN-04: a variants-list line whose source is missing must not be skipped silently. A scratch source directory holds only ds_proto.s and its .checks: without --partial the build must exit 2 naming the first missing stem (mmu_mpr); with --partial (the selftests' scratch roots) the same directory builds (alive).
+  fb_src="$tmp/fb-partial/src"
+  rm -rf "$tmp/fb-partial"
+  mkdir -p "$fb_src"
+  cp "$root/fixtures/src/ds_proto.s" "$root/fixtures/src/ds_proto.checks" "$fb_src/"
+  if sh "$here/fixture-build" --partial --src "$fb_src" --out "$tmp/fb-partial/out0" > "$tmp/fb.out" 2>&1; then r0=0; else r0=$?; fi
+  if sh "$here/fixture-build" --src "$fb_src" --out "$tmp/fb-partial/out1" > "$tmp/fb.out" 2>&1; then r=0; else r=$?; fi
+  if [ "$r0" -ne 0 ] || [ "$r" -ne 2 ] || ! grep -q 'the variants list names the source mmu_mpr' "$tmp/fb.out" || grep -q '^STATUS fixture-build' "$tmp/fb.out"; then
+    echo "CONTROL BROKEN fixture-build-missing-variant-source (partial exit $r0 wanted 0, strict exit $r wanted 2 with the variants message and no STATUS line)"
+    sed 's/^/  /' "$tmp/fb.out"
+    fb_rc=1
+  fi
+  return "$fb_rc"
 }
 
 # build (D-60, D-41): configure and build the gate preset, warnings as errors. The compiler output is shown only when something
@@ -2034,7 +2056,7 @@ selftest() {
     fi
     if sh "$here/conformance-flatten" "$gw/cases" > "$gw/cases.tsv" 2> "$tmp/st.err"; then :; else gw_ok=0; gw_why="cannot flatten the scratch case"; fi
     if [ "$gw_ok" -eq 1 ]; then
-      if (cd "$gw" && sh scripts/fixture-build > fb0.out 2>&1); then :; else
+      if (cd "$gw" && sh scripts/fixture-build --partial > fb0.out 2>&1); then :; else
         if grep -q '^PREFLIGHT_MISSING' "$gw/fb0.out"; then cat "$gw/fb0.out"; echo "HARNESS_ERROR mutation-guest-wrong-literal: ca65 or ld65 is missing"; exit 2; fi
         gw_ok=0
         gw_why="the unmutated scratch fixture does not build"
@@ -2054,7 +2076,7 @@ selftest() {
         exit 2
       fi
       mv "$gw/ds_proto.mutated" "$gw/fixtures/src/ds_proto.s"
-      if (cd "$gw" && sh scripts/fixture-build > fb1.out 2>&1); then :; else gw_ok=0; gw_why="the mutated scratch fixture does not build"; fi
+      if (cd "$gw" && sh scripts/fixture-build --partial > fb1.out 2>&1); then :; else gw_ok=0; gw_why="the mutated scratch fixture does not build"; fi
     fi
     if [ "$gw_ok" -eq 1 ]; then
       (cd "$gw" && "$root/build/gate/ds_runner" --cases cases.tsv --evidence-dir ev > after.txt 2> after.err) || true
@@ -2101,7 +2123,7 @@ selftest() {
     fi
     if sh "$here/conformance-flatten" "$sv/cases" > "$sv/cases.tsv" 2> "$tmp/st.err"; then :; else sv_ok=0; sv_why="cannot flatten the scratch case"; fi
     if [ "$sv_ok" -eq 1 ]; then
-      if (cd "$sv" && sh scripts/fixture-build > fb0.out 2>&1); then :; else
+      if (cd "$sv" && sh scripts/fixture-build --partial > fb0.out 2>&1); then :; else
         if grep -q '^PREFLIGHT_MISSING' "$sv/fb0.out"; then cat "$sv/fb0.out"; echo "HARNESS_ERROR mutation-sweep-vacuous: ca65 or ld65 is missing"; exit 2; fi
         sv_ok=0
         sv_why="the unmutated scratch fixture does not build"
@@ -2121,7 +2143,7 @@ selftest() {
         exit 2
       fi
       mv "$sv/ds_proto.mutated" "$sv/fixtures/src/ds_proto.s"
-      if (cd "$sv" && sh scripts/fixture-build > fb1.out 2>&1); then :; else sv_ok=0; sv_why="the mutated scratch fixture does not build"; fi
+      if (cd "$sv" && sh scripts/fixture-build --partial > fb1.out 2>&1); then :; else sv_ok=0; sv_why="the mutated scratch fixture does not build"; fi
     fi
     if [ "$sv_ok" -eq 1 ]; then
       (cd "$sv" && "$root/build/gate/ds_runner" --cases cases.tsv --evidence-dir ev > after.txt 2> after.err) || true
@@ -2167,7 +2189,7 @@ selftest() {
     fi
     if sh "$here/conformance-flatten" "$pu/cases" > "$pu/cases.tsv" 2> "$tmp/st.err"; then :; else pu_ok=0; pu_why="cannot flatten the scratch case"; fi
     if [ "$pu_ok" -eq 1 ]; then
-      if (cd "$pu" && sh scripts/fixture-build > fb0.out 2>&1); then :; else
+      if (cd "$pu" && sh scripts/fixture-build --partial > fb0.out 2>&1); then :; else
         if grep -q '^PREFLIGHT_MISSING' "$pu/fb0.out"; then cat "$pu/fb0.out"; echo "HARNESS_ERROR mutation-policies-uninit: ca65 or ld65 is missing"; exit 2; fi
         pu_ok=0
         pu_why="the unmutated scratch fixture does not build"
@@ -2187,7 +2209,7 @@ selftest() {
         exit 2
       fi
       mv "$pu/ds_proto.mutated" "$pu/fixtures/src/ds_proto.s"
-      if (cd "$pu" && sh scripts/fixture-build > fb1.out 2>&1); then :; else pu_ok=0; pu_why="the mutated scratch fixture does not build"; fi
+      if (cd "$pu" && sh scripts/fixture-build --partial > fb1.out 2>&1); then :; else pu_ok=0; pu_why="the mutated scratch fixture does not build"; fi
     fi
     if [ "$pu_ok" -eq 1 ]; then
       (cd "$pu" && "$root/build/gate/ds_runner" --cases cases.tsv --evidence-dir ev > after.txt 2> after.err) || true
@@ -2233,7 +2255,7 @@ selftest() {
     fi
     if sh "$here/conformance-flatten" "$pd/cases" > "$pd/cases.tsv" 2> "$tmp/st.err"; then :; else pd_ok=0; pd_why="cannot flatten the scratch case"; fi
     if [ "$pd_ok" -eq 1 ]; then
-      if (cd "$pd" && sh scripts/fixture-build > fb0.out 2>&1); then :; else
+      if (cd "$pd" && sh scripts/fixture-build --partial > fb0.out 2>&1); then :; else
         if grep -q '^PREFLIGHT_MISSING' "$pd/fb0.out"; then cat "$pd/fb0.out"; echo "HARNESS_ERROR mutation-policy-diff: ca65 or ld65 is missing"; exit 2; fi
         pd_ok=0
         pd_why="the unmutated scratch fixture does not build"
@@ -2253,7 +2275,7 @@ selftest() {
         exit 2
       fi
       mv "$pd/mmu_mpr.mutated" "$pd/fixtures/src/mmu_mpr.s"
-      if (cd "$pd" && sh scripts/fixture-build > fb1.out 2>&1); then :; else pd_ok=0; pd_why="the mutated scratch fixture does not build"; fi
+      if (cd "$pd" && sh scripts/fixture-build --partial > fb1.out 2>&1); then :; else pd_ok=0; pd_why="the mutated scratch fixture does not build"; fi
     fi
     if [ "$pd_ok" -eq 1 ]; then
       (cd "$pd" && "$root/build/gate/ds_runner" --cases cases.tsv --evidence-dir ev > after.txt 2> after.err) || true
@@ -2666,7 +2688,7 @@ selftest() {
     fi
     if sh "$here/conformance-flatten" "$po/cases" > "$po/cases.tsv" 2> "$tmp/st.err" && sh "$here/conformance-flatten" --inputs "$po/inputs" > "$po/inputs.tsv" 2>> "$tmp/st.err"; then :; else po_ok=0; po_why="cannot flatten the scratch triple"; fi
     if [ "$po_ok" -eq 1 ]; then
-      if (cd "$po" && sh scripts/fixture-build > fb0.out 2>&1); then :; else
+      if (cd "$po" && sh scripts/fixture-build --partial > fb0.out 2>&1); then :; else
         if grep -q '^PREFLIGHT_MISSING' "$po/fb0.out"; then cat "$po/fb0.out"; echo "HARNESS_ERROR mutation-pad-order-assert: ca65 or ld65 is missing"; exit 2; fi
         po_ok=0
         po_why="the scratch fixture does not build"
@@ -3030,7 +3052,7 @@ selftest() {
     fi
     if sh "$here/conformance-flatten" "$sb/cases" > "$sb/cases.tsv" 2> "$tmp/st.err"; then :; else sb_ok=0; sb_why="cannot flatten the scratch case"; fi
     if [ "$sb_ok" -eq 1 ]; then
-      if (cd "$sb" && sh scripts/fixture-build > fb0.out 2>&1); then :; else
+      if (cd "$sb" && sh scripts/fixture-build --partial > fb0.out 2>&1); then :; else
         if grep -q '^PREFLIGHT_MISSING' "$sb/fb0.out"; then cat "$sb/fb0.out"; echo "HARNESS_ERROR mutation-st-bypass-literal: ca65 or ld65 is missing"; exit 2; fi
         sb_ok=0
         sb_why="the scratch fixture does not build"
