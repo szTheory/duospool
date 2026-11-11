@@ -62,6 +62,7 @@ $1 == "CHK" {
 $1 == "INC" {
   p = $4; gsub(/^"|"$/, "", p)
   okinc = ($4 ~ /^"[^"]+"$/) && (p !~ /\.\./) && (p !~ /^\//) && ((p !~ /\//) || (p ~ /^fixtures\/lib\/[A-Za-z0-9_.-]+$/) || (p ~ /^build\/[A-Za-z0-9_.\/-]+$/))
+  if (!okinc) viol($2, "FXL_INCLUDE_PATH", $3, ".include " $4 " is not a bare name, fixtures/lib/NAME or build/PATH")  # rule-include-path
   next
 }
 $1 == "INS" {
@@ -74,6 +75,7 @@ $1 == "INS" {
     while (p ~ /^\(/) p = substr(p, 2)
     while (p ~ /\)$/) p = substr(p, 1, length(p) - 1)
     if (p ~ /^#/) continue
+    if (islit(p)) viol($2, "FXL_SIZE_HINT", $3, mn " operand " p " is below $100 and has no z:, a: or < size hint")  # rule-size-hint
   }
   next
 }
@@ -84,6 +86,8 @@ $1 == "RAW" {
   rest = substr(c, RSTART + RLENGTH)
   cite = ""
   if (rest ~ /^:[A-Za-z0-9][A-Za-z0-9-]*/) { cite = substr(rest, 2); sub(/[^A-Za-z0-9-].*$/, "", cite) }
+  if (cite == "") viol($2, "FXL_RAW_UNCITED", $3, "RAW line without a RAW:<page> cite")  # rule-raw-uncited
+  else if (!(cite in known)) viol($2, "FXL_UNKNOWN_CITE", $3, "RAW:" cite " is not in cites.txt")  # rule-unknown-cite
   next
 }
 $1 == "HDR" {
@@ -97,6 +101,8 @@ $1 == "ROW" {
   rowidx[s, nr[s]] = keyof($4); rowline[s, nr[s]] = $3; rowfile[s] = $2
   cls = $5
   okcls = (cls ~ /^MAN:[A-Za-z0-9][A-Za-z0-9-]*$/) || (cls ~ /^GUEST:[a-z][a-z0-9-]*$/) || (cls ~ /^ASSUMED:LED-(PROF|CPU|VID|AUD|IRQ|LOAD|IO|TOOL)-[0-9][0-9][0-9][0-9]$/)
+  if (!okcls) viol($2, "FXL_BAD_CLASS", $3, "class tag '" cls "' is not MAN:<page>, GUEST:<model> or ASSUMED:<LED-id>")  # rule-bad-class
+  else if (cls ~ /^MAN:/ && !(substr(cls, 5) in known)) viol($2, "FXL_UNKNOWN_CITE", $3, cls " is not in cites.txt")  # rule-unknown-cite
   next
 }
 END {
@@ -111,6 +117,8 @@ END {
       k = klist[s, j]
       listed = 0
       for (r = 1; r <= nr[s]; r++) if (rowidx[s, r] == k) listed = 1
+      if (!listed) viol(hass[s], "FXL_UNLISTED_CHECK", chkline[s, k], "check " k " has no row in " s ".checks")  # rule-unlisted
+      if (chkn[s, k] > 1) viol(hass[s], "FXL_UNLISTED_CHECK", dupline[s, k], "check " k " is used more than once")  # rule-unlisted
     }
     for (r = 1; r <= nr[s]; r++) {
       k = rowidx[s, r]
@@ -118,6 +126,9 @@ END {
       if (!((s, k) in chkn) || seen[s, k] > 1) viol(rowfile[s], "FXL_ORPHAN_CHECK", rowline[s, r], "row " k " matches no CHECK of " s ".s, or repeats an earlier row")  # rule-orphan
     }
     if (s in hasc) {
+      if (!((s, "id") in hdr) || hdr[s, "id"] !~ /^[1-9][0-9]*$/) viol(hasc[s], "FXL_COUNT", 0, "id= header missing or not a positive number")  # rule-count
+      if (!((s, "checks") in hdr) || hdr[s, "checks"] !~ /^[0-9]+$/) viol(hasc[s], "FXL_COUNT", 0, "checks= header missing or not a number")  # rule-count
+      else if ((hdr[s, "checks"] + 0) != nr[s] + 0) viol(hasc[s], "FXL_COUNT", hdrline[s, "checks"], "checks=" hdr[s, "checks"] " but the file has " nr[s] + 0 " rows")  # rule-count
     }
   }
   printf "N\t%d\t%d\t%d\n", nfix, nchk, nraw

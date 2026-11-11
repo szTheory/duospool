@@ -1,0 +1,13 @@
+; SPDX-License-Identifier: 0BSD
+; SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+; fixture-lint control mini-root: a raw-byte line without a page
+        .setcpu "huc6280"
+DSV_ID = 1
+DSV_CHECKS = 1
+
+fixture_main:
+        .byte $53, $01                  ; RAW tam with a bit operand
+        lda a:kv
+        CHECK_LIT 1
+        rts
+kv:     .byte $A5
