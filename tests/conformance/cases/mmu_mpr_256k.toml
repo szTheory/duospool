@@ -16,6 +16,6 @@ meaning = "The authored mmu_mpr fixture maps banks through MPR3 and MPR4 and lea
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-CPU-0012"]
 until_mclk = 4000000
 checks = 60

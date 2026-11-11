@@ -22,5 +22,5 @@ meaning = "In the instruction trace of the cyc_probe fixture the access penalty 
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-CPU-0017"]
 until_mclk = 4000000

@@ -16,6 +16,6 @@ meaning = "ST0, ST1 and ST2 with MPR0 mapped to work RAM, a HuCard bank, an unma
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-CPU-0016"]
 until_mclk = 4000000
 checks = 5

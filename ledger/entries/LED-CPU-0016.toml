@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# ST0, ST1 and ST2 (D-106; CPU-02, CORE-06). A candidate for supported (E1, documentary) under ER-2, but the status stays assumed until plan 03-32 re-reads the pages behind it and checks every condition of ER-2; this entry promotes nothing.
+# The cite is H8-8 Table 2-2-3 and S8-80, not H8-3 as the ROADMAP says: H8-3 is the stack and reset page (research errata R-6). The ROADMAP text is not edited.
+# Page images read by the plan 03-20 executor on 2026-11-11: H8-8 (A20 high in the write cycle of ST0, ST1, ST2 to the HuC6270, a special code on A0 and A1; Table 2-2-3: ST0 A1 0 A0 0, ST1 A1 1 A0 0, ST2 A1 1 A0 1), S8-80 (ST0 03 nn, 2 bytes, 4 cycles, CE7 L, A1 L, A0 L), H8-24 and H8-9 (the VDC at physical 1FE000).
+# The statement follows the manual's wording (research mismatch 1); the physical addresses combine Table 2-2-3 with H8-9 and H8-24. The kind st_bypass compares the device-register log of twelve stores under four settings of MPR0 with the addresses and immediates written in the case.
+id = "LED-CPU-0016"
+statement = "ST0, ST1 and ST2 present A1,A0 = 00, 10 and 11 to the VDC with CE7 asserted by the instruction (H8-8 Table 2-2-3, S8-80); DuoSpool models each as a write of its immediate to physical 0x1FE000, 0x1FE002 and 0x1FE003 that never consults the mapping registers. Modelling assumption."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|H8-8 S8-80|Table 2-2-3 A1,A0 = 00, 10, 11 for ST0, ST1, ST2, A20 high; S8-80 CE7 L, A1 L, A0 L; images read by the plan 03-20 executor 2026-11-11", "FACT|H8-9 H8-24|VDC enable CE7 at physical 1FE000-1FE3FF, logical 0000, 0002, 0003 for ST0, ST1, ST2; images read 2026-11-11", "FACT|S8-81 S8-82|ST1 13 nn, ST2 23 nn per cites.txt, read by an earlier plan"]
+evidence = ["E0|tests/conformance/cases/st_bypass.toml: twelve stores with MPR0 mapped to RAM, a HuCard bank, an unmapped bank and the hardware page are logged at the three addresses with their immediates and none reaches the work RAM; repeatability only"]
+disagreement = "The ROADMAP names H8-3 for the ST0-ST2 bypass; that page is the stack and reset page (R-6), so the cite is corrected here and the ROADMAP is not edited. The manual shows the A1,A0 code and not the physical address: the form 0x1FE00n is a combination of three pages. No emulator reading is recorded for the bypass."
+pinning_test = "TEST:st_bypass"
+updated = "2026-11-11"
+assumption = "The physical addresses are the combination of Table 2-2-3 with the chip-enable pages; the penalty of the store is not part of this entry (LED-CPU-0017). The status is assumed because ER-2 promotion belongs to plan 03-32."
+revisit_phase = 3
+withheld = ["any claim of hardware cycle accuracy", "any claim of interrupt latency in cycles", "any claim of game compatibility", "any TG-16 or region claim", "any claim about what the VDC does with the stored byte"]
+origin = "03-CONTEXT D-106"

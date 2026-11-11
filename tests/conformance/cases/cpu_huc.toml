@@ -14,6 +14,6 @@ meaning = "The authored cpu_huc fixture runs the HuC6280 register swaps and clea
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-CPU-0014"]
 until_mclk = 4000000
 checks = 76

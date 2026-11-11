@@ -16,6 +16,6 @@ meaning = "The 1 MiB variant of the authored mmu_mpr fixture leaves a consistent
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-CPU-0013"]
 until_mclk = 4000000
 checks = 60
