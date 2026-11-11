@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 3
 current_phase_name: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-current_plan: 20
+current_plan: 21
 status: planning
-stopped_at: Completed 03-15-PLAN.md
-last_updated: "2026-11-11T10:44:55.288Z"
+stopped_at: Completed 03-16-PLAN.md
+last_updated: "2026-11-11T11:14:39.822Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 2 complete, transitioned to Phase 3
-state_head: 46eb2edee0b8052ec0127fc17ea42ad30eabda7a
+state_head: 3750bcd4babb9dc2745ea5b342a30b8df251cb1f
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 72
-  completed_plans: 53
+  completed_plans: 54
   percent: 33
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 3 — HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-Current Plan: 20
+Current Plan: 21
 Total Plans in Phase: 38
 Status: Ready to execute
 Last activity: 2026-11-11 — Completed 03-04 (W1: optional case keys, guestkinds.c, authored fixture key, machine_time and stop on RESULT)
@@ -112,6 +112,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 3 P13 | 45min | 3 tasks | 8 files |
 | Phase 3 P14 | 30min | 3 tasks | 10 files |
 | Phase 03 P15 | 75min | 3 tasks | 24 files |
+| Phase 03 P16 | 140min | 3 tasks | 27 files |
 
 ## Accumulated Context
 
@@ -212,6 +213,9 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-12: shared-state toy made phase-independent with a strictly increasing hidden counter; DSV1 limit of 96 checks per fixture
 - [Phase 3]: 03-14: ST0-ST2 go through ds_bus_write_phys (physical $1FE000|n, MPRs ignored); CSL/CSH charged at the old speed; cpu_huc carries the 18 mode-coverage checks because cpu_alu is at the 96-check DSV1 limit; opcode_exercise is mode=require with the five block transfers excluded by hex opcode
 - [Phase 03]: 03-15: opcode_table compares bytes and base cycles only (block 17+6x as base 17, 22 UNDEF by membership); cycle_probe judges 18 single-instruction counts from insn-sink start stamps against page literals with the speed stated per item; cyc_probe code pinned at E100 by padding and an assert; LED-CPU-0001, -0002, -0009, -0010 written as assumed
+- [Phase 03]: 03-16: io_buffer is a bus latch (a read returns the stub value with the undriven upper bits from io_buffer and the byte read becomes io_buffer; a write stores its byte); VDC and VCE accesses and the empty windows never touch it (ASSUMED LED-CPU-0012, LED-CPU-0013)
+- [Phase 03]: 03-16: the VDC and VCE access penalty is one cycle per bus access to physical $1FE000-$1FE7FF charged in charge_penalty() of bus.c; ds_max_step_mclk is 600 master clocks (ASSUMED LED-CPU-0017)
+- [Phase 03]: 03-16: region BUS0 (io_buffer, mpr_latch) appended after CPU0, DS_SERIAL_VERSION 3; digest literals recomputed outside the C code after reproducing the version 2 digests
 
 ### Pending Todos
 
@@ -235,6 +239,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-11T10:44:55.133Z
-Stopped at: Completed 03-15-PLAN.md
+Last session: 2026-11-11T11:14:39.650Z
+Stopped at: Completed 03-16-PLAN.md
 Resume file: None
