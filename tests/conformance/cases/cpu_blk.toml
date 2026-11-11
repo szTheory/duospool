@@ -11,10 +11,10 @@ kind = "guest"
 fixture = "authored:cpu-blk"
 request = ""
 expect = "id=13"
-meaning = "The authored cpu_blk fixture runs the five block transfers with the registers, S and the flags given back, overlap, address wrap, lengths above 256, a destination on the stack, the cycle count from the timer and the interrupt model with I set, and leaves a consistent DSV1 block whose 50 check results are all pass"
+meaning = "The authored cpu_blk fixture runs the five block transfers with the registers, S and the flags given back, overlap, address wrap, lengths above 256, a destination on the stack, the cycle count from the timer and the interrupt model with I set, and leaves a consistent DSV1 block whose 54 check results are all pass"
 required = true
 control = false
 expect_outcome = "pass"
 pins = ["LED-CPU-0008"]
 until_mclk = 1150000
-checks = 50
+checks = 54

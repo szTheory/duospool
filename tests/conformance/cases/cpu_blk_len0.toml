@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
-# The length operand 0 of a block transfer (plan 03-25; D-100, H8-6): the len0 image of fixtures/src/cpu_blk.s (assembled with -D LEN0, never committed) runs the same 50 checks as cpu_blk, and its long transfer is a TIA whose length operand is 0: 65536 bytes from logical $0000 to $FFFF, whose
+# The length operand 0 of a block transfer (plan 03-25; D-100, H8-6): the len0 image of fixtures/src/cpu_blk.s (assembled with -D LEN0, never committed) runs the same 54 checks as cpu_blk, and its long transfer is a TIA whose length operand is 0: 65536 bytes from logical $0000 to $FFFF, whose
 # last byte is the one at $FFFF. The cell checks (39 and 40) tell 65536 bytes from 65535 or none, and the counter after the transfer (41, E2) tells the cost per byte: 393233 cycles is 256 steps more than a cost one cycle higher per byte. Every guest case runs under the default policy list (zero and two seeds of
 # seeded-prng-v2, D-127), so the run is 4.7 million master clocks of transfer three times. Evidence tier E0 and E2 self-consistency for the cycle row: no accuracy, compatibility or cycle-accuracy claim, and the word pass is not a support claim.
 id = "cpu_blk_len0"
@@ -9,10 +9,10 @@ kind = "guest"
 fixture = "authored:cpu-blk-len0"
 request = ""
 expect = "id=13"
-meaning = "The len0 image of the cpu_blk fixture performs a block transfer whose length operand 0 moves 65536 bytes, ending at the byte at $FFFF, takes the cycles of 17 + 6x on the timer counter, gives A, X, Y and S back, and leaves a consistent DSV1 block whose 50 check results are all pass"
+meaning = "The len0 image of the cpu_blk fixture performs a block transfer whose length operand 0 moves 65536 bytes, ending at the byte at $FFFF, takes the cycles of 17 + 6x on the timer counter, gives A, X, Y and S back, and leaves a consistent DSV1 block whose 54 check results are all pass"
 required = true
 control = false
 expect_outcome = "pass"
 pins = ["LED-CPU-0007"]
 until_mclk = 5900000
-checks = 50
+checks = 54

@@ -3,14 +3,14 @@
 #
 # cpu_blk.checks - one row per CHECK of fixtures/src/cpu_blk.s (D-125, plan 03-25). Columns separated by one TAB: check index (1-based, the entry number of the DCK1 table), slug, class tag, meaning.
 # Class tags: MAN:<page> (the literal is a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model> (the expected byte is computed in the guest or by the assembler from instruction counts, the table entry is an XOR mask of $00), ASSUMED:<LED-id>.
-# One source, three images (scripts/fixture-build): cpu-blk, cpu-blk-len0 (-D LEN0) and cpu-blk-irq (-D BLK_IRQ). All three run all 50 checks. Rows 39 to 50 have a different expected literal by image (the meaning column gives the plain, len0 and irq readings);
+# One source, three images (scripts/fixture-build): cpu-blk, cpu-blk-len0 (-D LEN0) and cpu-blk-irq (-D BLK_IRQ). All three run all 54 checks. Rows 39 to 50 have a different expected literal by image (the meaning column gives the plain, len0 and irq readings);
 # every literal is a page value, a byte the guest read or computed, or the assumed reading named in the class, never a value taken from a run of DuoSpool.
 # Class MAN rows follow Table 2-1-1 of H8-6 (source and destination modes, length 0 = 65536 bytes, 17 + 6x cycles, A X Y returned from the stack) and the flowchart of S8-88 (Y, A and X saved one level each; the TAI source adds one then subtracts one, the destination of TIA the same).
 # H8-25 prints 17+16z in its footnote; that is a misprint of 17+6x (errata R-1) and is not used. Rows classed ASSUMED:LED-CPU-0008 are the project's aliasing, wrap and stack-clobber model (byte-at-a-time, 16-bit wrap, the epilogue pops from memory); the rows
-# classed ASSUMED:LED-IRQ-0007 are the rule that no interrupt is sampled inside a transfer and that it is sampled once at the end of the epilogue. The in-guest timer rows (36, 37, 38, 41) are E2 self-consistency: the community-reported 12 master clocks per CPU
+# classed ASSUMED:LED-IRQ-0007 are the rule that no interrupt is sampled inside a transfer and that it is sampled once at the end of the epilogue. The in-guest timer rows (36, 37, 38, 41, 51 to 54) are E2 self-consistency: the community-reported 12 master clocks per CPU
 # cycle at the low speed and the prescaler step of 3072 master clocks are inputs, and the access stamp rule (LED-CPU-0004) too. A pass is not a support claim (ER-4).
 id=13
-checks=50
+checks=54
 1	tii-first-byte	MAN:H8-6	TII of 16 bytes: the first byte goes to the first destination address (source and destination are post-incremented)
 2	tii-last-byte	MAN:H8-6	The sixteenth byte is the last one moved
 3	tii-no-overrun	MAN:H8-6	Exactly 16 bytes move: the byte after the block is untouched
@@ -61,3 +61,7 @@ checks=50
 48	return-address	ASSUMED:LED-IRQ-0007	The return address the entry pushed is the instruction after the transfer: the interrupt is sampled at the end of the epilogue and entered in the same step (0 where it is taken, $FF where no handler ran)
 49	regs-after-handlers	MAN:H8-6	After the handlers returned A, X, Y and S read back equal to their values before the transfer
 50	tiq-latch-after	MAN:H8-15	The request register shows TIQ (bit 2) while the interrupt is masked by I after the transfer, and 0 once the handler acknowledged it
+51	tin-write-stamp-not-late	GUEST:timer-e2	E2: a one-byte TIN writes the byte that starts the timer 4 cycles before the end of the instruction (the project's split: a 14-cycle prologue and the write in the sixth cycle of the byte step, ASSUMED LED-CPU-0008): exactly 256 cycles to the counter read is one step, the counter reads 126; a write one cycle later reads 127
+52	tin-write-stamp-not-early	GUEST:timer-e2	E2: 255 cycles from that write to the counter read is no step yet, the counter reads 127; a write one cycle earlier reads 126
+53	tin-read-stamp-not-early	GUEST:timer-e2	E2: a one-byte TIN reads the counter in the fourth cycle of the byte step, 17 cycles into the instruction: 256 cycles after the timer start write is one step, the value moved is 126; a read one cycle earlier moves 127
+54	tin-read-stamp-not-late	GUEST:timer-e2	E2: 255 cycles after the timer start write is no step yet, the value moved is 127; a read one cycle later moves 126

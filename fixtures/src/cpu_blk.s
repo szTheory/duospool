@@ -4,18 +4,19 @@
 ; cpu_blk.s - the block transfers TII, TDD, TIN, TIA and TAI seen from the guest (plan 03-25; D-92, D-100, D-124, D-125, D-127; H8-6, S8-88, S8-89, H8-25). It is assembled by ca65 in the gate and never committed as a binary.
 ; The expected values come from the pages (Table 2-1-1 source and destination modes, the length 0 = 65536 rule, 17 + 6x cycles, A X Y returned from the stack), from bytes the guest computes itself, or from the assumed ledger entries named in cpu_blk.checks.
 ; Three images are built from this one source (scripts/fixture-build): cpu-blk (the plain image), cpu-blk-len0 (-D LEN0: the long transfer is a TIA of 65536 bytes, the length operand 0) and cpu-blk-irq (-D BLK_IRQ: the long transfer runs with I clear, the timer
-; at reload 0 and an IRQ2 level that the case declares inside it). All three run the same 50 checks; the checks 39 to 50 differ in their expected literals by image (the table entries are assembled per image, the meaning is in the checks file).
+; at reload 0 and an IRQ2 level that the case declares inside it). All three run the same 54 checks; the checks 39 to 50 differ in their expected literals by image (the table entries are assembled per image, the meaning is in the checks file).
 ; Checks 1 to 38 are the common part: one transfer per instruction and mode with the registers and flags set before it (A, X, Y and the flag byte are loaded by PREP, PLP last, so a flag a transfer changed would show), the observed bytes read after it (OBS),
 ; then the overlap cases, the 16-bit wrap of the source and destination addresses, a length above 256, a destination on the stack (the epilogue pops the clobbered bytes), and the cycle count read from the timer (E2: the instruction counts and the community
 ; cycle length are inputs; the transfers are tuned to end 6 cycles past a prescaler step and 6 before one, at the low speed and at the high speed). Checks 39 to 42 are the long transfer (a TIA whose last source byte is the one at $FFFF), 43 to 50 the interrupt
 ; around a transfer: the timer borrows every step during a 4096-byte TII, and in the irq image an IRQ2 level rises inside it; no interrupt is taken before the transfer ends (the handlers see all 4096 bytes written), the handlers then run (the timer interrupt
 ; first), A, X and Y read back equal to their values before the transfer, and the pushed return address is the instruction after the transfer (ASSUMED LED-IRQ-0007).
+; Checks 51 to 54 (code between check 38 and the long transfer) read the stamps of the two accesses of a byte step from the timer, to one cycle (E2, ASSUMED LED-CPU-0008): the write of a one-byte TIN that starts the timer and the read of a one-byte TIN that reads the counter.
 ; Memory: MPR0 = $F8 (work RAM at logical $0000, so the 16-bit wrap is visible), MPR1 = $F8 and MPR2 = $F9 (startup.inc), MPR3 = $01 (HuCard bank 1, all $FF: the long source at $6000), MPR5 = $FF (the hardware page at $A000: timer $AC00 and $AC01,
 ; interrupt registers $B402 and $B403), MPR4 = $02 and MPR6 = $04 (more $FF banks). Every cell a check reads is written by the fixture first (D-127), and every register a transfer must give back is loaded first.
         .setcpu "huc6280"
 
 DSV_ID = 13
-DSV_CHECKS = 50
+DSV_CHECKS = 54
 
         .ifdef LEN0
 LONG_OP = 0                     ; the length operand 0 means 65536 bytes (H8-6)
@@ -105,6 +106,10 @@ IRQ_ON = 0
         LIT 49, $00
         LIT 50, $04                     ; the timer borrow is latched (bit 2 of the request register) and masked by I
         .endif
+        LIT 51, $00                     ; GUEST (timer, E2)
+        LIT 52, $00
+        LIT 53, $00
+        LIT 54, $00
 
 SL0 = $01                       ; the TAM operands of MPR0, MPR3, MPR4, MPR5 and MPR6
 SL3 = $08
@@ -148,6 +153,8 @@ H_X = $2423
 H_Y = $2424
 H_T = $2425
 LATCH = $2426                   ; bit 2 of the request register after the transfer
+ONE_CELL = $2427                ; a work RAM byte that holds $01: the source of the TIN that starts the timer
+SINK_CELL = $2428               ; where the TIN that reads the counter puts it
 
 CYC_STEP = 256                  ; CPU cycles per prescaler step at the low speed: 3072 master clocks over the community-reported 12 master clocks per cycle (ER-3): the rows that use it are E2 self-consistency
 CYC_STEP_HI = 1024              ; at the high speed: 3072 over 3 master clocks per cycle (LED-CPU-0003)
@@ -431,6 +438,64 @@ fixture_main:
         sta a:GEXP
         lda a:TMP
         CHECK_GUEST 38                  ; check 38 GUEST:timer-e2: at the high speed each step of the transfer takes 3 clocks per cycle: 4102 cycles, 4 steps of 1024 and 6 more
+
+; ---- K: the stamps of the two accesses of a byte step, read from the timer (E2): the write of a TIN that starts the timer, and the read of a TIN that reads the counter ----
+; The write is in the sixth cycle of the byte step, 14 + 5 cycles into the instruction, 4 cycles before its end (the rest of the byte step and the epilogue); the read is in the fourth, 14 + 3 cycles into it. Two measurements each, one that
+; ends exactly on a prescaler step (the borrow at a tie counts) and one a cycle short of it, so a stamp one cycle off in either direction turns one of them: a prologue of 13 or 15 cycles, or an access in another cycle of the byte step.
+        lda #$01
+        sta a:ONE_CELL
+        lda #127
+        sta a:TIM_RELOAD
+        tin ONE_CELL, TIM_CTRL, 1       ; the byte written to the control register starts the timer at its write stamp
+        DELAY 41
+        nop
+        lda a:TIM_CTRL                  ; 4 + (246 + 2) + 4 = 256 cycles after the write stamp: one step
+        sta a:TMP
+        stz a:TIM_CTRL
+        lda #(127 - (4 + 6 * 41 + 2 + 4) / CYC_STEP)
+        sta a:GEXP
+        lda a:TMP
+        CHECK_GUEST 51                  ; check 51 GUEST:timer-e2: the destination write of a block byte is stamped 4 cycles before the end of a one-byte TIN: exactly 256 cycles to the read is one step (a write one cycle later would read no step)
+        lda #127
+        sta a:TIM_RELOAD
+        tin ONE_CELL, TIM_CTRL, 1
+        DELAY 40
+        php
+        pla
+        lda a:TIM_CTRL                  ; 4 + (240 + 3 + 4) + 4 = 255 cycles after the write stamp: no step yet
+        sta a:TMP
+        stz a:TIM_CTRL
+        lda #(127 - (4 + 6 * 40 + 7 + 4) / CYC_STEP)
+        sta a:GEXP
+        lda a:TMP
+        CHECK_GUEST 52                  ; check 52 GUEST:timer-e2: 255 cycles after the write stamp is no step yet (a write one cycle earlier would read one step)
+        lda #127
+        sta a:TIM_RELOAD
+        lda #$01
+        sta a:TIM_CTRL                  ; start: the write stamp is the last cycle of this STA
+        DELAY 39
+        nop
+        nop
+        tin TIM_CTRL, SINK_CELL, 1      ; the counter is read in the fourth cycle of the byte step, 17 cycles into the instruction
+        stz a:TIM_CTRL
+        lda #(127 - (1 + 6 * 39 + 4 + 17) / CYC_STEP)
+        sta a:GEXP
+        lda a:SINK_CELL
+        CHECK_GUEST 53                  ; check 53 GUEST:timer-e2: the source read of a block byte is stamped 17 cycles into the instruction: 1 + 238 + 17 = 256 cycles after the start write is one step (a read one cycle earlier would read no step)
+        lda #127
+        sta a:TIM_RELOAD
+        lda #$01
+        sta a:TIM_CTRL
+        DELAY 38
+        nop
+        php
+        pla
+        tin TIM_CTRL, SINK_CELL, 1
+        stz a:TIM_CTRL
+        lda #(127 - (1 + 6 * 38 + 2 + 7 + 17) / CYC_STEP)
+        sta a:GEXP
+        lda a:SINK_CELL
+        CHECK_GUEST 54                  ; check 54 GUEST:timer-e2: 1 + 237 + 17 = 255 cycles after the start write is no step yet (a read one cycle later would read one step)
 
 ; ---- L: the long transfer: a TIA whose last source byte is the one at $FFFF (65536 bytes in the len0 image) ----
         lda #SENT

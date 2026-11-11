@@ -17,5 +17,5 @@ control = false
 expect_outcome = "pass"
 pins = ["LED-IRQ-0007"]
 until_mclk = 2500000
-checks = 50
+checks = 54
 irq_stim = ["2000000,1,1", "2100000,2,1", "2400000,1,0"]
