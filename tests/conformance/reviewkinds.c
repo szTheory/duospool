@@ -113,7 +113,7 @@ static int rv_parse_log(const char *text, unsigned char *want, unsigned *n)
         if (*n >= 8u || strlen(tok) < 1u || strlen(tok) > 2u) {
             return -1;
         }
-        snprintf(hex, sizeof hex, "0x%s", tok);
+        snprintf(hex, sizeof hex, "0x%.2s", tok);
         if (parse_u64(hex, &v) != 0 || v > 0xFFu) {
             return -1;
         }
