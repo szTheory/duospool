@@ -8,7 +8,7 @@ DuoSpool is a working name and is not trademark-cleared.
 
 ## Status
 
-Phase 3 is in progress. The core is a deterministic machine shell that accepts or refuses plain HuCard bytes under a named
+Phases 1 to 3 are complete locally. The core is a deterministic machine shell that accepts or refuses plain HuCard bytes under a named
 profile, and it executes the authored fixture suite through a bounded run measured in master clocks. Every outcome comes from a
 fresh, headless, repeatable run, and a matching hash proves repeatability only.
 

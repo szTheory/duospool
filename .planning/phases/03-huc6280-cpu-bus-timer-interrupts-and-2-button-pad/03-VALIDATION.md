@@ -1,9 +1,9 @@
 ---
 phase: "03"
 slug: "huc6280-cpu-bus-timer-interrupts-and-2-button-pad"
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: complete
+nyquist_compliant: true
+wave_0_complete: true
 created: "2026-11-10"
 ---
 

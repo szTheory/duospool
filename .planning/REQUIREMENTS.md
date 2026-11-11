@@ -28,7 +28,7 @@ E4 = differential vs another emulator (finds disagreements, decides nothing).
 
 ### CPU & Bus (HuC6280)
 
-- [ ] **CPU-01**: The core executes the HuC6280 instruction set (65C02 base plus HuC6280 additions: block transfers, ST0/ST1/ST2, TAM/TMA, SXY/SAX/SAY, CSH/CSL, SET/T-flag, TST, BSR, bit ops) with flag/register effects verified by authored fixtures against the HuC6280 manual (E1/E2).
+- [x] **CPU-01**: The core executes the HuC6280 instruction set (65C02 base plus HuC6280 additions: block transfers, ST0/ST1/ST2, TAM/TMA, SXY/SAX/SAY, CSH/CSL, SET/T-flag, TST, BSR, bit ops) with flag/register effects verified by authored fixtures against the HuC6280 manual (E1/E2).
 - [x] **CPU-02**: The MMU maps logical addresses through MPR0–7 to the 21-bit physical space (256 × 8 KiB banks), including RAM, HuCard banks, I/O page, and a defined unmapped-read value, verified by fixtures.
 - [x] **CPU-03**: The timer (reload, decrement rate tied to the master clock, IRQ) and interrupt controller (disable/status registers, documented priority, sampling point) behave as documented, verified by fixtures that report results in guest RAM.
 - [x] **CPU-04**: High/low CPU speed switching changes instruction timing on the master-clock timeline, and VDC/VCE access penalties are applied as documented.
@@ -160,7 +160,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PROF-03 | Phase 2 | Complete |
 | PROF-04 | Phase 1 | Complete |
 | PROF-05 | Phase 1 | Complete |
-| CPU-01 | Phase 3 | Pending |
+| CPU-01 | Phase 3 | Complete |
 | CPU-02 | Phase 3 | Complete |
 | CPU-03 | Phase 3 | Complete |
 | CPU-04 | Phase 3 | Complete |
