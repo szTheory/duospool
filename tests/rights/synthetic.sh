@@ -175,6 +175,57 @@ commit "$d" listed
 negative "$d" RIGHTS_BAD_ALLOW
 verdict listed-kind-synthetic "$neg_ok"
 
+# WR-01: the excuse is bound to the committed bytes, so an entry whose sha256 is missing or malformed excuses nothing. The unlisted hash
+# below is the case that used to pass: with no sha256 key both digests were empty strings and compared equal.
+
+# listed-no-sha256: a clean text fixture listed with no sha256 key at all
+d=$(new listed-no-sha256)
+mkdir -p "$d/fixtures"
+printf 'authored fixture text\n' > "$d/fixtures/n.txt"
+manifest "$d" n fixtures/n.txt 0000000000000000000000000000000000000000000000000000000000000000 authored 0BSD
+grep -v '^sha256 = ' "$d/fixtures/manifest/n.toml" > "$d/fixtures/manifest/n.toml.new"
+mv "$d/fixtures/manifest/n.toml.new" "$d/fixtures/manifest/n.toml"
+commit "$d" listed
+negative "$d" RIGHTS_BAD_ALLOW
+ok=$neg_ok
+has 'sha256 missing' || ok=0
+verdict listed-no-sha256 "$ok"
+
+# listed-malformed-sha256: the digest is present but is not 64 lower-case hex digits
+d=$(new listed-malformed-sha256)
+mkdir -p "$d/fixtures"
+printf 'authored fixture text\n' > "$d/fixtures/m.txt"
+manifest "$d" m fixtures/m.txt abc123 authored 0BSD
+commit "$d" listed
+negative "$d" RIGHTS_BAD_ALLOW
+ok=$neg_ok
+has 'sha256 missing' || ok=0
+verdict listed-malformed-sha256 "$ok"
+
+# dash-source-no-sha256: a ROM-like name that starts with a dash, listed with no sha256: the hash tool cannot read it as an operand, which used
+# to make both digests empty and excuse the file. The source path is refused, so the extension hit stays.
+d=$(new dash-source-no-sha256)
+printf 'not a rom, only a name\n' > "$d/-x.pce"
+manifest "$d" dash -x.pce 0000000000000000000000000000000000000000000000000000000000000000 authored 0BSD
+grep -v '^sha256 = ' "$d/fixtures/manifest/dash.toml" > "$d/fixtures/manifest/dash.toml.new"
+mv "$d/fixtures/manifest/dash.toml.new" "$d/fixtures/manifest/dash.toml"
+commit "$d" dash
+negative "$d" ROMLIKE_BINARY,RIGHTS_BAD_ALLOW
+ok=$neg_ok
+has 'unsafe source path' || ok=0
+has "-x.pce${tab}ROMLIKE_BINARY" || ok=0
+verdict dash-source-no-sha256 "$ok"
+
+# dash-name-magic: a file whose name starts with a dash and whose content starts with a zip header: head -c 8 -name used to fail, so the MAGIC rule
+# was skipped for it
+d=$(new dash-name-magic)
+{ printf 'PK\003\004'; printf 'some text after the header\n'; } > "$d/-pack"
+commit "$d" dashzip
+negative "$d" ROMLIKE_BINARY
+ok=$neg_ok
+has 'MAGIC zip' || ok=0
+verdict dash-name-magic "$ok"
+
 # ---- positives: each must exit 0 ----
 
 # ok-listed-authored: an authored fixture with a 5000-byte line, listed with the right hash. Without its manifest entry the same

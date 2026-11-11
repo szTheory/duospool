@@ -147,13 +147,14 @@ if [ -s "$tmp/files.s" ]; then
   sort -u "$tmp/nonpure.raw" > "$tmp/nonpure"
 fi
 
-# sha256_of FILE : the hash, with the tool chosen once (D-60: sha256sum if present, else shasum -a 256). CR-01: the tool is not the left side of
-# a pipe (POSIX sh has no pipefail, so `tool | awk` would report the status of awk and a dead tool would read as an empty hash): its output is
-# captured on its own, its status is the status of this function, and a caller must treat a non-zero status as a harness error.
+# sha256_of FILE : the hash of a file named relative to the root, with the tool chosen once (D-60: sha256sum if present, else shasum -a 256).
+# The name is passed as ./FILE so that a leading - is never taken for an option (WR-01). CR-01: the tool is not the left side of a pipe (POSIX
+# sh has no pipefail, so `tool | awk` would report the status of awk and a dead tool would read as an empty hash): its output is captured on
+# its own, its status is the status of this function, and a caller must treat a non-zero status as a harness error.
 if command -v sha256sum > /dev/null 2>&1; then sha_cmd="sha256sum"; else sha_cmd="shasum -a 256"; fi
 sha256_of() {
   # shellcheck disable=SC2086
-  sha_out=$($sha_cmd "$1" 2> /dev/null) || return 1
+  sha_out=$($sha_cmd "./$1" 2> /dev/null) || return 1
   printf '%s\n' "${sha_out%% *}"
 }
 
@@ -184,7 +185,7 @@ inspect() {
     if [ "$rem" -eq 0 ] || [ "$rem" -eq 512 ]; then hit "$f" "SHAPE size $size"; fi
   fi
   # file header magic: PK (zip), 7z, Rar!, gzip, bzip2
-  magic=$(head -c 8 "$f" | od -An -tx1 | tr -d ' \n')
+  magic=$(head -c 8 "./$f" | od -An -tx1 | tr -d ' \n')
   case $magic in
     504b0304* | 504b0506* | 504b0708*) hit "$f" "MAGIC zip" ;;
     377abcaf271c*) hit "$f" "MAGIC 7z" ;;
@@ -227,13 +228,19 @@ manifest_entry() {
   [ "$(mval redistribution)" = committed ] || return 0
   src=$(mval source)
   case $src in
-    '' | /* | .. | ../* | */.. | */../*) bad "$m" RIGHTS_BAD_ALLOW "unsafe source path"; return 0 ;;
+    '' | -* | /* | .. | ../* | */.. | */../*) bad "$m" RIGHTS_BAD_ALLOW "unsafe source path"; return 0 ;;
   esac
   if [ ! -f "$src" ] || [ -L "$src" ]; then
     bad "$m" RIGHTS_MISSING_ARTIFACT "$src"
     return 0
   fi
   want=$(mval sha256)
+  # WR-01: the entry binds the excuse to the committed bytes, so the digest must be present and well formed. An empty want would equal an
+  # empty got and excuse a file with no content binding at all.
+  if ! printf '%s\n' "$want" | grep -Eq '^[0-9a-f]{64}$'; then
+    bad "$m" RIGHTS_BAD_ALLOW "sha256 missing or not 64 lower-case hex digits: $src"
+    return 0
+  fi
   got=$(sha256_of "$src") || { echo "HARNESS_SHA256_FAILED rights-check ($src)" >&2; exit 2; }
   if [ "$got" != "$want" ]; then
     bad "$m" RIGHTS_HASH_MISMATCH "$src"
