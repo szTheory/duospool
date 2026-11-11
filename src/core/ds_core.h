@@ -156,7 +156,9 @@ size_t ds_instance_align(void);
 /*
  * Boot a machine in caller memory (mem, cap) from a request, or refuse. The return value is the refusal number and is also
  * written to result (when result is not NULL). A refusal writes nothing but result: never mem. There is no instance to mutate
- * and no allocator, so there is no "created but unloaded" state.
+ * and no allocator, so there is no "created but unloaded" state. The block (mem, ds_instance_size() bytes) must not overlap the
+ * request struct, the content bytes or the result struct: when every other check has passed and one does, the boot is refused as
+ * load.memory_invalid (WR-02), because the instance is zeroed before the request and the content are read.
  */
 uint32_t ds_boot(void *mem, size_t cap, const struct ds_boot_request *request, struct ds_boot_result *result);
 

@@ -16,8 +16,11 @@
  *                and must load exactly as supplied: no bit reversal, no mapper or header guess. The edits are items separated by a
  *                semicolon: str@0xOFFSET=TEXT puts letters and digits at an offset, byte@0xOFFSET=0xVV sets one byte.
  *   copy_in      (T-02-20) the host buffer is overwritten after boot; every byte read back through the mapper must still be the original.
+ *   mem_overlap  (WR-02) caller memory that overlaps the request, the content or the result is refused as load.memory_invalid with the
+ *                block untouched; blocks that merely touch (no shared byte) boot normally, one byte of overlap does not.
  * Test code only, never installed. Nothing here prints bytes found inside content; only ids, counts and reason names.
  */
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -566,4 +569,129 @@ void kind_copy_in(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
     free(content);
     free(orig);
     free(mem);
+}
+
+/* ---- kind mem_overlap (WR-02) ---- */
+
+/*
+ * One boot over the block at mem (isize bytes, filled with a fixed pattern first), with the content bytes, the request struct and the
+ * result struct wherever the caller put them. The content is written after the pattern, so a content that lies inside the block keeps
+ * its bytes. When want_refusal is set the boot must be refused as load.memory_invalid, return no instance, and leave every byte of the
+ * block as it was, except the result struct itself when the caller placed it inside the block (a refusal always writes the result).
+ * Otherwise the boot must be accepted and the ROM copy must equal the content.
+ */
+static void ovl_one(struct ctx *c, const char *fixture, const struct spec *s, unsigned char *mem, unsigned char *content,
+                    struct ds_boot_request *rq, struct ds_boot_result *res, int want_refusal)
+{
+    size_t isize = ds_instance_size();
+    unsigned char *snap = (unsigned char *)malloc(isize);
+    const unsigned char *res_lo = (const unsigned char *)res;
+    const unsigned char *res_hi = res_lo + sizeof *res;
+    size_t i;
+    size_t differ = 0u;
+    uint32_t ret;
+
+    if (snap == NULL) {
+        harness_error(c, "out of memory for the overlap snapshot");
+        return;
+    }
+    for (i = 0u; i < isize; i++) {
+        mem[i] = nm_pattern(i);
+    }
+    if (synth_fill(fixture, content, s->len) != 0) {
+        free(snap);
+        harness_error(c, "unknown fixture recipe");
+        return;
+    }
+    fill_request(rq, s, content);
+    memset(res, 0xff, sizeof *res);
+    memcpy(snap, mem, isize);
+    ret = ds_boot(mem, isize, rq, res);
+    if (want_refusal) {
+        check(c, ret == (uint32_t)DS_REFUSE_memory_invalid, "an overlapping block was not refused as load.memory_invalid");
+        check(c, res->reason == ret && res->instance == NULL, "the refusal result differs from the return value or names an instance");
+        for (i = 0u; i < isize; i++) {
+            const unsigned char *at = mem + i;
+
+            if (at >= res_lo && at < res_hi) {
+                continue;
+            }
+            differ += mem[i] != snap[i] ? 1u : 0u;
+        }
+        check(c, differ == 0u, "a refusal changed the block outside the result struct");
+    } else {
+        check(c, ret == 0u && res->instance == (struct ds_instance *)(void *)mem, "a block that only touches the content was not booted");
+        if (ret == 0u && res->instance != NULL) {
+            check(c, memcmp(res->instance->rom, content, s->len) == 0, "the ROM copy differs from the content supplied beside the block");
+        }
+    }
+    free(snap);
+}
+
+void kind_mem_overlap(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    struct spec s;
+    struct ds_boot_request rq;
+    struct ds_boot_result res;
+    size_t isize = ds_instance_size();
+    size_t natural = synth_size(k->val[K_FIXTURE]);
+    const char *what = k->val[K_EXPECT];
+    unsigned char *arena;
+    unsigned char *mem;
+    unsigned char *sep;
+    size_t len;
+    const char *err;
+    unsigned boots = 0u;
+
+    err = natural == 0u ? "unknown fixture recipe" : parse_spec(&s, k->val[K_REQUEST], natural);
+    if (err != NULL) {
+        harness_error(c, err);
+        return;
+    }
+    len = s.len;
+    if (len == 0u || len > CONTENT_LIMIT || len > isize) {
+        harness_error(c, "a mem_overlap case needs a content that fits the instance block");
+        return;
+    }
+    /* the arena holds one content-sized gap before the block and one after it, so a content can end exactly where the block starts */
+    arena = (unsigned char *)malloc(len + isize + len);
+    sep = (unsigned char *)malloc(len);
+    if (arena == NULL || sep == NULL) {
+        free(arena);
+        free(sep);
+        harness_error(c, "out of memory for the overlap arena");
+        return;
+    }
+    mem = arena + len;
+    if (((uintptr_t)mem % (uintptr_t)ds_instance_align()) != 0u || len % 64u != 0u) {
+        free(arena);
+        free(sep);
+        harness_error(c, "the overlap block is not aligned for an instance");
+        return;
+    }
+    if (strcmp(what, "content") == 0) {
+        /* the content lies inside the block, at the ROM array */
+        ovl_one(c, k->val[K_FIXTURE], &s, mem, mem + offsetof(struct ds_instance, rom), &rq, &res, 1);
+        boots++;
+    } else if (strcmp(what, "request") == 0) {
+        /* the request struct lies inside the block, after the header of the instance */
+        ovl_one(c, k->val[K_FIXTURE], &s, mem, sep, (struct ds_boot_request *)(void *)(mem + 64u), &res, 1);
+        boots++;
+    } else if (strcmp(what, "result") == 0) {
+        /* the result struct lies inside the block */
+        ovl_one(c, k->val[K_FIXTURE], &s, mem, sep, &rq, (struct ds_boot_result *)(void *)(mem + 64u), 1);
+        boots++;
+    } else if (strcmp(what, "edge") == 0) {
+        /* the content ends exactly where the block starts, or starts exactly where it ends: no shared byte, booted; one byte further in: refused */
+        ovl_one(c, k->val[K_FIXTURE], &s, mem, mem - len, &rq, &res, 0);
+        ovl_one(c, k->val[K_FIXTURE], &s, mem, mem - len + 1u, &rq, &res, 1);
+        ovl_one(c, k->val[K_FIXTURE], &s, mem, mem + isize, &rq, &res, 0);
+        ovl_one(c, k->val[K_FIXTURE], &s, mem, mem + isize - 1u, &rq, &res, 1);
+        boots += 4u;
+    } else {
+        harness_error(c, "a mem_overlap case names content, request, result or edge");
+    }
+    snprintf(got, gotcap, "boots=%u", boots);
+    free(arena);
+    free(sep);
 }

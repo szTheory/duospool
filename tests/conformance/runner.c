@@ -1496,6 +1496,7 @@ static const struct {
     {"nonmutation", kind_nonmutation, 0},
     {"noheur", kind_noheur, 0},
     {"copy_in", kind_copy_in, 0},
+    {"mem_overlap", kind_mem_overlap, 0},
     {"redaction", kind_redaction, 0},
     {"redaction_leak_control", kind_redaction_leak_control, 0},
     {"splitmix", kind_splitmix, 0},

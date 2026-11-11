@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Memory overlap row (WR-02): the content touches the instance block at either end.
+# ds_boot zeroes the instance before it reads the request and the content, so an overlap would boot from zeroed or garbled bytes and report a content id for them.
+# The request is the ordinary plain one and the expect key names the overlap (content, request, result or edge). The core refuses an overlap as load.memory_invalid after every other check has passed (no row of boot_order.def changes) and leaves the block untouched.
+# Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_mem_overlap_edge"
+kind = "mem_overlap"
+fixture = "plain-256k"
+request = "mapper=plain;order=pce;header=none"
+expect = "edge"
+meaning = "A content that ends exactly where the instance block starts, or starts exactly where it ends, boots normally, and the same content moved one byte into the block is refused as load.memory_invalid, so the overlap test has no off-by-one at either end"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

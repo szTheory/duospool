@@ -31,6 +31,10 @@ alloc_zero_matrix
 ref_mem_null
 ref_mem_short
 ref_mem_misaligned
+ref_mem_overlap_content
+ref_mem_overlap_request
+ref_mem_overlap_result
+ref_mem_overlap_edge
 ref_request_null
 ref_request_struct_size
 ref_request_reserved

@@ -120,6 +120,7 @@ void kind_nonmutation(const struct kase *k, struct ctx *c, char *got, size_t got
 
 void kind_noheur(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_copy_in(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_mem_overlap(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 
 /* the one output function (redkinds.c): every line of stdout and stderr goes through it and into an in-process log that the no-leak
  * kinds scan; evidence_text is the text of an evidence file (runner.c), set_marker_seed takes --marker-seed */
