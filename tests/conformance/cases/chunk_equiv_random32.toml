@@ -6,12 +6,15 @@
 # a fixed 357368, 3072k-1 and 3072k+1), and the machine time, step count, verdict RAM, digest and sequence of step boundaries (the stop sequence) must equal those of the uninterrupted run. The random programs take paths no fixture takes (every instruction row, block transfers of random lengths, writes to the hardware page, the timer and interrupt registers,
 # changes of the mapping and of the speed), so this is the widest chunk invariance claim of the phase, and it runs in the sanitizers stage too (T-03-72). Evidence tier E0: the core compared with itself, repeatability and consistency only (ER-7); the programs have no meaning, no literal comes from a DuoSpool run, no accuracy, compatibility,
 # cycle-accurate or hardware claim, and the word pass is not a support claim.
+# Restore at random stops (plan 03-31; CORE-05, D-122, D-127; item restore=3): each program is also run on a restore schedule: three stops drawn from a fixed splitmix64 stream (one in the middle half of each quarter of the run, so a stop may fall inside a block transfer, at either speed or beside a pending interrupt), at each
+# of which the machine is snapshotted and restored into a FRESH instance of the
+# same image whose restorable members are poisoned (0xA5 and 0x5A alternately) and which is compared member by member with the source (snapshot_restore's helpers) and run on; the machine time, step count, verdict RAM, digest and stop sequence of the whole chain must equal the uninterrupted run's. No snapshot is written to a file. E0, as above.
 id = "chunk_equiv_random32"
 kind = "chunk_equiv"
 fixture = "none"
 request = ""
-expect = "compare=verdict,machine_time,stops,digest;random=32"
-meaning = "32 in-process random programs, each run to one absolute deadline in a single call and in calls to the deadlines of seven chunk schedules, end with the machine time, step count, verdict RAM, stop sequence and digest of the uninterrupted run"
+expect = "compare=verdict,machine_time,stops,digest;restore=3;random=32"
+meaning = "32 in-process random programs, each run to one absolute deadline in a single call, in calls to the deadlines of seven chunk schedules, and across three snapshot-and-restore stops into fresh poisoned instances, end with the machine time, step count, verdict RAM, stop sequence and digest of the uninterrupted run"
 required = true
 control = false
 expect_outcome = "pass"

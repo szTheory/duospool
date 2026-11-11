@@ -9,9 +9,11 @@
  * The step boundary sequence is the stop sequence of the kind: a stop callback that never holds is called before the first step and after every step, and folds the machine time, the registers, the bus latch and the block transfer state at each distinct
  * machine time, so a run that loses or repeats part of a transfer at a stop, or reaches the same end by another path, differs even when its last state is equal. The ordered stop reasons are checked too: every call ends on its deadline (UNTIL), and
  * the calls that take a step and end inside a block transfer (stop point block_byte) are counted per schedule: the case items block-stop (at least one per schedule) and pending-stop (at least one with the timer interrupt and IRQ2 both pending at the stop
- * stamp, from the pure query ds_irq_pending_query, so the stop really is a transfer with interrupts pending) say what a case requires. The case's irq_stim is applied to every boot. A snapshot does not exist yet (plan 03-30), so equality here is of outputs, machine time,
- * stop sequence and digests. Evidence tier E0: the core compared with itself (repeatability and consistency, ER-7); a pass is not a support claim and no literal comes from a DuoSpool run.
- *   expect   compare=verdict,machine_time,stops,digest (the four things compared, each once), then optionally block-stop, pending-stop, random=N (N programs of randprog.c, 1 to 64, instead of a fixture)
+ * stamp, from the pure query ds_irq_pending_query, so the stop really is a transfer with interrupts pending) say what a case requires. The case's irq_stim is applied to every boot. Equality here is of outputs, machine time, stop sequence and digests.
+ * The restore schedule (plan 03-31; D-122, D-127, CORE-05; item restore=N): a run is stopped at N stops drawn from a fixed splitmix64 stream (one stop in each of N+1 equal parts of the run, at a draw inside the middle half of its part, so any stop may fall inside a block transfer, between SET and the next instruction or in the shadow of a pending interrupt),
+ * snapshotted, restored into a FRESH instance booted from the same image whose restorable members are poisoned (0xA5, then 0x5A, then alternating), compared member by member with the source (the helpers of snapkinds.c), and run on from there with the same stop callback state, so that the machine time, step count, verdict RAM, digest and stop sequence of the whole chain must equal those of the
+ * uninterrupted run. The target is given no stimulus and no input script: they travel in the snapshot. Evidence tier E0: the core compared with itself (repeatability and consistency, ER-7); a pass is not a support claim and no literal comes from a DuoSpool run.
+ *   expect   compare=verdict,machine_time,stops,digest (the four things compared, each once), then optionally block-stop, pending-stop, restore=N (1 to 4 restore stops per program), random=N (N programs of randprog.c, 1 to 64, instead of a fixture)
  *   fixture  authored:NAME (the built image) or none (with random=N);  until_mclk the deadline;  chunks the schedule list;  irq_stim the declared test stimulus
  * Test code only, never installed.
  */
@@ -22,6 +24,7 @@
 
 #include "ds_core.h"
 #include "ds_serial.h"
+#include "ds_snapshot.h"
 #include "runner.h"
 
 #define CS_SCHED_MAX 8u
@@ -207,13 +210,151 @@ static int cs_exec(struct ctx *c, const struct kase *k, const struct cs_prog *pg
     return 0;
 }
 
+/* what the restore schedule saw, over all the programs of a case: restores made, and how many of the stops were inside a block transfer, between SET and the next instruction (the T flag), or at the second speed */
+struct cs_rstats {
+    unsigned restores;
+    unsigned in_block;
+    unsigned t_flag;
+    unsigned fast;
+};
+
+#define CS_RESTORE_SALT UINT64_C(0x524553544F524521)
+
+static uint64_t cs_mix(uint64_t *state)
+{
+    uint64_t z;
+
+    *state = *state + UINT64_C(0x9E3779B97F4A7C15);
+    z = *state;
+    z = (z ^ (z >> 30)) * UINT64_C(0xBF58476D1CE4E5B9);
+    z = (z ^ (z >> 27)) * UINT64_C(0x94D049BB133111EB);
+    return z ^ (z >> 31);
+}
+
+/* the restore schedule: boot the program (with the case's stimulus and input), run it to each of nstops drawn deadlines, snapshot at the stop, restore into a fresh poisoned boot of the same image, check the target equals the source member by member, and go on with the target; at the end run to the deadline in one call.
+ * The stop callback state seen is carried across the instances: the stop at a restore is the same machine time as the last stop of the call before it, so the sequence is the uninterrupted one when the restored machine is. 0 on success, -1 after a harness error */
+static int cs_exec_restore(struct ctx *c, const struct kase *k, const struct cs_prog *pg, uint64_t until, unsigned nstops, struct cs_out *o, struct cs_rstats *rs)
+{
+    struct booted b;
+    const struct ds_instance *ci = NULL;
+    struct ds_instance *w;
+    struct ds_run_request rq;
+    struct ds_run_result res;
+    struct cs_seen seen;
+    uint32_t refusal = 0u;
+    uint32_t input_refusal = 0u;
+    uint64_t st = (pg->random ? rp_seed(pg->index) : UINT64_C(0)) ^ CS_RESTORE_SALT;
+    uint64_t part = until / ((uint64_t)nstops + 1u);
+    uint8_t *snap;
+    unsigned j;
+    const char *err;
+    int live = 0;
+
+    memset(o, 0, sizeof *o);
+    snap = (uint8_t *)malloc(ds_snapshot_size());
+    if (snap == NULL) {
+        harness_error(c, "out of memory for the snapshot buffer");
+        return -1;
+    }
+    err = pg->random ? boot_random(pg->img, k->val[K_REQUEST], &b, &ci) : boot_built_rom(pg->rom, k->val[K_REQUEST], &b, &ci);
+    if (err != NULL) {
+        free(snap);
+        harness_error(c, err);
+        return -1;
+    }
+    live = 1;
+    w = (struct ds_instance *)(void *)b.mem;
+    err = apply_irq_stim(w, k, &refusal);
+    if (err == NULL && refusal == 0u) {
+        err = apply_input(w, k, &input_refusal);
+    }
+    if (err != NULL || refusal != 0u || input_refusal != 0u) {
+        release_boot(&b);
+        free(snap);
+        harness_error(c, err != NULL ? err : "the stimulus or the input script of the case was refused");
+        return -1;
+    }
+    memset(&seen, 0, sizeof seen);
+    seen.fold = CS_FNV_BASIS;
+    for (j = 0u; j <= nstops && !o->bad && !c->harness; j++) {
+        uint64_t d = until;
+
+        if (j < nstops) {
+            d = (uint64_t)j * part + part / 4u + cs_mix(&st) % (part / 2u + 1u); /* inside the middle half of the (j+1)-th part: increasing, and a whole quarter part apart */
+        }
+        memset(&rq, 0, sizeof rq);
+        rq.struct_size = (uint32_t)sizeof rq;
+        rq.until_mclk = d;
+        rq.stop = cs_stop;
+        rq.stop_ctx = &seen;
+        memset(&res, 0, sizeof res);
+        if (ds_run(w, &rq, &res) != (uint32_t)DS_RUN_REASON_UNTIL || res.reason != (uint32_t)DS_RUN_REASON_UNTIL) {
+            o->bad = 1;
+            break;
+        }
+        o->steps += res.steps;
+        o->calls++;
+        if (j < nstops) {
+            struct booted nb;
+            const struct ds_instance *nci = NULL;
+            struct ds_instance *nw;
+            const char *diff;
+
+            if (ds_snapshot(w, snap, ds_snapshot_size(), NULL) != (uint32_t)DS_SNAPREF_NONE) {
+                check(c, 0, "ds_snapshot of the source at a drawn stop was refused");
+                o->bad = 1;
+                break;
+            }
+            rs->in_block += w->blk_active != 0u ? 1u : 0u;
+            rs->t_flag += (w->p & 0x20u) != 0u ? 1u : 0u;
+            rs->fast += w->speed != 0u ? 1u : 0u;
+            err = pg->random ? boot_random(pg->img, k->val[K_REQUEST], &nb, &nci) : boot_built_rom(pg->rom, k->val[K_REQUEST], &nb, &nci);
+            if (err != NULL) {
+                harness_error(c, err);
+                break;
+            }
+            nw = (struct ds_instance *)(void *)nb.mem;
+            snap_poison(nw, ((j + rs->restores) & 1u) != 0u ? 0x5Au : 0xA5u);
+            if (ds_restore(nw, snap, ds_snapshot_size()) != (uint32_t)DS_SNAPREF_NONE) {
+                check(c, 0, "ds_restore refused the snapshot that the source just wrote at a drawn stop");
+                release_boot(&nb);
+                o->bad = 1;
+                break;
+            }
+            rs->restores++;
+            diff = snap_first_diff(nw, w);
+            check(c, diff == NULL, "the restored instance differs from the source in a member (raw compare, ROM excluded)");
+            if (diff != NULL) {
+                emit_err("chunk_equiv: restore at machine time %llu: member %s differs after the restore\n", (unsigned long long)w->machine_time, diff);
+            }
+            release_boot(&b);
+            b = nb;
+            w = nw;
+            ci = nci;
+        }
+    }
+    if (live && !o->bad) {
+        o->time = ci->machine_time;
+        o->stop_n = seen.n;
+        o->stop_fold = seen.fold;
+        o->done = seen.done;
+        o->done_at = seen.done_at;
+        memcpy(o->verdict, ci->ram8k + V_OFF, V_SIZE);
+        o->digest_ok = ds_digest(ci, o->digest) == 0u;
+    }
+    release_boot(&b);
+    free(snap);
+    return 0;
+}
+
 struct cs_items {
     int block_stop;
     int pending_stop;
-    unsigned random; /* 0 = a fixture */
+    unsigned random;  /* 0 = a fixture */
+    unsigned restore; /* 0 = no restore schedule, else the number of restore stops per program (plan 03-31) */
 };
 
-/* expect = compare=verdict,machine_time,stops,digest, then block-stop, pending-stop and random=N, each at most once; 0 on success */
+/* expect = compare=verdict,machine_time,stops,digest, then block-stop, pending-stop, restore=N and random=N, each at most once; 0 on success */
 static int cs_parse_expect(const char *text, struct cs_items *it)
 {
     char list[PK_LIST_MAX];
@@ -250,6 +391,8 @@ static int cs_parse_expect(const char *text, struct cs_items *it)
             it->block_stop = 1;
         } else if (strcmp(item, "pending-stop") == 0 && !it->pending_stop) {
             it->pending_stop = 1;
+        } else if (strncmp(item, "restore=", 8u) == 0 && it->restore == 0u && parse_u64(item + 8, &v) == 0 && v >= 1u && v <= 4u) {
+            it->restore = (unsigned)v;
         } else if (strncmp(item, "random=", 7u) == 0 && it->random == 0u && parse_u64(item + 7, &v) == 0 && v >= 1u && v <= 64u) {
             it->random = (unsigned)v;
         } else {
@@ -330,11 +473,13 @@ void kind_chunk_equiv(const struct kase *k, struct ctx *c, char *got, size_t got
     uint64_t pends = 0u;
     uint64_t done_at = 0u;
     int fixture = 0;
+    struct cs_rstats rst;
 
     memset(&pg, 0, sizeof pg);
+    memset(&rst, 0, sizeof rst);
     if (cs_parse_expect(k->val[K_EXPECT], &it) != 0 || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until == 0u || !k->has[K_CHUNKS]
         || cs_parse_scheds(k->val[K_CHUNKS], sc, &nsc) != 0) {
-        harness_error(c, "a chunk_equiv case needs expect = compare=verdict,machine_time,stops,digest[;block-stop][;pending-stop][;random=N], until_mclk and chunks = a list of 1, 7, 168, 3072, frame, tick-1, tick+1 (each once)");
+        harness_error(c, "a chunk_equiv case needs expect = compare=verdict,machine_time,stops,digest[;block-stop][;pending-stop][;restore=N][;random=N], until_mclk and chunks = a list of 1, 7, 168, 3072, frame, tick-1, tick+1 (each once)");
         return;
     }
     if (it.random != 0u) {
@@ -389,7 +534,34 @@ void kind_chunk_equiv(const struct kase *k, struct ctx *c, char *got, size_t got
             blocks += o.bstops;
             pends += o.pstops;
         }
+        if (it.restore != 0u && !c->harness) {
+            struct cs_out o;
+            char msg[200];
+
+            if (cs_exec_restore(c, k, &pg, until, it.restore, &o, &rst) != 0) {
+                break;
+            }
+            runs++;
+            snprintf(msg, sizeof msg, "%s: a call of the restore schedule was refused or did not end on its deadline", what);
+            check(c, !o.bad, msg);
+            snprintf(msg, sizeof msg, "%s: the machine time or the step count of the restore schedule differs from the uninterrupted run to the same absolute deadline", what);
+            check(c, o.time == ref.time && o.steps == ref.steps, msg);
+            snprintf(msg, sizeof msg, "%s: the verdict RAM of the restore schedule differs from the uninterrupted run", what);
+            check(c, memcmp(o.verdict, ref.verdict, V_SIZE) == 0, msg);
+            snprintf(msg, sizeof msg, "%s: the digest of the restore schedule differs from the uninterrupted run", what);
+            check(c, o.digest_ok && ref.digest_ok && memcmp(o.digest, ref.digest, DS_DIGEST_BYTES) == 0, msg);
+            snprintf(msg, sizeof msg, "%s: the step boundary sequence of the restore schedule differs from the uninterrupted run (stop sequence)", what);
+            check(c, o.stop_n == ref.stop_n && o.stop_fold == ref.stop_fold, msg);
+        }
     }
     free(pg.img);
+    if (it.restore != 0u) {
+        check(c, rst.restores == nprog * it.restore, "the restore schedule did not restore at every drawn stop of every program");
+        if (it.random >= 16u) {
+            check(c, rst.in_block > 0u && rst.fast > 0u, "no drawn restore stop fell inside a block transfer or at the second speed: the schedule would not reach the block transfer state or the speed");
+        }
+        snprintf(got, gotcap, "runs=%u rs=%u blk=%u t=%u fast=%u", runs, rst.restores, rst.in_block, rst.t_flag, rst.fast);
+        return;
+    }
     snprintf(got, gotcap, "runs=%u bs=%llu ps=%llu done=%llu", runs, (unsigned long long)blocks, (unsigned long long)pends, (unsigned long long)done_at);
 }

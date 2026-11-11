@@ -2072,11 +2072,13 @@ void kind_snapshot_hostile(const struct kase *k, struct ctx *c, char *got, size_
     unsigned accepted = 0u;
     int ok = 1;
     uint32_t rc;
-    int off;
+    int off = 0;
+    char detail[512];
 
     memset(&bs, 0, sizeof bs);
     memset(&bt, 0, sizeof bt);
     memset(&e, 0, sizeof e);
+    detail[0] = '\0';
     if (authored_name(k->val[K_FIXTURE], rom, sizeof rom) != 0 || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until == 0u || sk_twin_request(k->val[K_REQUEST], twin, sizeof twin) != 0
         || pk_copy_text(k->val[K_EXPECT], list, sizeof list) != 0) {
         ok = 0;
@@ -2166,12 +2168,13 @@ void kind_snapshot_hostile(const struct kase *k, struct ctx *c, char *got, size_
     }
     check(c, refused > 0u && accepted > 0u, "the corpus did not take both paths: it has no refused or no accepted input");
     check(c, e.ran == accepted, "an accepted input was not run");
-    off = snprintf(got, gotcap, "cases=%u refused=%u accepted=%u", total, refused, accepted);
-    for (q = 0u; q < HC_N && off > 0 && (size_t)off < gotcap; q++) {
-        if ((want_cls & (1u << q)) != 0u) {
-            off += snprintf(got + off, gotcap - (size_t)off, " %s=%u/%u", hc_names[q], e.n[q], e.accepted[q]);
+    snprintf(got, gotcap, "cases=%u refused=%u accepted=%u", total, refused, accepted);
+    for (q = 0u; q < HC_N; q++) { /* the counts by class go to the evidence text */
+        if ((want_cls & (1u << q)) != 0u && off >= 0 && (size_t)off < sizeof detail) {
+            off += snprintf(detail + off, sizeof detail - (size_t)off, "class=%s cases=%u refused=%u accepted=%u\n", hc_names[q], e.n[q], e.refused[q], e.accepted[q]);
         }
     }
+    set_evidence_detail(detail);
 done:
     free(e.good);
     free(e.edit);

@@ -1,15 +1,16 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
-# Hostile snapshot corpus (plan 03-31 task 1; CORE-05, D-122, D-133, T-03-86): the len0 image of fixtures/src/cpu_blk.s is run to a stop inside its 65536-byte block transfer with an input script and an interrupt stimulus declared, so that every region of the snapshot is live (the block transfer state, the stimulus list, the schedule and the port bytes), and the runner
-# (kind snapshot_hostile, tests/conformance/snapkinds.c) makes hostile inputs from that one snapshot in memory: nothing is read from or written to a file, the generator is a fixed splitmix64 stream and the corpus is bounded. This first slice is the boundary class: the length of the buffer at every region boundary and one byte either side of it. A shorter or longer buffer is refused and
-# the target instance is byte-identical afterwards; the exact length is accepted and re-serialises to identical bytes; every accepted input is then run for a bounded time under the sanitizers stage. Evidence tier E0: the core compared with its own layout; a pass is not a claim about the format or about any hardware.
+# Hostile snapshot corpus (plan 03-31; CORE-05, D-122, D-133, T-03-86): the len0 image of fixtures/src/cpu_blk.s is run to a stop inside its 65536-byte block transfer with an input script and an interrupt stimulus declared, so that every region of the snapshot is live (the block transfer state, the stimulus list, the schedule and the port bytes), and the runner
+# (kind snapshot_hostile, tests/conformance/snapkinds.c) makes about 530 hostile inputs from that one snapshot in memory: nothing is read from or written to a file, the generator is a fixed splitmix64 stream and the corpus is bounded. Classes: boundary (the buffer length at every region boundary and one byte either side), length (every frame length word set to 0, -1, +1 and 2^32 - 1), frame (every
+# byte of the prefix, version and tags with its low bit flipped), sample (64 truncations drawn from the stream), flip (the low bit of every byte of the control fields: refused or accepted as the field domain says) and data (bytes of which every value is a legal state: work RAM, mapping registers, A, X, Y, S, pc, the bus latches: accepted). A refused input leaves the target byte-identical;
+# an accepted input re-serialises to identical bytes, its SHA-256 is the digest of the restored instance, a bounded run from it is defined, and a snapshot taken after that run restores again. The counts by class are in the evidence text. The sanitizers stage runs the case. Evidence tier E0: the core compared with its own layout; a pass is not a claim about the format or about any hardware.
 id = "snapshot_hostile"
 kind = "snapshot_hostile"
 fixture = "authored:cpu-blk-len0"
 request = "bind.powerup_policy=seeded-prng-v2;seed=3"
-expect = "boundary;mid-block"
-meaning = "Hostile snapshot inputs generated in memory around every region boundary of the snapshot of a machine inside a block transfer are refused with the instance unchanged or accepted and re-serialised identically, and the sanitizers stage runs them clean"
+expect = "boundary,length,frame,sample,flip,data;mid-block"
+meaning = "About 530 hostile snapshot inputs generated in memory from the snapshot of a machine inside a block transfer (region boundaries plus or minus one, frame lengths, tags, sampled truncations, control field bit flips) are refused with the instance unchanged or accepted and re-serialised identically, and the sanitizers stage runs them clean"
 required = true
 control = false
 expect_outcome = "pass"
