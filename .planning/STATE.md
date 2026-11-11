@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 3
 current_phase_name: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-current_plan: 28
+current_plan: 29
 status: planning
-stopped_at: Completed 03-23-PLAN.md
-last_updated: "2026-11-11T14:51:37.339Z"
+stopped_at: Completed 03-34-PLAN.md
+last_updated: "2026-11-11T15:09:18.802Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 2 complete, transitioned to Phase 3
-state_head: a2078f134f0985fadd4ba6b4a37efa058657eefe
+state_head: 47e1a9e8c8b568fb48f726b1967619328119a72a
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 72
-  completed_plans: 61
+  completed_plans: 62
   percent: 33
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 3 — HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-Current Plan: 28
+Current Plan: 29
 Total Plans in Phase: 38
 Status: Ready to execute
 Last activity: 2026-11-11 — Completed 03-04 (W1: optional case keys, guestkinds.c, authored fixture key, machine_time and stop on RESULT)
@@ -120,6 +120,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 03 P21 | 36min | 3 tasks | 25 files |
 | Phase 03 P22 | 30min | 3 tasks | 42 files |
 | Phase 03 P23 | 70min | 2 tasks | 40 files |
+| Phase 3 P34 | 25min | 2 tasks | 19 files |
 
 ## Accumulated Context
 
@@ -237,6 +238,7 @@ Recent decisions affecting current work:
 - [Phase 03]: irq_i_sample (pre default, post; LED-IRQ-0005 open) selects the I flag of the interrupt sample; the digest gains TIMR, IRQC and IRQS (serial version 5)
 - [Phase 03]: the IRQS region has no count byte: a slot with line 0 is unused and ds_irq_stim_set zeroes every unused slot
 - [Phase 03]: 03-23: the speed switch is evidenced in-guest by spd_speed (timer as clock, E2) and from the trace by spd_speed_trace; [stimulus] record table (format 4); four constants rows (timer_hold_on_stop, irq_sample_cycles_before_end, interrupt_entry_cycles, speed_switch_extra_cycles) read by the core
+- [Phase 3]: 03-34: LED-CPU-0005 pinned by spd_speed_trace and LED-CPU-0006 by spd_speed; LED-IRQ-0004 split into page facts (a) and modelling (b); all W4 timer/interrupt/speed entries assumed or open, nothing promoted
 
 ### Pending Todos
 
@@ -260,6 +262,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-11T14:51:37.039Z
-Stopped at: Completed 03-23-PLAN.md
+Last session: 2026-11-11T15:09:18.369Z
+Stopped at: Completed 03-34-PLAN.md
 Resume file: None
