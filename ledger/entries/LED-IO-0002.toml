@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# The SEL and CLR protocol of the two-button pad behind the $1000 window (D-115; INP-01; ER-5, ER-8). Modelling assumption: the pad core (src/core/io.c) and the pad fixture (fixtures/src/pad_2btn.s) are written by one party, so every check that names this entry is E2 self-consistency at best, never an independent oracle. Checks 1, 4 and 7
+# to 12 of pad_2btn name this entry.
+# What a manual page states is only the logical button mask of the CD BIOS (bit 0 ONE, 1 TWO, 2 SELECT, 3 RUN, 4 UP, 5 RIGHT, 6 DOWN, 7 LEFT, 1 = on; printed page 28, PDF page 27 of the CD BIOS manual) and that port K is read and port O is written by a cycle at physical $1FF000 to $1FF3FF (H8-19, PDF page 22 of the hardware manual). The
+# wire protocol (which latch bit is SEL and which is CLR, which nibble bit is which button, pressed reading 0) is a community report and an inference.
+# Page images read on 2026-11-11 by the plan 03-29 executor from scratch copies of the hardware manual (sha256 40a32e5d...) and the CD BIOS manual (sha256 8e92ead8...); neither file was committed and no text or image was copied. The pcetech.txt, PCE_Controller_Info and cc65 pce-stdjoy.s readings below were recorded by the phase 3 discuss
+# advisor (03-CONTEXT D-115, ER-8) and were not re-read by this plan.
+id = "LED-IO-0002"
+statement = "DuoSpool models a write to the $1000 window as setting a latch (SEL bit 0, CLR bit 1) and a read as $30 | d6 << 6 | d7 << 7 | a nibble that, with CLR low, is the inverted directions while SEL is high (D0 UP, D1 RIGHT, D2 DOWN, D3 LEFT) or the inverted buttons while SEL is low (D0 I, D1 II, D2 SELECT, D3 RUN), pressed reading 0. A modelling assumption, not a measurement."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|H8-19|port K read and port O written at physical $1FF000-$1FF3FF; image read", "FACT|CDBIOS-p28|EX_JOYSNS logical mask, bit 0 ONE to bit 7 LEFT, 1 = on; no wire bits; image read", "REPORT|pcetech.txt|SEL D0, CLR D1, SEL high is directions, active low; advisor-recorded", "REPORT|PCE_Controller_Info, cc65|same scan and button masks; advisor-recorded"]
+evidence = ["E0|tests/conformance/cases/pad_2btn_correct.toml: the guest reads these literals; verdict differs from the none and wrong runs; E2 self-consistency", "E0|tests/conformance/cases/pad_2btn_wrong.toml: a wrong script fails exactly the held-set checks", "E0|tests/conformance/cases/mutate_sweep_pad_2btn.toml: each of the 12 literals can flip its own check"]
+disagreement = "ER-8, direction nibble order: used here is D1 RIGHT, D2 DOWN (BIOS layout shifted into the nibble, an inference; PCE_Controller_Info; cc65; advisor-recorded); one community report, pcetech.txt, swaps RIGHT and DOWN (D2 RIGHT, D1 DOWN). A vote among reports, not a measurement; the core does not decide it."
+pinning_test = "TEST:pad_2btn_correct"
+updated = "2026-11-11"
+assumption = "The latch bits, nibble order and active-low reading are chosen so an authored guest can scan the pad; the pin shows the guest reads these literals through a pad core written by the same party (E2 self-consistency). If hardware orders the directions the other way, the literals of checks 8, 10 and 12 and the core change together."
+revisit_phase = 6
+withheld = ["any claim of pad-accurate or controller-accurate behaviour", "any claim of game compatibility", "any TG-16 or region claim", "any claim that the nibble order, SEL and CLR bits or active-low reading holds on hardware"]
+origin = "03-CONTEXT D-115"

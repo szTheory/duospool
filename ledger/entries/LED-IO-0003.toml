@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# CLR high, bits 4 and 5 of a read and the power-on latch of port O (D-115, R-5; INP-01; ER-5, ER-8). Modelling assumption: constants.def names pad_clr_high_nibble and io_poweron_latch under this id. Checks 2, 5 and 6 of pad_2btn name it.
+# R-5: the hardware manual says that port O provides a high level after reset (H8-18, PDF page 21, and H8-19, PDF page 22), which is a manual basis for a power-on latch of all ones. The pages do not say which latch bit is SEL or CLR, so the entry stays assumed until a pinned test exists; the pin is the no-input negative control, whose reads
+# of checks 2, 5 and 6 do not depend on the script.
+# Page images read on 2026-11-11 by the plan 03-29 executor from a scratch copy of the hardware manual (sha256 40a32e5d...); the file was not committed and no text or image was copied. The pcetech.txt and PCE_Controller_Info readings and the Mednafen observations were recorded by the phase 3 discuss advisor (03-CONTEXT ER-8, discuss notes
+# of the pad cluster) and were not re-read by this plan: the Mednafen items are observations of emulator source as reading material, never copied and never a hardware fact.
+id = "LED-IO-0003"
+statement = "DuoSpool models CLR high as forcing the nibble of a read to 0 whatever is held, bits 4 and 5 of a read as 1, and the latch of port O as $FF at power-on under every power-on policy. A modelling assumption, not a hardware measurement."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|H8-18 H8-19|port O is high after reset; the pages do not say which bits are SEL or CLR; images read 2026-11-11", "REPORT|pcetech.txt, PCE_Controller_Info|CLR high forces the four pad lines to 0; D5 and D4 read 1; advisor-recorded", "REPORT|Mednafen pce input (reading material)|the CLR-high line is commented out; power-on SEL = CLR = 0; advisor observation, not re-read"]
+evidence = ["E0|tests/conformance/cases/pad_2btn_none.toml: with an empty script checks 2, 5 and 6 still pass and only the held-set checks fail; E2 self-consistency", "E0|tests/conformance/cases/pad_2btn_correct.toml: checks 2, 5 and 6 read $F0 under every power-on policy"]
+disagreement = "ER-8, CLR high: pcetech.txt and PCE_Controller_Info say the nibble reads 0; an advisor observation of Mednafen says its line for that is commented out. Power-on latch: the manual says port O is high (SEL and CLR set); the same observation says Mednafen starts with SEL = CLR = 0. Reports and observations, not measurements; the core decides none. Bits 6 and 7: LED-IO-0001."
+pinning_test = "TEST:pad_2btn_none"
+updated = "2026-11-11"
+assumption = "The latch is $FF at power-on (the manual gives the high level, the SEL and CLR bit assignment is LED-IO-0002), CLR set reads the nibble 0 and bits 4 and 5 read 1; the pin shows the guest sees these literals through a pad core written by the same party (E2 self-consistency). The status stays assumed although a page is the basis of the high level (R-5)."
+revisit_phase = 6
+withheld = ["any claim of pad-accurate or controller-accurate behaviour", "any claim of game compatibility", "any TG-16 or region claim", "any claim that CLR high, the D5 and D4 bits or the power-on latch behave on hardware as modelled"]
+origin = "03-CONTEXT D-115"

@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# Multitap, six-button pad and mouse (D-116; INP-04): deferred, not modelled in profile revision r1. The profile populates port 1 with a two-button pad only; slot_type has room for the other slots and an event for another port is refused.
+# The BIOS manual describes up to five pads behind a multitap through an enable mask (JOYENA bits for pads #1 to #5, fixed to 1 when no multitap is used; page image read on 2026-11-11 by the plan 03-29 executor from a scratch copy, sha256 8e92ead8..., PDF page 27, not committed). The community readings (a multitap counter, a six-button scan
+# toggle) were recorded by the discuss advisor as reports and reading-material observations and were not re-read by this plan; none of it is modelled or tested here.
+id = "LED-IO-0006"
+statement = "DuoSpool does not model a multitap, a six-button pad or a mouse in profile revision r1: port 1 holds a two-button pad and every other port is empty and refuses input. Deferred, not an assumption about hardware."
+profile = "pce-hucard-2btn"
+status = "deferred"
+sources = ["FACT|CDBIOS-p28|EX_JOYSNS enable mask for pads #1 to #5 with a multitap, fixed to 1 without; image read", "REPORT|pcetech.txt|multitap counter, SEL rising +1, CLR rising resets; advisor-recorded", "REPORT|Mednafen, MAME pad sources|six-button toggle edge and multitap reset differ; advisor observations", "UNKNOWN|mouse|no source read; not modelled"]
+evidence = []
+disagreement = "ER-8 and the discuss notes: the six-button scan toggle edge (CLR rising in PCE_Controller_Info and MAME, SEL rising in Mednafen) and the multitap reset condition (SEL high with CLR 0 to 1 in pcetech, only the new SEL high in Mednafen) are reported differently; reports and reading-material observations, not measurements; nothing here decides them."
+pinning_test = "NONE:deferred, nothing models a multitap, six-button pad or mouse yet, so there is nothing to pin"
+updated = "2026-11-11"
+assumption = "Deferred: the first plan that models any of these writes its own entries and pins; this entry only records that the profile revision does not claim them."
+revisit_phase = 6
+withheld = ["any claim of multitap support", "any claim of six-button pad or mouse support", "any claim of game compatibility", "any TG-16 or region claim"]
+origin = "03-CONTEXT D-116"

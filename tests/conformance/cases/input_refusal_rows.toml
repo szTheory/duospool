@@ -14,6 +14,6 @@ meaning = "Opposite directions and reserved bits (bits), unordered times (order)
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-IO-0005"]
 until_mclk = 600
 checks = 12

@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# No settling time, the level at the read stamp and the master-clock unit of an input script (D-115, D-117; INP-01, INP-02; ER-5). Modelling assumption: constants.def names pad_settle_mclk (0) under this id.
+# The level a read sees is the mask of the last event of the port at or before the access stamp of the read, a pure function of the declared schedule: an event at master clock T is invisible to a read at T - 1 and visible to reads at T and T + 1. Fixtures write the latch, wait nine CPU cycles and read, as the community says a real pad needs
+# (recorded by the discuss advisor, not re-read by plan 03-29); the core does not model what a read sees without the wait, and a fixture without it is not labelled hardware-valid.
+id = "LED-IO-0004"
+statement = "DuoSpool models no settling time after a write of the latch: the level a read returns is the level of the input schedule at the access stamp of the read (the last event at or before it, ties inclusive), and the time of a script event is a count of master clocks of machine time. A modelling assumption, not a measurement."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["REPORT|PCE_Controller_Info|a guest waits about nine CPU cycles (1.25 us) between the latch write and the read; advisor-recorded", "UNKNOWN|settling behaviour|no primary source gives a time or value during the wait; a settling model was rejected as unsourced", "UNKNOWN|script time unit|the master clock of machine time (OSC1) is the project choice of D-117; no page defines one"]
+evidence = ["E0|tests/conformance/cases/input_exact_edges.toml: the level at at - 1, at and at + 1 of three events is old, new and new under both latch halves; E2 self-consistency", "E0|tests/conformance/cases/pad_2btn_late.toml: an event after the guest read is not seen by it", "E0|tests/conformance/cases/pad_2btn_glitch.toml: a one-cycle press between reads is not seen"]
+disagreement = "none: no source states a settling time or the behaviour of a read inside the wait, so there is nothing to disagree with; the community wait of nine CPU cycles is recorded only as the reason the fixtures carry it. The absence of a model is the assumption."
+pinning_test = "TEST:input_exact_edges"
+updated = "2026-11-11"
+assumption = "A read sees the level of the schedule at its own stamp with no delay after a latch write; the pin shows the stamps at which a declared level change becomes visible, computed from the protocol text in the test, not what any hardware pad does within nine cycles."
+revisit_phase = 6
+withheld = ["any claim of pad-accurate or controller-accurate behaviour", "any claim of game compatibility", "any TG-16 or region claim", "any claim that a read made without the nine-cycle wait sees what hardware would show"]
+origin = "03-CONTEXT D-117"
