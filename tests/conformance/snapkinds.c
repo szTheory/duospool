@@ -486,17 +486,38 @@ static int sk_step(struct ds_instance *w, struct sk_sinks *s, struct sk_obs *o)
     return 0;
 }
 
+/* one step of the source run without sinks (a deadline one master clock ahead): the machine time and pc after it are returned for the comparison with the reference trace; 0 on success */
+static int sk_step_plain(struct ds_instance *w, uint64_t *time, uint16_t *pc)
+{
+    struct ds_run_request rq;
+    struct ds_run_result res;
+
+    memset(&rq, 0, sizeof rq);
+    memset(&res, 0, sizeof res);
+    rq.struct_size = (uint32_t)sizeof rq;
+    rq.until_mclk = w->machine_time + 1u;
+    if (ds_run(w, &rq, &res) != (uint32_t)DS_RUN_REASON_UNTIL || res.steps != 1u) {
+        return -1;
+    }
+    *time = w->machine_time;
+    *pc = w->pc;
+    return 0;
+}
+
 /* ---- the reference trace ---- */
 
 #define SK_F_T 1u      /* the T flag is set: right after SET, before the next instruction clears it */
-#define SK_F_ICHG 2u   /* the I flag differs from the boundary before: CLI, SEI, PLP, RTI or an interrupt entry */
 #define SK_F_BLK 4u    /* a block transfer is in progress */
 #define SK_F_BLK0 8u   /* ... with no byte left (the epilogue is next) */
 #define SK_F_SPEED1 16u
 #define SK_F_PADW 32u  /* the step that led here wrote the pad window ($1000) */
 #define SK_F_PADR 64u  /* ... or read it */
 #define SK_P_T 0x20u
-#define SK_P_I 0x04u
+#define SK_OP_SET 0xF4u
+#define SK_OP_CLI 0x58u
+#define SK_OP_SEI 0x78u
+#define SK_OP_PLP 0x28u
+#define SK_OP_RTI 0x40u
 #define SK_EXT 256u    /* steps recorded past the deadline, for the window of the last stops */
 #define SK_ROWS_LIMIT 4000000u
 
@@ -515,7 +536,7 @@ struct sk_trace {
     size_t steps_end; /* the boundary at the deadline: row i is the state after i steps */
 };
 
-static int sk_push(struct sk_trace *tr, const struct ds_instance *w, const struct sk_obs *o, uint8_t prev_p)
+static int sk_push(struct sk_trace *tr, const struct ds_instance *w, const struct sk_obs *o)
 {
     struct sk_row *r;
     unsigned flags = 0u;
@@ -535,9 +556,6 @@ static int sk_push(struct sk_trace *tr, const struct ds_instance *w, const struc
         tr->cap = cap;
     }
     r = &tr->row[tr->n];
-    if ((((unsigned)w->p ^ (unsigned)prev_p) & SK_P_I) != 0u) {
-        flags |= SK_F_ICHG;
-    }
     if (((unsigned)w->p & SK_P_T) != 0u) {
         flags |= SK_F_T;
     }
@@ -565,8 +583,7 @@ static int sk_push(struct sk_trace *tr, const struct ds_instance *w, const struc
 
 /* ---- the case items of snapshot_restore ---- */
 
-enum { CL_FIRST = 1u, CL_LAST = 2u, CL_KTH = 4u, CL_BLOCK = 8u, CL_SET = 16u, CL_ICHG = 32u, CL_SPEED = 64u, CL_PAD = 128u };
-#define SK_CLASSES 8u
+enum { CL_FIRST = 1u, CL_LAST = 2u, CL_KTH = 4u, CL_BLOCK = 8u, CL_SET = 16u, CL_CLI = 32u, CL_SPEED = 64u, CL_PAD = 128u, CL_PLP = 256u, CL_RTI = 512u, CL_SEI = 1024u };
 #define SK_STOP_MAX 1024u
 #define SK_WINDOW_DEFAULT 32u
 #define SK_WINDOW_MAX 256u
@@ -600,7 +617,7 @@ static int sk_parse_items(const char *text, struct sk_items *it)
             char *w;
 
             while ((w = pk_next_item(&r2, ',')) != NULL) {
-                unsigned bit = strcmp(w, "first") == 0 ? CL_FIRST : strcmp(w, "last") == 0 ? CL_LAST : strcmp(w, "mid-block") == 0 ? CL_BLOCK : strcmp(w, "after-set") == 0 ? CL_SET : strcmp(w, "after-i") == 0 ? CL_ICHG : strcmp(w, "speed") == 0 ? CL_SPEED : strcmp(w, "pad-write") == 0 ? CL_PAD : 0u;
+                unsigned bit = strcmp(w, "first") == 0 ? CL_FIRST : strcmp(w, "last") == 0 ? CL_LAST : strcmp(w, "mid-block") == 0 ? CL_BLOCK : strcmp(w, "after-set") == 0 ? CL_SET : strcmp(w, "after-cli") == 0 ? CL_CLI : strcmp(w, "after-plp") == 0 ? CL_PLP : strcmp(w, "after-rti") == 0 ? CL_RTI : strcmp(w, "after-sei") == 0 ? CL_SEI : strcmp(w, "speed") == 0 ? CL_SPEED : strcmp(w, "pad-write") == 0 ? CL_PAD : 0u;
 
                 if (strncmp(w, "kth:", 4u) == 0 && parse_u64(w + 4, &v) == 0 && v >= 1u && v <= 1000000u && (it->cls & CL_KTH) == 0u) {
                     it->kth = (unsigned)v;
@@ -690,6 +707,23 @@ static size_t sk_pick(const struct sk_trace *tr, unsigned flag, int want, size_t
 
 #define SK_LIST_CAP 262144u
 
+/* the boundaries 1 to steps_end reached by a step that executed opcode op, at most cap of them in order; returns how many */
+static size_t sk_pick_op(const struct sk_trace *tr, unsigned op, size_t *out, size_t cap)
+{
+    size_t n = 0u;
+    size_t i;
+
+    for (i = 1u; i <= tr->steps_end; i++) {
+        if ((unsigned)tr->row[i].opcode == op) {
+            if (n < cap) {
+                out[n] = i;
+            }
+            n++;
+        }
+    }
+    return n;
+}
+
 /* add up to m boundaries spread evenly over the list of n (n at least 1) */
 static void sk_spread(struct sk_plan *p, const size_t *list, size_t n, size_t m, unsigned cls)
 {
@@ -748,17 +782,29 @@ static void sk_plan_make(struct ctx *c, const struct sk_trace *tr, const struct 
         }
     }
     if ((it->cls & CL_SET) != 0u) {
-        n = sk_pick(tr, SK_F_T, 1, list, SK_LIST_CAP);
-        check(c, n > 0u, "the after-set class selected no boundary: the T flag is never set between two instructions");
-        if (n > 0u) {
-            sk_spread(p, list, n < SK_LIST_CAP ? n : SK_LIST_CAP, 6u, CL_SET);
+        n = sk_pick_op(tr, SK_OP_SET, list, SK_LIST_CAP);
+        check(c, n > 0u && n <= SK_LIST_CAP, "the after-set class selected no boundary: the run never executes SET");
+        if (n > 0u && n <= SK_LIST_CAP) {
+            sk_spread(p, list, n, 6u, CL_SET);
+            for (i = 0u; i < p->n; i++) {
+                if ((p->s[i].cls & CL_SET) != 0u) {
+                    check(c, (tr->row[p->s[i].idx].flags & SK_F_T) != 0u, "a boundary after SET does not have the T flag set: the stop is not between SET and the next instruction");
+                }
+            }
         }
     }
-    if ((it->cls & CL_ICHG) != 0u) {
-        n = sk_pick(tr, SK_F_ICHG, 1, list, SK_LIST_CAP);
-        check(c, n > 0u, "the after-i class selected no boundary: the I flag never changes");
-        if (n > 0u) {
-            sk_spread(p, list, n < SK_LIST_CAP ? n : SK_LIST_CAP, 12u, CL_ICHG);
+    for (sp = 0u; sp < 4u; sp++) { /* after CLI, PLP, RTI and SEI: the I flag of the restored instance is what the instruction left (and, under irq_i_sample, what the sample then sees) */
+        static const struct {
+            unsigned cls;
+            unsigned op;
+        } iops[4] = {{CL_CLI, SK_OP_CLI}, {CL_PLP, SK_OP_PLP}, {CL_RTI, SK_OP_RTI}, {CL_SEI, SK_OP_SEI}};
+
+        if ((it->cls & iops[sp].cls) != 0u) {
+            n = sk_pick_op(tr, iops[sp].op, list, SK_LIST_CAP);
+            check(c, n > 0u && n <= SK_LIST_CAP, "an after-cli, after-plp, after-rti or after-sei class selected no boundary: the run never executes that instruction");
+            if (n > 0u && n <= SK_LIST_CAP) {
+                sk_spread(p, list, n, 3u, iops[sp].cls);
+            }
         }
     }
     if ((it->cls & CL_SPEED) != 0u) {
@@ -927,7 +973,7 @@ static void sk_at_stop(struct sk_env *e, struct ds_instance *s, size_t i, unsign
         rc = ds_snapshot(e->t, e->snap2, e->size, &written);
         check(c, rc == (uint32_t)DS_SNAPREF_NONE && written == e->size && memcmp(e->snap, e->snap2, e->size) == 0, "the restored instance does not re-serialise to the snapshot it was restored from");
     }
-    if (lead && e->it->perturb && !alt) {
+    if (lead && e->it->perturb && !alt && i > 0u && e->perturbed == 0u) { /* once per case, at the first lead stop past the boot state (where A, X, Y and S differ and the block, timer and port state are live) */
         e->perturbed += sk_perturb(c, e->t);
     }
     if (!stop_ok) {
@@ -987,8 +1033,8 @@ static void sk_at_stop(struct sk_env *e, struct ds_instance *s, size_t i, unsign
  * snapshot_restore (D-121, D-122): the reference run of the fixture is made first, one step at a time, and its trace kept (the machine time, pc, opcode and record fold of every step, and the flags of every boundary); a copy of the machine at the deadline is kept too. Then a second source run goes boundary by boundary,
  * and at each selected stop it is snapshotted and the snapshot restored into the target (booted with the twin request, no schedule, no stimulus, the defaults of the model parameters, then poisoned). See sk_at_stop. The classes of stops (expect stops=LIST):
  *   first, last   the boot state and the state at the deadline;  kth:K  every K-th boundary (at most 256);
- *   mid-block     the first boundary of a block transfer, its middle, the last one and the first with no byte left (the epilogue next);  after-set  boundaries with the T flag set (between SET and the next instruction);
- *   after-i       boundaries after which the I flag differs (CLI, SEI, PLP, RTI, an interrupt entry);  speed  the median boundary at each of the two speeds;
+ *   mid-block     the first boundary of a block transfer, its middle, the last one and the first with no byte left (the epilogue next);  after-set  up to six boundaries right after a SET (the T flag is set there, which is asserted: between SET and the next instruction);
+ *   after-cli, after-plp, after-rti, after-sei   up to three boundaries after each such instruction (a class whose instruction never runs fails the case): the I flag of the restored instance is the one the instruction left;  speed  the median boundary at each of the two speeds;
  *   pad-write     boundaries right after a step that wrote the $1000 window, with the window run through the next read of it: the input schedule and the pad latch are the restored state's.
  * boundaries    every instruction boundary of the run (one poison byte per boundary, alternating); window=N the lockstep steps after each restore (default 32); finish: at the lead stop of each class also run to the deadline and compare the end (time, verdict RAM, digest, raw members);
  * perturb: at the lead stop of each class flip one byte of every region of the restored instance (sk_perturb). A class that selects no boundary fails the case. At least one stop must have A, X, Y and S pairwise different, or a swap of those registers by restore could not show.
@@ -1015,7 +1061,6 @@ void kind_snapshot_restore(const struct kase *k, struct ctx *c, char *got, size_
     unsigned nstops = 0u;
     int sinks_ok = 0;
     struct sk_obs o;
-    uint8_t prev_p;
     unsigned x;
 
     memset(&tr, 0, sizeof tr);
@@ -1024,7 +1069,7 @@ void kind_snapshot_restore(const struct kase *k, struct ctx *c, char *got, size_
     memset(&bt, 0, sizeof bt);
     if (authored_name(k->val[K_FIXTURE], rom, sizeof rom) != 0 || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until == 0u || sk_parse_items(k->val[K_EXPECT], &it) != 0
         || sk_twin_request(k->val[K_REQUEST], twin, sizeof twin) != 0) {
-        harness_error(c, "a snapshot_restore case needs fixture = authored:NAME, until_mclk and expect = stops=first,last,kth:K,mid-block,after-set,after-i,speed,pad-write (any of them, each once) or boundaries, then optionally window=N, finish, perturb");
+        harness_error(c, "a snapshot_restore case needs fixture = authored:NAME, until_mclk and expect = stops=first,last,kth:K,mid-block,after-set,after-cli,after-plp,after-rti,after-sei,speed,pad-write (any of them, each once) or boundaries, then optionally window=N, finish, perturb");
         return;
     }
     check(c, sk_tiling_ok(), "the tiling list of ds_core.h does not tile struct ds_instance member by member");
@@ -1057,13 +1102,12 @@ void kind_snapshot_restore(const struct kase *k, struct ctx *c, char *got, size_
         goto done;
     }
     check(c, input_applied(k, r), "the reference instance does not hold the events of the declared input script");
-    if (sk_push(&tr, r, NULL, r->p) != 0) {
+    if (sk_push(&tr, r, NULL) != 0) {
         harness_error(c, "out of memory or too many steps for the reference trace");
         goto done;
     }
     while (r->machine_time < until) {
-        prev_p = r->p;
-        if (sk_step(r, &sinks, &o) != 0 || sk_push(&tr, r, &o, prev_p) != 0) {
+        if (sk_step(r, &sinks, &o) != 0 || sk_push(&tr, r, &o) != 0) {
             harness_error(c, "a reference step was refused, took more than one step, or the trace is too long");
             goto done;
         }
@@ -1074,8 +1118,7 @@ void kind_snapshot_restore(const struct kase *k, struct ctx *c, char *got, size_
     check(c, dsv1_done(rend, NULL), "the guest is not in its done state at the deadline: the end of the run would not be the verdict");
     note_run(c, rend->machine_time, (uint32_t)DS_RUN_REASON_UNTIL);
     for (x = 0u; x < SK_EXT; x++) {
-        prev_p = r->p;
-        if (sk_step(r, &sinks, &o) != 0 || sk_push(&tr, r, &o, prev_p) != 0) {
+        if (sk_step(r, &sinks, &o) != 0 || sk_push(&tr, r, &o) != 0) {
             harness_error(c, "a reference step past the deadline was refused");
             goto done;
         }
@@ -1114,8 +1157,11 @@ void kind_snapshot_restore(const struct kase *k, struct ctx *c, char *got, size_
             nstops++;
         }
         if (i < tr.steps_end) {
-            if (sk_step(s, &sinks, &o) != 0 || o.time != tr.row[i + 1u].time || o.pc != tr.row[i + 1u].pc || o.opcode != tr.row[i + 1u].opcode || o.fold != tr.row[i + 1u].fold) {
-                check(c, 0, "the source run does not follow the reference run step for step: the machine is not deterministic");
+            uint64_t st_time = 0u;
+            uint16_t st_pc = 0u;
+
+            if (sk_step_plain(s, &st_time, &st_pc) != 0 || st_time != tr.row[i + 1u].time || st_pc != tr.row[i + 1u].pc) {
+                check(c, 0, "the source run does not follow the reference run step for step: the machine is not deterministic, or the run with no sink differs from the run with sinks");
                 break;
             }
         }

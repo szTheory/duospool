@@ -229,3 +229,10 @@ snapshot_refusal_fields
 snapshot_refusal_schedule
 snapshot_refusal_api
 snapshot_refusal_coverage
+snapshot_restore_boundaries
+snapshot_restore_block
+snapshot_restore_set
+snapshot_restore_irq
+snapshot_restore_speed
+snapshot_restore_pad
+snapshot_restore_timer
