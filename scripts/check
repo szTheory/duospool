@@ -2423,6 +2423,76 @@ selftest() {
     fi
   fi
 
+  # (z8) the order assertion of the pad triple is what turns a vacuous triple red (plan 03-29; D-118, T-03-80): the case pad_2btn_correct runs the same ROM with the scripts pad_2btn_none and pad_2btn_wrong first and requires the three verdicts to differ before it trusts the correct run
+  # (harness_failure otherwise). A scratch tree holds the runner sources, the pad_2btn fixture and a scratch triple (three copies of the correct script and one case that names them, so the verdicts are identical by construction). The unmutated scratch runner must report harness_failure for
+  # the triple, so that the later difference cannot come from a broken triple; with the one statement tagged rule-pad-order deleted from the scratch copy of guestkinds.c (exit 2 unless exactly one line carries the tag) and the tree rebuilt, the same triple must no longer be harness_failure
+  # (it passes: every check of the correct script passes in all three runs). The live tree is never written.
+  if st_want mutation-pad-order-assert; then
+    st_ran=1
+    po="$tmp/selftest/pad-order"
+    po_ok=1
+    po_why=""
+    rm -rf "$po"
+    mkdir -p "$po/tests/conformance" "$po/scripts" "$po/fixtures/src" "$po/fixtures/lib" "$po/cases" "$po/inputs" "$po/ev"
+    cp CMakeLists.txt CMakePresets.json "$po/"
+    cp -R src "$po/src"
+    cp tests/conformance/*.c tests/conformance/*.h tests/conformance/*.def "$po/tests/conformance/"
+    cp "$here/fixture-build" "$po/scripts/"
+    cp fixtures/src/pad_2btn.s fixtures/src/pad_2btn.checks "$po/fixtures/src/"
+    cp fixtures/lib/hucard.cfg fixtures/lib/startup.inc fixtures/lib/verdict.inc fixtures/lib/check.inc "$po/fixtures/lib/"
+    for po_n in pad_same_a pad_same_b pad_same_c; do
+      cp tests/conformance/inputs/pad_2btn_correct.toml "$po/inputs/$po_n.toml"
+    done
+    sed -e 's/^id = "pad_2btn_correct"$/id = "pad_triple_same"/' -e 's/^expect = .*$/expect = "id=14;padlog;pad-order=pad_same_a,pad_same_b"/' -e 's/^input = .*$/input = "pad_same_c"/' tests/conformance/cases/pad_2btn_correct.toml > "$po/cases/pad_triple_same.toml"
+    po_n=$(grep -c 'rule-pad-order' "$po/tests/conformance/guestkinds.c" || true)
+    if [ "$po_n" -ne 1 ]; then
+      echo "HARNESS_ERROR mutation-pad-order-assert: guestkinds.c must carry exactly one line tagged rule-pad-order (found $po_n)"
+      exit 2
+    fi
+    if [ "$(grep -c '^input = "pad_same_c"$' "$po/cases/pad_triple_same.toml" || true)" -ne 1 ] || [ "$(grep -c '^expect = "id=14;padlog;pad-order=pad_same_a,pad_same_b"$' "$po/cases/pad_triple_same.toml" || true)" -ne 1 ] || [ "$(grep -c '^id = "pad_triple_same"$' "$po/cases/pad_triple_same.toml" || true)" -ne 1 ]; then
+      echo "HARNESS_ERROR mutation-pad-order-assert: the scratch case was not made from pad_2btn_correct.toml (id, expect and input lines)"
+      exit 2
+    fi
+    if sh "$here/conformance-flatten" "$po/cases" > "$po/cases.tsv" 2> "$tmp/st.err" && sh "$here/conformance-flatten" --inputs "$po/inputs" > "$po/inputs.tsv" 2>> "$tmp/st.err"; then :; else po_ok=0; po_why="cannot flatten the scratch triple"; fi
+    if [ "$po_ok" -eq 1 ]; then
+      if (cd "$po" && sh scripts/fixture-build > fb0.out 2>&1); then :; else
+        if grep -q '^PREFLIGHT_MISSING' "$po/fb0.out"; then cat "$po/fb0.out"; echo "HARNESS_ERROR mutation-pad-order-assert: ca65 or ld65 is missing"; exit 2; fi
+        po_ok=0
+        po_why="the scratch fixture does not build"
+      fi
+    fi
+    if [ "$po_ok" -eq 1 ]; then
+      if (cd "$po" && cmake --preset gate > build.log 2>&1 && cmake --build --preset gate >> build.log 2>&1); then :; else po_ok=0; po_why="the unmutated scratch tree does not build"; fi
+    fi
+    if [ "$po_ok" -eq 1 ]; then
+      (cd "$po" && build/gate/ds_runner --cases cases.tsv --inputs inputs.tsv --evidence-dir ev --only pad_triple_same > before.txt 2> before.err) || true
+      if ! awk '$1 == "RESULT" && $2 == "pad_triple_same" && $3 == "harness_failure" { f = 1 } END { exit !f }' "$po/before.txt" || ! grep -Fq 'pad-order' "$po/before.err"; then
+        po_ok=0
+        po_why="the unmutated runner does not report harness_failure (pad-order) for the identical triple"
+      fi
+    fi
+    if [ "$po_ok" -eq 1 ]; then
+      grep -v 'rule-pad-order' "$po/tests/conformance/guestkinds.c" > "$po/guestkinds.mutated" || true
+      mv "$po/guestkinds.mutated" "$po/tests/conformance/guestkinds.c"
+      if [ "$(grep -c 'rule-pad-order' "$po/tests/conformance/guestkinds.c" || true)" -ne 0 ]; then po_ok=0; po_why="the tagged line is still present after the deletion"; fi
+    fi
+    if [ "$po_ok" -eq 1 ]; then
+      if (cd "$po" && cmake --build --preset gate >> build.log 2>&1); then :; else po_ok=0; po_why="the mutated scratch tree does not build"; fi
+    fi
+    if [ "$po_ok" -eq 1 ]; then
+      (cd "$po" && build/gate/ds_runner --cases cases.tsv --inputs inputs.tsv --evidence-dir ev --only pad_triple_same > after.txt 2> after.err) || true
+      if ! awk '$1 == "RESULT" && $2 == "pad_triple_same" && $3 == "pass" { f = 1 } END { exit !f }' "$po/after.txt"; then
+        po_ok=0
+        po_why="the identical triple is not accepted once the order assertion is removed"
+      fi
+    fi
+    if [ "$po_ok" -eq 1 ]; then
+      echo "SELFTEST mutation-pad-order-assert PASS"
+    else
+      echo "SELFTEST mutation-pad-order-assert FAIL ($po_why)"; failed=1
+    fi
+  fi
+
   # (z3) the byte comparison of the encoding oracle is what turns the tsv-byte-changed control red (T-03-25, plan 03-08): same shape as (y). The control, run with --expect XASM_MISMATCH, is met on an
   # unmutated copy (exit 0, EXPECT_OK); with the line tagged rule-compare deleted from the copy of the awk program the mismatch is no longer reported, so the same run must exit 1: the control flipped.
   if st_want mutation-xasm-compare; then

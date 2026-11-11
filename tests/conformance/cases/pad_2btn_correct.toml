@@ -6,13 +6,15 @@
 # ds_input_push after the boot and before the first step; the core re-validates every event. The guest sees the input ONLY through its own writes of the latch and reads of the I/O window at $1000 (SEL and CLR), after the nine-cycle wait, and stores the raw byte of every read as the observed byte of its check (R-7: the guest-side
 # pad-read log). The literals are the protocol constants of D-115 (ASSUMED LED-IO-0002 to LED-IO-0004, written in plans 03-29 and 03-34) with the logical mask layout of the CD BIOS manual page 28; they assume the default binding d6 = d7 = 1 (LED-IO-0001, open), which is why the request is empty. The pad is E2 self-consistency (the pad core and the
 # fixture are written by one party, ER-5): the wire nibble order, SEL and CLR polarity, CLR high and the power-on latch are community evidence, and one report orders the directions differently (carried as a disagreement, ER-8). No pad-accurate, compatibility or hardware claim, and the word pass is not a support claim.
+# Plan 03-29 (D-118, R-7): the case carries the items padlog and pad-order. The dev sink is attached to the first run and the pad-window records are written as pad_2btn_correct.padlog.tsv beside the evidence text (an E0 runner artifact). Before the case is trusted the runner runs the same ROM with the scripts pad_2btn_none and pad_2btn_wrong and requires that the three verdicts
+# (result and observed bytes) are pairwise different and that the dev log of each of the three runs holds a read with SEL high and one with SEL low (CLR low); a vacuous triple (an input that does not decide the verdict) is harness_failure, and the selftest mutation-pad-order-assert shows that the assertion is what turns an identical triple red.
 # The case has no policies key, so the guest kind runs the ROM under its default policy list (D-127): the input is the same under every power-on policy and the raw reads do not depend on the power-on state.
 id = "pad_2btn_correct"
 kind = "guest"
 fixture = "authored:pad-2btn"
 request = ""
-expect = "id=14"
-meaning = "The authored pad_2btn fixture reads the two-button pad on port 1 only through its own SEL and CLR writes and reads of the $1000 window against the correct input script, and stores the raw byte of every read as its guest-side pad-read log; 12 passing checks"
+expect = "id=14;padlog;pad-order=pad_2btn_none,pad_2btn_wrong"
+meaning = "The authored pad_2btn fixture reads the two-button pad on port 1 only through its own SEL and CLR writes and reads of the $1000 window against the correct input script, and stores the raw byte of every read as its guest-side pad-read log; 12 passing checks, a verdict that differs from the no-input and wrong-input runs, and a pad log with a SEL high and a SEL low read"
 required = true
 control = false
 expect_outcome = "pass"

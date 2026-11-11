@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Mutation sweep of the two-button pad fixture (plan 03-29; D-118, D-126, ER-7, FIX-03, B4): the built image of fixtures/src/pad_2btn.s is loaded once, its DCK1 literal table is found at file offset $1000, and for each of the 12 checks the value byte of its entry is XORed with $FF in a fresh in-memory copy that is booted and run in this same process,
+# with the declared input script of the case (pad_2btn_correct) pushed to every run before the first step, the unmutated baseline included. The unmutated image must pass first. Each mutation must flip exactly its own check to $46 and leave the others $50: a check whose literal can be changed without flipping it is vacuous and the case is guest_failure.
+# The GUEST check (3) patches an XOR mask, so a patched mask turns the comparison red. No check of pad_2btn is an observe row, so there is nothing to exclude. The sweep runs under the default power-on policy only (the policy comparison is the guest kind's job). Evidence tier E0 (a mechanism check of the checks themselves): no accuracy or compatibility claim.
+id = "mutate_sweep_pad_2btn"
+kind = "mutate_sweep"
+fixture = "authored:pad-2btn"
+request = ""
+expect = "id=14"
+meaning = "Changing the expected literal of any one of the 12 checks of the pad_2btn image, run against the correct input script, flips exactly that check to fail and no other, so none of the 12 pad checks is vacuous"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 800000
+checks = 12
+input = "pad_2btn_correct"

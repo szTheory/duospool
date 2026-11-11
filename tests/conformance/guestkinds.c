@@ -15,6 +15,9 @@
  *                                            digits, hyphens and underscores); any other verdict, or the right outcome for another reason, is a guest_failure
  *                   ;refused=stim.NAME       a stimulus refusal control (plan 03-22, D-112): the case's irq_stim list must be refused by ds_irq_stim_set with exactly that code, the instance unchanged; the guest is never run
  *                   ;refused=input.NAME[,NAME...]  an input refusal control (plan 03-27, D-117): synthetic events bypassing every script are pushed to ds_input_push and must be refused with exactly the named codes of src/core/input_refusals.def, the instance unchanged (inputkinds.c)
+ *                   ;fail-set=IDX,...        (plan 03-29, D-118) a control-shaped case: exactly the listed checks must read $46 and every other check $50 in a consistent done block (the pad negative controls); any other set is a failure of the case
+ *                   ;padlog                  (plan 03-29, D-118, R-7) the first run of the case carries the dev sink and the pad-window records are written as the evidence file ID.padlog.tsv; a lost record is harness_failure
+ *                   ;pad-order=NAME,NAME     (plan 03-29, D-118) the same ROM is run with the two named input scripts first; the three verdicts must be pairwise different and each dev log must hold a SEL = 1 and a SEL = 0 read, or the case is harness_failure before correct is trusted
  *                   ;poison-t0               the runner writes the DSV1 magic and the done state into work RAM after boot and before the first step; the
  *                                            t=0 precondition must then give harness_failure ("before the first step"), and the guest is not run at all
  *                 Observe rows (plan 03-10): the optional fifth column of NAME.checks, the word observe, marks a check whose expected value legitimately differs by case; scripts/fixture-build lists
@@ -45,6 +48,7 @@
 #include <string.h>
 
 #include "ds_core.h"
+#include "ds_obs.h"
 #include "ds_serial.h"
 #include "runner.h"
 
@@ -297,6 +301,51 @@ static int parse_item(char *item, struct guest_expect *e, int *seen_mode, int *s
         e->mode = MODE_REFUSED_INPUT;
         return 0;
     }
+    if (strncmp(item, "fail-set=", 9u) == 0) {
+        char *rest = item + 9;
+        char *tok;
+
+        if (*seen_mode) {
+            return -1;
+        }
+        *seen_mode = 1;
+        e->mode = MODE_FAILSET;
+        while ((tok = pk_next_item(&rest, ',')) != NULL) {
+            unsigned idx = 0u;
+
+            if (e->nfail >= GE_ITEMS_MAX || parse_idx(tok, &idx) != 0 || (e->nfail > 0u && idx <= e->fail[e->nfail - 1u])) {
+                return -1;
+            }
+            e->fail[e->nfail++] = idx;
+        }
+        return e->nfail > 0u ? 0 : -1;
+    }
+    if (strcmp(item, "padlog") == 0) {
+        if (e->padlog) {
+            return -1;
+        }
+        e->padlog = 1;
+        return 0;
+    }
+    if (strncmp(item, "pad-order=", 10u) == 0) {
+        char *comma = strchr(item + 10, ',');
+        size_t la;
+        size_t lb;
+
+        if (e->order_a[0] != '\0' || comma == NULL) {
+            return -1;
+        }
+        la = (size_t)(comma - (item + 10));
+        lb = strlen(comma + 1);
+        if (la == 0u || lb == 0u || la >= sizeof e->order_a || lb >= sizeof e->order_b || strchr(comma + 1, ',') != NULL || item[10] < 'a' || item[10] > 'z' || comma[1] < 'a' || comma[1] > 'z'
+            || strspn(item + 10, "abcdefghijklmnopqrstuvwxyz0123456789_,") != la + 1u + lb) {
+            return -1;
+        }
+        memcpy(e->order_a, item + 10, la);
+        e->order_a[la] = '\0';
+        memcpy(e->order_b, comma + 1, lb + 1u);
+        return strcmp(e->order_a, e->order_b) != 0 ? 0 : -1;
+    }
     if (strncmp(item, "observe=", 8u) == 0) {
         unsigned idx = 0u;
         unsigned i;
@@ -405,6 +454,48 @@ void expect_verdict(struct ctx *c, const struct ctx *s, const struct guest_expec
     check(c, strcmp(seen, e->outcome) == 0, msg);
     snprintf(msg, sizeof msg, "the outcome is the declared one but its reason does not contain '%s'", e->reason);
     check(c, strstr(s->why, e->reason) != NULL, msg);
+}
+
+/*
+ * A fail-set control (plan 03-29; D-118): the scratch context s holds what the judge concluded about the block blk of the run, and the case passes only when the block is a consistent done block in which exactly the checks of the declared set read $46 and every
+ * other check $50. The judge reports a structural fault (a bad trailer, a bad checksum, an error flag) before it looks at any check result, so the first reason of a block whose only fault is failed checks starts with "check ": any other reason means the block itself
+ * is wrong and the declared set is not the fact under test. A harness fault of the run stays a harness fault.
+ */
+static void expect_failset(struct ctx *c, const struct ctx *s, const uint8_t *blk, const struct guest_expect *e, unsigned nchk, char *got, size_t gotcap)
+{
+    unsigned i;
+    unsigned nf = 0u;
+    int equal = 1;
+    size_t at;
+
+    if (s->harness) {
+        harness_error(c, s->why);
+        return;
+    }
+    snprintf(got, gotcap, "failset=");
+    at = strlen(got);
+    if (s->timeout || !s->failed || strncmp(s->why, "check ", 6u) != 0) {
+        check(c, 0, "fail-set: the run did not end in a consistent done block with failed checks (a timeout, a structural fault of the block or no failed check)");
+        return;
+    }
+    for (i = 0u; i < nchk && i < V_MAX_CHECKS; i++) {
+        unsigned r = blk[V_RES + i];
+
+        if (r != R_PASS && r != R_FAIL) {
+            check(c, 0, "fail-set: a result byte of the block is neither $50 nor $46");
+            return;
+        }
+        if (r == R_FAIL) {
+            if (nf >= e->nfail || e->fail[nf] != i + 1u) {
+                equal = 0;
+            }
+            nf++;
+            if (at + 5u < gotcap) {
+                at += (size_t)snprintf(got + at, gotcap - at, "%s%u", nf > 1u ? "," : "", i + 1u);
+            }
+        }
+    }
+    check(c, equal && nf == e->nfail, "fail-set: the checks that failed are not exactly the set the case declares");
 }
 
 int dsv1_done(const struct ds_instance *inst, void *ctx)
@@ -733,8 +824,120 @@ static int compose_request(const char *base, const char *fragment, char *out, si
     return n >= 0 && (size_t)n < cap ? 0 : -1;
 }
 
+/* the dev sink of a pad run (plan 03-29; D-118, D-119): the sink struct and its record memory are heap blocks of the harness (the records are 8-byte aligned by calloc); the count and the lost counter are read from the header after the run */
+#define PL_CAP 512u
+struct padrun {
+    struct ds_dev_sink *sink;
+    unsigned char *rec;
+    uint32_t count;
+    uint32_t lost;
+};
+
+static int padrun_new(struct padrun *p)
+{
+    memset(p, 0, sizeof *p);
+    p->sink = (struct ds_dev_sink *)calloc(1u, sizeof *p->sink);
+    p->rec = (unsigned char *)calloc((size_t)PL_CAP, DS_DEV_RECORD_BYTES);
+    if (p->sink == NULL || p->rec == NULL) {
+        free(p->sink);
+        free(p->rec);
+        p->sink = NULL;
+        p->rec = NULL;
+        return -1;
+    }
+    p->sink->records = p->rec;
+    p->sink->capacity = PL_CAP;
+    return 0;
+}
+
+static void padrun_free(struct padrun *p)
+{
+    free(p->sink);
+    free(p->rec);
+    p->sink = NULL;
+    p->rec = NULL;
+}
+
+static uint32_t pl_u32(const unsigned char *b)
+{
+    return (uint32_t)b[0] | ((uint32_t)b[1] << 8) | ((uint32_t)b[2] << 16) | ((uint32_t)b[3] << 24);
+}
+
+static uint64_t pl_u64(const unsigned char *b)
+{
+    return (uint64_t)pl_u32(b) | ((uint64_t)pl_u32(b + 4) << 32);
+}
+
+/* a record is a pad access when its physical address lies in the $1000 window of the hardware page ($1FF000 to $1FF3FF, H8-19) */
+static int pl_is_pad(const unsigned char *r)
+{
+    return (pl_u32(r + 8) & ~UINT32_C(0x3FF)) == UINT32_C(0x1FF000);
+}
+
+/* the number of reads with CLR low and SEL high, and with CLR low and SEL low, in the pad window of the log; the latch of a read is the value of the last write to the window, and $FF before any write (port O is high after reset, H8-18) */
+static void padlog_scan(const struct padrun *p, unsigned *sel1, unsigned *sel0)
+{
+    unsigned latch = 0xFFu;
+    uint32_t i;
+
+    *sel1 = 0u;
+    *sel0 = 0u;
+    for (i = 0u; i < p->count && i < PL_CAP; i++) {
+        const unsigned char *r = p->rec + (size_t)i * DS_DEV_RECORD_BYTES;
+
+        if (!pl_is_pad(r)) {
+            continue;
+        }
+        if (r[13] == (unsigned char)DS_DEV_WRITE) {
+            latch = r[12];
+        } else if (r[13] == (unsigned char)DS_DEV_READ && (latch & 2u) == 0u) {
+            if ((latch & 1u) != 0u) {
+                (*sel1)++;
+            } else {
+                (*sel0)++;
+            }
+        }
+    }
+}
+
+/* write ID.padlog.tsv into the evidence directory: a header row and one row per pad-window record, stamp (master clocks, decimal), phys (hex), value (hex), kind (write or read) and the latch (hex; for a write the byte written, for a read the latch it saw). 0 on success */
+static int padlog_write(const struct kase *k, const struct padrun *p)
+{
+    char path[256];
+    FILE *fp;
+    unsigned latch = 0xFFu;
+    uint32_t i;
+    int n;
+
+    if (run_evidence_dir == NULL) {
+        return -1;
+    }
+    n = snprintf(path, sizeof path, "%s/%s.padlog.tsv", run_evidence_dir, k->stem);
+    if (n < 0 || (size_t)n >= sizeof path) {
+        return -1;
+    }
+    fp = fopen(path, "w");
+    if (fp == NULL) {
+        return -1;
+    }
+    fputs("stamp\tphys\tvalue\tkind\tlatch\n", fp);
+    for (i = 0u; i < p->count && i < PL_CAP; i++) {
+        const unsigned char *r = p->rec + (size_t)i * DS_DEV_RECORD_BYTES;
+
+        if (!pl_is_pad(r)) {
+            continue;
+        }
+        if (r[13] == (unsigned char)DS_DEV_WRITE) {
+            latch = r[12];
+        }
+        fprintf(fp, "%llu\t%06X\t%02X\t%s\t%02X\n", (unsigned long long)pl_u64(r), (unsigned)pl_u32(r + 8), (unsigned)r[12], r[13] == (unsigned char)DS_DEV_WRITE ? "write" : "read", latch);
+    }
+    return fclose(fp) == 0 ? 0 : -1;
+}
+
 struct gstate {
     const struct kase *kase; /* the case: its irq_stim key is declared to every booted instance (plan 03-22) */
+    struct padrun *pad;      /* the dev sink of this run (plan 03-29), NULL for none */
     const char *rom;
     const char *request;
     uint64_t until;
@@ -809,12 +1012,22 @@ static int guest_once(const struct gstate *g, struct ctx *c, struct ctx *judged,
     memset(&out, 0, sizeof out);
     run.struct_size = (uint32_t)sizeof run;
     run.until_mclk = g->until;
+    run.dev = g->pad != NULL ? g->pad->sink : NULL;
     reason = ds_run((struct ds_instance *)(void *)b.mem, &run, &out);
     note_run(c, inst->machine_time, reason);
     if (reason != (uint32_t)DS_RUN_REASON_UNTIL) {
         harness_error(c, "ds_run refused the request or stopped for another reason than the deadline");
         release_boot(&b);
         return 0;
+    }
+    if (g->pad != NULL) {
+        g->pad->count = pl_u32(g->pad->sink->header);
+        g->pad->lost = pl_u32(g->pad->sink->header + 4);
+        if (g->pad->lost != 0u) {
+            harness_error(c, "pad-log: the dev sink lost records, so the pad log would be incomplete evidence (D-119)");
+            release_boot(&b);
+            return 0;
+        }
     }
     judge_dsv1(judged, inst->ram8k + V_OFF, (unsigned)ex->id, (unsigned)g->checks, got, gotcap);
     if (!judged->harness && !judged->failed && !judged->timeout) {
@@ -1033,7 +1246,32 @@ void kind_stim_refusal_coverage(const struct kase *k, struct ctx *c, char *got, 
     snprintf(got, gotcap, "members=%u observed=%u", members, seen);
 }
 
-void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+/* the pad runs of one guest case (plan 03-29): the dev log of the case's own first run and the two extra runs of a pad-order item with the verdict block of each */
+struct padset {
+    struct padrun main;
+    struct padrun a;
+    struct padrun b;
+    uint8_t blk_a[V_SIZE];
+    uint8_t blk_b[V_SIZE];
+};
+
+/* 1 when two verdict blocks carry the same result bytes and the same observed bytes (the verdict of a pad run, R-7) */
+static int pad_same(const uint8_t *x, const uint8_t *y)
+{
+    return memcmp(x + V_RES, y + V_RES, V_MAX_CHECKS) == 0 && memcmp(x + V_OBS, y + V_OBS, V_MAX_CHECKS) == 0;
+}
+
+/* the dev log of a run holds at least one read with CLR low and SEL high and one with CLR low and SEL low: the guest scanned both halves of the pad (D-118) */
+static int pad_log_scans(const struct padrun *p)
+{
+    unsigned s1 = 0u;
+    unsigned s0 = 0u;
+
+    padlog_scan(p, &s1, &s0);
+    return s1 != 0u && s0 != 0u;
+}
+
+static void guest_case(const struct kase *k, struct ctx *c, char *got, size_t gotcap, struct padset *ps)
 {
     char rom[48];
     struct guest_expect ex;
@@ -1050,6 +1288,7 @@ void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
     const char *err;
     const char *outcome0 = NULL;
     char seen[96];
+    int scratch;
 
     if (authored_name(k->val[K_FIXTURE], rom, sizeof rom) != 0) {
         harness_error(c, "a guest case names its ROM as fixture = authored:NAME");
@@ -1065,6 +1304,10 @@ void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
     }
     if (ex.nex != 0u) {
         harness_error(c, "a guest expect takes no exclude= item (that is a mutate_sweep item)");
+        return;
+    }
+    if (((ex.padlog || ex.order_a[0] != '\0') && ex.mode != MODE_PLAIN && ex.mode != MODE_FAILSET) || (ex.order_a[0] != '\0' && (!ex.padlog || !k->has[K_INPUT]))) {
+        harness_error(c, "a padlog or pad-order item belongs to a plain or fail-set guest case, and pad-order needs padlog and an input key");
         return;
     }
     memset(&judged, 0, sizeof judged);
@@ -1122,11 +1365,59 @@ void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
         }
     }
     g.kase = k;
+    g.pad = NULL;
     g.rom = rom;
     g.until = until;
     g.checks = checks;
     g.ex = &ex;
     g.ol = &ol;
+    scratch = ex.mode == MODE_VERDICT || ex.mode == MODE_FAILSET;
+    if (ex.padlog && padrun_new(&ps->main) != 0) {
+        harness_error(c, "out of memory for the pad log");
+        return;
+    }
+    if (ex.order_a[0] != '\0') {
+        /* the order triple (plan 03-29; D-118): the same ROM with the two other scripts, under the first policy, before the case's own run; their verdict blocks and dev logs are kept for the comparison below. Their outcomes are not judged here: a failing guest is what a negative script is for */
+        const char *names[2];
+        struct padrun *prs[2];
+        uint8_t *blks[2];
+        unsigned j;
+
+        names[0] = ex.order_a;
+        names[1] = ex.order_b;
+        prs[0] = &ps->a;
+        prs[1] = &ps->b;
+        blks[0] = ps->blk_a;
+        blks[1] = ps->blk_b;
+        for (j = 0u; j < 2u; j++) {
+            struct kase kx = *k;
+            struct gstate gx = g;
+            struct ctx xc;
+            struct ctx xj;
+            char xreq[512];
+            char xgot[96];
+
+            memset(&xc, 0, sizeof xc);
+            memset(&xj, 0, sizeof xj);
+            kx.val[K_INPUT] = names[j];
+            kx.has[K_INPUT] = 1;
+            if (padrun_new(prs[j]) != 0) {
+                harness_error(c, "out of memory for the pad log");
+                return;
+            }
+            if (compose_request(k->val[K_REQUEST], plist[0], xreq, sizeof xreq) != 0) {
+                harness_error(c, "the request of the case with the policy fragment does not fit the request text");
+                return;
+            }
+            gx.kase = &kx;
+            gx.pad = prs[j];
+            gx.request = xreq;
+            if (!guest_once(&gx, &xc, &xj, blks[j], xgot, sizeof xgot) || xj.harness) {
+                harness_error(c, xc.harness ? xc.why : (xj.harness ? xj.why : "pad-order: a run of the order triple did not complete"));
+                return;
+            }
+        }
+    }
     for (i = 0u; i < np; i++) {
         char req[512];
         struct ctx sc;
@@ -1141,28 +1432,53 @@ void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
             return;
         }
         g.request = req;
+        g.pad = i == 0u && ex.padlog ? &ps->main : NULL;
         if (i == 0u) {
             ran = guest_once(&g, c, ex.mode == MODE_PLAIN ? c : &judged, blk0, got, gotcap);
             if (!ran) {
                 return; /* a harness fault, or the poison control: its outcome is already set */
             }
-            outcome0 = ctx_outcome(ex.mode == MODE_VERDICT ? &judged : c);
+            outcome0 = ctx_outcome(scratch ? &judged : c);
             if (ex.mode == MODE_VERDICT) {
                 expect_verdict(c, &judged, &ex, got, gotcap);
+            } else if (ex.mode == MODE_FAILSET) {
+                expect_failset(c, &judged, blk0, &ex, (unsigned)checks, got, gotcap);
+            }
+            if (ex.padlog) {
+                /* the pad log is an E0 runner artifact (D-118): written beside the evidence text, and the run must show the guest scanning both halves of the pad before it is trusted */
+                if (padlog_write(k, &ps->main) != 0) {
+                    harness_error(c, "pad-log: cannot write the pad log into the evidence directory");
+                    return;
+                }
+                if (!pad_log_scans(&ps->main) || (ex.order_a[0] != '\0' && (!pad_log_scans(&ps->a) || !pad_log_scans(&ps->b)))) {
+                    harness_error(c, "pad-log: the dev log of a run of the pad triple holds no read with SEL = 1 or none with SEL = 0 (CLR low), so it does not show the guest scanning both halves of the pad");
+                    return;
+                }
+            }
+            if (ex.order_a[0] != '\0') {
+                int same_ac = pad_same(blk0, ps->blk_a);
+                int same_bc = pad_same(blk0, ps->blk_b);
+                int same_ab = pad_same(ps->blk_a, ps->blk_b);
+                size_t gl = strlen(got);
+
+                if (gl + 16u < gotcap) {
+                    snprintf(got + gl, gotcap - gl, " same=%d%d%d", same_ac, same_bc, same_ab);
+                }
+                if (same_ac || same_bc || same_ab) { harness_error(c, "pad-order: two of the three runs (the case, and the two scripts of the pad-order item) have the same verdict bytes, so the pad does not decide the verdict"); return; } /* rule-pad-order */
             }
             continue;
         }
         memset(&sc, 0, sizeof sc);
         memset(&sj, 0, sizeof sj);
-        ran = guest_once(&g, &sc, ex.mode == MODE_VERDICT ? &sj : &sc, blk, seen, sizeof seen);
+        ran = guest_once(&g, &sc, scratch ? &sj : &sc, blk, seen, sizeof seen);
         if (!ran) {
             snprintf(msg, sizeof msg, "policy %s: the guest did not run to the deadline (%s)", policy_name(plist[i]), sc.why);
             check(c, 0, msg);
             continue;
         }
-        if (strcmp(ctx_outcome(ex.mode == MODE_VERDICT ? &sj : &sc), outcome0) != 0) {
+        if (strcmp(ctx_outcome(scratch ? &sj : &sc), outcome0) != 0) {
             snprintf(msg, sizeof msg, "policy %s gave the outcome %s, policy %s gave %s: the guest depends on the power-on state", policy_name(plist[i]),
-                     ctx_outcome(ex.mode == MODE_VERDICT ? &sj : &sc), policy_name(plist[0]), outcome0);
+                     ctx_outcome(scratch ? &sj : &sc), policy_name(plist[0]), outcome0);
             check(c, 0, msg);
             continue;
         }
@@ -1177,6 +1493,17 @@ void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
             check(c, blk[V_OBS + ex.pdiff - 1u] != blk0[V_OBS + ex.pdiff - 1u], msg);
         }
     }
+}
+
+void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    struct padset ps;
+
+    memset(&ps, 0, sizeof ps);
+    guest_case(k, c, got, gotcap, &ps);
+    padrun_free(&ps.main);
+    padrun_free(&ps.a);
+    padrun_free(&ps.b);
 }
 
 /* ---- kinds model_refuse and model_refusal_coverage (plan 03-17; D-113, T-03-47, F4) ---- */

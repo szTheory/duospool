@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The no-input negative control of the two-button pad (plan 03-29; D-117, D-118, ER-4, ER-5, R-7): the same authored ROM as pad_2btn_correct (fixtures/src/pad_2btn.s, assembled by ca65 in the gate, never committed) runs against the explicit empty script tests/conformance/inputs/pad_2btn_none.toml, so nothing is ever held.
+# The case passes only when the guest verdict shows exactly the declared failing check set (fail-set): checks 1 and 7 to 12 read the held buttons and must fail ($FF where $F7, $FE, $FD, $FD, $F6, $FB and $F9 are expected), while checks 2 to 6 do not depend on the held set and must pass (the power-on read, the repeat read, the directions with nothing pressed and the two CLR-high reads).
+# A pad that ignored the input, or a fixture that never read it, would not give this set. The dev sink is attached to the run and the pad-window records are written as pad_2btn_none.padlog.tsv beside the evidence text (an E0 runner artifact, D-118); the raw reads are also the observed bytes of the DSV1 block, the guest-side log (R-7).
+# The literals are ASSUMED LED-IO-0002 to LED-IO-0004 (E2 self-consistency: the pad core and the fixture are written by one party, ER-5); the declared set is the fact under test and no DuoSpool output. No pad-accurate, compatibility or hardware claim, and the word pass means the declared fault set was seen.
+id = "pad_2btn_none"
+kind = "guest"
+fixture = "authored:pad-2btn"
+request = ""
+expect = "id=14;fail-set=1,7,8,9,10,11,12;padlog"
+meaning = "With the explicit empty input script the authored pad_2btn fixture fails exactly the checks that read a held button (1 and 7 to 12) and passes the five that do not (2 to 6), so the pad is what the guest reads"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 800000
+checks = 12
+input = "pad_2btn_none"

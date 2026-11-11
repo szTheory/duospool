@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The wrong-input negative control of the two-button pad (plan 03-29; D-117, D-118, ER-4, ER-5, R-7): the same authored ROM as pad_2btn_correct runs against tests/conformance/inputs/pad_2btn_wrong.toml, the correct event times with a different held set in every phase (SELECT and UP, then RUN and LEFT, then I and DOWN, then nothing).
+# The case passes only when the guest verdict shows exactly the declared failing check set: the checks that read the held buttons or the held directions (1, 4 and 7 to 12) must fail, and the checks that do not depend on the held set (2, 3, 5 and 6) must pass. The set differs from the no-input set by check 4 (a direction is held in phase 1), and the observed bytes of the two runs differ as well.
+# The dev sink is attached and the pad-window records are written as pad_2btn_wrong.padlog.tsv beside the evidence text (an E0 runner artifact, D-118); the raw reads are also the observed bytes of the DSV1 block (R-7). The literals are ASSUMED LED-IO-0002 to LED-IO-0004 (E2 self-consistency, ER-5); the declared set follows from the wrong script and the fixture literals, not from DuoSpool output.
+id = "pad_2btn_wrong"
+kind = "guest"
+fixture = "authored:pad-2btn"
+request = ""
+expect = "id=14;fail-set=1,4,7,8,9,10,11,12;padlog"
+meaning = "With a wrong input script the authored pad_2btn fixture fails exactly the checks that read a held button or direction (1, 4 and 7 to 12) and passes the four that do not (2, 3, 5 and 6), so the guest verdict follows the input"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 800000
+checks = 12
+input = "pad_2btn_wrong"

@@ -10,6 +10,7 @@
  *                 through the stop callback, a speed aid only (D-95): the case's until_mclk is the hard bound, and a guest that is not done at it is a failure of that mutation.
  *                 expect is id=N (the fixture id of the guest) with the items of runner.h: exclude=IDX,... lists the observe rows (a check whose expected value legitimately differs by case, written
  *                 to NAME.observe by scripts/fixture-build), and it must equal that file exactly: a sweep that skips more, or fewer, than the fixture declares is harness_failure (exclude-mismatch).
+ *                 The case key input (plan 03-29, D-118): the declared input script is pushed to every run of the sweep, like the irq_stim list, so the pad checks of pad_2btn are swept against the correct script.
  *                 verdict=OUTCOME:REASON makes the case a control of the sweep itself (it passes only on that outcome and reason). One assertion per swept literal; the baseline adds one only on a fault.
  */
 #include <stdint.h>
@@ -41,6 +42,7 @@ static const char *sweep_run(const unsigned char *image, size_t len, const struc
     struct ds_run_request rq;
     struct ds_run_result res;
     uint32_t refusal = 0u;
+    uint32_t input_refusal = 0u;
     const char *err;
 
     b.mem = NULL;
@@ -59,6 +61,13 @@ static const char *sweep_run(const unsigned char *image, size_t len, const struc
     err = apply_irq_stim((struct ds_instance *)(void *)b.mem, kase, &refusal); /* the case's declared stimulus, before the first step: every mutated run sees the one the unmutated run saw (plan 03-22, NW3) */
     if (err == NULL && refusal != 0u) {
         err = "the irq_stim list of the case was refused by ds_irq_stim_set";
+    }
+    if (err == NULL) {
+        /* the input script of the case (plan 03-29; D-117, D-118): its events are pushed before every run of the sweep, the unmutated one and each mutated one, so a mutated literal is judged against the same input the baseline saw and a pad check can flip */
+        err = apply_input((struct ds_instance *)(void *)b.mem, kase, &input_refusal);
+        if (err == NULL && input_refusal != 0u) {
+            err = "the input script of the case was refused by ds_input_push";
+        }
     }
     if (err != NULL) {
         release_boot(&b);
@@ -134,7 +143,7 @@ void kind_mutate_sweep(const struct kase *k, struct ctx *c, char *got, size_t go
         harness_error(c, "a mutate_sweep case needs the integer keys until_mclk and checks (checks 1 to 96)");
         return;
     }
-    if (parse_guest_expect(k->val[K_EXPECT], &ex) != 0 || ex.mode == MODE_POISON || ex.nobs != 0u) {
+    if (parse_guest_expect(k->val[K_EXPECT], &ex) != 0 || ex.mode == MODE_POISON || ex.mode == MODE_FAILSET || ex.mode == MODE_REFUSED || ex.mode == MODE_REFUSED_INPUT || ex.padlog || ex.order_a[0] != '\0' || ex.nobs != 0u) {
         harness_error(c, "a mutate_sweep expect is id=N, optionally with ;exclude=IDX,... and ;verdict=OUTCOME:REASON");
         return;
     }

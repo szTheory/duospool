@@ -610,6 +610,9 @@ void evidence_text(char *buf, size_t cap, const char *id, const char *kind, cons
     snprintf(buf, cap, "id=%s\nkind=%s\nexpect=%s\ngot=%s\nassertions=%u\n", id, kind, expect, got, n);
 }
 
+/* the evidence directory of the case that is running (runner.h): set by run_case before the kind runs */
+const char *run_evidence_dir;
+
 /* text a kind wants after the standard lines of its evidence file (the refusal record); cleared before every case */
 static char ev_detail[4096];
 
@@ -1078,6 +1081,7 @@ static int run_case(const struct kase *k, const char *evdir)
 
     memset(&c, 0, sizeof c);
     ev_detail[0] = '\0';
+    run_evidence_dir = evdir;
     for (j = 0; j < NKEYS; j++) {
         if (!k->has[j] && ((K_OPTIONAL_MASK >> j) & 1u) == 0u && k->bad == NULL) {
             harness_error(&c, "a key is missing");

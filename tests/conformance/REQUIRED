@@ -212,3 +212,6 @@ pad_2btn_correct
 input_port_refusal
 input_refusal_rows
 input_refusal_coverage
+pad_2btn_none
+pad_2btn_wrong
+mutate_sweep_pad_2btn
