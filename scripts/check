@@ -1373,6 +1373,45 @@ selftest() {
     fi
   fi
 
+  # (h2) the toy controls must run only the cases of their EXPECT, and a filter that loses an EXPECT case must be a harness error (quick task
+  # 261111-e8l). A canned three-case TSV is cut by the filter-cases mode of conformance-run (the code controls_mode calls). Unmutated: the id beta
+  # gives exactly the K rows of beta and END 1 (exit 0), and an id that no case carries gives exit 2 and no file. Mutated (the line that selects the
+  # rows of wanted cases now selects none): the same call for beta must exit 2 and leave no file, never a pass. Last, the toy runner line of the real
+  # controls_mode must read the per-toy files (a revert to the whole-list files is a failure).
+  if st_want mutation-toy-filter; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    tf="$tmp/st-toyfilter"
+    rm -rf "$tf"
+    mkdir -p "$tf"
+    printf 'K\talpha\t\tid\ts\talpha\nK\talpha\t\tkind\ts\tguest\nK\tbeta\t\tid\ts\tbeta\nK\tbeta\t\tkind\ts\tguest\nK\tgamma\t\tid\ts\tgamma\nEND\t3\n' > "$tf/cases.tsv"
+    printf 'K\tbeta\t\tid\ts\tbeta\nK\tbeta\t\tkind\ts\tguest\nEND\t1\n' > "$tf/want.tsv"
+    printf '# one id\nbeta\n' > "$tf/beta.ids"
+    printf 'delta\n' > "$tf/delta.ids"
+    st_alive=0
+    if sh "$cp_dir/conformance-run" filter-cases "$tf/cases.tsv" "$tf/beta.ids" "$tf/out0.tsv" > /dev/null 2>&1; then r0=0; else r0=$?; fi
+    if sh "$cp_dir/conformance-run" filter-cases "$tf/cases.tsv" "$tf/delta.ids" "$tf/out1.tsv" > /dev/null 2>&1; then r1=0; else r1=$?; fi
+    if [ "$r0" -eq 0 ] && cmp -s "$tf/out0.tsv" "$tf/want.tsv" && [ "$r1" -eq 2 ] && [ ! -e "$tf/out1.tsv" ]; then st_alive=1; fi
+    tok='if ($2 in want) {'
+    before=$(grep -c -F -e "$tok" "$cp_dir/conformance-run" || true)
+    sed 's/if (\$2 in want) {/if (\$2 in nowant) {/' "$cp_dir/conformance-run" > "$cp_dir/conformance-run.mutated"
+    mv "$cp_dir/conformance-run.mutated" "$cp_dir/conformance-run"
+    after=$(grep -c -F -e "$tok" "$cp_dir/conformance-run" || true)
+    if sh "$cp_dir/conformance-run" filter-cases "$tf/cases.tsv" "$tf/beta.ids" "$tf/out2.tsv" > "$tmp/st.out" 2> "$tmp/st.err"; then r=0; else r=$?; fi
+    # the wiring: the live toy runner line names the per-toy cases file and the per-toy id list, and calls the filter
+    wire_ok=0
+    if grep -c -F -e '--cases "$cm_bd/controls/$cm_name/cases.tsv"' "$here/conformance-run" | grep -qx 1 \
+      && [ "$(grep -c -F -e '--cases "$cm_bd/cases.tsv"' "$here/conformance-run" || true)" -eq 0 ] \
+      && [ "$(grep -c -F -e '--ids "$cm_bd/ids.txt"' "$here/conformance-run" || true)" -eq 0 ] \
+      && [ "$(grep -c -F -e 'filter_cases "$cm_bd/cases.tsv"' "$here/conformance-run" || true)" -eq 1 ]; then wire_ok=1; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 2 ] && [ ! -e "$tf/out2.tsv" ] && grep -q 'HARNESS_ERROR' "$tmp/st.err" && [ "$wire_ok" -eq 1 ]; then
+      echo "SELFTEST mutation-toy-filter PASS"
+    else
+      echo "SELFTEST mutation-toy-filter FAIL"; failed=1
+    fi
+  fi
+
   # (i) the cancelled outcome has a producer, and the producer is the trap (D-77). The control sequence is run twice against
   # scratch copies of scripts/: the unmutated copy must pass it; with the lines carrying the trap marker deleted the same
   # sequence must be broken, because SIGTERM then kills the supervisor before it writes anything. The marker is assembled

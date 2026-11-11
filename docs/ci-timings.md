@@ -263,3 +263,40 @@ authored image build first, plan 03-06); the rest of the difference (45 s to 62 
 - **Not measured.** A cold tree, the Linux container run and any GitHub runner run were not part of this measurement. The apt install of cc65
   is the one step with no number at all.
 - **Nothing was weakened.** No stage, control or selftest was skipped, merged or shortened to save time.
+
+## Toy controls run only their EXPECT cases (quick task 261111-e8l; local runs, not CI runs)
+
+Change: `controls_mode` in `scripts/conformance-run` used to run every toy control (nine of them) against the whole case list (181 cases), while the
+judge reads only the case ids in each control's `EXPECT` (1 to 3 ids). Each toy now runs against a cases file cut down to those ids (`filter_cases`),
+and an `EXPECT` id that the cut loses is a harness error (exit 2), never a pass. The selftest `mutation-toy-filter` proves that. The verdicts are
+unchanged: the outcome of every `EXPECT` id is the same as under the full list (12 ids, all `guest_failure`, same assertion counts; table in the
+commit message of the change).
+
+These are local, load-dependent measurements on a shared developer machine, not a CI claim; CI evidence stays unverified, pending owner push
+authorisation. The machine was heavily loaded by unrelated jobs, so compare the per-stage seconds below and the same-moment A/B pair, not the totals.
+
+Same-moment A/B of the conformance stage alone (`sh scripts/conformance-run run`, warm build, old script from the parent commit against the new one,
+run one after the other; load average is 1, 5 and 15 minutes at the start of each run):
+
+| Run | Script | Wall s | Load average at start |
+|-----|--------|--------|-----------------------|
+| 1 | old (whole list per toy) | 122 | 13.33 17.68 18.64 |
+| 1 | new (EXPECT cases only) | 29 | 27.52 20.16 19.41 |
+| 2 | old | 140 | 30.46 21.65 19.98 |
+| 2 | new | 25 | 61.64 37.94 26.81 |
+
+Full `sh scripts/check --timing`, before and after (54 stages, all `PASS` in both; the stage line is the TIMING line):
+
+| Measure | Before | After | Note |
+|---------|--------|-------|------|
+| Load average at start | 24.76 22.07 19.84 | 56.23 39.04 27.65 | the after run saw 2 to 3 times the load |
+| Load average at end | 17.79 19.39 19.26 | 62.51 50.14 35.70 | |
+| `conformance` s | 122 | 31 | the stage this change touches |
+| `sanitizers` s | 47 | 66 | unchanged code; the toy controls do not run in the sanitize mode, so the difference is load |
+| Other 52 stages, sum of TIMING s | 131 | 215 | unchanged code; load again (conformance and sanitizers excluded) |
+| Sum of TIMING s (all stages) | 300 | 312 | `time`: 4:59.94 before, 5:13.50 after |
+
+Reading: the conformance stage went from 122 s to 31 s although the load was higher, and the A/B pair above, run back to back, agrees (122 and 140 s
+before, 29 and 25 s after). The total did not drop in this pair of runs only because the unchanged stages took longer under the heavier load
+(`sanitizers` 47 to 66 s, the others 131 to 215 s in sum). A quiet-machine run would show the saving in the total; it was not available here.
+Nothing was weakened: no stage, control or selftest was skipped, merged or shortened, and every toy still shows `CONTROL NAME RED_OK`.
