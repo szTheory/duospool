@@ -237,3 +237,4 @@ snapshot_restore_speed
 snapshot_restore_pad
 snapshot_restore_timer
 snapshot_hostile
+brk_irq_sample

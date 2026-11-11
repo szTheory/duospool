@@ -1076,6 +1076,7 @@ static const struct {
     {"stim_refusal_coverage", kind_stim_refusal_coverage, 1},
     {"input_refusal_coverage", kind_input_refusal_coverage, 1},
     {"snapshot_refusal_coverage", kind_snapshot_refusal_coverage, 1},
+    {"brk_irq_sample", kind_brk_irq_sample, 0},
 };
 
 static const char *outcome_of(const struct ctx *c, enum outcome *oc)

@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# BRK with an interrupt pending (code review WR-01, erratum R-9 of 03-CONTEXT.md; D-111, ASSUMED LED-IRQ-0005). The runner builds a nine-byte program in memory, CLI then BRK with the IRQ1 level held high from 150 to 3000 master clocks by the declared test stimulus below (a test hook,
+# never a claim about the VDC, ER-5, D-112). BRK sets I as part of its own entry (S8-30 flag row), so the IRQ1 request must wait: the BRK handler runs its first instruction before the IRQ1 handler. Each handler appends one byte to a log in work RAM, 0x0B for the BRK handler and
+# 0x01 for the IRQ1 handler, so the log must begin 0B, 01 (the BRK handler first, then the IRQ1 handler once the RTI has restored I and the level is still high). The old rule, which judged BRK by the I from before it, entered the IRQ1 handler first and the log began 01, 0B.
+# The rise at 150 falls inside the BRK instruction under both values of the sample: LDA #imm 2 cycles, TAM 5, CLI 2 and BRK 8 at 12 master clocks per cycle (the manual's table, tests/oracle/huc6280-opcodes.tsv) put the sample of the CLI at 96 and the sample of the BRK at 192, so the level is
+# not pending at CLI (under post it would enter at once, before BRK) and is pending at the BRK. The image is booted and run under both values of the model parameter irq_i_sample (pre and post): the order is the same under both because BRK is outside the parameter. The literals are the instruction definition (S8-30, H8-12) and the case's own handler bytes, not a DuoSpool run.
+# Evidence tier E0 for the order: repeatability against literals; no accuracy, compatibility, cycle-accurate or hardware claim, and the word pass is not a support claim. The toy control brk-sample-pre (tests/controls/brk-sample-pre) names this case and must see it fail on the old rule.
+id = "brk_irq_sample"
+kind = "brk_irq_sample"
+fixture = "none"
+request = ""
+expect = "log=0B,01"
+meaning = "With IRQ1 held high, CLI then BRK runs the first instruction of the BRK handler before the IRQ1 handler, under both values of irq_i_sample"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 6000
+irq_stim = ["150,1,1", "3000,1,0"]

@@ -29,12 +29,13 @@
 # Plan 03-29 changed the layout, format_version 5 to 6 (D-53 amended; the standing note on the 24-id cap of the single ids line): the table [withheld] is now count = N and one row id_1 to id_N per ledger id in sorted order, written here from the defs and the ledger (the ids of the open fields the default request binds, the unresolved
 # behaviours of the profile, LED-LOAD-0003, LED-LOAD-0005 and LED-PROF-0002, and the ledger id of every row of src/core/model_params.def and src/core/constants.def), not copied from printer output. The same plan added the constants rows pad_clr_high_nibble (0, LED-IO-0003), io_poweron_latch (255, LED-IO-0003) and pad_settle_mclk (0, LED-
 # IO-0004) after block_irq_after_epilogue, so LED-IO-0003 and LED-IO-0004 joined [withheld] (26 ids). The digest line is the one of the version 7 stream above: the constants and the layout are not in the digest.
+# Code review fix WR-01 (erratum R-9 of 03-CONTEXT.md) changed the sample after BRK, so behaviour_epoch went from 2 to 3 and nothing else in this record changed: the digest, the profile hash, the content hash and every table are as before (the epoch is not in the digest stream). The literal 3 was written by hand.
 [record]
 format_version = 6
 
 [core]
 build_id = "unset"
-behaviour_epoch = 2
+behaviour_epoch = 3
 
 [profile]
 id = "pce-hucard-2btn"

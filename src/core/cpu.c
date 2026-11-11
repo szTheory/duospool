@@ -1080,12 +1080,12 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
     cycles += bus->penalty; /* the VDC and VCE accesses this instruction made, charged by the bus (D-107) */
     inst->pc = (uint16_t)next;
     total = cycles * mclk_per_cycle;
-    i_sample = inst->irq_i_sample == (uint8_t)DS_IRQ_I_SAMPLE_POST ? ((uint32_t)inst->p & P_I) : i_before; /* post: the I value the instruction left (CLI, SEI, PLP and RTI have just changed it); pre: the one from before */
+    i_sample = (inst->irq_i_sample == (uint8_t)DS_IRQ_I_SAMPLE_POST || mn == (uint32_t)MN_BRK) ? ((uint32_t)inst->p & P_I) : i_before; /* post: the I the instruction left (CLI, SEI, PLP and RTI changed it); pre: the one from before, except BRK, which enters its handler with I set like an interrupt entry (WR-01, R-9: D-111 scopes pre to CLI, SEI, PLP, RTI) */
     /*
      * The interrupt sample (D-111, H8-12: the interrupt inputs are sampled in the last bus cycle of the instruction; ties are inclusive): the stamp is the start of the last cycle, the end of the instruction minus the length of that cycle, which
      * is at the speed the instruction started at (a CSL or CSH ends at its old speed). A timer register write in that cycle has already taken effect, and so has a write to $1402 or $1403. The I flag of the sample is the model parameter irq_i_sample
-     * (ASSUMED LED-IRQ-0005, open): with pre, the default, it is the one in force before the instruction, so after CLI, SEI, PLP and RTI the next instruction decides; with post it is the one the instruction left, so there is no latency. No other value
-     * exists (D-111). The entry runs now, in the same step, so there is no persisted latch and no stop point between an instruction and its entry.
+     * (ASSUMED LED-IRQ-0005, open): with pre, the default, it is the one in force before the instruction, so after CLI, SEI, PLP and RTI the next instruction decides; with post it is the one the instruction left, so there is no latency. BRK is outside the parameter: it sets I as
+     * part of its own entry, so its sample always sees the I it left (set), and a pending interrupt cannot pre-empt the first instruction of the BRK handler (R-9, LED-IRQ-0005). No other value exists (D-111). The entry runs now, in the same step, so there is no persisted latch and no stop point between an instruction and its entry.
      */
     return sample_and_enter(inst, log, bus->start, total, mclk_per_cycle, i_sample);
 }

@@ -19,7 +19,7 @@
 #define DS_MAPPER_NAME_MAX 16u
 #define DS_CONTENT_ID_BYTES 32u
 /* behaviour epoch (D-53): bumped by any change that can alter what a run observes; goldens compare it, never a build id */
-#define DS_BEHAVIOUR_EPOCH 2u
+#define DS_BEHAVIOUR_EPOCH 3u
 /* the version of the power-on policy table that the record prints next to the policy name is ds_policy_version() of ds_poweron.h (D-50, D-134): 1 for zero and seeded-prng-v1, 2 for seeded-prng-v2 */
 /* field_index of a result that names no profile field */
 #define DS_NO_FIELD 0xffffffffu

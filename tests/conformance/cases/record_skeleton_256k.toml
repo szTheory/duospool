@@ -6,7 +6,7 @@ id = "record_skeleton_256k"
 kind = "record_lines"
 fixture = "plain-256k"
 request = ""
-expect = "record.format_version=6;stimulus.events=0;input.events=0;input.schedule_sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855;core.behaviour_epoch=2;profile.id=pce-hucard-2btn;profile.rev=1;content.size=262144;content.mapper=plain;content.mapper_rule=plain-v1;content.byte_order=pce;content.header_handling=none;limits.size_cap=1048576"
+expect = "record.format_version=6;stimulus.events=0;input.events=0;input.schedule_sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855;core.behaviour_epoch=3;profile.id=pce-hucard-2btn;profile.rev=1;content.size=262144;content.mapper=plain;content.mapper_rule=plain-v1;content.byte_order=pce;content.header_handling=none;limits.size_cap=1048576"
 meaning = "The record skeleton of a 256 KiB synthetic image is printed in canonical form: 89 rows in fixed table and key order (the model, stimulus, input, constants and run tables included), LF and printable ASCII only, and a quote, a backslash or a short buffer makes the printer refuse and emit nothing"
 required = true
 control = false
