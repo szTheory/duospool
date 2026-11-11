@@ -22,14 +22,14 @@
 #   FXL_BAD_OBSERVE    a .checks fifth column other than the word observe (or a sixth column), or a row marked observe whose check is not CHECK_OBSERVE, or a CHECK_OBSERVE whose row is not marked observe     rule-bad-observe
 #   FXL_OCR_BACKS_SUPPORTED a MAN:<page> check whose page is flagged ocr in cites.txt while a supported ledger entry names that page in a FACT source, or a supported entry whose FACT source names an ocr page (ER-1)   rule-ocr-backs-supported
 #   FXL_UNKNOWN_LEDGER_ID an ASSUMED:<LED-id> whose id has no entry in the ledger (D-125)                                                   rule-unknown-ledger-id
-#   FXL_UNKNOWN_MNEMONIC a lower-case first word of a source line that is not a mnemonic of the opcode table (an assignment  name = value  is not an instruction)  rule-unknown-mnemonic
+#   FXL_UNKNOWN_MNEMONIC a first word of a source line (any case) that is not a mnemonic of the opcode table and not a macro defined by a .macro line of a source or of fixtures/lib (an assignment  name = value  is not an instruction)  rule-unknown-mnemonic
 # A RAW line is any source line whose comment holds the word RAW: raw instruction bytes written in place of an instruction. Data tables are .byte lines without the marker.
 # The mnemonic set is the table of tests/oracle/huc6280-opcodes.tsv (plan 03-08), not a list kept here, so the size-hint rule and the unknown-mnemonic rule cannot drift from the manual transcription.
 # The two ledger rules (plan 03-32) read the stage-0 summary: a page named in a FACT source of a supported entry is a page that backs a support claim, and must be img in cites.txt (ER-1); a FACT ref lists page labels
 # separated by spaces and may name a range  S8-17 to S8-20  (every registered label inside the range counts). An ASSUMED:<id> tag must name an entry of the ledger that is read.
 BEGIN {
   FS = "\t"
-  sentinel = 0; nfix = 0; nchk = 0; nraw = 0; nst = 0
+  sentinel = 0; nfix = 0; nchk = 0; nraw = 0; nst = 0; nunk = 0
   while ((getline cl < cites) > 0) {
     if (cl ~ /^#/ || cl ~ /^[ \t]*$/) continue
     split(cl, cf, "\t")
@@ -97,14 +97,18 @@ $1 == "INC" {
   if (!okinc) viol($2, "FXL_INCLUDE_PATH", $3, ".include " $4 " is not a bare name, fixtures/lib/NAME or build/PATH")  # rule-include-path
   next
 }
+$1 == "MAC" {
+  macro[$4] = 1
+  next
+}
 $1 == "INS" {
   mn = $4
   if (!(mn in mnem)) {
-    if ($5 !~ /^:?=/) viol($2, "FXL_UNKNOWN_MNEMONIC", $3, mn " is not a mnemonic of the opcode table")  # rule-unknown-mnemonic
+    if ($6 !~ /^:?=/) { nunk++; unkfile[nunk] = $2; unkline[nunk] = $3; unkmn[nunk] = mn; unkword[nunk] = $5 }  # judged at the end: a macro of an include may be defined after this line was read
     next
   }
   if (mn in isblock) next
-  np = split($5, pc, ",")
+  np = split($6, pc, ",")
   for (i = 1; i <= np; i++) {
     p = pc[i]
     gsub(/^[ \t]+|[ \t]+$/, "", p)
@@ -152,6 +156,9 @@ END {
   if (!ledend) {
     printf "X\tFXL_STAGE_DEAD\tthe ledger summary has no END sentinel\n"
     exit 2
+  }
+  for (u = 1; u <= nunk; u++) {
+    if (!(unkword[u] in macro)) viol(unkfile[u], "FXL_UNKNOWN_MNEMONIC", unkline[u], unkword[u] " is not a mnemonic of the opcode table and not a macro defined in a source or in fixtures/lib")  # rule-unknown-mnemonic
   }
   for (lab in supp) {
     if (!(lab in known) && (lab in direct)) viol(suppfile[lab], "FXL_UNKNOWN_CITE", 0, "a supported entry cites " lab " in a FACT source and cites.txt has no such page")  # rule-unknown-cite

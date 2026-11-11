@@ -140,10 +140,10 @@ if [ "$(tail -n 1 "$tmp/ledger0")" != "END" ]; then
   exit 2
 fi
 
-# the inputs: fixtures/src/*.s and *.checks, paths relative to the root. Nothing to lint is a harness error: a check of nothing never passes.
+# the inputs: fixtures/src/*.s and *.checks, and fixtures/lib/*.inc (read for .macro definitions only), paths relative to the root. Nothing to lint is a harness error: a check of nothing never passes.
 cd "$root"
 : > "$tmp/files"
-for f in fixtures/src/*.s fixtures/src/*.checks; do
+for f in fixtures/src/*.s fixtures/src/*.checks fixtures/lib/*.inc; do
   [ -f "$f" ] || continue
   case $f in
     *"$tab"*) echo "HARNESS_BAD_FILENAME a TAB in a file name" >&2; exit 2 ;;
