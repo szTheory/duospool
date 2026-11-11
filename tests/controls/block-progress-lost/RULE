@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Toy control (D-85, D-131; plan 03-25): a run library that loses the progress of a block transfer when a run stops inside it, made from the live src/core/run.c by scripts/control-mutate. The anchor is the line that ends a run at its deadline; the replacement, when the instance is
+# in the middle of a block transfer (blk_active, the prologue or a byte step was the last step) and still has bytes to move, gives the byte that was just moved back to the remaining count, so the transfer moves that byte again after the resume and one byte more than its length in all. A step cannot see that a run stops
+# (the stop is the caller's, outside the step; D-92), so the toy lives in the run loop, where the stop is: the plan named cpu.c for the anchor, but only run.c knows where a run ends. An uninterrupted run is not changed by it (it stops only at the end of the guest), so the plain cases pass on the toy.
+# The case in EXPECT must come out guest_failure on the toy: cpu_blk_stop_resume runs the cpu_blk guest in chunks of 1, 7, 168 and 3072 master clocks and in a rotation of them, every list ending calls inside block transfers, and compares the end with the one-call run: the toy's machine time, step count and memory differ.
+# The real core passes it (a REQUIRED case).
+tag=rule-block-progress-lost
+file=src/core/run.c
+anchor=if (inst->machine_time >= request->until_mclk) {
+replace=if (inst->machine_time >= request->until_mclk) { if (inst->blk_active != 0u && inst->blk_remaining > 0u) { inst->blk_remaining = inst->blk_remaining + 1u; }

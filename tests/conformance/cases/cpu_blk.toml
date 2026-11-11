@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The block transfers (plan 03-25; D-92, D-100, D-124, D-125, D-127; H8-6, S8-88, S8-89): the authored fixture fixtures/src/cpu_blk.s (the plain image cpu-blk) is assembled by ca65 in the gate (never committed), boots on the core, runs to the absolute deadline until_mclk (master clocks)
+# and writes a DSV1 verdict block that the runner judges from raw RAM. It runs TII, TDD, TIN, TIA and TAI with the registers and flags set before them (A, X, Y, S and N V Z C must be given back), overlapping blocks, the 16-bit address wrap, lengths above 256, a destination on the stack, the
+# cycle count read from the timer (E2) and the interrupt around a 4096-byte transfer with I set (the timer borrow is latched and not taken). The expected literals are in the literal table of fixtures/lib/check.inc and classed in fixtures/src/cpu_blk.checks: a manual page (MAN), an
+# in-guest computation (GUEST) or an assumed ledger entry (ASSUMED LED-CPU-0008, LED-IRQ-0007); none comes from DuoSpool output. The case has no policies key, so the guest kind runs the ROM under its default policy list (zero and two seeds of seeded-prng-v2, D-127).
+# Evidence tier E0, a mechanism check: the cycle rows are E2 self-consistency; no accuracy, compatibility or cycle-accuracy claim, and the word pass is not a support claim.
+id = "cpu_blk"
+kind = "guest"
+fixture = "authored:cpu-blk"
+request = ""
+expect = "id=13"
+meaning = "The authored cpu_blk fixture runs the five block transfers with the registers, S and the flags given back, overlap, address wrap, lengths above 256, a destination on the stack, the cycle count from the timer and the interrupt model with I set, and leaves a consistent DSV1 block whose 50 check results are all pass"
+required = true
+control = false
+expect_outcome = "pass"
+pins = ["LED-CPU-0008"]
+until_mclk = 1150000
+checks = 50

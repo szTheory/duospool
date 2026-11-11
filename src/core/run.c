@@ -4,6 +4,7 @@
  * run.c - ds_run, the bounded run of the machine in whole instructions to an absolute deadline in master clocks (plan 03-01; D-90, D-92,
  * D-93, D-94, D-95). Steps are indivisible and the deadline is absolute, so run(N) followed by run(M) takes the same steps as run(M) from the start:
  * chunk invariance holds by construction. Nothing but the instance survives a step; there is no local cache of CPU state between steps.
+ * A step is one instruction, the interrupt entry it triggers, or one step of a block transfer (the prologue, one byte, the epilogue, plan 03-25), so a deadline or a stop callback can end a run between any two of them (D-92).
  * Order of a call: refuse a malformed request (NULL instance or request, wrong struct_size, nonzero reserved, a sink that is oversized or not valid memory (plans 03-10 and 03-19: ds_obs_sinks_check), a deadline that would wrap
  * the 64-bit machine time), then (with a sink) overwrite its header, return UNTIL with zero steps when the deadline is not ahead, then check the stop callback before the first step
  * and after every step. The insn hook sees each instruction once, before it runs, the dev hook each logged hardware-page access, and neither can change the instance (ds_obs.h). A stop that holds at the step where the deadline is reached is a stop (CALLBACK), as in the Phase 2 budgeted run.
@@ -61,7 +62,7 @@ static uint32_t finish(struct ds_run_result *result, const struct ds_instance *i
 
         result->reason = reason;
         result->refusal = refusal;
-        result->stop_point = (uint32_t)DS_STOP_INSTRUCTION;
+        result->stop_point = reason != (uint32_t)DS_RUN_REASON_REFUSED && inst != NULL && inst->blk_active != 0u ? (uint32_t)DS_STOP_BLOCK_BYTE : (uint32_t)DS_STOP_INSTRUCTION; /* a run that ends inside a block transfer (the prologue or a byte was the last step, plan 03-25) stops at a block byte; every other end, and every refused call, at an instruction */
         result->pad = 0u;
         result->machine_time = now;
         result->overshoot = reason != (uint32_t)DS_RUN_REASON_REFUSED && steps > UINT64_C(0) && now > until ? now - until : UINT64_C(0);
@@ -72,7 +73,7 @@ static uint32_t finish(struct ds_run_result *result, const struct ds_instance *i
 
 uint32_t ds_run(struct ds_instance *inst, const struct ds_run_request *request, struct ds_run_result *result)
 {
-    uint64_t guard = ds_max_step_mclk();
+    uint64_t guard = UINT64_C(0);
     uint64_t steps = UINT64_C(0);
     uint32_t reason = (uint32_t)DS_RUN_REASON_UNTIL;
     struct ds_obs_log log;
@@ -95,7 +96,10 @@ uint32_t ds_run(struct ds_instance *inst, const struct ds_run_request *request, 
     if (refusal != (uint32_t)DS_RUNREF_NONE) {
         return finish(result, inst, (uint32_t)DS_RUN_REASON_REFUSED, refusal, UINT64_C(0), steps);
     }
-    /* a step can end up to guard clocks past the deadline: a deadline or a machine time within one step of 2^64 would wrap (Pitfall 20) */
+    /* a step can end up to guard clocks past the deadline: a deadline or a machine time within one step of 2^64 would wrap (Pitfall 20). The guard is a scan of the whole opcode table, so it is taken only when a time is above half the range, where it can matter: it is far below 2^63, so below half the range the test cannot refuse, and a run split into millions of calls (plan 03-25, a chunk of one clock) does not pay for the scan in each */
+    if (request->until_mclk > UINT64_MAX / UINT64_C(2) || inst->machine_time > UINT64_MAX / UINT64_C(2)) {
+        guard = ds_max_step_mclk();
+    }
     if (request->until_mclk > UINT64_MAX - guard || inst->machine_time > UINT64_MAX - guard) {
         return finish(result, inst, (uint32_t)DS_RUN_REASON_REFUSED, (uint32_t)DS_RUNREF_time_wrap, UINT64_C(0), steps);
     }

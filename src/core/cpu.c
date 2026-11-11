@@ -3,7 +3,7 @@
 /*
  * cpu.c - the HuC6280 core of the tracer slice (plan 03-01; D-90, D-92, D-96, D-114); the bus choke point moved to bus.c in plan 03-16.
  * Plan 03-09 replaced the hand-written subset by the 256-row table of cpu_ops.def (opcode, mnemonic, mode, bytes, cycles, access class, cite) expanded into static const metadata and a
- * mnemonic switch. A mnemonic whose semantics land in a later plan (the block transfers, plan 03-25) advances PC by the table length and charges the table cycles with no other effect until then (the case labels name the plan).
+ * mnemonic switch. The block transfers (plan 03-25) are four kinds of step, not one (D-92, D-100): the prologue (the instruction itself), one step per byte and the epilogue, with their state in the instance (blk_*).
  * One step is one whole instruction: all state lives in the instance, no local survives a step (D-92). The step returns the master clocks it took; ds_run adds them to the machine time.
  * A cycle is 12 master clocks at low speed and 3 at high speed (D-90). The 22 undefined opcodes are one byte, two cycles, T cleared (the length is an assumption of this project, LED-CPU-0010).
  * Bus: every CPU access goes through ds_bus_read and ds_bus_write of bus.c (D-102 to D-104): the translate, the bank classes and the hardware page live there, not here.
@@ -525,9 +525,166 @@ static uint32_t interrupt_entry(struct ds_instance *inst, struct ds_obs_log *log
     return (DS_INT_ENTRY_CYCLES + bus.penalty) * mclk;
 }
 
+/*
+ * The block transfers (plan 03-25; D-92, D-100, LED-CPU-0007, LED-CPU-0008, LED-IRQ-0007; H8-6, S8-88, S8-89): TII, TDD, TIN, TIA and TAI run as three kinds of step on the state blk_* of the instance, so a run can stop between any two of them and resume.
+ *   prologue  the instruction itself, BLK_PROLOGUE_CYCLES (14) cycles: the six operand bytes are latched (source, destination and length, 16 bits each, little endian: opcode, SL, SH, DL, DH, LL, LH), the length 0 is turned into 65536, Y, A and X are pushed to the stack
+ *             (a push writes at $2100 + S and decrements S, three levels, S8-88), PC moves past the seven bytes and the transfer becomes active. No register, flag (except T, cleared in every fetch) or memory other than the stack changes.
+ *   byte      BLK_BYTE_CYCLES (6) cycles: the byte at the source address is read in the fourth cycle and written to the destination address in the sixth, through the bus (the mapping registers, the VDC penalty and the hardware windows apply to both
+ *             accesses), then the addresses move as the instruction says (Table 2-1-1: post-increment and post-decrement, a fixed destination for TIN, an alternation of add then subtract for the destination of TIA and the source of TAI, add first)
+ *             with 16-bit wrap, and the remaining count goes down by one. A write that lands on the stack area is faithful: the epilogue reads the saved registers back from memory.
+ *   epilogue  BLK_EPILOGUE_CYCLES (3) cycles: X, A and Y are pulled from the stack (S goes up three levels), the transfer ends and every blk_* field is 0 again. The interrupt inputs are sampled here for the first time since the prologue and never inside a
+ *             transfer (the sample at the end of the epilogue, with the I flag of the sample as for any instruction; block_irq_after_epilogue 1).
+ * A transfer of x bytes takes 17 + 6x cycles at the speed in force (each step is charged at the speed it starts at, and only an instruction can change the speed). The step has no local state: everything is in the instance (D-92).
+ */
+#define BLK_PROLOGUE_CYCLES 14u
+#define BLK_TABLE_CYCLES 17u /* the manual's fixed part of 17 + 6x, the table row of the five opcodes */
+#define BLK_EPILOGUE_CYCLES (BLK_TABLE_CYCLES - BLK_PROLOGUE_CYCLES)
+#define BLK_BYTE_CYCLES 6u
+#define BLK_READ_CYCLE 4u  /* the source read is in this cycle of a byte step (1 based) */
+#define BLK_OPCODE_TII 0x73u
+#define BLK_OPCODE_TDD 0xC3u
+#define BLK_OPCODE_TIN 0xD3u
+#define BLK_OPCODE_TIA 0xE3u
+#define BLK_OPCODE_TAI 0xF3u
+#define BLK_IRQ_AFTER_EPILOGUE 1u /* plan 03-25 task 3 moves this and the prologue length to constants.def */
+#define BLK_LENGTH_MAX 65536u /* the length operand 0 means this many bytes (H8-6) */
+_Static_assert(BLK_EPILOGUE_CYCLES >= 1u, "the epilogue has at least one cycle");
+_Static_assert(BLK_READ_CYCLE < BLK_BYTE_CYCLES, "the source read comes before the destination write");
+
+static int block_mnemonic(uint32_t mn)
+{
+    return mn == (uint32_t)MN_TII || mn == (uint32_t)MN_TDD || mn == (uint32_t)MN_TIN || mn == (uint32_t)MN_TIA || mn == (uint32_t)MN_TAI;
+}
+
+/* the interrupt sample and entry at the end of a step that has run for total master clocks from start: the stamp of the sample is the start of the last cycle (D-111); returns total plus the entry when one is taken */
+static uint32_t sample_and_enter(struct ds_instance *inst, struct ds_obs_log *log, uint64_t start, uint32_t total, uint32_t mclk_per_cycle, uint32_t i_sample)
+{
+    uint32_t vector;
+
+    if (i_sample == 0u) {
+        vector = ds_irq_pending(inst, start + (uint64_t)total - (uint64_t)DS_CONST_irq_sample_cycles_before_end * (uint64_t)mclk_per_cycle);
+        if (vector != 0u) {
+            total += interrupt_entry(inst, log, start + (uint64_t)total, vector);
+        }
+    }
+    return total;
+}
+
+/* the prologue: pc is the address of the opcode, which the step has already read; bus carries the stamp rule of the step */
+static uint32_t block_prologue(struct ds_instance *inst, struct ds_obs_log *log, struct ds_bus *bus, uint32_t mclk_per_cycle, uint32_t pc, uint8_t opcode)
+{
+    uint32_t sl;
+    uint32_t sh;
+    uint32_t dl;
+    uint32_t dh;
+    uint32_t ll;
+    uint32_t lh;
+    uint32_t len;
+
+    bus->last = BLK_PROLOGUE_CYCLES - 1u; /* every access of the prologue is stamped in its last cycle (an assumption of this project, LED-CPU-0004, LED-CPU-0008) */
+    bus->rmw = 0u;
+    sl = ds_bus_read(inst, bus, (uint16_t)(pc + 1u));
+    sh = ds_bus_read(inst, bus, (uint16_t)(pc + 2u));
+    dl = ds_bus_read(inst, bus, (uint16_t)(pc + 3u));
+    dh = ds_bus_read(inst, bus, (uint16_t)(pc + 4u));
+    ll = ds_bus_read(inst, bus, (uint16_t)(pc + 5u));
+    lh = ds_bus_read(inst, bus, (uint16_t)(pc + 6u));
+    ds_obs_insn(log, inst, opcode); /* once per transfer: the hook sees the instruction with the state before it runs; there is no record per byte (D-100) */
+    inst->p = (uint8_t)((uint32_t)inst->p & ~P_T); /* T is cleared by the fetch of every instruction and by this one's flag row (S8-89) */
+    len = ll | (lh << 8u);
+    push(inst, bus, inst->y);
+    push(inst, bus, inst->a);
+    push(inst, bus, inst->x);
+    inst->blk_opcode = opcode;
+    inst->blk_toggle = 0u;
+    inst->blk_src = (uint16_t)(sl | (sh << 8u));
+    inst->blk_dst = (uint16_t)(dl | (dh << 8u));
+    inst->blk_remaining = len == 0u ? BLK_LENGTH_MAX : len;
+    inst->blk_active = 1u;
+    inst->pc = (uint16_t)((pc + 7u) & 0xFFFFu);
+    return (BLK_PROLOGUE_CYCLES + bus->penalty) * mclk_per_cycle;
+}
+
+/* the address after one byte: add one, subtract one or stay, 16-bit wrap (explicit masks) */
+static uint16_t block_move(uint32_t addr, int delta)
+{
+    return (uint16_t)(delta > 0 ? (addr + 1u) & 0xFFFFu : delta < 0 ? (addr - 1u) & 0xFFFFu : addr & 0xFFFFu);
+}
+
+/* one byte: read the source in the BLK_READ_CYCLE-th cycle, write the destination in the last, then move the addresses */
+static uint32_t block_byte(struct ds_instance *inst, struct ds_bus *bus, uint32_t mclk_per_cycle)
+{
+    uint32_t value;
+    uint32_t opcode = inst->blk_opcode;
+    int src_delta = 1;
+    int dst_delta = 1;
+
+    bus->last = BLK_READ_CYCLE - 1u;
+    value = ds_bus_read(inst, bus, inst->blk_src);
+    bus->last = BLK_BYTE_CYCLES - 1u;
+    ds_bus_write(inst, bus, inst->blk_dst, (uint8_t)value);
+    switch (opcode) {
+    case BLK_OPCODE_TDD:
+        src_delta = -1;
+        dst_delta = -1;
+        break;
+    case BLK_OPCODE_TIN:
+        dst_delta = 0;
+        break;
+    case BLK_OPCODE_TIA: /* the destination adds one, then subtracts one, then adds again (post-increment precedes post-decrement) */
+        dst_delta = inst->blk_toggle == 0u ? 1 : -1;
+        inst->blk_toggle = (uint8_t)(1u - (uint32_t)inst->blk_toggle);
+        break;
+    case BLK_OPCODE_TAI:
+        src_delta = inst->blk_toggle == 0u ? 1 : -1;
+        inst->blk_toggle = (uint8_t)(1u - (uint32_t)inst->blk_toggle);
+        break;
+    default: /* TII: both post-increment */
+        break;
+    }
+    inst->blk_src = block_move(inst->blk_src, src_delta);
+    inst->blk_dst = block_move(inst->blk_dst, dst_delta);
+    inst->blk_remaining = inst->blk_remaining - 1u;
+    return (BLK_BYTE_CYCLES + bus->penalty) * mclk_per_cycle;
+}
+
+/* the epilogue: X, A and Y come back from the stack memory (whatever the transfer wrote there), the state is cleared, and the interrupt sample of the end of the transfer follows */
+static uint32_t block_epilogue(struct ds_instance *inst, struct ds_obs_log *log, struct ds_bus *bus, uint32_t mclk_per_cycle)
+{
+    uint32_t total;
+
+    bus->last = BLK_EPILOGUE_CYCLES - 1u;
+    inst->x = (uint8_t)pull(inst, bus);
+    inst->a = (uint8_t)pull(inst, bus);
+    inst->y = (uint8_t)pull(inst, bus);
+    inst->blk_active = 0u;
+    inst->blk_opcode = 0u;
+    inst->blk_toggle = 0u;
+    inst->blk_remaining = 0u;
+    inst->blk_src = 0u;
+    inst->blk_dst = 0u;
+    total = (BLK_EPILOGUE_CYCLES + bus->penalty) * mclk_per_cycle;
+    return BLK_IRQ_AFTER_EPILOGUE != 0u ? sample_and_enter(inst, log, bus->start, total, mclk_per_cycle, (uint32_t)inst->p & P_I) : total;
+}
+
+/* one step of an active transfer: a byte, or the epilogue when no byte is left */
+static uint32_t block_step(struct ds_instance *inst, struct ds_obs_log *log)
+{
+    uint32_t mclk_per_cycle = inst->speed != 0u ? DS_MCLK_PER_CYCLE_HIGH : DS_MCLK_PER_CYCLE_LOW;
+    struct ds_bus bus = {0u, log, inst->machine_time, mclk_per_cycle, 0u, 0u};
+
+    if (inst->blk_remaining == 0u) {
+        return block_epilogue(inst, log, &bus, mclk_per_cycle);
+    }
+    return block_byte(inst, &bus, mclk_per_cycle);
+}
+
 /* one instruction; log is the instruction sink writer of the running ds_run call or NULL (plan 03-10): the hook is called once per executed instruction with the state before it runs (D-119) */
 uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
 {
+    if (inst->blk_active != 0u) { /* inside a block transfer: this step is a byte or the epilogue, not the fetch of an instruction (plan 03-25, D-92) */
+        return block_step(inst, log);
+    }
     uint32_t mclk_per_cycle = inst->speed != 0u ? DS_MCLK_PER_CYCLE_HIGH : DS_MCLK_PER_CYCLE_LOW; /* the speed this instruction starts at: CSL and CSH are charged at the old speed, the new one applies from the next instruction (D-101) */
     struct ds_bus bus_state = {0u, log, inst->machine_time, mclk_per_cycle, 0u, 0u}; /* what this instruction's bus accesses add to it, the observer log they report to and the stamp rule of the accesses (start, cycle length, last cycle, read-modify-write): a local of the step, nothing survives it (D-92, D-108) */
     struct ds_bus *bus = &bus_state;
@@ -541,9 +698,11 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
     uint32_t cycles = op->cycles;
     int t_active = ((uint32_t)inst->p & P_T) != 0u; /* T as the instruction before this one left it: only ADC, AND, EOR and ORA read it (S8-17) */
     uint32_t total;
-    uint32_t vector;
     uint32_t i_sample;
 
+    if (block_mnemonic(mn)) { /* the block transfers are not executed as one instruction: this step is the prologue (plan 03-25) */
+        return block_prologue(inst, log, bus, mclk_per_cycle, pc, opcode);
+    }
     bus->last = cycles + flag_cycles(mn, t_active, inst->p) - 1u; /* the last cycle of the instruction before the penalty: where a single data access is stamped (D-92) */
     bus->rmw = op->cls == (uint8_t)CL_RMW ? 1u : 0u;
     uint32_t op1 = bytes >= 2u ? ds_bus_read(inst, bus, (uint16_t)(pc + 1u)) : 0u;
@@ -907,11 +1066,10 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
         break;
     case MN_NOP: /* PC <- PC+1, no register or flag (S8-57) */
         break;
-    /* ---- the functionality gap: the undefined opcodes and the block transfers advance PC by the table length and charge the table cycles, with no register, flag or memory effect, until the block-transfer plan lands ---- */
     case MN_UNDEF: /* D-96: one byte, two cycles, T cleared */
         break;
     case MN_TAI: case MN_TDD: case MN_TIA: case MN_TII: case MN_TIN:
-        break; /* the block-transfer plan (D-100); one step charges the table's 17 until then */
+        break; /* never reached: block_mnemonic above sends the five block transfers to block_prologue */
     }
     if (taken) {
         next = branch_target(next, mode == (uint32_t)AM_ZPREL ? op2 : op1);
@@ -928,13 +1086,7 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
      * (ASSUMED LED-IRQ-0005, open): with pre, the default, it is the one in force before the instruction, so after CLI, SEI, PLP and RTI the next instruction decides; with post it is the one the instruction left, so there is no latency. No other value
      * exists (D-111). The entry runs now, in the same step, so there is no persisted latch and no stop point between an instruction and its entry.
      */
-    if (i_sample == 0u) {
-        vector = ds_irq_pending(inst, bus->start + (uint64_t)total - (uint64_t)DS_CONST_irq_sample_cycles_before_end * (uint64_t)mclk_per_cycle);
-        if (vector != 0u) {
-            total += interrupt_entry(inst, log, bus->start + (uint64_t)total, vector);
-        }
-    }
-    return total;
+    return sample_and_enter(inst, log, bus->start, total, mclk_per_cycle, i_sample);
 }
 
 uint32_t ds_cpu_step(struct ds_instance *inst)

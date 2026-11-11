@@ -1,0 +1,63 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# cpu_blk.checks - one row per CHECK of fixtures/src/cpu_blk.s (D-125, plan 03-25). Columns separated by one TAB: check index (1-based, the entry number of the DCK1 table), slug, class tag, meaning.
+# Class tags: MAN:<page> (the literal is a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model> (the expected byte is computed in the guest or by the assembler from instruction counts, the table entry is an XOR mask of $00), ASSUMED:<LED-id>.
+# One source, three images (scripts/fixture-build): cpu-blk, cpu-blk-len0 (-D LEN0) and cpu-blk-irq (-D BLK_IRQ). All three run all 50 checks. Rows 39 to 50 have a different expected literal by image (the meaning column gives the plain, len0 and irq readings);
+# every literal is a page value, a byte the guest read or computed, or the assumed reading named in the class, never a value taken from a run of DuoSpool.
+# Class MAN rows follow Table 2-1-1 of H8-6 (source and destination modes, length 0 = 65536 bytes, 17 + 6x cycles, A X Y returned from the stack) and the flowchart of S8-88 (Y, A and X saved one level each; the TAI source adds one then subtracts one, the destination of TIA the same).
+# H8-25 prints 17+16z in its footnote; that is a misprint of 17+6x (errata R-1) and is not used. Rows classed ASSUMED:LED-CPU-0008 are the project's aliasing, wrap and stack-clobber model (byte-at-a-time, 16-bit wrap, the epilogue pops from memory); the rows
+# classed ASSUMED:LED-IRQ-0007 are the rule that no interrupt is sampled inside a transfer and that it is sampled once at the end of the epilogue. The in-guest timer rows (36, 37, 38, 41) are E2 self-consistency: the community-reported 12 master clocks per CPU
+# cycle at the low speed and the prescaler step of 3072 master clocks are inputs, and the access stamp rule (LED-CPU-0004) too. A pass is not a support claim (ER-4).
+id=13
+checks=50
+1	tii-first-byte	MAN:H8-6	TII of 16 bytes: the first byte goes to the first destination address (source and destination are post-incremented)
+2	tii-last-byte	MAN:H8-6	The sixteenth byte is the last one moved
+3	tii-no-overrun	MAN:H8-6	Exactly 16 bytes move: the byte after the block is untouched
+4	tii-no-underrun	MAN:H8-6	The byte before the block is untouched
+5	tii-a-returned	MAN:H8-6	A is returned from the stack at the end of the instruction
+6	tii-x-returned	MAN:H8-6	X is returned from the stack
+7	tii-y-returned	MAN:H8-6	Y is returned from the stack
+8	tii-s-restored	GUEST:stack-pointer	S after the transfer is S before it: the three stack bytes are used and given back (the expected byte is S read before the transfer)
+9	tii-flags-kept-set	MAN:S8-89	N, V, Z and C are not changed by the transfer: the flag row of the page has only T (set before: all four read back 1)
+10	tdd-runs-downwards	MAN:H8-6	TDD of 8 bytes from R+7 to R+8: the byte at R+7 is moved to R+8, source and destination are post-decremented
+11	tdd-flags-kept-clear	MAN:S8-89	N, V, Z and C stay clear (set clear before the transfer)
+12	tdd-registers-returned	MAN:H8-6	A, X, Y and S are given back by TDD (the four differences from the values before are zero)
+13	tii-overlap-spreads	ASSUMED:LED-CPU-0008	TII of 8 bytes from R to R+1: one byte moves per six bus cycles and the source is read again after each write, so the first byte spreads over the whole block (R+8 holds PAT[0])
+14	tin-last-byte-in-cell	MAN:H8-6	TIN of 16 bytes to one destination address: the cell holds the last byte (the source is post-incremented, the destination is fixed)
+15	tin-destination-fixed	MAN:H8-6	The neighbour of the fixed destination address is untouched
+16	tin-registers-returned	MAN:H8-6	A, X, Y and S are given back by TIN
+17	tia-even-first-cell	MAN:H8-6	TIA of 16 bytes: the destination alternates post-increment and post-decrement (post-increment first), so the first cell holds the byte before the last
+18	tia-even-second-cell	MAN:H8-6	and the second cell holds the last byte
+19	tia-odd-first-cell	MAN:S8-88	TIA of 7 bytes: the first cell holds the last byte (the alternation state is kept from byte to byte)
+20	tia-odd-second-cell	MAN:S8-88	and the second cell holds the byte before the last
+21	tia-registers-returned	MAN:H8-6	A, X, Y and S are given back by TIA
+22	tai-source-returns	MAN:S8-88	TAI of 8 bytes: the source address goes up and then down again, so the third byte moved is the first source byte
+23	tai-source-second	MAN:S8-88	The eighth byte moved is the second source byte
+24	tai-odd-last	MAN:S8-88	TAI of 7 bytes: the seventh byte moved is the first source byte
+25	tai-registers-returned	MAN:H8-6	A, X, Y and S are given back by TAI
+26	source-wraps-ffff	GUEST:vector-byte	TII from $FFFE: the second byte moved is the byte at $FFFF (read in the guest with a load before the transfer)
+27	source-wraps-to-0	ASSUMED:LED-CPU-0008	The 16-bit source address wraps from $FFFF to $0000: the third byte moved is the byte at $0000 (work RAM through MPR0)
+28	destination-wraps-to-0	ASSUMED:LED-CPU-0008	The 16-bit destination address wraps from $FFFF to $0000: the second byte moved lands at $0000
+29	length-257-last-byte	MAN:H8-6	The length is 16 bits: a length of 257 moves the 257th byte (the high length byte is used)
+30	length-257-no-more	MAN:H8-6	and no byte more
+31	length-1	MAN:H8-6	A length of 1 moves one byte: the byte after it is untouched
+32	stack-clobber-x	ASSUMED:LED-CPU-0008	TII of 6 bytes over the saved registers (Y at S, A at S-1, X at S-2, S8-88): X is popped from memory, so it holds the third byte moved
+33	stack-clobber-a	ASSUMED:LED-CPU-0008	A is popped from memory: it holds the fourth byte moved
+34	stack-clobber-y	ASSUMED:LED-CPU-0008	Y is popped from memory: it holds the fifth byte moved
+35	stack-clobber-s	GUEST:stack-pointer	S is back where it was whatever the transfer wrote
+36	cycles-just-past-step	GUEST:timer-e2	E2: 935 bytes, 5638 CPU cycles from the timer start access to the read, 6 past the 22nd prescaler step: 17 + 6x cycles, the counter reads 105; a transfer 7 cycles short reads 104
+37	cycles-just-before-step	GUEST:timer-e2	E2: 933 bytes, 5626 cycles, 6 before the 22nd step: the counter reads 106; a transfer 7 cycles long reads 105
+38	cycles-at-high-speed	GUEST:timer-e2	E2: at the high speed (3 master clocks per cycle) 679 bytes take 4102 cycles, 4 steps of 1024 and 6 more: the counter reads 123; a block charged at the low speed would read about 111
+39	long-first-cell	MAN:H8-6	The long TIA: a length operand 0 means 65536 bytes in the len0 image (the source walk ends at $FFFF) and 3 bytes in the others. The cell the destination returns to holds the byte at $FFFF after 3 bytes ($E0) and the byte at $FFFE after 65536 ($00)
+40	long-second-cell	MAN:H8-6	The other cell holds the byte at $FFFE after 3 bytes ($00) and the byte at $FFFF after 65536 ($E0)
+41	long-cycles	GUEST:timer-e2	E2: the counter after the long transfer, 64 + 6x cycles from the start access to the read: with the length 0 the transfer is 393233 cycles, so a cost of one cycle more or less per byte is 256 steps (the counter is computed by the assembler)
+42	long-registers-returned	MAN:H8-6	A, X, Y and S are given back by the long transfer
+43	tiq-entries	ASSUMED:LED-IRQ-0007	TII of 4096 bytes with the timer at reload 0: with I clear (the irq image) the timer interrupt is taken once; the borrows during the transfer coalesce in one latch. With I set (the other images) it is not taken: 0
+44	bytes-at-first-entry	ASSUMED:LED-IRQ-0007	All 4096 destination bytes are written when the first handler runs (16 = $10 pages complete: the last byte of each 256-byte page holds the copied byte): no interrupt is sampled inside a transfer. In the other images the main program counts the pages after the transfer
+45	irq2-entries	ASSUMED:LED-IRQ-0007	The IRQ2 level that the case raises inside the transfer is taken once, after the timer interrupt (the irq image); not at all with I set
+46	entry-order	ASSUMED:LED-IRQ-0007	Both are pending at the end of the transfer: the timer interrupt is taken first, then IRQ2 (the priority of H8-13): the log reads 1 then 2
+47	regs-at-entry	ASSUMED:LED-IRQ-0007	At the entry of the timer handler A, X and Y hold their values from before the transfer (the epilogue had returned them): the difference is 0; the initial $FF where no handler ran
+48	return-address	ASSUMED:LED-IRQ-0007	The return address the entry pushed is the instruction after the transfer: the interrupt is sampled at the end of the epilogue and entered in the same step (0 where it is taken, $FF where no handler ran)
+49	regs-after-handlers	MAN:H8-6	After the handlers returned A, X, Y and S read back equal to their values before the transfer
+50	tiq-latch-after	MAN:H8-15	The request register shows TIQ (bit 2) while the interrupt is masked by I after the transfer, and 0 once the handler acknowledged it

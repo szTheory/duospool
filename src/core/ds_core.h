@@ -150,10 +150,17 @@ struct ds_instance {
     uint8_t io_buffer;
     uint8_t mpr_latch;
     uint8_t tma_zero;
+    /* the block transfer in progress (plan 03-25, cpu.c; D-92, D-100): blk_active is 1 between the prologue step and the epilogue step of TII, TDD, TIN, TIA or TAI and 0 otherwise; blk_opcode is that instruction's opcode ($73, $C3, $D3, $E3, $F3, else 0), blk_toggle the alternation state of TIA and TAI (0: the next byte adds one, 1: it subtracts one), blk_remaining the bytes still to move (0 to 65536: the length operand 0 is 65536 and is turned into it by the prologue; 0 while active means the epilogue is next) and blk_src and blk_dst the 16-bit source and destination addresses (the hidden SH:X and DH:Y registers of H8-6). Every field is 0 when no transfer is active. The eleven bytes are region BLKT */
+    uint8_t blk_active;
+    uint8_t blk_opcode;
+    uint8_t blk_toggle;
+    uint32_t blk_remaining;
+    uint16_t blk_src;
+    uint16_t blk_dst;
     uint8_t rom[DS_ROM_CAP];
 };
 
-/* the stimulus arrays, the timer block, the controller bytes, the CPU block and the bus block have no padding and sit in the order of the declarations (the digest regions IRQS, TIMR, IRQC, CPU0 and BUS0 are each one live span, serial.c): the stimulus times follow the power-up seed, and the ROM array follows the bus block */
+/* the stimulus arrays, the timer block, the controller bytes, the CPU block, the bus block and the block transfer state have no padding and sit in the order of the declarations (the digest regions IRQS, TIMR, IRQC, CPU0, BUS0 and BLKT are each one live span, serial.c): the stimulus times follow the power-up seed, and the ROM array follows the block transfer state */
 _Static_assert(offsetof(struct ds_instance, irq_stim_at) == offsetof(struct ds_instance, powerup_seed) + sizeof(uint64_t), "padding before the stimulus times");
 _Static_assert(offsetof(struct ds_instance, irq_stim_line) == offsetof(struct ds_instance, irq_stim_at) + DS_IRQ_STIM_MAX * sizeof(uint64_t), "padding between the stimulus times and lines");
 _Static_assert(offsetof(struct ds_instance, irq_stim_level) == offsetof(struct ds_instance, irq_stim_line) + DS_IRQ_STIM_MAX, "padding between the stimulus lines and levels");
@@ -168,7 +175,13 @@ _Static_assert(offsetof(struct ds_instance, pc) == offsetof(struct ds_instance, 
 _Static_assert(offsetof(struct ds_instance, io_buffer) == offsetof(struct ds_instance, speed) + 1u, "padding between the CPU state and io_buffer");
 _Static_assert(offsetof(struct ds_instance, mpr_latch) == offsetof(struct ds_instance, io_buffer) + 1u, "padding between io_buffer and mpr_latch");
 _Static_assert(offsetof(struct ds_instance, tma_zero) == offsetof(struct ds_instance, mpr_latch) + 1u, "padding between mpr_latch and tma_zero");
-_Static_assert(offsetof(struct ds_instance, rom) == offsetof(struct ds_instance, tma_zero) + 1u, "padding between the bus bytes and the ROM");
+_Static_assert(offsetof(struct ds_instance, blk_active) == offsetof(struct ds_instance, tma_zero) + 1u, "padding between the bus bytes and the block transfer state");
+_Static_assert(offsetof(struct ds_instance, blk_opcode) == offsetof(struct ds_instance, blk_active) + 1u, "padding in the block transfer bytes");
+_Static_assert(offsetof(struct ds_instance, blk_toggle) == offsetof(struct ds_instance, blk_opcode) + 1u, "padding in the block transfer bytes");
+_Static_assert(offsetof(struct ds_instance, blk_remaining) == offsetof(struct ds_instance, blk_toggle) + 1u, "padding before the block transfer length");
+_Static_assert(offsetof(struct ds_instance, blk_src) == offsetof(struct ds_instance, blk_remaining) + sizeof(uint32_t), "padding after the block transfer length");
+_Static_assert(offsetof(struct ds_instance, blk_dst) == offsetof(struct ds_instance, blk_src) + sizeof(uint16_t), "padding between the block transfer addresses");
+_Static_assert(offsetof(struct ds_instance, rom) == offsetof(struct ds_instance, blk_dst) + sizeof(uint16_t), "padding between the block transfer state and the ROM");
 
 struct ds_boot_request {
     uint32_t struct_size; /* sizeof(struct ds_boot_request) */
@@ -233,7 +246,7 @@ enum ds_constant {
 typedef int (*ds_stop_fn)(const struct ds_instance *inst, void *ctx);
 
 enum ds_run_reason { DS_RUN_REASON_UNTIL = 1, DS_RUN_REASON_CALLBACK = 2, DS_RUN_REASON_REFUSED = 3 };
-enum ds_stop_point { DS_STOP_INSTRUCTION = 1, DS_STOP_BLOCK_BYTE = 2 /* reserved for plan W5: nothing returns it yet */ };
+enum ds_stop_point { DS_STOP_INSTRUCTION = 1, DS_STOP_BLOCK_BYTE = 2 /* the run ended inside a block transfer: the prologue or a byte step was the last step and the epilogue is still to come (plan 03-25, D-92) */ };
 
 /* the refusal codes of a run request (run_refusals.def, plan 03-35; F4): their own set and prefix, never part of refusals.def */
 enum ds_run_refusal {

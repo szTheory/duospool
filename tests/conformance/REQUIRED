@@ -190,3 +190,5 @@ mutate_sweep_spd_speed
 spd_speed_trace
 observer_tim_timer
 record_stimulus_shown
+cpu_blk
+cpu_blk_stop_resume
