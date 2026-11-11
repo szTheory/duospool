@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 3
 current_phase_name: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-current_plan: 26
+current_plan: 27
 status: planning
-stopped_at: Completed 03-21-PLAN.md
-last_updated: "2026-11-11T13:26:35.251Z"
+stopped_at: Completed 03-22-PLAN.md
+last_updated: "2026-11-11T14:00:45.805Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 2 complete, transitioned to Phase 3
-state_head: b9eecf89aad4a8b42cad3f4a3373eced39c4484b
+state_head: 73933fa11267cc6f56f9ef197286292aa52423ce
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 72
-  completed_plans: 59
+  completed_plans: 60
   percent: 33
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 3 — HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-Current Plan: 26
+Current Plan: 27
 Total Plans in Phase: 38
 Status: Ready to execute
 Last activity: 2026-11-11 — Completed 03-04 (W1: optional case keys, guestkinds.c, authored fixture key, machine_time and stop on RESULT)
@@ -118,6 +118,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 03 P19 | 120min | 3 tasks | 22 files |
 | Phase 03 P20 | 25min | 3 tasks | 38 files |
 | Phase 03 P21 | 36min | 3 tasks | 25 files |
+| Phase 03 P22 | 30min | 3 tasks | 42 files |
 
 ## Accumulated Context
 
@@ -231,6 +232,9 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-20: mmu_mpr is three images of one source by ROMBANKS (256K, 384K, 1M); checks 18 and 19 take their bank and literal from conditional assembly, so all three keep 60 checks and the exclude list 49,59,60
 - [Phase 03]: 03-20: st_bypass runs a new authored fixture (ST0 to ST2 under four MPR0 settings) and compares the whole dev log with twelve records written in the case; W3 ledger entries LED-CPU-0011 to -0017 (except -0015) are assumed with E0 evidence and one real pin each
 - [Phase 03]: 03-21: timer state (timer_origin, counter, reload, enabled, tiq_latch, irq_disable) lives in the instance and is not in the digest until plan 03-22 adds TIMR and IRQC; the access stamp rule is start + (last cycle + penalty) * cycle length, one cycle earlier for a read-modify-write read (ASSUMED LED-CPU-0004); the interrupt sample uses the I flag from before the instruction (irq_i_sample pre, hard-wired at one statement until 03-22); in-guest timer counter rows are E2 self-consistency (ER-3), only timer_pure_function is E1-capable
+- [Phase 03]: irq_stim is an array of strings AT,LINE,LEVEL read by one runner function and refused by the core with typed stim.* codes; a test hook, never a VDC claim
+- [Phase 03]: irq_i_sample (pre default, post; LED-IRQ-0005 open) selects the I flag of the interrupt sample; the digest gains TIMR, IRQC and IRQS (serial version 5)
+- [Phase 03]: the IRQS region has no count byte: a slot with line 0 is unused and ds_irq_stim_set zeroes every unused slot
 
 ### Pending Todos
 
@@ -254,6 +258,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-11T13:26:35.088Z
-Stopped at: Completed 03-21-PLAN.md
+Last session: 2026-11-11T14:00:45.627Z
+Stopped at: Completed 03-22-PLAN.md
 Resume file: None
