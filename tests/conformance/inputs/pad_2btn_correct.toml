@@ -7,9 +7,24 @@
 [script]
 format = 1
 time_unit = "master_clock"
-events = 1
+events = 4
 
 [ev_0001]
 at = 0
 port = 1
 held = ["run"]
+
+[ev_0002]
+at = 140000
+port = 1
+held = ["i", "right"]
+
+[ev_0003]
+at = 320000
+port = 1
+held = ["ii", "up", "left"]
+
+[ev_0004]
+at = 510000
+port = 1
+held = ["select", "right", "down"]

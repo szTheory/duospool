@@ -8,6 +8,16 @@
 # The expected bytes assume the default run-request binding d6 = d7 = 1 (LED-IO-0001, open), so a raw byte is $F0 | nibble. Disagreements carried into the ledger (ER-8): the nibble order of the directions (one report has RIGHT and DOWN swapped against the three-source order used here), CLR-high, the power-on latch, bit 6.
 # The raw byte of every read is stored as the observed byte of its check: the DSV1 block holds the guest-side pad-read log of the run (R-7). A pass is not a support claim (ER-4).
 id=14
-checks=2
+checks=12
 1	pad-run-buttons	ASSUMED:LED-IO-0002	With RUN held from time 0 on port 1 and the latch at SEL 0, CLR 0 (after the nine-cycle wait), the read is $30 | d6 << 6 | d7 << 7 | $7: the buttons nibble has D3 (RUN) low and the rest high, $F7 under d6 = d7 = 1
 2	pad-poweron-latch	ASSUMED:LED-IO-0003	The first read, before any write, sees the power-on latch $FF (port O high after reset, H8-18 and H8-19): CLR is set, so the nibble is 0 whatever is held and the raw byte is $F0
+3	pad-read-changes-nothing	GUEST:the-read-of-check-1	A second read with no write between is the byte of the first: a read changes nothing; the expected byte is the read of check 1, kept by the guest, and the table entry is an XOR mask of $00
+4	pad-directions-none	ASSUMED:LED-IO-0002	SEL 1, CLR 0 selects the directions: only RUN is held, so no direction is pressed and the nibble is $F, the raw byte $FF under d6 = d7 = 1
+5	pad-clr-high-buttons	ASSUMED:LED-IO-0003	CLR 1 with SEL 0 reads the nibble as 0 although RUN is held: the raw byte is $F0
+6	pad-clr-high-directions	ASSUMED:LED-IO-0003	CLR 1 with SEL 1 reads the nibble as 0: the raw byte is $F0
+7	pad-phase2-buttons	ASSUMED:LED-IO-0002	After the second event (I and RIGHT held) the buttons nibble has D0 (I) low and the rest high: $FE
+8	pad-phase2-directions	ASSUMED:LED-IO-0002	After the second event the directions nibble has D1 (RIGHT) low: $FD
+9	pad-phase3-buttons	ASSUMED:LED-IO-0002	After the third event (II, UP and LEFT held) the buttons nibble has D1 (II) low: $FD
+10	pad-phase3-directions	ASSUMED:LED-IO-0002	After the third event the directions nibble has D0 (UP) and D3 (LEFT) low: $F6
+11	pad-phase4-buttons	ASSUMED:LED-IO-0002	After the fourth event (SELECT, RIGHT and DOWN held) the buttons nibble has D2 (SELECT) low: $FB
+12	pad-phase4-directions	ASSUMED:LED-IO-0002	After the fourth event the directions nibble has D1 (RIGHT) and D2 (DOWN) low: $F9

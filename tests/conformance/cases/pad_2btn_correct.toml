@@ -12,11 +12,11 @@ kind = "guest"
 fixture = "authored:pad-2btn"
 request = ""
 expect = "id=14"
-meaning = "The authored pad_2btn fixture reads the two-button pad on port 1 only through its own SEL and CLR writes and reads of the $1000 window against the correct input script, and stores the raw byte of every read as its guest-side pad-read log; 2 passing checks so far"
+meaning = "The authored pad_2btn fixture reads the two-button pad on port 1 only through its own SEL and CLR writes and reads of the $1000 window against the correct input script, and stores the raw byte of every read as its guest-side pad-read log; 12 passing checks"
 required = true
 control = false
 expect_outcome = "pass"
 pins = []
-until_mclk = 400000
-checks = 2
+until_mclk = 800000
+checks = 12
 input = "pad_2btn_correct"
