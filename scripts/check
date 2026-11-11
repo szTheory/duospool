@@ -900,6 +900,13 @@ stage_fixture_lint_negatives() {
   run_controls --ok-prefix --require-negative tests/gate/fixture-lint tests/gate/fixture-lint sh "$here/fixture-lint" --root @DIR@ --cites fixtures/lib/cites.txt @EXPECT@
 }
 
+# xasm (FIX-01, CPU-01, CPU-06; D-129, D-130; plan 03-08): the assembler encoding oracle. scripts/xasm-check assembles one line per defined row of tests/oracle/huc6280-opcodes.tsv (the
+# manual transcription) with ca65 and ld65 and requires the bytes to equal the TSV encodings; WLA-DX, when it happens to be on PATH, is compared in the same way, else the status line says
+# wla=optional-absent and no cross-assembler claim is made. Static, so it is registered before the build; it reads only the tracked TSV, and its generated files go to build/gate/xasm.
+stage_xasm() {
+  checker sh "$here/xasm-check" --work build/gate/xasm
+}
+
 # workflow (CI-01, D-61, D-62): the real CI definition, judged statically by scripts/workflow-check (permissions, the one pinned action, the
 # forbidden triggers, the checkout and shell settings, the gate step, the pull-request template line and the dependabot file). Static, so it
 # is registered before the build (D-60); it reads no file a build produces. actionlint is a one-off on a workflow change, not a stage.
@@ -2122,6 +2129,7 @@ run_stage inventory stage_inventory
 run_stage inventory-negatives stage_inventory_negatives
 run_stage fixture-lint stage_fixture_lint
 run_stage fixture-lint-negatives stage_fixture_lint_negatives
+run_stage xasm stage_xasm
 run_stage workflow stage_workflow
 run_stage workflow-negatives stage_workflow_negatives
 run_stage docs-claims stage_docs_claims

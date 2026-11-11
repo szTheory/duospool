@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# huc6280-opcodes.tsv (plan 03-08, tracer): five rows transcribed from the manual page images; task 2 completes the table. Numeric data with page cites only (ER-9).
+# Columns, TAB separated: opcode, mnemonic, mode, bytes, cycles, flags, cite. The full header (method, verifier, date, legends) arrives with the full table.
+03	ST0	IMM	2	4	--0-----	H8-25+S8-80+S8-9
+0F	BBR0	ZPREL	3	6	--0-----	H8-25+S8-20+S8-7
+53	TAM	MASK	2	5	--0-----	H8-25+S8-90+S8-9
+83	TST	IMMZP	3	7	760---Z-	H8-25+S8-104+S8-9
+A9	LDA	IMM	2	2	N-0---Z-	H8-25+S8-53+S8-8
