@@ -4,11 +4,12 @@
 ; cpu_huc.s - the HuC6280-specific instructions outside the block transfers (plan 03-14; D-101, D-105, D-106, D-124, D-125, D-127; S8-34, S8-39, S8-40, S8-67, S8-72, S8-73, S8-79 to S8-82, S8-87, S8-90, S8-101, H8-8, H8-25). It is assembled by ca65 in the gate and never committed as a binary.
 ; Checks run in ladder order: the register swaps SXY, SAX and SAY and the register clears CLA, CLX and CLY (the tracer), RMB0-7 and SMB0-7, TAM and TMA with one-hot operands, CSH and CSL, ST0 to ST2, then the addressing modes of the arithmetic, logic, shift and test group that no other fixture reaches.
 ; P is set from a byte by PLP (the I bit is kept set) and read as PHP, PLA and a mask (B reads 1 and T reads 0 through PHP, H8-5). The pages the checks read are filled with $FF first and every cell a check reads is written by the fixture before (D-127).
+; The operand cells of the mode-coverage checks hold one bit each: zero page $2010 = $01, zero page,X (X = 3) $2013 = $02, (zz,X) (X = 4) $2601 = $04, (zz) $2600 = $08, (zz),Y (Y = 3) $2603 = $10, absolute,X (X = 2) $2502 = $20, absolute,Y (Y = 5) $2505 = $40, absolute $2500 = $80.
 ; Multi-bit and zero TAM and TMA operands are not exercised here (plan 03-17), and neither are the speed-switch timing and the VDC penalty (plans 03-16 and 03-23). This file is generated from a table of checks by a scratch script; the committed text is the source of record.
         .setcpu "huc6280"
 
 DSV_ID = 6
-DSV_CHECKS = 58
+DSV_CHECKS = 76
 
         .include "startup.inc"
         .include "verdict.inc"
@@ -16,6 +17,17 @@ DSV_CHECKS = 58
 
 ; the cell of the RMB and SMB checks and the zero-page address of its neighbours ($2043 and $2045)
 ZPR     = $44
+
+; the cells of the mode-coverage checks (work RAM): zero-page operands $2010 and $2013, the pointer $2030 to $2600 and $2034 to $2601, the absolute operands $2500, $2502 and $2505,
+; the read-modify-write work cells $2050 (zero page), $2700 (absolute) and the accumulator cell $2060
+ZPA     = $10
+ZP_PTR  = $30
+ZP_PTR2 = $34
+ZPW     = $50
+ACC     = $60
+RAM_ABS = $2500
+RAM_P0  = $2600
+RAM_W   = $2700
 
 ; P is set from a byte by PLP (the I bit is kept set); P is read as a masked PHP byte
         .macro SETP value
@@ -27,6 +39,19 @@ ZPR     = $44
         php
         pla
         and #(mask)
+        .endmacro
+; CMPHIT: after a compare, add the bits of mask to ACC when the compare left Z and C both set (equal operands)
+        .macro CMPHIT mask
+        .local skip
+        php
+        pla
+        and #$83
+        cmp #$03
+        bne skip
+        lda z:ACC
+        ora #(mask)
+        sta z:ACC
+skip:
         .endmacro
 
         CHECK_TABLE DSV_CHECKS
@@ -89,6 +114,24 @@ ZPR     = $44
         LIT 56, $00
         LIT 57, $03
         LIT 58, $C1
+        LIT 59, $6F
+        LIT 60, $3E
+        LIT 61, $A1
+        LIT 62, $20
+        LIT 63, $80
+        LIT 64, $7D
+        LIT 65, $03
+        LIT 66, $03
+        LIT 67, $2A
+        LIT 68, $2B
+        LIT 69, $15
+        LIT 70, $95
+        LIT 71, $2A
+        LIT 72, $14
+        LIT 73, $C2
+        LIT 74, $41
+        LIT 75, $30
+        LIT 76, $C2
 
 fixture_main:
         ldx #$00                ; the pages the checks read are filled with $FF, then every cell that a check reads is written
@@ -99,6 +142,30 @@ fill:   sta a:$2000,x
         sta a:$2700,x
         inx
         bne fill
+        lda #$01                ; the operand cells of the mode-coverage checks
+        sta a:$2000+ZPA
+        lda #$02
+        sta a:$2000+ZPA+3
+        lda #<RAM_P0
+        sta a:$2000+ZP_PTR
+        lda #>RAM_P0
+        sta a:$2000+ZP_PTR+1
+        lda #<(RAM_P0+1)
+        sta a:$2000+ZP_PTR2
+        lda #>(RAM_P0+1)
+        sta a:$2000+ZP_PTR2+1
+        lda #$08
+        sta a:RAM_P0
+        lda #$04
+        sta a:RAM_P0+1
+        lda #$10
+        sta a:RAM_P0+3
+        lda #$80
+        sta a:RAM_ABS
+        lda #$20
+        sta a:RAM_ABS+2
+        lda #$40
+        sta a:RAM_ABS+5
         ldx #$12 ; check 1 sxy-x MAN:S8-87: SXY exchanges X and Y: X = $12 and Y = $34 before, X reads $34 after (S8-87)
         ldy #$34
         sxy
@@ -419,4 +486,279 @@ fill:   sta a:$2000,x
         st0 #$00
         PMASK $C3
         CHECK_LIT 58
+        lda #$00 ; check 59 ora-modes MAN:S8-58: ORA (zz,X), zz, (zz), zz,X, abs,Y and abs,X of the operand cells (see the file header): A = $00 ORed with the six cells and with zz again gives $6F (S8-58): the cells $04, $01, $08, $02, $40 and $20 hold no bit $10
+        ldx #$04
+        ora (<ZP_PTR,x)
+        ora z:ZPA
+        ora (<ZP_PTR)
+        ldx #$03
+        ora z:ZPA,x
+        ldy #$05
+        ora a:RAM_ABS,y
+        ldx #$02
+        ora a:RAM_ABS,x
+        ora z:ZPA
+        CHECK_LIT 59
+        stz z:ACC ; check 60 and-modes MAN:S8-18: AND (zz,X), (zz),Y, (zz), zz,X, abs,Y and abs,X with A = $3F each time (S8-18): the ORed results are $04, $10, $08, $02, $00 and $20, so $3E
+        lda #$3F
+        ldx #$04
+        and (<ZP_PTR,x)
+        ora z:ACC
+        sta z:ACC
+        lda #$3F
+        ldy #$03
+        and (<ZP_PTR),y
+        ora z:ACC
+        sta z:ACC
+        lda #$3F
+        and (<ZP_PTR)
+        ora z:ACC
+        sta z:ACC
+        lda #$3F
+        ldx #$03
+        and z:ZPA,x
+        ora z:ACC
+        sta z:ACC
+        lda #$3F
+        ldy #$05
+        and a:RAM_ABS,y
+        ora z:ACC
+        sta z:ACC
+        lda #$3F
+        ldx #$02
+        and a:RAM_ABS,x
+        ora z:ACC
+        sta z:ACC
+        lda z:ACC
+        CHECK_LIT 60
+        lda #$FF ; check 61 eor-modes MAN:S8-47: EOR (zz,X), zz, (zz),Y, (zz), zz,X and abs,Y then zz again from A = $FF (S8-47): $FF EOR $5F EOR $01 gives $A1
+        ldx #$04
+        eor (<ZP_PTR,x)
+        eor z:ZPA
+        ldy #$03
+        eor (<ZP_PTR),y
+        eor (<ZP_PTR)
+        ldx #$03
+        eor z:ZPA,x
+        ldy #$05
+        eor a:RAM_ABS,y
+        eor z:ZPA
+        CHECK_LIT 61
+        clc ; check 62 adc-modes MAN:S8-17: ADC (zz),Y, (zz) and (zz) again with C clear from A = $00 (S8-17): $10 + $08 + $08 gives $20
+        lda #$00
+        ldy #$03
+        adc (<ZP_PTR),y
+        adc (<ZP_PTR)
+        adc (<ZP_PTR)
+        CHECK_LIT 62
+        sec ; check 63 sbc-modes MAN:S8-74: SBC (zz,X), zz, (zz),Y, (zz), zz,X, abs,Y and abs,X with C set from A = $FF (S8-74): $FF minus $04, $01, $10, $08, $02, $40 and $20 gives $80
+        lda #$FF
+        ldx #$04
+        sbc (<ZP_PTR,x)
+        sbc z:ZPA
+        ldy #$03
+        sbc (<ZP_PTR),y
+        sbc (<ZP_PTR)
+        ldx #$03
+        sbc z:ZPA,x
+        ldy #$05
+        sbc a:RAM_ABS,y
+        ldx #$02
+        sbc a:RAM_ABS,x
+        CHECK_LIT 63
+        stz z:ACC ; check 64 cmp-modes MAN:S8-41: CMP (zz,X), zz, (zz),Y, (zz), abs,Y and abs,X with A equal to the cell (S8-41): Z and C set each time, so the ORed cell values give $7D
+        lda #$04
+        ldx #$04
+        cmp (<ZP_PTR,x)
+        CMPHIT $04
+        lda #$01
+        cmp z:ZPA
+        CMPHIT $01
+        lda #$10
+        ldy #$03
+        cmp (<ZP_PTR),y
+        CMPHIT $10
+        lda #$08
+        cmp (<ZP_PTR)
+        CMPHIT $08
+        lda #$40
+        ldy #$05
+        cmp a:RAM_ABS,y
+        CMPHIT $40
+        lda #$20
+        ldx #$02
+        cmp a:RAM_ABS,x
+        CMPHIT $20
+        lda z:ACC
+        CHECK_LIT 64
+        ldx #$01 ; check 65 cpx-zp MAN:S8-42: CPX zero page with X equal to the cell $01 (S8-42): Z and C set, N clear, the masked P byte is $03
+        cpx z:ZPA
+        PMASK $83
+        CHECK_LIT 65
+        ldy #$80 ; check 66 cpy-abs MAN:S8-43: CPY absolute with Y equal to the cell $80 (S8-43): Z and C set, N clear, the masked P byte is $03
+        cpy a:RAM_ABS
+        PMASK $83
+        CHECK_LIT 66
+        stz z:ACC ; check 67 asl-modes MAN:S8-19: ASL absolute ($01 gives $02), zero page,X ($04 gives $08) and absolute,X ($10 gives $20) shift left (S8-19): the ORed results are $2A
+        lda #$01
+        sta a:RAM_W
+        asl a:RAM_W
+        lda a:RAM_W
+        ora z:ACC
+        sta z:ACC
+        ldx #$03
+        lda #$04
+        sta z:ZPW,x
+        asl z:ZPW,x
+        lda z:ZPW,x
+        ora z:ACC
+        sta z:ACC
+        ldx #$02
+        lda #$10
+        sta a:RAM_W,x
+        asl a:RAM_W,x
+        lda a:RAM_W,x
+        ora z:ACC
+        sta z:ACC
+        lda z:ACC
+        CHECK_LIT 67
+        stz z:ACC ; check 68 rol-modes MAN:S8-68: ROL zero page ($01 gives $03), absolute ($04 gives $09) and absolute,X ($10 gives $21) with C set rotate left through C (S8-68): the ORed results are $2B
+        lda #$01
+        sta z:ZPW
+        sec
+        rol z:ZPW
+        lda z:ZPW
+        ora z:ACC
+        sta z:ACC
+        lda #$04
+        sta a:RAM_W
+        sec
+        rol a:RAM_W
+        lda a:RAM_W
+        ora z:ACC
+        sta z:ACC
+        ldx #$02
+        lda #$10
+        sta a:RAM_W,x
+        sec
+        rol a:RAM_W,x
+        lda a:RAM_W,x
+        ora z:ACC
+        sta z:ACC
+        lda z:ACC
+        CHECK_LIT 68
+        stz z:ACC ; check 69 lsr-modes MAN:S8-56: LSR zero page ($02 gives $01), zero page,X ($08 gives $04) and absolute,X ($20 gives $10) shift right (S8-56): the ORed results are $15
+        lda #$02
+        sta z:ZPW
+        lsr z:ZPW
+        lda z:ZPW
+        ora z:ACC
+        sta z:ACC
+        ldx #$03
+        lda #$08
+        sta z:ZPW,x
+        lsr z:ZPW,x
+        lda z:ZPW,x
+        ora z:ACC
+        sta z:ACC
+        ldx #$02
+        lda #$20
+        sta a:RAM_W,x
+        lsr a:RAM_W,x
+        lda a:RAM_W,x
+        ora z:ACC
+        sta z:ACC
+        lda z:ACC
+        CHECK_LIT 69
+        stz z:ACC ; check 70 ror-modes MAN:S8-69: ROR zero page ($02 gives $81), absolute ($08 gives $84) and zero page,X ($20 gives $90) with C set rotate right through C (S8-69): the ORed results are $95
+        lda #$02
+        sta z:ZPW
+        sec
+        ror z:ZPW
+        lda z:ZPW
+        ora z:ACC
+        sta z:ACC
+        lda #$08
+        sta a:RAM_W
+        sec
+        ror a:RAM_W
+        lda a:RAM_W
+        ora z:ACC
+        sta z:ACC
+        ldx #$03
+        lda #$20
+        sta z:ZPW,x
+        sec
+        ror z:ZPW,x
+        lda z:ZPW,x
+        ora z:ACC
+        sta z:ACC
+        lda z:ACC
+        CHECK_LIT 70
+        stz z:ACC ; check 71 dec-modes MAN:S8-44: DEC zero page ($03 gives $02), absolute ($09 gives $08) and zero page,X ($21 gives $20) subtract one (S8-44): the ORed results are $2A
+        lda #$03
+        sta z:ZPW
+        dec z:ZPW
+        lda z:ZPW
+        ora z:ACC
+        sta z:ACC
+        lda #$09
+        sta a:RAM_W
+        dec a:RAM_W
+        lda a:RAM_W
+        ora z:ACC
+        sta z:ACC
+        ldx #$03
+        lda #$21
+        sta z:ZPW,x
+        dec z:ZPW,x
+        lda z:ZPW,x
+        ora z:ACC
+        sta z:ACC
+        lda z:ACC
+        CHECK_LIT 71
+        stz z:ACC ; check 72 inc-modes MAN:S8-48: INC zero page,X ($03 gives $04) and absolute,X ($0F gives $10) add one (S8-48): the ORed results are $14
+        ldx #$03
+        lda #$03
+        sta z:ZPW,x
+        inc z:ZPW,x
+        lda z:ZPW,x
+        ora z:ACC
+        sta z:ACC
+        ldx #$02
+        lda #$0F
+        sta a:RAM_W,x
+        inc a:RAM_W,x
+        lda a:RAM_W,x
+        ora z:ACC
+        sta z:ACC
+        lda z:ACC
+        CHECK_LIT 72
+        lda #$C0 ; check 73 bit-abs MAN:S8-25: BIT absolute on the cell $C0 with A = $00 and C clear (S8-25): N = M7 = 1, V = M6 = 1, Z = 1 and C unchanged, the masked P byte is $C2
+        sta a:RAM_W
+        SETP $00
+        lda #$00
+        bit a:RAM_W
+        PMASK $C3
+        CHECK_LIT 73
+        ldx #$03 ; check 74 bit-zpx MAN:S8-25: BIT zero page,X (X = 3) on the cell $40 with A = $FF and C set (S8-25): N = 0, V = 1, Z = 0 and C unchanged, the masked P byte is $41
+        lda #$40
+        sta z:ZPW,x
+        SETP $01
+        lda #$FF
+        bit z:ZPW,x
+        PMASK $C3
+        CHECK_LIT 74
+        lda #$3C ; check 75 trb-abs ASSUMED:LED-CPU-0010: TRB absolute on the cell $3C with A = $0F stores not A AND M (the formula of S8-102; its prose says the result is not stored, the stored reading is the project's): the cell reads $30
+        sta a:RAM_W
+        lda #$0F
+        trb a:RAM_W
+        lda a:RAM_W
+        CHECK_LIT 75
+        lda #$F0 ; check 76 tst-abs MAN:S8-104: TST #imm,absolute with the immediate $0F on the cell $F0 (S8-104): Z = 1 (the AND is zero), N = M7 = 1, V = M6 = 1 and C unchanged with C clear, the masked P byte is $C2
+        sta a:RAM_W
+        SETP $00
+        tst #$0F, a:RAM_W
+        PMASK $C3
+        CHECK_LIT 76
         rts

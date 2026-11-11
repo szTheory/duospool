@@ -3,14 +3,14 @@
 #
 # Opcode-exercise inventory (plan 03-10; D-119, D-127, D-131, D-86 pattern): a DEFERRED kind. The runner does not evaluate it inside the case loop; after the loop it runs the ROM of every guest case once with an instruction sink,
 # collects the set of opcodes the records show as executed, and writes the defined opcodes of the core's table that no fixture executed into the evidence file of this case (sixteen to a line). In mode report the case passes and the
-# count is a measurement; plan 03-14 switches it to mode=require with an exclude list, when the fixtures of waves W2 and W3 are meant to cover every defined opcode. A sink that lost a record is harness_failure (the log is evidence here).
+# count is a measurement; since plan 03-14 the mode is require, and the five block transfers TII (0x73), TDD (0xC3), TIN (0xD3), TIA (0xE3) and TAI (0xF3) are the only opcodes allowed to stay unexercised: plan 03-25 removes the exclude list. A sink that lost a record is harness_failure (the log is evidence here).
 # Evidence tier E0 (repeatability and a measurement): it says which opcodes the fixtures execute, not what any of them checks; no accuracy or compatibility claim.
 id = "opcode_exercise"
 kind = "opcode_exercise"
 fixture = "none"
 request = ""
-expect = "mode=report"
-meaning = "The opcodes that the authored guest fixtures execute in one runner pass are collected through the instruction sink and the unexercised defined opcodes are listed in the evidence file"
+expect = "mode=require;exclude=0x73,0xC3,0xD3,0xE3,0xF3"
+meaning = "The opcodes that the authored guest fixtures execute in one runner pass are collected through the instruction sink: every defined opcode except the five block transfers is executed by at least one fixture, and the unexercised ones are listed in the evidence file"
 required = true
 control = false
 expect_outcome = "pass"

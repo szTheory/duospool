@@ -6,7 +6,7 @@
 # ASSUMED:<LED-id> (the literal is DuoSpool's own model, an assumption; the ledger entry is written in plan 03-15).
 # P is read through PHP, PLA and a mask: B and T are not part of the literal. No row asserts a cycle count, the speed-switch timing or the VDC penalty (plans 03-16, 03-21, 03-23). A pass is not a support claim (ER-4).
 id=6
-checks=58
+checks=76
 1	sxy-x	MAN:S8-87	SXY exchanges X and Y: X = $12 and Y = $34 before, X reads $34 after (S8-87)
 2	sxy-y	MAN:S8-87	SXY exchanges X and Y: X = $12 and Y = $34 before, Y reads $12 after (S8-87)
 3	sax-a	MAN:S8-72	SAX exchanges A and X: A = $56 and X = $78 before, A reads $78 after (S8-72)
@@ -65,3 +65,21 @@ checks=58
 56	st2-bypass	GUEST:ram-before-equals-ram-after	ST2 writes physical $1FE003 and does not consult the MPRs (H8-8 Table 2-2-3, S8-82, D-106): with MPR0 mapped to work RAM, RAM[3] still holds the $5C the guest wrote
 57	st-lengths	MAN:S8-80	ST0, ST1 and ST2 are two bytes each (S8-80 to S8-82): an INX after each runs three times, and the operand $E8 (the INX opcode) is never executed, so X reads $03
 58	st-keep-flags	MAN:S8-80	ST0 changes no flag (flag row of S8-80, S8-81, S8-82 is T = 0 and dashes): P = N V C set and Z clear, the operand $00 does not set Z, the masked P byte stays $C1
+59	ora-modes	MAN:S8-58	ORA (zz,X), zz, (zz), zz,X, abs,Y and abs,X of the operand cells (see the file header): A = $00 ORed with the six cells and with zz again gives $6F (S8-58): the cells $04, $01, $08, $02, $40 and $20 hold no bit $10
+60	and-modes	MAN:S8-18	AND (zz,X), (zz),Y, (zz), zz,X, abs,Y and abs,X with A = $3F each time (S8-18): the ORed results are $04, $10, $08, $02, $00 and $20, so $3E
+61	eor-modes	MAN:S8-47	EOR (zz,X), zz, (zz),Y, (zz), zz,X and abs,Y then zz again from A = $FF (S8-47): $FF EOR $5F EOR $01 gives $A1
+62	adc-modes	MAN:S8-17	ADC (zz),Y, (zz) and (zz) again with C clear from A = $00 (S8-17): $10 + $08 + $08 gives $20
+63	sbc-modes	MAN:S8-74	SBC (zz,X), zz, (zz),Y, (zz), zz,X, abs,Y and abs,X with C set from A = $FF (S8-74): $FF minus $04, $01, $10, $08, $02, $40 and $20 gives $80
+64	cmp-modes	MAN:S8-41	CMP (zz,X), zz, (zz),Y, (zz), abs,Y and abs,X with A equal to the cell (S8-41): Z and C set each time, so the ORed cell values give $7D
+65	cpx-zp	MAN:S8-42	CPX zero page with X equal to the cell $01 (S8-42): Z and C set, N clear, the masked P byte is $03
+66	cpy-abs	MAN:S8-43	CPY absolute with Y equal to the cell $80 (S8-43): Z and C set, N clear, the masked P byte is $03
+67	asl-modes	MAN:S8-19	ASL absolute ($01 gives $02), zero page,X ($04 gives $08) and absolute,X ($10 gives $20) shift left (S8-19): the ORed results are $2A
+68	rol-modes	MAN:S8-68	ROL zero page ($01 gives $03), absolute ($04 gives $09) and absolute,X ($10 gives $21) with C set rotate left through C (S8-68): the ORed results are $2B
+69	lsr-modes	MAN:S8-56	LSR zero page ($02 gives $01), zero page,X ($08 gives $04) and absolute,X ($20 gives $10) shift right (S8-56): the ORed results are $15
+70	ror-modes	MAN:S8-69	ROR zero page ($02 gives $81), absolute ($08 gives $84) and zero page,X ($20 gives $90) with C set rotate right through C (S8-69): the ORed results are $95
+71	dec-modes	MAN:S8-44	DEC zero page ($03 gives $02), absolute ($09 gives $08) and zero page,X ($21 gives $20) subtract one (S8-44): the ORed results are $2A
+72	inc-modes	MAN:S8-48	INC zero page,X ($03 gives $04) and absolute,X ($0F gives $10) add one (S8-48): the ORed results are $14
+73	bit-abs	MAN:S8-25	BIT absolute on the cell $C0 with A = $00 and C clear (S8-25): N = M7 = 1, V = M6 = 1, Z = 1 and C unchanged, the masked P byte is $C2
+74	bit-zpx	MAN:S8-25	BIT zero page,X (X = 3) on the cell $40 with A = $FF and C set (S8-25): N = 0, V = 1, Z = 0 and C unchanged, the masked P byte is $41
+75	trb-abs	ASSUMED:LED-CPU-0010	TRB absolute on the cell $3C with A = $0F stores not A AND M (the formula of S8-102; its prose says the result is not stored, the stored reading is the project's): the cell reads $30
+76	tst-abs	MAN:S8-104	TST #imm,absolute with the immediate $0F on the cell $F0 (S8-104): Z = 1 (the AND is zero), N = M7 = 1, V = M6 = 1 and C unchanged with C clear, the masked P byte is $C2

@@ -10,10 +10,10 @@ kind = "guest"
 fixture = "authored:cpu-huc"
 request = ""
 expect = "id=6"
-meaning = "The authored cpu_huc fixture runs the HuC6280 register swaps and clears, RMB and SMB, TAM and TMA with one-hot operands, CSH, CSL and ST0 to ST2 and leaves a consistent DSV1 block whose check results are all pass"
+meaning = "The authored cpu_huc fixture runs the HuC6280 register swaps and clears, RMB and SMB, TAM and TMA with one-hot operands, CSH, CSL and ST0 to ST2 and the remaining addressing modes of the arithmetic, logic, shift and test group, and leaves a consistent DSV1 block whose check results are all pass"
 required = true
 control = false
 expect_outcome = "pass"
 pins = []
 until_mclk = 4000000
-checks = 58
+checks = 76
