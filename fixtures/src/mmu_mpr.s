@@ -11,7 +11,7 @@
         .setcpu "huc6280"
 
 DSV_ID = 8
-DSV_CHECKS = 49
+DSV_CHECKS = 60
 
         .include "startup.inc"
         .include "verdict.inc"
@@ -70,6 +70,17 @@ SL4 = $10                       ; MPR4 (logical $8000-$9FFF)
         LIT 47, $A5
         LIT 48, $A5
         LIT 49, $00             ; an observe row (the case supplies the observed byte)
+        LIT 50, $FA
+        LIT 51, $FA
+        LIT 52, $FF
+        LIT 53, $F8
+        LIT 54, $F8
+        LIT 55, $00
+        LIT 56, $F9
+        LIT 57, $FF
+        LIT 58, $00
+        LIT 59, $00             ; an observe row
+        LIT 60, $00             ; an observe row
 
 ; MAP mask, bank: write one mapping register (A is clobbered)
         .macro MAP mask, bank
@@ -282,4 +293,54 @@ fixture_main:
         lda #$5A
         tma #0                          ; TMA with the operand $00 (R-4: it assembles normally): A = the latch ($F8) under bus_latch, $5A (unchanged) under a_unchanged
         CHECK_OBSERVE 49
+
+; TAM with a multi-bit operand: the operand is written as .byte because the manual defines only 2^i (S8-90). MPR1 and MPR2 are the zero-page slot and the verdict slot, so the value written is $FA, another work RAM bank: the RAM is mirrored four times (checks 6 to 11),
+; the map stays valid, and a register that was written shows as $FA where it held $F8 or $F9. The single-constant rule under test is "every selected MPR is written" (D-105).
+        lda #$FA
+        .byte $53, $06                  ; RAW:S8-90 ASSUMED:LED-CPU-0015: TAM with the operand $06 (MPR1 and MPR2, two bits set; the manual defines one bit only)
+        tma #$02
+        CHECK_LIT 50                    ; check 50 ASSUMED:LED-CPU-0015: MPR1 was written ($FA, it held $F8)
+        tma #$04
+        CHECK_LIT 51                    ; check 51 ASSUMED:LED-CPU-0015: MPR2 was written too ($FA, it held $F9): a TAM that wrote one register only fails one of the two
+        tma #$08
+        CHECK_LIT 52                    ; check 52 ASSUMED:LED-CPU-0015: MPR3, which the operand does not select, kept $FF
+        lda #$F8
+        tam #$02                        ; MPR1 = $F8 again
+        lda #$F9
+        tam #$04                        ; MPR2 = $F9 again
+
+; TAM with the operand $00 is a no-op: no register changes. MPR0 is set first so that a write to it is seen (its power-on value is a policy question and is never read here).
+        lda #$F8
+        tam #$01                        ; MPR0 = $F8
+        lda #$FB
+        tam #0                          ; TAM with the operand $00 (R-4: it assembles normally)
+        tma #$01
+        CHECK_LIT 53                    ; check 53 ASSUMED:LED-CPU-0015: MPR0 still holds $F8, not the $FB of the TAM #0
+        tma #$02
+        CHECK_LIT 54                    ; check 54 ASSUMED:LED-CPU-0015: MPR1 still holds $F8
+        tma #$80
+        CHECK_LIT 55                    ; check 55 ASSUMED:LED-CPU-0015: MPR7 still holds the reset value $00 (H8-8)
+
+; TMA with a multi-bit operand returns the highest selected index (D-105): A is loaded with $77 first so that an instruction that leaves A alone shows.
+        lda #$77
+        .byte $43, $06                  ; RAW:S8-101 ASSUMED:LED-CPU-0015: TMA with the operand $06 (MPR1 $F8 and MPR2 $F9)
+        CHECK_LIT 56                    ; check 56 ASSUMED:LED-CPU-0015: the highest selected index is MPR2, so A = $F9 (the lowest would give $F8)
+        lda #$77
+        .byte $43, $0A                  ; RAW:S8-101 ASSUMED:LED-CPU-0015: TMA with the operand $0A (MPR1 $F8 and MPR3 $FF)
+        CHECK_LIT 57                    ; check 57 ASSUMED:LED-CPU-0015: the highest selected index is MPR3, so A = $FF
+        lda #$77
+        .byte $43, $FF                  ; RAW:S8-101 ASSUMED:LED-CPU-0015: TMA with every bit set
+        CHECK_LIT 58                    ; check 58 ASSUMED:LED-CPU-0015: the highest selected index is MPR7, so A = $00 (the reset value; the lowest would give MPR0 = $F8)
+
+; The one-byte latch takes the value of the last TAM or TMA with a nonzero operand and TAM #0 leaves it alone; the guest sees it only through TMA #0 (the parameter tma_zero), so these two rows are observe-only like check 49: each case supplies the byte.
+        lda #$77
+        .byte $43, $06                  ; RAW:S8-101 ASSUMED:LED-CPU-0015: TMA with the operand $06 returns $F9, so the latch takes $F9
+        lda #$11
+        tma #0                          ; bus_latch: $F9; a_unchanged: $11
+        CHECK_OBSERVE 59
+        lda #$C3
+        tam #0                          ; the no-op TAM #0 does not put $C3 in the latch
+        lda #$22
+        tma #0                          ; bus_latch: $F9 (not $C3); a_unchanged: $22
+        CHECK_OBSERVE 60
         rts

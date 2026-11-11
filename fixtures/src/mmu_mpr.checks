@@ -5,7 +5,7 @@
 # Class tags: MAN:<page> (the literal is a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model> (the expected byte is computed in the guest, the table entry is an XOR mask of $00), ASSUMED:<LED-id>.
 # The HuCard bytes the checks read are written by the fixture itself (segment BANKS: byte 0 of file bank k is k, the last byte is k xor $A5); the work RAM cells are written by the checks. A pass is not a support claim (ER-4).
 id=8
-checks=49
+checks=60
 1	bank80-reads-ff	ASSUMED:LED-CPU-0012	Bank $80 is not mapped (the run $80-$F7): a read through it returns the constant $FF
 2	bankf7-reads-ff	ASSUMED:LED-CPU-0012	Bank $F7, the last of the unmapped run, reads $FF
 3	bankfc-reads-ff	ASSUMED:LED-CPU-0012	Bank $FC, the first bank after the four work RAM banks, is not mapped and reads $FF
@@ -55,3 +55,14 @@ checks=49
 47	vdc-write-keeps-iobuf	ASSUMED:LED-CPU-0013	A write in the VDC window does not change io_buffer: the PSG window still reads $A5
 48	st0-keeps-iobuf	ASSUMED:LED-CPU-0013	ST0 writes physical $1FE000 through the physical path (H8-8 Table 2-2-3) and does not change io_buffer either: the PSG window still reads $A5
 49	tma-zero-observe	ASSUMED:LED-CPU-0015	TMA with the operand $00 (the manual defines only 2^i): after a TAM that put $F8 in the latch and with A = $5A, the byte left in A is the model parameter tma_zero made visible: the latch ($F8) under bus_latch, A unchanged ($5A) under a_unchanged; each case supplies it (observe=49:VALUE)	observe
+50	tam-multi-writes-mpr1	ASSUMED:LED-CPU-0015	TAM with a two-bit operand (the manual defines 2^i only) writes every selected register: after TAM $06 with A = $FA, MPR1 reads $FA (it held $F8)
+51	tam-multi-writes-mpr2	ASSUMED:LED-CPU-0015	The same TAM $06 also wrote MPR2: it reads $FA (it held $F9); a TAM that wrote only one selected register fails one of checks 50 and 51
+52	tam-multi-spares-mpr3	ASSUMED:LED-CPU-0015	A register that the operand does not select keeps its value: MPR3 still reads $FF after the TAM $06
+53	tam-zero-keeps-mpr0	ASSUMED:LED-CPU-0015	TAM with the operand $00 is a no-op: MPR0 (set to $F8 first) still reads $F8 after a TAM #0 with A = $FB
+54	tam-zero-keeps-mpr1	ASSUMED:LED-CPU-0015	The same TAM #0 left MPR1 at $F8
+55	tam-zero-keeps-mpr7	ASSUMED:LED-CPU-0015	The same TAM #0 left MPR7 at its reset value $00 (H8-8), so no register was selected by the zero operand
+56	tma-multi-highest	ASSUMED:LED-CPU-0015	TMA with a two-bit operand (the manual defines 2^i only) returns the highest selected index: operand $06 selects MPR1 ($F8) and MPR2 ($F9) and A = $F9, not the $77 it held and not the lowest
+57	tma-multi-highest-mpr3	ASSUMED:LED-CPU-0015	Operand $0A selects MPR1 ($F8) and MPR3 ($FF): the highest is MPR3, so A = $FF
+58	tma-all-bits-highest	ASSUMED:LED-CPU-0015	Operand $FF selects every register: the highest is MPR7 (reset value $00), so A = $00 and not MPR0 ($F8) or the $77 it held
+59	tma-latch-after-tma	ASSUMED:LED-CPU-0015	The one-byte latch takes the byte that a TMA with a nonzero operand returned ($F9 here), and the guest sees it through TMA #0: bus_latch gives $F9, a_unchanged leaves A ($11); each case supplies it (observe=59:VALUE)	observe
+60	tma-latch-after-tam-zero	ASSUMED:LED-CPU-0015	TAM #0 is a no-op for the latch too: after a TAM #0 with A = $C3 and A set to $22, TMA #0 gives $F9 under bus_latch (not $C3) and $22 under a_unchanged; each case supplies it (observe=60:VALUE)	observe

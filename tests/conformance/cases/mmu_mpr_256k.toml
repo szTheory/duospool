@@ -6,16 +6,16 @@
 # bank, an offset and a mirror each show in a read, and from check 22 on the windows of the hardware page and the bus latch io_buffer are checked. The expected literals are in the literal table of fixtures/lib/check.inc and classed in fixtures/src/mmu_mpr.checks: a manual page (MAN), an in-guest computation (GUEST)
 # or an assumed ledger entry (ASSUMED); none comes from DuoSpool output. The case has no policies key, so the guest kind runs the ROM under its default policy list (D-127). The toy control unmapped-value
 # (tests/controls/unmapped-value) must turn this case guest_failure. Evidence tier E0, a mechanism check against the project's own assumptions: no accuracy or compatibility claim, and the word pass is not a support claim.
-# Check 49 is an observe-only row (plan 03-17): the TMA with the operand $00 edge is the model parameter tma_zero, so this case (the default, bus_latch) expects the latch byte, observe=49:248 ($F8); mmu_mpr_tma_zero_keep expects the unchanged A.
+# Checks 49, 59 and 60 are observe-only rows (plan 03-17): TMA with the operand $00 is the model parameter tma_zero, so this case (the default, bus_latch) expects the latch bytes, observe=49:248 ($F8), 59:249 ($F9) and 60:249; mmu_mpr_tma_zero_keep expects the unchanged A (90, 17, 34).
 id = "mmu_mpr_256k"
 kind = "guest"
 fixture = "authored:mmu-mpr"
 request = ""
-expect = "id=8;observe=49:248"
-meaning = "The authored mmu_mpr fixture maps banks through MPR3 and MPR4 and leaves a consistent DSV1 block of 49 passing checks: unmapped banks read $FF, the work RAM is mirrored, HuCard banks show their tag bytes, ROM and unmapped writes are ignored, and each hardware-page window reads its stub and treats io_buffer as assumed"
+expect = "id=8;observe=49:248;observe=59:249;observe=60:249"
+meaning = "The authored mmu_mpr fixture maps banks through MPR3 and MPR4 and leaves a consistent DSV1 block of 60 passing checks: unmapped banks read $FF, the work RAM is mirrored, HuCard banks show their tag bytes, ROM and unmapped writes are ignored, and each hardware-page window reads its stub and treats io_buffer as assumed"
 required = true
 control = false
 expect_outcome = "pass"
 pins = []
 until_mclk = 4000000
-checks = 49
+checks = 60
