@@ -13,7 +13,7 @@
 # Output records, one per line:  V TAB CODE TAB LINE TAB DETAIL   and a single last  E TAB LINES  (a run that prints no E line is dead).
 # Codes owned here: WF_NO_PERMISSIONS WF_EXCESS_PERMISSION WF_UNPINNED_ACTION WF_UNEXPECTED_ACTION WF_FORBIDDEN_TRIGGER
 #   WF_MISSING_FETCH_DEPTH WF_PERSIST_CREDENTIALS WF_SHELL WF_RUNNER WF_NO_GATE_STEP WF_EXPR_IN_RUN WF_UNTRUSTED_EXPR
-#   WF_FORBIDDEN_KEY WF_CONCURRENCY WF_UNPARSABLE.
+#   WF_FORBIDDEN_KEY WF_CONCURRENCY WF_NO_CC65_STEP WF_UNPARSABLE.
 # The expression rules read every ${{ }} on every line that is not a YAML comment (the content of a run block included, a shell comment
 # in it too: the runner expands it before the shell sees the text). An expression inside a run value or run block is WF_EXPR_IN_RUN;
 # an expression anywhere that is not on the allowlist is WF_UNTRUSTED_EXPR (D-62, T-02-38). Allowed: github.event.pull_request.base.sha,
@@ -22,6 +22,8 @@
 # continue-on-error key, or a failure swallowed in a run block with || true or || : (the gate must be able to fail, D-62).
 # WF_CONCURRENCY: the top-level concurrency block must carry group gate-${{ github.workflow }}-${{ github.ref }} and cancel-in-progress
 # ${{ github.event_name == 'pull_request' }} exactly (a push to main is never cancelled by a later one).
+# WF_NO_CC65_STEP: a step before the Gate step must run an apt-get install command that names cc65 (the fixture assembler, D-60, D-62
+# amended); the Gate step's preflight fails closed without it. A comment line in the run block does not count.
 # Every rule is one self-contained statement ending in a tag comment (rule-NAME), so a selftest can delete the line and show the
 # control that depends on it flip. Awk dialect: no regex intervals, no gensub, no length of an array (BWK, mawk and gawk all read it).
 
@@ -102,6 +104,12 @@ function check_uses(v, ln,   n, nm, ref) {
   if (nm != "actions/checkout") viol("WF_UNEXPECTED_ACTION", ln, nm " is not on the action allowlist")  # rule-allowlist
 }
 
+# cc65_line: 1 when one run text line is an apt-get install command that names the package cc65 (a shell comment is not one)
+function cc65_line(s) {
+  if (substr(trim(s), 1, 1) == "#") return 0
+  return (index(s, "apt-get install") > 0 && s ~ /(^|[ ])cc65([ ]|$)/)
+}
+
 # step_end: the per-step rules, evaluated when the step closes
 function step_end(   ischeckout) {
   if (!instep) return
@@ -110,6 +118,8 @@ function step_end(   ischeckout) {
   if (ischeckout && sfd != "0") viol("WF_MISSING_FETCH_DEPTH", stepline, "the checkout step needs fetch-depth: 0 (the gate reads history)")  # rule-fetch-depth
   if (ischeckout && spc != "false") viol("WF_PERSIST_CREDENTIALS", stepline, "the checkout step needs persist-credentials: false")  # rule-persist
   if (sname == "Gate" && srun == "sh scripts/check") gatefound = 1  # rule-gate-found
+  if (sname == "Gate" && cc65seen) cc65ok = 1
+  if (scc65) cc65seen = 1
 }
 
 BEGIN {
@@ -139,6 +149,7 @@ BEGIN {
   # the content of a block scalar is not read as structure
   if (bs) {
     if (ind > bsk) {
+      if (instep && bskey == "run" && cc65_line(text)) scc65 = 1
       scan_text(text, ln, bskey == "run")
       scan_exprs(text, ln, bskey == "run")
       next
@@ -219,6 +230,7 @@ BEGIN {
     suses = ""
     sfd = ""
     spc = ""
+    scc65 = 0
     stepline = ln
   }
 
@@ -275,6 +287,7 @@ BEGIN {
   }
   if (instep && ki == stepind + 2 && key == "name") sname = val
   if (instep && ki == stepind + 2 && key == "run") srun = val
+  if (instep && ki == stepind + 2 && key == "run" && cc65_line(val)) scc65 = 1
   if (instep && ki == stepind + 2 && key == "uses") suses = val
   if (instep && key == "fetch-depth") sfd = val
   if (instep && key == "persist-credentials") spc = val
@@ -297,5 +310,6 @@ END {
   if (!runson) viol("WF_RUNNER", 0, "no runs-on")  # rule-runner-missing
   if (needgate && !havecheckout) viol("WF_MISSING_FETCH_DEPTH", 0, "no actions/checkout step: the gate needs the full history")  # rule-checkout-missing
   if (needgate && !gatefound) viol("WF_NO_GATE_STEP", 0, "no step named Gate that runs exactly: sh scripts/check")  # rule-gate-step
+  if (needgate && gatefound && !cc65ok) viol("WF_NO_CC65_STEP", 0, "no step before the Gate step runs apt-get install with cc65")  # rule-cc65-step
   printf "E\t%d\n", NR
 }

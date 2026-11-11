@@ -18,6 +18,7 @@
 #     WF_SHELL                 defaults.run.shell is not sh -eu {0}, or a shell key says otherwise
 #     WF_RUNNER                runs-on is not ubuntu-24.04
 #     WF_NO_GATE_STEP          gate.yml is missing, or has no step named Gate whose run is exactly: sh scripts/check
+#     WF_NO_CC65_STEP          no step before the Gate step runs an apt-get install command that names cc65 (the fixture assembler, D-60)
 #     WF_TEMPLATE              ROOT/.github/pull_request_template.md lacks the record 0007 line (grep -qxF, a whole line)
 #     WF_EXPR_IN_RUN           an expression opener inside a run value or run block (pass it through env, D-62)
 #     WF_UNTRUSTED_EXPR        an expression outside the allowlist: github.event.pull_request.base.sha, github.event_name, github.workflow,

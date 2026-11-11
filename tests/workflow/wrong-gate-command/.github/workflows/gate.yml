@@ -50,6 +50,13 @@ jobs:
             for t in gawk mawk awk; do command -v "$t" || echo "$t: absent"; done
             readlink -f "$(command -v awk)"
           } >> "$GITHUB_STEP_SUMMARY"
+      # The fixture assembler (ca65 and ld65 from cc65) comes from the Ubuntu archive with apt signature checking. The gate's preflight stage
+      # fails closed without it. Package identity is not trusted by version string: the encoding-matrix bytes and the manifest hash pins are
+      # the identity check (fixtures/lib/TOOLS.md, D-128). No action and no secret is involved (D-60, D-62).
+      - name: Install cc65
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq cc65
       - name: Gate
         run: sh scripts/check --stage workflow
       # The base commit of the pull request reaches the command through the environment, never through the script text (D-62).
