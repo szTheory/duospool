@@ -12,8 +12,8 @@
 #   --rows N     the table must hold exactly N defined rows and 256-N UNDEF rows (the real stage passes 234: 234 instructions, H8-1)
 #   --work DIR   keep the generated source, image and records in DIR (the gate uses build/gate/xasm); default a scratch directory that is removed
 # Optional cross-check: when wla-huc6280 and wlalink are both on PATH the same rows are assembled with WLA-DX (GPL-2.0-or-later, an external tool only: never committed or installed in CI, its output compared and
-# discarded, D-130) and compared in the same way; otherwise the status line says wla=optional-absent and no cross-assembler claim is made. The WLA text is written from the WLA-DX documentation and has NOT been
-# run: WLA-DX was absent where this script was written, so the wla=equal path is unproven. A WLA run that cannot assemble the rows is XASM_WLA_FAILED (exit 2), never a silent skip.
+# discarded, D-130) and compared in the same way; otherwise the status line says wla=optional-absent and no cross-assembler claim is made. The WLA path ran once locally (plan 03-33, WLA-DX 10.7 Homebrew bottle, a one-off, not CI): after the accumulator
+# INC and DEC were respelled ina and dea it assembled all 234 rows and 233 equal the table; BRK differs (WLA emits two bytes), so the wla=equal marker has never been printed and no cross-assembler claim is made. A WLA run that cannot assemble the rows is XASM_WLA_FAILED (exit 2), never a silent skip.
 # Two awk stages in scripts/lib/xasm-matrix.awk, each writing to a file with its exit status tested (CR-01, no awk on the left of a pipe): stage 1 writes the source and the expected bytes and ends with an END
 # sentinel, stage 2 compares and requires the sentinel. A stage that died, or a stage 1 that printed no sentinel, is XASM_STAGE_DEAD (exit 2), never a pass.
 # Codes: XASM_MISMATCH XASM_TSV_SHAPE XASM_ASSEMBLE (ca65 or ld65 refused the generated source) | exit 2 only: PREFLIGHT_MISSING, XASM_STAGE_DEAD, XASM_WLA_FAILED, HARNESS_*

@@ -53,7 +53,7 @@ function ca65src(m, mode, lab) {
 }
 function wlasrc(m, mode, lab) {
   if (mode == "IMPLIED") return m
-  if (mode == "ACC") return m " a"
+  if (mode == "ACC") return (m == "inc") ? "ina" : (m == "dec") ? "dea" : m " a"  # WLA-DX HuC6280 spells the accumulator INC and DEC as ina and dea ("inc a" is an operand named a)
   if (mode == "IMM") return m " #$11"
   if (mode == "MASK") return m " #$01"
   if (mode == "ZP") return m " $20"
