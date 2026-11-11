@@ -26,8 +26,6 @@
 #define P_Z 0x02u
 #define P_C 0x01u
 
-#define UNDEFINED_BYTES 1u
-#define UNDEFINED_CYCLES 2u
 
 /* the 8 KiB work RAM is mirrored four times in banks $F8-$FB with & $1FFF (D-103): the mask is only right for this size */
 _Static_assert(DS_RAM8K_BYTES == 0x2000u, "the work RAM mirror mask assumes 8 KiB");
@@ -61,7 +59,7 @@ enum ds_class { CL_NONE, CL_READ, CL_WRITE, CL_RMW, CL_STACK, CL_MPR, CL_BLOCK }
 struct ds_op {
     uint8_t mn;     /* enum ds_mn */
     uint8_t mode;   /* enum ds_mode */
-    uint8_t bytes;  /* instruction length; 0 only for a row the def does not hold yet (tracer plan 03-09: such an opcode runs as the undefined one) */
+    uint8_t bytes;  /* instruction length */
     uint8_t cycles; /* the manual's base count; a block transfer holds its 17 */
     uint8_t cls;    /* enum ds_class */
 };
@@ -71,6 +69,14 @@ static const struct ds_op ops[256] = {
 #include "cpu_ops.def"
 #undef DS_OP
 };
+
+/* the def holds exactly one row per opcode: a row count other than 256 fails the build (an absent row would be a zeroed entry); the opcode order and the content are checked by scripts/opcode-check */
+#define DS_OP(opcode, mn, mode, nbytes, ncycles, cls, cite) +1
+enum { DS_OP_ROWS = 0
+#include "cpu_ops.def"
+};
+#undef DS_OP
+_Static_assert(DS_OP_ROWS == 256, "cpu_ops.def must hold exactly 256 rows");
 
 /* the adders of D-98, each one cited in the ledger (LED-CPU-0002): they are added to the table's base count and never stored in it */
 static uint32_t taken_adder(uint32_t mn)
@@ -104,11 +110,7 @@ static uint32_t flag_adders(uint32_t mn)
 uint32_t ds_cpu_op_max_cycles(uint32_t opcode)
 {
     const struct ds_op *op = &ops[opcode & 0xFFu];
-    uint32_t bytes = op->bytes;
 
-    if (bytes == 0u) {
-        return UNDEFINED_CYCLES; /* a row the def does not hold yet runs as the undefined opcode */
-    }
     return (uint32_t)op->cycles + taken_adder(op->mn) + flag_adders(op->mn);
 }
 
@@ -265,11 +267,10 @@ uint32_t ds_cpu_step(struct ds_instance *inst)
     uint32_t pc = inst->pc;
     uint8_t opcode = ds_bus_read(inst, inst->pc);
     const struct ds_op *op = &ops[opcode];
-    int defined = op->bytes != 0u; /* tracer plan 03-09: a row the def does not hold yet runs as the undefined opcode (D-96) */
-    uint32_t mn = defined ? (uint32_t)op->mn : (uint32_t)MN_UNDEF;
-    uint32_t mode = defined ? (uint32_t)op->mode : (uint32_t)AM_UNDEF;
-    uint32_t bytes = defined ? (uint32_t)op->bytes : UNDEFINED_BYTES;
-    uint32_t cycles = defined ? (uint32_t)op->cycles : UNDEFINED_CYCLES;
+    uint32_t mn = op->mn;
+    uint32_t mode = op->mode;
+    uint32_t bytes = op->bytes; /* the 22 undefined rows hold one byte and two cycles: the D-96 assumption (LED-CPU-0010) lives in the def */
+    uint32_t cycles = op->cycles;
     uint32_t op1 = bytes >= 2u ? ds_bus_read(inst, (uint16_t)(pc + 1u)) : 0u;
     uint32_t op2 = bytes >= 3u ? ds_bus_read(inst, (uint16_t)(pc + 2u)) : 0u;
     uint32_t next = (pc + bytes) & 0xFFFFu;

@@ -912,7 +912,7 @@ stage_xasm() {
 # independent transcriptions of the manual page images, on opcode, mnemonic, mode, bytes and base cycles, with the built-in cross-check of 234 defined and 22 undefined opcodes. Static, so it is
 # registered before the build (it reads two tracked files); its stage records go to build/gate/opcode-oracle.
 stage_opcode_oracle() {
-  checker sh "$here/opcode-check" --work build/gate/opcode-oracle --partial
+  checker sh "$here/opcode-check" --work build/gate/opcode-oracle
 }
 
 # xasm-negatives (FIX-01, D-129; plan 03-08): the encoding oracle must go red for each failure it is built to catch. Every tests/gate/xasm/<case>/ is a mini-root holding tests/oracle/huc6280-opcodes.tsv:

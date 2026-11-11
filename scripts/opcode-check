@@ -7,8 +7,7 @@
 # both ways on opcode, mnemonic, mode, bytes and base cycles (a block transfer's 17 in the def is compared as the manual's 17+6x). The 22 UNDEF rows are compared by membership only: both sides mark the opcode
 # undefined; their one byte and two cycles are an assumption (LED-CPU-0010) that the TSV's - columns do not carry (I11). A built-in cross-check requires 234 defined and 22 undefined opcodes in each file.
 # A difference is never resolved by editing one table to match the other: re-read the page image, then correct the side that is wrong.
-# usage: opcode-check [--expect CODE[,CODE...]] [--root DIR] [--work DIR] [--partial]
-#   --partial    TRACER ONLY (plan 03-09 task 1): compare just the opcodes the def already holds; the missing, extra and count rules are off. Task 2 removes this option.
+# usage: opcode-check [--expect CODE[,CODE...]] [--root DIR] [--work DIR]
 #   --root DIR   the root that holds src/core/cpu_ops.def and tests/oracle/huc6280-opcodes.tsv (default: the repository root)
 #   --work DIR   keep the stage records in DIR (the gate uses build/gate/opcode-oracle); default a scratch directory that is removed
 # Three awk runs in scripts/lib/opcode-rules.awk, each writing to a file with its exit status tested (CR-01, no awk on the left of a pipe): stage 1 for the def and stage 1 for the tsv, each ending in an END
@@ -24,7 +23,7 @@ case $0 in */*) here=${0%/*} ;; *) here=. ;; esac
 here=$(cd "$here" && pwd)
 
 usage() {
-  echo "usage: opcode-check [--expect CODE[,CODE...]] [--root DIR] [--work DIR] [--partial]" >&2
+  echo "usage: opcode-check [--expect CODE[,CODE...]] [--root DIR] [--work DIR]" >&2
   exit 2
 }
 
@@ -32,13 +31,11 @@ expect=""
 have_expect=0
 root=$(cd "$here/.." && pwd)
 work=""
-partial=0
 while [ $# -gt 0 ]; do
   case $1 in
     --expect) [ $# -ge 2 ] || usage; expect=$2; have_expect=1; shift 2 ;;
     --root) [ $# -ge 2 ] || usage; root=$2; shift 2 ;;
     --work) [ $# -ge 2 ] || usage; work=$2; shift 2 ;;
-    --partial) partial=1; shift ;;
     *) usage ;;
   esac
 done
@@ -107,7 +104,7 @@ if grep -q '^END	tsv	' "$w/tsv.rec"; then :; else
 fi
 
 # stage 2: the two-way comparison
-if awk -v stage=2 -v partial=$partial -f "$here/lib/opcode-rules.awk" "$w/def.rec" "$w/tsv.rec" > "$w/compare.out" 2> "$tmp/s2.err"; then :; else
+if awk -v stage=2 -f "$here/lib/opcode-rules.awk" "$w/def.rec" "$w/tsv.rec" > "$w/compare.out" 2> "$tmp/s2.err"; then :; else
   dead "stage 2 (opcode-rules.awk) failed or found no END sentinel from stage 1"
 fi
 : > "$tmp/viol0"
@@ -145,9 +142,5 @@ if [ -s "$tmp/viol" ]; then
   exit 1
 fi
 echo "OPCODE defined=$ndef undefined=$nund"
-if [ "$partial" -eq 1 ]; then
-  echo "STATUS opcode-oracle ok partial defined=$ndef undefined=$nund"
-  exit 0
-fi
 echo "STATUS opcode-oracle ok defined=$ndef undefined=$nund"
 exit 0

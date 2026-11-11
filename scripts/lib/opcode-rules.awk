@@ -9,14 +9,13 @@
 #   END<TAB>kind<TAB>rows                                the very last line, the sentinel (CR-01): a stage 1 that died or was emptied does not print it
 # The def row is DS_OP(0xNN, MNEMONIC, MODE, bytes, cycles, ACCESS, "cite") on ONE line; the tsv row is opcode, mnemonic, mode, bytes, cycles, flags, cite separated by TAB, # lines are comments.
 #
-# stage 2 (-v stage=2 [-v partial=1]): the inputs are the stage-1 file of the def and then that of the tsv. It compares them both ways and writes:
+# stage 2 (-v stage=2): the inputs are the stage-1 file of the def and then that of the tsv. It compares them both ways and writes:
 #   X<TAB>OPC_STAGE_DEAD<TAB>detail                    when a stage-1 sentinel is missing; exit status 2
 #   V<TAB>OPC_MISSING_ROW<TAB>opcode<TAB>detail         the tsv has an opcode the def has no row for (rule-missing)
 #   V<TAB>OPC_EXTRA_ROW<TAB>opcode<TAB>detail            the def has an opcode the tsv has no row for (rule-extra)
 #   V<TAB>OPC_FIELD<TAB>opcode<TAB>detail                mnemonic, mode, bytes or cycles differ (rule-field); an UNDEF row is compared by membership only (both sides mark the opcode undefined, I11)
 #   V<TAB>OPC_UNDEF_COUNT<TAB>kind<TAB>detail            a file does not hold 234 defined and 22 undefined opcodes (rule-count)
 #   N<TAB>defined<TAB>undefined<TAB>compared             always printed once when the stage ran
-# --partial (task 1 of plan 03-09 only): only the opcodes present in the def are compared and the missing, extra and count rules are off.
 # The statement that emits a code ends in a  # rule-NAME  tag, so that a selftest can delete it and show its control go red (mutation-opcode-oracle-field).
 function trim(s) {
   sub(/^[ \t\r]+/, "", s)
@@ -122,7 +121,7 @@ END {
     if (mn["def", dl[i]] == "UNDEF") dund++
     else ddef++
   }
-  if (!partial) {
+  {
     for (i = 1; i <= tn; i++) {
       op = tl[i]
       if (!(("def", op) in has)) print "V\tOPC_MISSING_ROW\t" op "\tthe manual table has " mn["tsv", op] " here and cpu_ops.def has no row" # rule-missing
