@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 3
 current_phase_name: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-current_plan: 21
+current_plan: 22
 status: planning
-stopped_at: Completed 03-16-PLAN.md
-last_updated: "2026-11-11T11:14:39.822Z"
+stopped_at: Completed 03-17-PLAN.md
+last_updated: "2026-11-11T11:35:32.327Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 2 complete, transitioned to Phase 3
-state_head: 3750bcd4babb9dc2745ea5b342a30b8df251cb1f
+state_head: 7509dff0c9ef43e77bd82b3747b0d81c04718294
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 72
-  completed_plans: 54
+  completed_plans: 55
   percent: 33
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 3 — HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-Current Plan: 21
+Current Plan: 22
 Total Plans in Phase: 38
 Status: Ready to execute
 Last activity: 2026-11-11 — Completed 03-04 (W1: optional case keys, guestkinds.c, authored fixture key, machine_time and stop on RESULT)
@@ -113,6 +113,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 3 P14 | 30min | 3 tasks | 10 files |
 | Phase 03 P15 | 75min | 3 tasks | 24 files |
 | Phase 03 P16 | 140min | 3 tasks | 27 files |
+| Phase 03 P17 | 70min | 3 tasks | 30 files |
 
 ## Accumulated Context
 
@@ -216,6 +217,8 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-16: io_buffer is a bus latch (a read returns the stub value with the undriven upper bits from io_buffer and the byte read becomes io_buffer; a write stores its byte); VDC and VCE accesses and the empty windows never touch it (ASSUMED LED-CPU-0012, LED-CPU-0013)
 - [Phase 03]: 03-16: the VDC and VCE access penalty is one cycle per bus access to physical $1FE000-$1FE7FF charged in charge_penalty() of bus.c; ds_max_step_mclk is 600 master clocks (ASSUMED LED-CPU-0017)
 - [Phase 03]: 03-16: region BUS0 (io_buffer, mpr_latch) appended after CPU0, DS_SERIAL_VERSION 3; digest literals recomputed outside the C code after reproducing the version 2 digests
+- [Phase 03]: 03-17: tma_zero {bus_latch default, a_unchanged} is the one model parameter; the selection is the third byte of BUS0 (serial version 4); TAM #0 and TMA #0 do not change the one-byte latch, multi-bit TAM writes every selected MPR, multi-bit TMA returns the highest index (ASSUMED:LED-CPU-0015)
+- [Phase 03]: 03-17: ds_model_set validates name, then value, then state (machine time not 0 is model.state) and writes nothing on refusal; model refusal codes have their own def and prefix model.
 
 ### Pending Todos
 
@@ -239,6 +242,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-11T11:14:39.650Z
-Stopped at: Completed 03-16-PLAN.md
+Last session: 2026-11-11T11:35:32.171Z
+Stopped at: Completed 03-17-PLAN.md
 Resume file: None
