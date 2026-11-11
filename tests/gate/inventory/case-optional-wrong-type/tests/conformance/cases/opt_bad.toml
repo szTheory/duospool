@@ -15,6 +15,6 @@ until_mclk = "x"
 policies = "zero"
 checks = 2
 input = "none"
-irq_stim = "none"
+irq_stim = ["0,1,0"]
 sinks = "none"
 chunks = "mix"

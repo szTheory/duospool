@@ -1,0 +1,20 @@
+/* SPDX-License-Identifier: MIT OR Apache-2.0 */
+/* SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors */
+/*
+ * stim_refusals.def - the closed refusal set of ds_irq_stim_set (plan 03-22; D-112, T-03-60, F4), defined once.
+ * One X-macro row per refusal: DS_STIMREF(name, number). 0 is "no refusal" and has no row. The string form is stim.NAME, never load.NAME, run.NAME or model.NAME: these codes belong to the declared IRQ1 and IRQ2 test stimulus alone.
+ * Numbers are stable and never reused; a new refusal takes the next free number, and the name table has DS_STIMREF_SLOTS slots (a number at or above it fails to compile). A refusal writes nothing.
+ * The checks run in the order of the rows: the length of the list, then each event (its line, then its level), then the order of the times across events, then the state of the machine.
+ *
+ * name    number  returned when
+ * count   1       the list has more than DS_IRQ_STIM_MAX (16) events, or is NULL with a nonzero count
+ * line    2       an event names a line other than 1 (IRQ1) or 2 (IRQ2)
+ * level   3       an event has a level other than 0 or 1
+ * order   4       the times are not non-decreasing: an event is earlier than the one before it
+ * state   5       the machine has taken a step (machine time is not 0) or the instance is NULL: the stimulus is declared before the first step and never changes under a running machine
+ */
+DS_STIMREF(count, 1)
+DS_STIMREF(line, 2)
+DS_STIMREF(level, 3)
+DS_STIMREF(order, 4)
+DS_STIMREF(state, 5)

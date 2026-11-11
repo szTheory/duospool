@@ -168,3 +168,7 @@ mutate_sweep_st_bypass
 tim_timer
 timer_pure_function
 mutate_sweep_tim_timer
+irq_ctl_pre
+irq_stim_refuse_order
+irq_stim_refuse_count
+irq_stim_refuse_line

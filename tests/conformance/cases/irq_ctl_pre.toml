@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The interrupt controller seen from the guest (plan 03-22; D-110, D-111, D-112, D-124, D-125, D-127, ER-4, ER-5): the authored fixture fixtures/src/irq_ctl.s is assembled by ca65 in the gate (never committed), boots on the core, runs to the absolute deadline until_mclk (master clocks) and writes a
+# DSV1 verdict block that the runner judges from raw RAM. IRQ1 and IRQ2 have no hardware source in the machine yet: the key irq_stim below DECLARES a test stimulus (events AT,LINE,LEVEL in master clocks, line 1 or 2, level 1 requested or 0 not, a pure function of time) that the runner gives to the core with
+# ds_irq_stim_set before the first step. It is a test hook for the controller logic, E0 and E2 self-consistency, and says nothing about the VDC or any other hardware source (ER-5, D-112, ASSUMED LED-IRQ-0008). The checks of the fixture are classed in fixtures/src/irq_ctl.checks: a manual page (MAN) or an
+# assumed ledger entry (ASSUMED: LED-IRQ-0008, written in plan 03-34); none comes from DuoSpool output. The case has no policies key, so the guest kind runs the ROM under its default policy list (D-127). This case runs the default model value irq_i_sample = pre.
+# Evidence tier E0 for the mechanism: no accuracy, compatibility or hardware claim, and the word pass is not a support claim.
+id = "irq_ctl_pre"
+kind = "guest"
+fixture = "authored:irq-ctl"
+request = ""
+expect = "id=11"
+meaning = "The authored irq_ctl fixture reads the interrupt registers and takes the declared IRQ1 test stimulus through the IRQ1 vector, checking the masking by I and by IRQ1D, the pushed status and the request register, and leaves a consistent DSV1 block of 15 passing checks"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+checks = 15
+irq_stim = ["1200000,1,1", "1500000,1,0"]

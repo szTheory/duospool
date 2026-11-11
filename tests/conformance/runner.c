@@ -643,7 +643,7 @@ static const struct {
 } key_def[NKEYS] = {
     {"id", 's'},      {"kind", 's'},    {"fixture", 's'},         {"request", 's'},  {"expect", 's'},
     {"meaning", 's'}, {"required", 'b'}, {"control", 'b'}, {"expect_outcome", 's'}, {"pins", 'a'},
-    {"until_mclk", 'i'}, {"policies", 's'}, {"checks", 'i'}, {"input", 's'}, {"irq_stim", 's'}, {"sinks", 's'}, {"chunks", 's'},
+    {"until_mclk", 'i'}, {"policies", 's'}, {"checks", 'i'}, {"input", 's'}, {"irq_stim", 'a'}, {"sinks", 's'}, {"chunks", 's'},
 };
 
 /* an integer key is an unsigned decimal of one to nineteen digits (T-03-11), so it always fits a uint64_t */
@@ -1041,6 +1041,7 @@ static const struct {
     {"coverage", kind_coverage, 1},
     {"run_refusal_coverage", kind_run_refusal_coverage, 1},
     {"model_refusal_coverage", kind_model_refusal_coverage, 1},
+    {"stim_refusal_coverage", kind_stim_refusal_coverage, 1},
 };
 
 static const char *outcome_of(const struct ctx *c, enum outcome *oc)

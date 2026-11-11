@@ -109,6 +109,9 @@ uint32_t ds_resolve(const char *id, uint32_t rev, const struct ds_bindings *bind
 
 /* ---- instance and boot ---- */
 
+/* the most events of the declared IRQ1 and IRQ2 stimulus (D-112) */
+#define DS_IRQ_STIM_MAX 16u
+
 struct ds_instance {
     uint64_t machine_time; /* master clocks of OSC1, 0 at boot, advanced only by ds_run (D-90) */
     struct ds_profile profile; /* the resolved profile of this run */
@@ -123,8 +126,19 @@ struct ds_instance {
     uint32_t powerup_policy;   /* enum ds_policy of ds_poweron.h: 1 zero, 2 seeded-prng-v1 */
     uint32_t has_seed;         /* 1 when the request carried a seed */
     uint64_t powerup_seed;     /* the seed of the run, 0 when has_seed is 0 */
-    /* the timer (plan 03-21, timer.c; D-109): the master-clock stamp of the last prescaler step boundary the state was folded to, or of the start write. Eight bytes, so it sits on the 8-byte boundary between the seed and the CPU block; the other timer bytes follow tma_zero. Not in the digest yet (the TIMR region lands in plan 03-22) */
+    /* the declared IRQ1 and IRQ2 test stimulus (plan 03-22, irq.c; D-112, ER-5): up to DS_IRQ_STIM_MAX events, slot i holding the machine time at which line irq_stim_line[i] (1 or 2, 0 = an unused slot) takes the level irq_stim_level[i] (0 or 1). Written only by ds_irq_stim_set before the first step; the level of a line at a stamp is a pure function of these arrays. A test hook, never a claim about the VDC. The three arrays are one live span of 160 bytes (region IRQS) and the 8-byte times come first so that the span sits on the 8-byte boundary after the power-up seed */
+    uint64_t irq_stim_at[DS_IRQ_STIM_MAX];
+    uint8_t irq_stim_line[DS_IRQ_STIM_MAX];
+    uint8_t irq_stim_level[DS_IRQ_STIM_MAX];
+    /* the timer (plan 03-21, timer.c; D-109): timer_origin is the master-clock stamp of the last prescaler step boundary the state was folded to, or of the start write; timer_counter is the 7-bit counter value at timer_origin, timer_reload the 7-bit reload register and timer_enabled the start bit. All four are region TIMR of the digest (plan 03-22); the counter and the reload register are what the power-on policy made them, the start bit is 0 at reset (H8-18) */
     uint64_t timer_origin;
+    uint8_t timer_counter;
+    uint8_t timer_reload;
+    uint8_t timer_enabled;
+    /* the interrupt controller (plans 03-21 and 03-22, irq.c; D-110, D-111): irq_disable holds the three bits of the disable register $1402 (1 = disabled, bit 0 IRQ2D, bit 1 IRQ1D, bit 2 TIQD; 0 at reset, H8-16), tiq_latch the TIQ request bit (0 at reset, H8-15) and irq_i_sample the selected value of the model parameter irq_i_sample (an index into its allowed list, 0 = pre = the default; set only by ds_model_set before the first step, row of model_params.def from the second task of plan 03-22). The three are region IRQC */
+    uint8_t irq_disable;
+    uint8_t tiq_latch;
+    uint8_t irq_i_sample;
     /* HuC6280 state (plan 03-01, D-102): eight bytes, no padding, no pointers, no caches. p holds N V T D I Z C in their own bit positions; B is never stored */
     uint16_t pc;
     uint8_t a;
@@ -133,32 +147,29 @@ struct ds_instance {
     uint8_t s;
     uint8_t p;
     uint8_t speed; /* 0 low (the power-up speed), 1 high (D-90, D-114) */
-    /* bus state (plan 03-16, region BUS0 of the digest; D-104, D-105): io_buffer is the last byte that crossed the data bus in a read or write of the windows $0800-$17FF of the hardware page, mpr_latch the byte of TAM and TMA (plan 03-17); both are constant 0 at power-on under every policy */
+    /* bus state (plan 03-16, region BUS0 of the digest; D-104, D-105): io_buffer is the last byte that crossed the data bus in a read or write of the windows $0800-$17FF of the hardware page, mpr_latch the byte of TAM and TMA (plan 03-17); both are constant 0 at power-on under every policy. tma_zero is the selected value of the model parameter tma_zero (plan 03-17, model_params.def): an index into its allowed list, 0 = bus_latch = the default, so a zeroed instance holds the default; set only by ds_model_set before the first step */
     uint8_t io_buffer;
     uint8_t mpr_latch;
-    /* the selected value of the model parameter tma_zero (plan 03-17, model_params.def): an index into its allowed list, 0 = bus_latch = the default, so a zeroed instance holds the default; set only by ds_model_set before the first step, carried in region BUS0 */
     uint8_t tma_zero;
-    /* the timer and the interrupt controller (plans 03-21 and 03-22; D-109, D-110): timer_counter is the 7-bit counter value at timer_origin, timer_reload the 7-bit reload register, timer_enabled the start bit, tiq_latch the TIQ request bit and irq_disable the three bits of the disable register (1 = disabled, bit 2 TIQD); all zero at reset (H8-18) */
-    uint8_t timer_counter;
-    uint8_t timer_reload;
-    uint8_t timer_enabled;
-    uint8_t tiq_latch;
-    uint8_t irq_disable;
     uint8_t rom[DS_ROM_CAP];
 };
 
-/* the timer origin, the CPU block, the bus block and the timer bytes have no padding: timer_origin follows the power-up seed, pc the timer origin, io_buffer the speed bit, mpr_latch io_buffer, tma_zero mpr_latch, the timer and interrupt bytes follow tma_zero in order, and the ROM array follows the last of them */
-_Static_assert(offsetof(struct ds_instance, timer_origin) == offsetof(struct ds_instance, powerup_seed) + sizeof(uint64_t), "padding before the timer origin");
-_Static_assert(offsetof(struct ds_instance, pc) == offsetof(struct ds_instance, timer_origin) + sizeof(uint64_t), "padding before the CPU state");
+/* the stimulus arrays, the timer block, the controller bytes, the CPU block and the bus block have no padding and sit in the order of the declarations (the digest regions IRQS, TIMR, IRQC, CPU0 and BUS0 are each one live span, serial.c): the stimulus times follow the power-up seed, and the ROM array follows the bus block */
+_Static_assert(offsetof(struct ds_instance, irq_stim_at) == offsetof(struct ds_instance, powerup_seed) + sizeof(uint64_t), "padding before the stimulus times");
+_Static_assert(offsetof(struct ds_instance, irq_stim_line) == offsetof(struct ds_instance, irq_stim_at) + DS_IRQ_STIM_MAX * sizeof(uint64_t), "padding between the stimulus times and lines");
+_Static_assert(offsetof(struct ds_instance, irq_stim_level) == offsetof(struct ds_instance, irq_stim_line) + DS_IRQ_STIM_MAX, "padding between the stimulus lines and levels");
+_Static_assert(offsetof(struct ds_instance, timer_origin) == offsetof(struct ds_instance, irq_stim_level) + DS_IRQ_STIM_MAX, "padding before the timer origin");
+_Static_assert(offsetof(struct ds_instance, timer_counter) == offsetof(struct ds_instance, timer_origin) + sizeof(uint64_t), "padding after the timer origin");
+_Static_assert(offsetof(struct ds_instance, timer_reload) == offsetof(struct ds_instance, timer_counter) + 1u, "padding in the timer bytes");
+_Static_assert(offsetof(struct ds_instance, timer_enabled) == offsetof(struct ds_instance, timer_reload) + 1u, "padding in the timer bytes");
+_Static_assert(offsetof(struct ds_instance, irq_disable) == offsetof(struct ds_instance, timer_enabled) + 1u, "padding between the timer and the controller bytes");
+_Static_assert(offsetof(struct ds_instance, tiq_latch) == offsetof(struct ds_instance, irq_disable) + 1u, "padding in the controller bytes");
+_Static_assert(offsetof(struct ds_instance, irq_i_sample) == offsetof(struct ds_instance, tiq_latch) + 1u, "padding in the controller bytes");
+_Static_assert(offsetof(struct ds_instance, pc) == offsetof(struct ds_instance, irq_i_sample) + 1u, "padding between the controller bytes and the CPU state");
 _Static_assert(offsetof(struct ds_instance, io_buffer) == offsetof(struct ds_instance, speed) + 1u, "padding between the CPU state and io_buffer");
 _Static_assert(offsetof(struct ds_instance, mpr_latch) == offsetof(struct ds_instance, io_buffer) + 1u, "padding between io_buffer and mpr_latch");
 _Static_assert(offsetof(struct ds_instance, tma_zero) == offsetof(struct ds_instance, mpr_latch) + 1u, "padding between mpr_latch and tma_zero");
-_Static_assert(offsetof(struct ds_instance, timer_counter) == offsetof(struct ds_instance, tma_zero) + 1u, "padding between tma_zero and the timer bytes");
-_Static_assert(offsetof(struct ds_instance, timer_reload) == offsetof(struct ds_instance, timer_counter) + 1u, "padding in the timer bytes");
-_Static_assert(offsetof(struct ds_instance, timer_enabled) == offsetof(struct ds_instance, timer_reload) + 1u, "padding in the timer bytes");
-_Static_assert(offsetof(struct ds_instance, tiq_latch) == offsetof(struct ds_instance, timer_enabled) + 1u, "padding in the timer bytes");
-_Static_assert(offsetof(struct ds_instance, irq_disable) == offsetof(struct ds_instance, tiq_latch) + 1u, "padding in the timer bytes");
-_Static_assert(offsetof(struct ds_instance, rom) == offsetof(struct ds_instance, irq_disable) + 1u, "padding after the timer bytes");
+_Static_assert(offsetof(struct ds_instance, rom) == offsetof(struct ds_instance, tma_zero) + 1u, "padding between the bus bytes and the ROM");
 
 struct ds_boot_request {
     uint32_t struct_size; /* sizeof(struct ds_boot_request) */
@@ -306,13 +317,42 @@ void ds_bus_write(struct ds_instance *inst, struct ds_bus *bus, uint16_t addr, u
 void ds_mpr_write(struct ds_instance *inst, uint32_t index, uint8_t value); /* the only writer of mpr[] */
 
 /*
- * The interrupt controller (irq.c, plan 03-21; D-110, D-111): the disable register at $1402 and the request register at $1403 of the hardware page, the TIQ source and the sample. Plan 03-22 adds IRQ1 and IRQ2.
- * ds_irq_read returns the three register bits of the register (reg 2 the disable bits, reg 3 the request bits, bit 2 TIQ) at the stamp and changes nothing; ds_irq_write stores the disable bits (reg 2) or acknowledges TIQ (reg 3: any
- * write clears the TIQ request only) after folding the timer to the stamp. ds_irq_pending is the pure sample: 0 when nothing is pending or deliverable, else the logical address of the vector's low byte of the source to take.
+ * The interrupt controller (irq.c, plans 03-21 and 03-22; D-110, D-111, D-112): the disable register at $1402 and the request register at $1403 of the hardware page, the three sources and the sample.
+ * ds_irq_read returns the three register bits of the register (reg 2 the disable bits, bit 0 IRQ2D, bit 1 IRQ1D, bit 2 TIQD; reg 3 the request bits, bit 0 the IRQ2 level, bit 1 the IRQ1 level, bit 2 TIQ) at the stamp and changes nothing;
+ * ds_irq_write stores the disable bits (reg 2) or acknowledges TIQ (reg 3: any write clears the TIQ request only, the IRQ levels are inputs) after folding the timer to the stamp.
+ * ds_irq_pending_query is the pure query of what is pending at the stamp, after the disable mask: bit 0 IRQ2, bit 1 IRQ1, bit 2 TIQ (the layout of the request register), 0 when nothing is deliverable. ds_irq_pending is the pure sample:
+ * 0 when nothing is pending, else the logical address of the vector's low byte of the winner (TIQ $FFFA, then IRQ1 $FFF8, then IRQ2 $FFF6, H8-13); the caller applies the I flag.
  */
 uint32_t ds_irq_read(const struct ds_instance *inst, uint32_t reg, uint64_t stamp);
 void ds_irq_write(struct ds_instance *inst, uint32_t reg, uint8_t value, uint64_t stamp);
+uint32_t ds_irq_pending_query(const struct ds_instance *inst, uint64_t stamp);
 uint32_t ds_irq_pending(const struct ds_instance *inst, uint64_t stamp);
+
+/*
+ * The declared IRQ1 and IRQ2 test stimulus (irq.c, plan 03-22; D-112, T-03-60, ER-5): a list of events (at, line, level), copied into the instance by ds_irq_stim_set before the first step. A line is 0 (low, not requested) before its first event and
+ * after an event holds that event's level (the last event of the line whose time is at or before the stamp, ties inclusive); the levels are a pure function of the stamp. It is a stimulus declared by a case, never a claim about the VDC or any hardware
+ * source. The call refuses with a code of stim_refusals.def and then writes nothing (the instance is byte-identical): count above DS_IRQ_STIM_MAX (or a NULL list with a nonzero count), a line other than 1 or 2, a level other than 0 or 1,
+ * a time that decreases, and, last, a machine that has taken a step (machine time not 0) or a NULL instance. A count of 0 declares no stimulus.
+ */
+struct ds_irq_event {
+    uint64_t at;    /* master clocks of machine time */
+    uint32_t line;  /* 1 = IRQ1, 2 = IRQ2 */
+    uint32_t level; /* 1 = requested (the pin is low), 0 = not requested */
+};
+_Static_assert(sizeof(struct ds_irq_event) == 16u, "struct ds_irq_event has padding");
+
+enum ds_stim_refusal {
+    DS_STIMREF_NONE = 0,
+#define DS_STIMREF(name, number) DS_STIMREF_##name = number,
+#include "stim_refusals.def"
+#undef DS_STIMREF
+    DS_STIMREF_SLOTS = 8 /* the name table has this many slots: a number at or above it fails to compile */
+};
+
+/* "stim.NAME" for a stimulus refusal number, "ok" for DS_STIMREF_NONE, NULL for a number that is not a member */
+const char *ds_stim_refusal_name(uint32_t number);
+uint32_t ds_irq_stim_set(struct ds_instance *inst, const struct ds_irq_event *events, uint32_t count);
+
 void ds_bus_write_phys(struct ds_instance *inst, struct ds_bus *bus, uint32_t phys, uint8_t value); /* the physical write of ST0 to ST2 (D-106): $1FE000 | n for n in 0, 2, 3, the MPRs are never consulted; any other address is dropped */
 
 /* ---- model parameters (model_params.def, model_refusals.def, model.c; plan 03-17; D-105, D-113) ---- */

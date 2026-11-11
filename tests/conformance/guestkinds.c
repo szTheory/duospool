@@ -13,6 +13,7 @@
  *                   ;verdict=OUTCOME:REASON  the guest is a deliberate protocol fault. The case passes only when the judge gives exactly the outcome OUTCOME
  *                                            (pass, guest_failure, harness_failure or timeout) and its reason text contains the word REASON (lowercase letters,
  *                                            digits, hyphens and underscores); any other verdict, or the right outcome for another reason, is a guest_failure
+ *                   ;refused=stim.NAME       a stimulus refusal control (plan 03-22, D-112): the case's irq_stim list must be refused by ds_irq_stim_set with exactly that code, the instance unchanged; the guest is never run
  *                   ;poison-t0               the runner writes the DSV1 magic and the done state into work RAM after boot and before the first step; the
  *                                            t=0 precondition must then give harness_failure ("before the first step"), and the guest is not run at all
  *                 Observe rows (plan 03-10): the optional fifth column of NAME.checks, the word observe, marks a check whose expected value legitimately differs by case; scripts/fixture-build lists
@@ -263,6 +264,16 @@ static int parse_item(char *item, struct guest_expect *e, int *seen_mode, int *s
         e->mode = MODE_VERDICT;
         return 0;
     }
+    if (strncmp(item, "refused=stim.", 13u) == 0) {
+        item += 13;
+        if (*seen_mode || strlen(item) == 0u || strlen(item) >= sizeof e->reason || strspn(item, "abcdefghijklmnopqrstuvwxyz") != strlen(item)) {
+            return -1;
+        }
+        *seen_mode = 1;
+        memcpy(e->reason, item, strlen(item) + 1u);
+        e->mode = MODE_REFUSED;
+        return 0;
+    }
     if (strncmp(item, "observe=", 8u) == 0) {
         unsigned idx = 0u;
         unsigned i;
@@ -487,6 +498,85 @@ const char *apply_model(struct ds_instance *inst, const struct spec *s)
 }
 
 /*
+ * The declared IRQ1 and IRQ2 stimulus of a case (plan 03-22; D-112, T-03-60, ER-5). The case key irq_stim is an array of strings AT,LINE,LEVEL (the flattened array reaches the runner as the elements joined by the unit separator, octal 037),
+ * each field decimal or 0x hex. This is the one reader: the core validates the list again (ds_irq_stim_set), so a bad list is a refusal there and never undefined behaviour here. The key is a TEST stimulus (E0/E2 for controller logic), never
+ * evidence about the VDC or any hardware source (ER-5). A list longer than the parse buffer, a malformed element or a field above 32 bits is a fault of the case.
+ */
+const char *irq_stim_parse(const struct kase *k, struct ds_irq_event *ev, unsigned cap, unsigned *n, int *declared)
+{
+    char buf[PK_LIST_MAX * 2u];
+    const char *p;
+    unsigned count = 0u;
+
+    *n = 0u;
+    *declared = 0;
+    if (!k->has[K_IRQ_STIM]) {
+        return NULL;
+    }
+    *declared = 1;
+    if (strlen(k->val[K_IRQ_STIM]) >= sizeof buf) {
+        return "the irq_stim list is too long";
+    }
+    memcpy(buf, k->val[K_IRQ_STIM], strlen(k->val[K_IRQ_STIM]) + 1u);
+    if (buf[0] == '\0') {
+        return NULL; /* an empty array declares no events */
+    }
+    p = buf;
+    for (;;) {
+        char *sep = strchr(p, '\037');
+        char elem[64];
+        char *c1;
+        char *c2;
+        uint64_t at = 0u;
+        uint64_t line = 0u;
+        uint64_t level = 0u;
+        size_t len = sep != NULL ? (size_t)(sep - p) : strlen(p);
+
+        if (count >= cap || len == 0u || len >= sizeof elem) {
+            return "an irq_stim list holds more elements than the parse buffer, or an empty or overlong element";
+        }
+        memcpy(elem, p, len);
+        elem[len] = '\0';
+        c1 = strchr(elem, ',');
+        c2 = c1 != NULL ? strchr(c1 + 1, ',') : NULL;
+        if (c1 == NULL || c2 == NULL || strchr(c2 + 1, ',') != NULL) {
+            return "an irq_stim element is AT,LINE,LEVEL";
+        }
+        *c1 = '\0';
+        *c2 = '\0';
+        if (parse_u64(elem, &at) != 0 || parse_u64(c1 + 1, &line) != 0 || parse_u64(c2 + 1, &level) != 0 || line > 0xFFFFFFFFu || level > 0xFFFFFFFFu) {
+            return "an irq_stim field is not an unsigned number (line and level at most 32 bits)";
+        }
+        ev[count].at = at;
+        ev[count].line = (uint32_t)line;
+        ev[count].level = (uint32_t)level;
+        count++;
+        if (sep == NULL) {
+            break;
+        }
+        p = sep + 1;
+    }
+    *n = count;
+    return NULL;
+}
+
+const char *apply_irq_stim(struct ds_instance *inst, const struct kase *k, uint32_t *refusal)
+{
+    struct ds_irq_event ev[IRQ_STIM_PARSE_MAX];
+    unsigned n = 0u;
+    int declared = 0;
+    const char *err;
+
+    *refusal = 0u;
+    err = irq_stim_parse(k, ev, IRQ_STIM_PARSE_MAX, &n, &declared);
+    if (err != NULL || !declared) {
+        return err;
+    }
+    *refusal = ds_irq_stim_set(inst, ev, (uint32_t)n);
+    return NULL;
+}
+
+/*
  * Boot the image in b->content (len bytes, heap memory the caller set; release_boot frees it) over the request text (the case's request key; empty gives the defaults of parse_spec).
  * NULL and b and the accepted instance on success, otherwise why not: a fault here is a harness fault of the case, never a verdict on the guest. On a fault b is released.
  */
@@ -606,6 +696,7 @@ static int compose_request(const char *base, const char *fragment, char *out, si
 }
 
 struct gstate {
+    const struct kase *kase; /* the case: its irq_stim key is declared to every booted instance (plan 03-22) */
     const char *rom;
     const char *request;
     uint64_t until;
@@ -626,11 +717,21 @@ static int guest_once(const struct gstate *g, struct ctx *c, struct ctx *judged,
     const struct ds_instance *inst = NULL;
     const char *err;
     uint32_t reason;
+    uint32_t stim_refusal = 0u;
     const struct guest_expect *ex = g->ex;
 
     err = boot_built_rom(g->rom, g->request, &b, &inst);
     if (err != NULL) {
         harness_error(c, err);
+        return 0;
+    }
+    err = apply_irq_stim((struct ds_instance *)(void *)b.mem, g->kase, &stim_refusal);
+    if (err == NULL && stim_refusal != 0u) {
+        err = "the irq_stim list of the case was refused by ds_irq_stim_set";
+    }
+    if (err != NULL) {
+        harness_error(c, err);
+        release_boot(&b);
         return 0;
     }
     if (ex->mode == MODE_POISON) {
@@ -691,6 +792,174 @@ static unsigned first_block_difference(const uint8_t *a, const uint8_t *b)
     return 0u;
 }
 
+/* ---- the stimulus refusal rows of kind guest (plan 03-22; D-112, T-03-60, F4) ---- */
+
+/*
+ * expect id=N;refused=stim.NAME: the built authored image is booted (no guest is run, except for the state refusal), the case's irq_stim list is given to ds_irq_stim_set and must come back as exactly the refusal NAME of src/core/stim_refusals.def,
+ * with the instance byte-identical afterwards and the name printing as stim.NAME. The variants of NAME below add calls the key list cannot express (a NULL list with a count, a line or level above 8 bits, the NULL instance). Before the refusals a valid list
+ * is proven accepted and cleared again (so a core that refused everything would fail here), and the codes observed are kept for the deferred kind stim_refusal_coverage.
+ */
+static unsigned char sr_observed[DS_STIMREF_SLOTS];
+
+/* one call that must be refused with want: the instance (inst, live in memory of ds_instance_size() bytes) must be byte-identical afterwards */
+static void sr_refused(struct ctx *c, struct ds_instance *inst, const struct ds_irq_event *ev, uint32_t count, uint32_t want, unsigned *calls)
+{
+    size_t size = ds_instance_size();
+    unsigned char *copy = (unsigned char *)malloc(size);
+    uint32_t got;
+
+    if (copy == NULL) {
+        harness_error(c, "out of memory for the instance copy");
+        return;
+    }
+    if (inst != NULL) {
+        memcpy(copy, inst, size);
+    }
+    got = ds_irq_stim_set(inst, ev, count);
+    check(c, got == want, "ds_irq_stim_set returned a code other than the one the case names");
+    check(c, ds_stim_refusal_name(got) != NULL && (got == 0u || strncmp(ds_stim_refusal_name(got), "stim.", 5u) == 0), "a stimulus refusal does not print as stim.NAME");
+    if (inst != NULL) {
+        check(c, memcmp(copy, inst, size) == 0, "a refused ds_irq_stim_set changed the instance");
+    }
+    if (got < (uint32_t)DS_STIMREF_SLOTS) {
+        sr_observed[got] = 1u;
+    }
+    (*calls)++;
+    free(copy);
+}
+
+static void stim_refuse(const struct kase *k, struct ctx *c, const struct guest_expect *ex, const char *rom, uint64_t until, char *got, size_t gotcap)
+{
+    struct ds_irq_event ev[IRQ_STIM_PARSE_MAX];
+    struct ds_irq_event good[2] = {{1u, 1u, 1u}, {2u, 2u, 0u}};
+    struct ds_irq_event tmp[2];
+    struct booted b;
+    const struct ds_instance *inst = NULL;
+    struct ds_instance *wr;
+    unsigned n = 0u;
+    int declared = 0;
+    unsigned calls = 0u;
+    uint32_t want = 0u;
+    uint32_t i;
+    const char *err;
+    char name[24];
+
+    snprintf(name, sizeof name, "stim.%s", ex->reason);
+    for (i = 1u; i < (uint32_t)DS_STIMREF_SLOTS; i++) {
+        if (ds_stim_refusal_name(i) != NULL && strcmp(ds_stim_refusal_name(i), name) == 0 && i != 0u) {
+            want = i;
+        }
+    }
+    if (want == 0u) {
+        harness_error(c, "a refused=stim.NAME expect names a code that stim_refusals.def does not have");
+        return;
+    }
+    err = irq_stim_parse(k, ev, IRQ_STIM_PARSE_MAX, &n, &declared);
+    if (err != NULL || !declared || n == 0u) {
+        harness_error(c, err != NULL ? err : "a refused=stim.NAME case needs an irq_stim list with at least one event");
+        return;
+    }
+    err = boot_built_rom(rom, k->val[K_REQUEST], &b, &inst);
+    if (err != NULL) {
+        harness_error(c, err);
+        return;
+    }
+    wr = (struct ds_instance *)(void *)b.mem;
+    /* before the first step a valid list is accepted and a count of 0 clears it again (a core that refused everything must fail here) */
+    check(c, ds_irq_stim_set(wr, good, 2u) == (uint32_t)DS_STIMREF_NONE && wr->irq_stim_line[0] == 1u && wr->irq_stim_line[1] == 2u && wr->irq_stim_level[1] == 0u && wr->irq_stim_at[1] == 2u, "a valid irq_stim list before the first step was not accepted");
+    check(c, ds_irq_stim_set(wr, NULL, 0u) == (uint32_t)DS_STIMREF_NONE && wr->irq_stim_line[0] == 0u && wr->irq_stim_line[1] == 0u && wr->irq_stim_at[1] == 0u, "a count of 0 did not clear the declared stimulus");
+    check(c, ds_irq_stim_set(wr, good, (uint32_t)DS_IRQ_STIM_MAX + 1u) == (uint32_t)DS_STIMREF_count && wr->irq_stim_line[0] == 0u, "a list one longer than the maximum was not refused as stim.count");
+    if (want == (uint32_t)DS_STIMREF_state) {
+        struct ds_run_request rq;
+        struct ds_run_result res;
+        uint32_t reason;
+
+        memset(&rq, 0, sizeof rq);
+        memset(&res, 0, sizeof res);
+        rq.struct_size = (uint32_t)sizeof rq;
+        rq.until_mclk = until;
+        reason = ds_run(wr, &rq, &res);
+        note_run(c, inst->machine_time, reason);
+        check(c, reason == (uint32_t)DS_RUN_REASON_UNTIL && res.steps >= 1u && inst->machine_time != 0u, "the run before the state refusal took no step");
+        sr_refused(c, wr, ev, n, want, &calls);
+        sr_refused(c, wr, good, 2u, want, &calls); /* a valid list is refused too: the state is not a comparison */
+        sr_refused(c, wr, NULL, 0u, want, &calls);
+        check(c, ds_irq_stim_set(NULL, good, 2u) == want, "a NULL instance was not refused as stim.state");
+        sr_observed[want] = 1u;
+        calls++;
+    } else {
+        sr_refused(c, wr, ev, n, want, &calls);
+        if (want == (uint32_t)DS_STIMREF_count) {
+            sr_refused(c, wr, NULL, 1u, want, &calls); /* a NULL list with a nonzero count */
+            sr_refused(c, wr, ev, 0xFFFFFFFFu, want, &calls);
+        } else if (want == (uint32_t)DS_STIMREF_line) {
+            for (i = 0u; i < 4u; i++) {
+                static const uint32_t bad_lines[4] = {0u, 3u, 257u, 0xFFFFFFFFu}; /* 257 is 1 in the low byte: the full word is judged */
+                tmp[0] = good[0];
+                tmp[1] = good[1];
+                tmp[i & 1u].line = bad_lines[i];
+                sr_refused(c, wr, tmp, 2u, want, &calls);
+            }
+        } else if (want == (uint32_t)DS_STIMREF_level) {
+            for (i = 0u; i < 3u; i++) {
+                static const uint32_t bad_levels[3] = {2u, 256u, 0xFFFFFFFFu}; /* 256 is 0 in the low byte */
+                tmp[0] = good[0];
+                tmp[1] = good[1];
+                tmp[i & 1u].level = bad_levels[i];
+                sr_refused(c, wr, tmp, 2u, want, &calls);
+            }
+        } else if (want == (uint32_t)DS_STIMREF_order) {
+            tmp[0].at = 100u;
+            tmp[0].line = 1u;
+            tmp[0].level = 1u;
+            tmp[1] = tmp[0];
+            tmp[1].at = 99u; /* one earlier than the event before it, the other line */
+            tmp[1].line = 2u;
+            sr_refused(c, wr, tmp, 2u, want, &calls);
+        }
+        /* equal times are not an order fault: the list below is accepted, and then cleared */
+        tmp[0].at = 100u;
+        tmp[0].line = 1u;
+        tmp[0].level = 1u;
+        tmp[1] = tmp[0];
+        tmp[1].level = 0u;
+        check(c, ds_irq_stim_set(wr, tmp, 2u) == (uint32_t)DS_STIMREF_NONE, "two events at the same time were refused");
+        check(c, ds_irq_stim_set(wr, NULL, 0u) == (uint32_t)DS_STIMREF_NONE, "the stimulus could not be cleared");
+    }
+    check(c, calls >= 1u, "the refuse case made no refused call");
+    release_boot(&b);
+    snprintf(got, gotcap, "calls=%u", calls);
+}
+
+/*
+ * stim_refusal_coverage (DEFERRED, D-86 pattern): every member of stim_refusals.def was observed by a refused=stim.NAME row, the table has no gap and every name prints as stim.NAME, and the stimulus maximum is the 16 events of D-112.
+ */
+void kind_stim_refusal_coverage(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    uint32_t n;
+    unsigned members = 0u;
+    unsigned seen = 0u;
+
+    (void)k;
+    for (n = 1u; n < (uint32_t)DS_STIMREF_SLOTS; n++) {
+        const char *name = ds_stim_refusal_name(n);
+
+        if (name == NULL) {
+            continue;
+        }
+        members++;
+        seen += sr_observed[n] != 0u ? 1u : 0u;
+        check(c, strncmp(name, "stim.", 5u) == 0, "a stimulus refusal name does not start with stim.");
+        check(c, sr_observed[n] != 0u, "a stimulus refusal code was never observed by a refused=stim.NAME row");
+        if (sr_observed[n] == 0u) {
+            emit_err("stim_refusal_coverage: %s was not observed by any refuse row\n", name);
+        }
+    }
+    check(c, members > 0u, "stim_refusals.def has no member");
+    check(c, (unsigned)DS_IRQ_STIM_MAX == 16u, "the stimulus maximum is not the 16 events of D-112");
+    snprintf(got, gotcap, "members=%u observed=%u", members, seen);
+}
+
 void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
 {
     char rom[48];
@@ -725,6 +994,14 @@ void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
         harness_error(c, "a guest expect takes no exclude= item (that is a mutate_sweep item)");
         return;
     }
+    if (ex.mode == MODE_REFUSED) {
+        if (ex.nobs != 0u) {
+            harness_error(c, "a refused=stim.NAME case takes no observe= item");
+            return;
+        }
+        stim_refuse(k, c, &ex, rom, until, got, gotcap);
+        return;
+    }
     np = policy_list(k, pbuf, sizeof pbuf, plist);
     if (np == 0u) {
         harness_error(c, "the policies key of a guest case is request fragments separated by || (at most 8)");
@@ -750,6 +1027,7 @@ void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
             return;
         }
     }
+    g.kase = k;
     g.rom = rom;
     g.until = until;
     g.checks = checks;
