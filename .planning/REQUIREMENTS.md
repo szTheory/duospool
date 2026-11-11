@@ -32,7 +32,7 @@ E4 = differential vs another emulator (finds disagreements, decides nothing).
 - [x] **CPU-02**: The MMU maps logical addresses through MPR0–7 to the 21-bit physical space (256 × 8 KiB banks), including RAM, HuCard banks, I/O page, and a defined unmapped-read value, verified by fixtures.
 - [x] **CPU-03**: The timer (reload, decrement rate tied to the master clock, IRQ) and interrupt controller (disable/status registers, documented priority, sampling point) behave as documented, verified by fixtures that report results in guest RAM.
 - [x] **CPU-04**: High/low CPU speed switching changes instruction timing on the master-clock timeline, and VDC/VCE access penalties are applied as documented.
-- [ ] **CPU-05**: Block-transfer instructions are resumable at byte granularity. A bounded run can stop mid-transfer and continue with identical results to an uninterrupted run, and interrupt handling around block transfers follows the recorded model.
+- [x] **CPU-05**: Block-transfer instructions are resumable at byte granularity. A bounded run can stop mid-transfer and continue with identical results to an uninterrupted run, and interrupt handling around block transfers follows the recorded model.
 - [ ] **CPU-06**: Instruction and cycle claims cite their source. Any cycle count without a primary source or E2/E3 evidence is labeled as a modelling assumption in the ledger.
 
 ### Video (HuC6270 VDC / HuC6260 VCE)
@@ -69,7 +69,7 @@ E4 = differential vs another emulator (finds disagreements, decides nothing).
 - [x] **CORE-01**: Machine state is explicit and per instance. Two instances in one process do not share mutable state, verified by a multi-instance test.
 - [x] **CORE-02**: The core has no dependency on host clocks, filesystems, device discovery, threads, UI, or audio/video devices, enforced by a build- or test-time check.
 - [x] **CORE-03**: Power-on state is defined by a documented, seeded policy (RAM, MPRs, PSG noise, VDC phase), so a fresh run is reproducible and the policy is recorded with each run.
-- [ ] **CORE-04**: Execution is bounded in master-clock time with an explicit stop reason and overshoot. A bounded run may stop mid-frame or mid-instruction-sequence and resume with results identical to an uninterrupted run.
+- [x] **CORE-04**: Execution is bounded in master-clock time with an explicit stop reason and overshoot. A bounded run may stop mid-frame or mid-instruction-sequence and resume with results identical to an uninterrupted run.
 - [ ] **CORE-05**: A snapshot taken at any stop point, restored into a fresh instance and continued, produces outputs identical to continuing the original (state-completeness check, E0).
 - [x] **CORE-06**: A CPU instruction trace and a device-register write log can be enabled without changing machine behavior.
 - [ ] **RUN-01**: A headless runner loads content plus a profile and an input script, runs for a bounded machine time, and emits guest-progress markers, machine time, raw video, raw audio, and trace as separate artifacts.
@@ -164,7 +164,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CPU-02 | Phase 3 | Complete |
 | CPU-03 | Phase 3 | Complete |
 | CPU-04 | Phase 3 | Complete |
-| CPU-05 | Phase 3 | Pending |
+| CPU-05 | Phase 3 | Complete |
 | CPU-06 | Phase 3 | Pending |
 | VID-01 | Phase 4 | Pending |
 | VID-02 | Phase 4 | Pending |
@@ -186,7 +186,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CORE-01 | Phase 2 | Complete |
 | CORE-02 | Phase 2 | Complete |
 | CORE-03 | Phase 2 | Complete |
-| CORE-04 | Phase 3 | Pending |
+| CORE-04 | Phase 3 | Complete |
 | CORE-05 | Phase 3 | Pending |
 | CORE-06 | Phase 3 | Complete |
 | RUN-01 | Phase 6 | Pending |

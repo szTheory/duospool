@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 3
 current_phase_name: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-current_plan: 31
+current_plan: 32
 status: planning
-stopped_at: Completed 03-25-PLAN.md
-last_updated: "2026-11-11T16:43:33.423Z"
+stopped_at: Completed 03-26-PLAN.md
+last_updated: "2026-11-11T17:24:49.699Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 2 complete, transitioned to Phase 3
-state_head: 98f636e1db8d1f0741220409f23903ef6e0146a3
+state_head: 181873defaa46d3ae480242b2d893558be2547c5
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 72
-  completed_plans: 64
+  completed_plans: 65
   percent: 33
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 3 — HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-Current Plan: 31
+Current Plan: 32
 Total Plans in Phase: 38
 Status: Ready to execute
 Last activity: 2026-11-11 — Completed 03-04 (W1: optional case keys, guestkinds.c, authored fixture key, machine_time and stop on RESULT)
@@ -123,6 +123,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 3 P34 | 25min | 2 tasks | 19 files |
 | Phase 03 P24 | 55min | 3 tasks | 37 files |
 | Phase 03 P25 | 95min | 3 tasks | 31 files |
+| Phase 03 P26 | 150min | 3 tasks | 27 files |
 
 ## Accumulated Context
 
@@ -245,6 +246,8 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-25: block transfers keep decoded state (blk_src, blk_dst, blk_remaining u32, toggle, opcode, active), PC moves in the prologue, remaining 0 while active is the epilogue-pending state, Y A X are pushed and pulled three levels through the bus (LED-CPU-0008)
 - [Phase 03]: 03-25: the block-progress-lost toy anchors in run.c, not cpu.c, because only the run loop can see that a run stops; stop_point is block_byte for any run that ends inside a transfer
 - [Phase 03]: 03-25: DS_SERIAL_VERSION 6 adds region BLKT (11 bytes) after IRQS; the [withheld] ids line is at its cap of 24, so the next new ledger id needs a record layout change
+- [Phase 03]: 03-26: chunk_equiv compares the step boundary sequence (a callback that never holds, folding the block state) beside time, steps, verdict RAM and digest; seven schedules (3072 doubles as 3072k); random programs are boot bound and shaped (hashed seeds, forward branches, short block lengths)
+- [Phase 03]: 03-26: LED-CPU-0007, LED-CPU-0008 and LED-IRQ-0007 written as assumed entries pinned by cpu_blk_len0, cpu_blk and cpu_blk_irq_pending; cpu_blk_stop_resume is evidence only (one entry, one pinning case)
 
 ### Pending Todos
 
@@ -268,6 +271,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-11T16:43:33.239Z
-Stopped at: Completed 03-25-PLAN.md
+Last session: 2026-11-11T17:24:49.499Z
+Stopped at: Completed 03-26-PLAN.md
 Resume file: None
