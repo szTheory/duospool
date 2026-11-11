@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Toy control (D-119, D-131, T-03-53): an instruction trace hook that changes machine state, made from the live src/core/obs.c by scripts/control-mutate. The anchor is the one line of ds_obs_insn that claims the record slot for an instruction;
+# the replacement does the same and then increments the A register of the instance through a cast away from const, which exists only in the generated toy (the live obs.c takes a const instance and never casts it away). With any instruction sink
+# in the request the toy runs a different program from the one without a sink, so the observer matrix (the case in EXPECT, which compares the stop sequence, the machine time, the verdict RAM and the digest of a run with and without every sink
+# configuration) must come out guest_failure on the toy, or the matrix could not fail and proves nothing about hooks. The real core passes it (a REQUIRED case).
+tag=rule-trace-hook-mutates
+file=src/core/obs.c
+anchor=r = chan_slot(&log->insn, (size_t)DS_INSN_RECORD_BYTES);
+replace=r = chan_slot(&log->insn, (size_t)DS_INSN_RECORD_BYTES); ((struct ds_instance *)(void *)inst)->a = (uint8_t)(inst->a + 1u);
