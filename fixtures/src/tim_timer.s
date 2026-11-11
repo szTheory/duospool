@@ -40,7 +40,7 @@ CYC_STEP = 256                  ; CPU cycles per prescaler step at the low speed
         LIT 15, $00
         LIT 16, $00
         LIT 17, $00
-        LIT 18, 1                       ; reload 2, four steps: 2, 1, 0, then the borrow reloads 2, then 1
+        LIT 18, 1                       ; reload 2, seven steps: 2, 1, 0, borrow, 2, 1, 0, borrow, 2, then 1
         LIT 19, 5                       ; reload 5, six steps: 5, 4, 3, 2, 1, 0, then the sixth step borrows and the counter is the reload value 5
         LIT 20, $4D                     ; the reload 77 loaded by the start
         LIT 21, 127 - (1 + 6 * 100 + 2 + 4) / CYC_STEP
@@ -227,8 +227,8 @@ wait_end:
         MEASURE 127, 100, 0, TIM_CTRL
         CHECK_GUEST 17                  ; check 17 GUEST:timer-e2: the control address reads the same counter (D-109): 605 cycles, two steps, 125
         RESET_SCEN
-        MEASURE_RAW 2, 186, 0, TIM_RELOAD
-        CHECK_LIT 18                    ; check 18 ASSUMED:LED-IRQ-0002: reload 2 and 1121 cycles (four steps): 2, 1, 0, the borrow reloads 2, then 1: the period is reload + 1 = 3 steps (assumption A1)
+        MEASURE_RAW 2, 150, 150, TIM_RELOAD
+        CHECK_LIT 18                    ; check 18 ASSUMED:LED-IRQ-0002: reload 2 and 1805 cycles (seven steps): 2, 1, 0, the borrow reloads 2, 1, 0, the second borrow reloads 2, then 1: the period is reload + 1 = 3 steps (assumption A1); a period of 2 or 4 steps reads 2 here
         RESET_SCEN
         MEASURE_RAW 5, 130, 130, TIM_RELOAD
         CHECK_LIT 19                    ; check 19 ASSUMED:LED-IRQ-0003: reload 5 and 1565 cycles (six steps): the sixth step borrows and the counter reads the reload value 5 (no $7F window after the borrow)
