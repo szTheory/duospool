@@ -1891,6 +1891,46 @@ selftest() {
     fi
   fi
 
+  # (t2) the constants rule of inventory-check (plan 03-32; D-113, W7) is what turns the const-unknown-ledger control red: same shape as (t). The control, run with --expect INV_CONST_LEDGER, is met on an unmutated copy
+  # (exit 0, EXPECT_OK); with the line tagged rule-const-ledger deleted from the copy of the checker the code is no longer reported, so the same run must exit 1.
+  if st_want mutation-inventory-const-ledger; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    ivr="tests/gate/inventory/const-unknown-ledger"
+    if sh "$cp_dir/inventory-check" --root "$ivr" --expect INV_CONST_LEDGER > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c 'rule-const-ledger' "$cp_dir/inventory-check" || true)
+    grep -v 'rule-const-ledger' "$cp_dir/inventory-check" > "$cp_dir/inventory-check.mutated" || true
+    mv "$cp_dir/inventory-check.mutated" "$cp_dir/inventory-check"
+    after=$(grep -c 'rule-const-ledger' "$cp_dir/inventory-check" || true)
+    if sh "$cp_dir/inventory-check" --root "$ivr" --expect INV_CONST_LEDGER > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+      echo "SELFTEST mutation-inventory-const-ledger PASS"
+    else
+      echo "SELFTEST mutation-inventory-const-ledger FAIL (alive $st_alive, before $before, after $after, exit $r)"; failed=1
+    fi
+  fi
+
+  # (t3) CR-01 for the constants rule (plan 03-32): stage 1 of the rule (scripts/lib/inventory-defs.awk) emptied in a scratch copy prints no DEND sentinel, so the check must report NO_SENTINEL, the existing dead-stage code of the inventory
+  # rules, and never a pass. The unmutated copy must pass the real repository first (exit 0, STATUS inventory ok), which shows the run is alive; the real repository holds both def files, so the dead stage is reached.
+  if st_want mutation-const-ledger-dead-stage; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    if sh "$cp_dir/inventory-check" --root . > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'STATUS inventory ok' "$tmp/st.out"; then st_alive=1; fi
+    echo 'BEGIN { exit 0 }' > "$cp_dir/lib/inventory-defs.awk"
+    if sh "$cp_dir/inventory-check" --root . --expect NO_SENTINEL > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$r" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then
+      echo "SELFTEST mutation-const-ledger-dead-stage PASS"
+    else
+      echo "SELFTEST mutation-const-ledger-dead-stage FAIL (alive $st_alive, exit $r)"; failed=1
+    fi
+  fi
+
   # (u) the field-wise comparison of conformance-run control is what makes the wrong-literal control able to fail (T-02-36). A scratch copy of the
   # wrong-literal mini-root has its EXPECT changed to the deliberately wrong pair  wrong_literal pass  (the live runner says guest_failure). The
   # unmutated script must exit 1 on it; with the line tagged rule-field-match deleted from the copy of the script the same run must exit 0: the
@@ -2582,6 +2622,53 @@ selftest() {
       echo "SELFTEST mutation-pad-order-assert PASS"
     else
       echo "SELFTEST mutation-pad-order-assert FAIL ($po_why)"; failed=1
+    fi
+  fi
+
+  # (z12) the classes list of a guest fixture is what the guest judge reads for the per-class counts of the evidence file (plan 03-32; ER-4, D-125): a scratch working directory holds copies of the built ds-proto image, its observe list
+  # and its classes list, and the live runner judges the case ds_proto there (--only, against the real cases TSV). The intact list must give RESULT pass and an evidence file whose classes line sums to its assertions (man=3 guest=3 assumed=2,
+  # eight in all); then a missing list, a list with a row dropped, a list with a class word that is none of MAN, GUEST and ASSUMED and a list whose indexes skip must each give harness_failure, so a judge that stopped reading the classes would pass them.
+  if st_want mutation-guest-classes; then
+    st_ran=1
+    gc_d="$tmp/selftest/guest-classes"
+    gc_ok=1
+    gc_why=""
+    rm -rf "$gc_d"
+    mkdir -p "$gc_d/ev"
+    if [ ! -x build/gate/ds_runner ] || [ ! -f build/gate/fixtures/ds-proto.pce ] || [ ! -f build/gate/fixtures/ds-proto.classes ]; then
+      fixture_build_run || { echo "HARNESS_ERROR mutation-guest-classes: the fixtures could not be built"; exit 2; }
+      stage_build || { echo "HARNESS_ERROR mutation-guest-classes: the gate preset could not be built"; exit 2; }
+    fi
+    gc_runner="$PWD/build/gate/ds_runner"
+    if sh "$here/conformance-flatten" tests/conformance/cases > "$gc_d/cases.tsv" 2> "$gc_d/flatten.err"; then :; else gc_ok=0; gc_why="cannot flatten the cases"; fi
+    gc_try() {
+      # gc_try NAME: the scratch fixtures directory is rebuilt from the live build with the one change of NAME, and the runner outcome of ds_proto is printed
+      rm -rf "$gc_d/w" "$gc_d/ev"
+      mkdir -p "$gc_d/w/build/gate/fixtures" "$gc_d/ev"
+      cp build/gate/fixtures/ds-proto.pce build/gate/fixtures/ds-proto.observe build/gate/fixtures/ds-proto.classes "$gc_d/w/build/gate/fixtures/"
+      case $1 in
+        intact) : ;;
+        missing) rm -f "$gc_d/w/build/gate/fixtures/ds-proto.classes" ;;
+        short) sed '$d' build/gate/fixtures/ds-proto.classes > "$gc_d/w/build/gate/fixtures/ds-proto.classes" || true ;;
+        badword) sed "1s/$(printf '\t').*/$(printf '\t')BOGUS/" build/gate/fixtures/ds-proto.classes > "$gc_d/w/build/gate/fixtures/ds-proto.classes" || true ;;
+        skip) sed '2s/^2/3/' build/gate/fixtures/ds-proto.classes > "$gc_d/w/build/gate/fixtures/ds-proto.classes" || true ;;
+      esac
+      (cd "$gc_d/w" && "$gc_runner" --cases "$gc_d/cases.tsv" --evidence-dir "$gc_d/ev" --only ds_proto 2> /dev/null) | awk '$1 == "RESULT" && $2 == "ds_proto" { print $3 }'
+    }
+    if [ "$gc_ok" -eq 1 ]; then
+      gc_out=$(gc_try intact)
+      if [ "$gc_out" != "pass" ] || ! grep -qx 'classes: man=3 guest=3 assumed=2' "$gc_d/ev/ds_proto.txt" || ! grep -qx 'assertions=8' "$gc_d/ev/ds_proto.txt"; then gc_ok=0; gc_why="the intact classes list does not give pass with classes: man=3 guest=3 assumed=2 and assertions=8"; fi
+    fi
+    for gc_m in missing short badword skip; do
+      if [ "$gc_ok" -eq 1 ]; then
+        gc_out=$(gc_try "$gc_m")
+        if [ "$gc_out" != "harness_failure" ]; then gc_ok=0; gc_why="a classes list that is $gc_m gives '$gc_out' and not harness_failure"; fi
+      fi
+    done
+    if [ "$gc_ok" -eq 1 ]; then
+      echo "SELFTEST mutation-guest-classes PASS"
+    else
+      echo "SELFTEST mutation-guest-classes FAIL ($gc_why)"; failed=1
     fi
   fi
 

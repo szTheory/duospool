@@ -616,9 +616,25 @@ const char *run_evidence_dir;
 /* text a kind wants after the standard lines of its evidence file (the refusal record); cleared before every case */
 static char ev_detail[4096];
 
+/* the per-class counts of a guest case (plan 03-32; ER-4): the evidence file of a case that set them carries one  classes: man=N guest=N assumed=N  line, so no total stands alone as support; cleared before every case */
+static int ev_classes_set;
+static unsigned ev_man;
+static unsigned ev_guest;
+static unsigned ev_assumed;
+static int ev_control;
+
 void set_evidence_detail(const char *text)
 {
     snprintf(ev_detail, sizeof ev_detail, "%s", text);
+}
+
+void set_evidence_classes(unsigned man, unsigned guest, unsigned assumed, int control)
+{
+    ev_classes_set = 1;
+    ev_control = control;
+    ev_man = man;
+    ev_guest = guest;
+    ev_assumed = assumed;
 }
 
 static int write_evidence(const char *path, const char *id, const char *kind, const char *expect, const char *got, unsigned n)
@@ -630,6 +646,12 @@ static int write_evidence(const char *path, const char *id, const char *kind, co
     }
     evidence_text(text, sizeof text, id, kind, expect, got, n);
     fputs(text, fp);
+    if (ev_classes_set && ev_control) {
+        /* a protocol control (the runner judges the outcome of a planted or broken verdict block, not the rows of the fixture): its assertions are the runner's own comparisons, counted apart from every class */
+        fprintf(fp, "classes: man=0 guest=0 assumed=0 control=%u\n", n);
+    } else if (ev_classes_set) {
+        fprintf(fp, "classes: man=%u guest=%u assumed=%u\n", ev_man, ev_guest, ev_assumed);
+    }
     if (ev_detail[0] != '\0') {
         fputs("record:\n", fp);
         fputs(ev_detail, fp);
@@ -1087,6 +1109,7 @@ static int run_case(const struct kase *k, const char *evdir)
 
     memset(&c, 0, sizeof c);
     ev_detail[0] = '\0';
+    ev_classes_set = 0;
     run_evidence_dir = evdir;
     for (j = 0; j < NKEYS; j++) {
         if (!k->has[j] && ((K_OPTIONAL_MASK >> j) & 1u) == 0u && k->bad == NULL) {

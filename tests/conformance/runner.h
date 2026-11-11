@@ -187,6 +187,7 @@ extern const char *golden_dir;
 void record_emit(const struct kase *k, struct ctx *c, const char *text, size_t len);
 void record_for_accept(const struct kase *k, struct ctx *c);
 void set_evidence_detail(const char *text);
+void set_evidence_classes(unsigned man, unsigned guest, unsigned assumed, int control); /* guestkinds.c: the per-class assertion counts of a guest case, printed in its evidence file (plan 03-32, ER-4) */
 void kind_record_golden(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_record_refusal(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_record_refuses_quote(const struct kase *k, struct ctx *c, char *got, size_t gotcap);

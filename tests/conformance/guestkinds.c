@@ -513,6 +513,67 @@ int dsv1_done(const struct ds_instance *inst, void *ctx)
     return inst->ram8k[V_OFF + 4u] == 0xA5u && inst->ram8k[V_OFF + 5u] == 0x5Au;
 }
 
+/* the assertion classes of a built fixture (plan 03-32; ER-4, D-125): build/gate/fixtures/ROM.classes, one line per check, the 1-based index, a TAB and the class MAN, GUEST or ASSUMED, ascending from 1 with no gap
+ * (scripts/fixture-build writes it from the class tag of each row of ROM's .checks); cls[i] is 1, 2 or 3 for check i + 1. The counts go into the evidence file of the case: one assertion per check row, and one more
+ * for an observe row, whose observed byte the runner compares with the literal of the case (the class of the row); a missing file, a malformed line or a row count other than the checks of the case
+ * is a fault of the harness, so no case is ever judged with classes that do not match the checks it asserts */
+static const char *read_classes(const char *rom, unsigned checks, unsigned char *cls)
+{
+    char path[96];
+    char *text;
+    char *line;
+    unsigned n = 0u;
+
+    snprintf(path, sizeof path, "build/gate/fixtures/%s.classes", rom);
+    text = read_file(path);
+    if (text == NULL) {
+        return "classes-missing: the built classes list is missing: run scripts/fixture-build first";
+    }
+    line = text;
+    while (*line != '\0') {
+        char *nl = strchr(line, '\n');
+        char *tab;
+        unsigned idx = 0u;
+
+        if (nl == NULL) {
+            free(text);
+            return "classes-malformed: the built classes list does not end in a newline";
+        }
+        *nl = '\0';
+        tab = strchr(line, '\t');
+        if (tab == NULL) {
+            free(text);
+            return "classes-malformed: a line of the built classes list has no TAB";
+        }
+        *tab = '\0';
+        if (parse_idx(line, &idx) != 0 || idx != n + 1u) {
+            free(text);
+            return "classes-malformed: the built classes list is not the indexes 1, 2, 3 and so on in order";
+        }
+        if (n >= 255u) {
+            free(text);
+            return "classes-malformed: the built classes list has more than 255 rows";
+        }
+        if (strcmp(tab + 1, "MAN") == 0) {
+            cls[n] = 1u;
+        } else if (strcmp(tab + 1, "GUEST") == 0) {
+            cls[n] = 2u;
+        } else if (strcmp(tab + 1, "ASSUMED") == 0) {
+            cls[n] = 3u;
+        } else {
+            free(text);
+            return "classes-malformed: a class of the built classes list is not MAN, GUEST or ASSUMED";
+        }
+        n++;
+        line = nl + 1;
+    }
+    free(text);
+    if (n != checks) {
+        return "classes-count: the built classes list has a row count other than the checks of the case";
+    }
+    return NULL;
+}
+
 /* the observe rows of a built fixture: build/gate/fixtures/ROM.observe, one decimal check index per line, ascending (scripts/fixture-build writes it from the fifth column of ROM's .checks) */
 const char *read_observe(const char *rom, struct obs_list *out)
 {
@@ -1322,6 +1383,7 @@ static void guest_case(const struct kase *k, struct ctx *c, char *got, size_t go
     memset(&judged, 0, sizeof judged);
     if (k->has[K_POLICIES] && case_required(k) && !policies_override_ok(k->val[K_MEANING])) {
         /* the guard (plan 03-24, D-127): the three-policy run is the default of every guest case, so a REQUIRED case may not narrow it silently; the control guest_policies_guard declares the verdict */
+        set_evidence_classes(0u, 0u, 0u, 1);
         harness_error(ex.mode == MODE_VERDICT ? &judged : c,
                       "policies-key: a REQUIRED guest case with an explicit policies key needs a meaning that starts with policies-override: and names the reason");
         if (ex.mode == MODE_VERDICT) {
@@ -1334,6 +1396,7 @@ static void guest_case(const struct kase *k, struct ctx *c, char *got, size_t go
             harness_error(c, "a refused=stim.NAME case takes no observe= item");
             return;
         }
+        set_evidence_classes(0u, 0u, 0u, 1); /* the assertions are the runner's own comparisons of a refusal, not rows of the fixture (plan 03-32) */
         stim_refuse(k, c, &ex, rom, until, got, gotcap);
         return;
     }
@@ -1342,6 +1405,7 @@ static void guest_case(const struct kase *k, struct ctx *c, char *got, size_t go
             harness_error(c, "a refused=input.NAME case takes no observe= item");
             return;
         }
+        set_evidence_classes(0u, 0u, 0u, 1);
         input_refuse(k, c, &ex, rom, until, got, gotcap);
         return;
     }
@@ -1350,6 +1414,7 @@ static void guest_case(const struct kase *k, struct ctx *c, char *got, size_t go
             harness_error(c, "an exact-edges case takes no observe= item");
             return;
         }
+        set_evidence_classes(0u, 0u, 0u, 1);
         input_edges(k, c, rom, got, gotcap);
         return;
     }
@@ -1369,6 +1434,34 @@ static void guest_case(const struct kase *k, struct ctx *c, char *got, size_t go
     if (err != NULL) {
         harness_error(c, err);
         return;
+    }
+    {
+        unsigned char cls[256];
+        unsigned cnt[4] = {0u, 0u, 0u, 0u};
+        unsigned ci;
+
+        err = read_classes(rom, (unsigned)checks, cls);
+        if (err != NULL) {
+            harness_error(c, err);
+            return;
+        }
+        for (ci = 0u; ci < (unsigned)checks; ci++) {
+            cnt[cls[ci]]++;
+        }
+        for (ci = 0u; ci < ol.n; ci++) {
+            unsigned oj;
+
+            /* an observe row whose item carries a value is judged once more, by observe_judge, against that value; a policy or differs item is judged across the policy runs instead */
+            for (oj = 0u; oj < ex.nobs; oj++) {
+                if (ex.obs[oj].idx == ol.idx[ci] && !ex.obs[oj].differs && !ex.obs[oj].policy && ol.idx[ci] >= 1u && ol.idx[ci] <= (unsigned)checks) {
+                    cnt[cls[ol.idx[ci] - 1u]]++;
+                }
+            }
+        }
+        if (ex.pdiff >= 1u && ex.pdiff <= (unsigned)checks) {
+            cnt[cls[ex.pdiff - 1u]] += np - 1u; /* the policy-diff row is compared once for every policy after the first */
+        }
+        set_evidence_classes(cnt[1], cnt[2], cnt[3], ex.mode == MODE_VERDICT || ex.mode == MODE_POISON || ex.mode == MODE_FAILSET);
     }
     if (ex.mode != MODE_POISON) {
         /* an observe row of the fixture without an expectation is a fault of the case (observe-missing), before the guest runs; a verdict control may declare it */

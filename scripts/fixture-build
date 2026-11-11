@@ -10,7 +10,8 @@
 #   protocol controls of ds_proto (plan 03-05, 32 banks) and the 384 KiB and 1 MiB images of mmu_mpr (plan 03-20, 48 and 128 banks). Every image is hashed and measured with host tools only (the SHA-256 tool the gate picks,
 #   wc -c) and one line  NAME SIZE SHA256  per image is written to OUT/fixtures-authored.used. That second file belongs to this script alone:
 #   the synthetic list OUT/fixtures.used stays with the fixtures mode of conformance-run (F3). Everything this script makes is removed first, so a stale image is never read.
-#   Beside every image it writes OUT/fixtures/NAME.observe, the observe rows of the fixture's .checks file (write_observe below; plan 03-10).
+#   Beside every image it writes OUT/fixtures/NAME.observe, the observe rows of the fixture's .checks file (write_observe below; plan 03-10), and OUT/fixtures/NAME.classes, one line per check of the
+#   .checks file, the index, a TAB and the class MAN, GUEST or ASSUMED of its tag (write_classes below; plan 03-32, ER-4): the guest judge of the runner reads it and prints the per-class counts in the evidence file.
 #   Assembler identity is by behaviour (the encoding matrix of a later plan and the image hash pins), never by --version: the V2.19 tag prints
 #   V2.18 (D-128).
 # stdout: PREFLIGHT_MISSING NAME for each missing tool, or on success the marker line  STATUS fixture-build ok n=N
@@ -100,6 +101,30 @@ write_observe() {
   fi
 }
 
+# write_classes STEM NAME (plan 03-32; ER-4, D-125): OUT/fixtures/NAME.classes lists, one line per check row of SRC/STEM.checks in file order, the decimal index, a TAB and the class, MAN, GUEST or ASSUMED, which is the part of the
+# third column (the class tag) before its colon. A missing .checks file, a row whose tag is not MAN:, GUEST: or ASSUMED:, an index that is not 1, 2, 3 and so on in order, or no row at all is a harness error (exit 2), never an empty list:
+# a fixture whose assertions cannot be split by class is not run. awk runs with its status tested and nothing on the left of a pipe (CR-01).
+write_classes() {
+  wc_checks=$src/$1.checks
+  [ -f "$wc_checks" ] || { echo "HARNESS_NO_FILE $wc_checks" >&2; exit 2; }
+  if awk -F '\t' '
+    /^[ \t]*#/ || /^[ \t]*$/ { next }
+    /^[a-z_]+=/ { next }
+    {
+      n++
+      cls = $3; sub(/:.*$/, "", cls)
+      if ($1 !~ /^[0-9]+$/ || ($1 + 0) != n || (cls != "MAN" && cls != "GUEST" && cls != "ASSUMED")) { bad = 1; next }
+      print $1 "\t" cls
+    }
+    END { exit (bad || n == 0) ? 1 : 0 }
+  ' "$wc_checks" > "$out/fixtures/$2.classes"; then
+    :
+  else
+    echo "HARNESS_ERROR $wc_checks has a check row with a bad index or a class tag that is not MAN:, GUEST: or ASSUMED:, or no check row"
+    exit 2
+  fi
+}
+
 # build_one STEM NAME ROMBANKS [ca65 flags...]: assemble SRC/STEM.s with ROMBANKS banks and link it into OUT/fixtures/NAME.pce, then hash and measure the image and append its used-list line
 build_one() {
   b_stem=$1
@@ -125,6 +150,7 @@ build_one() {
   fi
   printf '%s %s %s\n' "$b_name" "$bytes" "$sha" >> "$out/fixtures-authored.used"
   write_observe "$b_stem" "$b_name"
+  write_classes "$b_stem" "$b_name"
   n=$((n + 1))
 }
 

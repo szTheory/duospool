@@ -22,6 +22,8 @@
 #                           chunks) is present and not an integer; those keys may be absent
 #     INV_REQUIRED_EMPTY    REQUIRED lists no id (an emptied list must not switch the inventory off)
 #     INV_BAD_LINE          a REQUIRED line that is not a case id [a-z][a-z0-9_]*, or an id listed twice
+#     INV_CONST_LEDGER      a row of ROOT/src/core/constants.def or ROOT/src/core/model_params.def (DS_CONST, DS_MODEL) that names no quoted ledger id, or an id that has no entry in ROOT/ledger/entries
+#                           (plan 03-32; D-113, W7): every named constant the record prints resolves to a ledger entry. A root without either file yields no ids and no violation. Stage 1 is scripts/lib/inventory-defs.awk.
 #   Also NO_SENTINEL and STAGE2_DEAD (a dead stage never passes). ledger-check stays structure-only: TEST pin resolution lives only here (D-58).
 # stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then (clean) a line  INVENTORY required=N cases=M pins=P  and  STATUS inventory ok
 # stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
@@ -118,6 +120,17 @@ for f in "$ledgerdir"/*.toml; do
   file_stage ledger "$f" "ledger/entries/$(basename "$f")"
 done
 
+# the constants and parameters (plan 03-32; D-113, W7, CR-01): stage 1 (scripts/lib/inventory-defs.awk, its status tested, nothing on the left of a pipe) lists the ledger id of every row of the two def files and prints a
+# DEND sentinel; a stage that failed or printed no sentinel is NO_SENTINEL for that file and never a pass. A root without a def file has no rows (a mini-root without core sources). Stage 2 is the cross-file awk below.
+for dspec in src/core/constants.def src/core/model_params.def; do
+  [ -f "$root/$dspec" ] || continue
+  if awk -v rel="$dspec" -f "$here/lib/inventory-defs.awk" "$root/$dspec" > "$tmp/defs1" 2> /dev/null && [ "$(tail -n 1 "$tmp/defs1")" = "DEND" ]; then
+    grep -v '^DEND$' "$tmp/defs1" >> "$recs" || true
+  else
+    printf '%s\tNO_SENTINEL\t0\tthe constants stage printed no DEND sentinel\n' "$dspec" >> "$viol0"
+  fi
+done
+
 # ---- the cross-file rules: one awk over the records of every file ----
 awk -v reqrel="tests/conformance/REQUIRED" '
   BEGIN { FS = "\t"; OFS = "\t" }
@@ -130,7 +143,9 @@ awk -v reqrel="tests/conformance/REQUIRED" '
   $1 == "B" { printf "%s\tINV_BAD_LINE\t%d\tnot a case id: %s\n", reqrel, $2, $3; next }
   $1 == "C" { havecase[$2] = 1; creq[$2] = $3; cpins[$2] = $4; cfile[$2] = $5; next }
   $1 == "L" { haveled[$2] = 1; lpin[$2] = $3; lfile[$2] = $5; next }
+  $1 == "D" { nd++; did[nd] = $2; dln[nd] = $3; dfl[nd] = $4; next }
   END {
+    for (i = 1; i <= nd; i++) if (!(did[i] in haveled)) printf "%s\tINV_CONST_LEDGER\t%d\t%s\n", dfl[i], dln[i], (did[i] == "-" ? "a row names no ledger id" : did[i] " has no ledger entry")  # rule-const-ledger
     if (nreq == 0) printf "%s\tINV_REQUIRED_EMPTY\t0\tno required id: an emptied list would let every check disappear\n", reqrel
     for (i = 1; i <= nreq; i++) {
       id = rid[i]
