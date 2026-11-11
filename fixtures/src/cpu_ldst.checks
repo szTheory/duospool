@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# cpu_ldst.checks - one row per CHECK of fixtures/src/cpu_ldst.s (D-125, plan 03-11). Columns separated by one TAB: check index (1-based, the entry number of the DCK1 table), slug, class tag, meaning.
+# Class tags: MAN:<page> (the literal is a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model> (the expected byte is computed in the guest), ASSUMED:<LED-id> (the literal is DuoSpool's own model, an assumption).
+# P read through PHP then PLA is N and Z plus $14 (I set by the reset code, B reads 1 through PHP, T reads 0, D, V and C clear): the $14 comes from H8-18 and H8-5, the N and Z bits from the flag row of the instruction page.
+# A pass is not a support claim (ER-4).
+id=3
+checks=14
+1	lda-imm	MAN:S8-53	LDA immediate: A takes the immediate byte ($5A)
+2	lda-imm-flag-n	MAN:S8-53	LDA of $80 sets N and clears Z: P byte $94 (N, B, I)
+3	lda-imm-flag-z	MAN:S8-53	LDA of $00 sets Z and clears N: P byte $16 (Z, B, I)
+4	lda-imm-flag-pos	MAN:S8-53	LDA of $01 clears N and Z: P byte $14
+5	lda-zp	MAN:S8-11	LDA zero page reads logical $2000 plus the operand (the cell $2010 holds $11)
+6	lda-zpx	MAN:S8-11	LDA zero page,X reads $2000 plus operand plus X (X = 3 reads the cell $2013 that holds $12)
+7	lda-ind	MAN:S8-53	LDA (zz) reads the byte that the pointer in zero page names ($21 at $2600)
+8	lda-indx	MAN:S8-53	LDA (zz,X) takes the pointer from zz plus X (X = 4: the pointer at $34 names $2601, which holds $22)
+9	lda-indy	MAN:S8-53	LDA (zz),Y adds Y to the pointer (Y = 3: $2603 holds $23)
+10	lda-abs	MAN:S8-53	LDA absolute ($B1 at $2500)
+11	lda-absx	MAN:S8-53	LDA absolute,X (X = 2: $B2 at $2502)
+12	lda-absy	MAN:S8-53	LDA absolute,Y (Y = 5: $B3 at $2505)
+13	lda-abs-flag-n	MAN:S8-53	LDA absolute of a byte with bit 7 set sets N: P byte $94
+14	lda-ind-flag-z	MAN:S8-53	LDA (zz) of a zero byte sets Z: P byte $16

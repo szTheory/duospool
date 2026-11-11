@@ -37,6 +37,7 @@ S8-11	img	gsd-phase-researcher	2026-11-10	zero page high byte is always logical 
 S8-17	img	gsd-phase-researcher	2026-11-10	ADC: immediate 2 bytes 2 cycles; zero page 4; absolute 5; T=1 adds 3 cycles; D=1 adds 1 cycle and V is unaffected; flags N V Z C
 S8-20	img	gsd-phase-researcher	2026-11-10	BBRi 3 bytes 6 cycles, 2 more when taken; machine code 10i+F
 S8-30	img	gsd-phase-researcher	2026-11-10	BRK $00, 1 byte, 8 cycles; pushes PCH, PCL, P; B pushed 1; T=0 B=1 D=0 I=1
+S8-53	img	gsd-executor	2026-11-11	LDA: A <- M; immediate A9 2 bytes 2 cycles, zp 4, zp,X 4, (zp) 7, (zp,X) 7, (zp),Y 7, abs 5, abs,X 5, abs,Y 5; flags N and Z only, T reads 0
 S8-70	img	gsd-phase-researcher	2026-11-10	RTI $40, 1 byte, 7 cycles; P pulled first, then PCL, PCH
 S8-74	img	gsd-phase-researcher	2026-11-10	SBC: A - M - not C; same cycle table as ADC; D=1 adds 1 cycle
 S8-80	img	gsd-phase-researcher	2026-11-10	ST0 $03 nn, 2 bytes, 4 cycles; CE7 asserted, (A1,A0) = (0,0)

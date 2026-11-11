@@ -249,23 +249,75 @@ static uint16_t branch_target(uint32_t next, uint32_t rel)
     return (uint16_t)(next + rel - ((rel & 0x80u) != 0u ? 0x100u : 0u));
 }
 
-/* the value of an operand in the modes this plan executes: immediate and the three absolute modes. Returns 0 for every other mode: those land with their group (plans 03-11 to 03-14) and have no effect until then. */
-static int operand_value(const struct ds_instance *inst, uint32_t mode, uint32_t op1, uint16_t ea, uint32_t *value)
+/* the modes that name a memory cell: the nine of the load and store family (plan 03-11) */
+static int has_ea(uint32_t mode)
+{
+    return mode == (uint32_t)AM_ZP || mode == (uint32_t)AM_ZPX || mode == (uint32_t)AM_ZPY || mode == (uint32_t)AM_IND || mode == (uint32_t)AM_INDX || mode == (uint32_t)AM_INDY
+           || mode == (uint32_t)AM_ABS || mode == (uint32_t)AM_ABSX || mode == (uint32_t)AM_ABSY;
+}
+
+/*
+ * The zero page is logical $2000-$20FF, so a zero-page address is $2000 | zz, and an indexed zero-page address is $2000 | ((zz + index) & $FF): the high byte is always $20 (S8-11, D-99), never a carry into
+ * $21xx. A zero-page pointer takes its high byte from $2000 | ((zz + 1) & $FF), wrapping inside the page like the index (the project's reading, LED-CPU-0010). The 16-bit sums wrap at $FFFF (masks, no signed arithmetic).
+ * Every cell goes through the bus (ds_bus_read translates through the MPRs, D-102); the pointer bytes are read here, so a mode that is not executed never touches memory.
+ */
+static uint16_t zp_addr(uint32_t zz)
+{
+    return (uint16_t)(0x2000u | (zz & 0xFFu));
+}
+
+static uint16_t zp_pointer(const struct ds_instance *inst, uint32_t zz)
+{
+    uint32_t lo = ds_bus_read(inst, zp_addr(zz));
+    uint32_t hi = ds_bus_read(inst, zp_addr(zz + 1u));
+
+    return (uint16_t)(lo | (hi << 8u));
+}
+
+static uint16_t eff_addr(const struct ds_instance *inst, uint32_t mode, uint32_t op1, uint32_t abs_addr)
+{
+    switch ((enum ds_mode)mode) {
+    case AM_ZPX:
+        return zp_addr(op1 + (uint32_t)inst->x);
+    case AM_ZPY:
+        return zp_addr(op1 + (uint32_t)inst->y);
+    case AM_IND:
+        return zp_pointer(inst, op1);
+    case AM_INDX:
+        return zp_pointer(inst, (op1 + (uint32_t)inst->x) & 0xFFu);
+    case AM_INDY:
+        return (uint16_t)((uint32_t)zp_pointer(inst, op1) + (uint32_t)inst->y);
+    case AM_ABSX:
+        return (uint16_t)(abs_addr + (uint32_t)inst->x);
+    case AM_ABSY:
+        return (uint16_t)(abs_addr + (uint32_t)inst->y);
+    case AM_ABS:
+        return (uint16_t)abs_addr;
+    default: /* AM_ZP, and the modes that never reach here (has_ea is checked first) */
+        return zp_addr(op1);
+    }
+}
+
+/* the value of an operand: immediate, or a read of the effective address; 0 for a mode that holds no operand (those land with their group, plans 03-12 to 03-14, and have no effect until then) */
+static int operand_value(const struct ds_instance *inst, uint32_t mode, uint32_t op1, uint32_t abs_addr, uint32_t *value)
 {
     if (mode == (uint32_t)AM_IMM) {
         *value = op1;
         return 1;
     }
-    if (mode == (uint32_t)AM_ABS || mode == (uint32_t)AM_ABSX || mode == (uint32_t)AM_ABSY) {
-        *value = ds_bus_read(inst, ea);
+    if (has_ea(mode)) {
+        *value = ds_bus_read(inst, eff_addr(inst, mode, op1, abs_addr));
         return 1;
     }
     return 0;
 }
 
-static int has_ea(uint32_t mode)
+/* a store: one write at the effective address (flags are never touched by a store, S8-83 to S8-86) */
+static void store_operand(struct ds_instance *inst, uint32_t mode, uint32_t op1, uint32_t abs_addr, uint32_t value)
 {
-    return mode == (uint32_t)AM_ABS || mode == (uint32_t)AM_ABSX || mode == (uint32_t)AM_ABSY;
+    if (has_ea(mode)) {
+        ds_bus_write(inst, eff_addr(inst, mode, op1, abs_addr), (uint8_t)value);
+    }
 }
 
 /* one instruction; log is the instruction sink writer of the running ds_run call or NULL (plan 03-10): the hook is called once per executed instruction with the state before it runs (D-119) */
@@ -281,10 +333,9 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
     uint32_t op1 = bytes >= 2u ? ds_bus_read(inst, (uint16_t)(pc + 1u)) : 0u;
     uint32_t op2 = bytes >= 3u ? ds_bus_read(inst, (uint16_t)(pc + 2u)) : 0u;
     uint32_t next = (pc + bytes) & 0xFFFFu;
-    uint16_t abs_addr = (uint16_t)(op1 | (op2 << 8u));
-    uint16_t ea = mode == (uint32_t)AM_ABSX ? (uint16_t)((uint32_t)abs_addr + (uint32_t)inst->x)
-                                            : mode == (uint32_t)AM_ABSY ? (uint16_t)((uint32_t)abs_addr + (uint32_t)inst->y) : abs_addr;
+    uint32_t abs_addr = op1 | (op2 << 8u);
     uint32_t v = 0u;
+    uint16_t ea;
     uint32_t lo;
     uint32_t hi;
     int taken = 0;
@@ -303,58 +354,104 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
         inst->p = (uint8_t)((uint32_t)inst->p & ~P_C);
         break;
     case MN_LDA:
-        if (operand_value(inst, mode, op1, ea, &v) != 0) {
+        if (operand_value(inst, mode, op1, abs_addr, &v) != 0) {
             inst->a = (uint8_t)v;
             set_nz(inst, v);
         }
         break;
     case MN_LDX:
-        if (operand_value(inst, mode, op1, ea, &v) != 0) {
+        if (operand_value(inst, mode, op1, abs_addr, &v) != 0) {
             inst->x = (uint8_t)v;
             set_nz(inst, v);
         }
         break;
     case MN_LDY:
-        if (operand_value(inst, mode, op1, ea, &v) != 0) {
+        if (operand_value(inst, mode, op1, abs_addr, &v) != 0) {
             inst->y = (uint8_t)v;
             set_nz(inst, v);
         }
         break;
-    case MN_STA:
-        if (has_ea(mode)) {
-            ds_bus_write(inst, ea, inst->a);
-        }
+    case MN_STA: /* stores take no flags (S8-83 to S8-86) */
+        store_operand(inst, mode, op1, abs_addr, inst->a);
+        break;
+    case MN_STX:
+        store_operand(inst, mode, op1, abs_addr, inst->x);
+        break;
+    case MN_STY:
+        store_operand(inst, mode, op1, abs_addr, inst->y);
         break;
     case MN_STZ:
-        if (has_ea(mode)) {
-            ds_bus_write(inst, ea, 0u);
-        }
+        store_operand(inst, mode, op1, abs_addr, 0u);
         break;
-    case MN_TXS: /* no flags */
+    case MN_TAX: /* N and Z from the moved value (S8-91) */
+        inst->x = inst->a;
+        set_nz(inst, inst->x);
+        break;
+    case MN_TAY:
+        inst->y = inst->a;
+        set_nz(inst, inst->y);
+        break;
+    case MN_TXA:
+        inst->a = inst->x;
+        set_nz(inst, inst->a);
+        break;
+    case MN_TYA:
+        inst->a = inst->y;
+        set_nz(inst, inst->a);
+        break;
+    case MN_TSX: /* N and Z from S (S8-105) */
+        inst->x = inst->s;
+        set_nz(inst, inst->x);
+        break;
+    case MN_TXS: /* no flags (S8-107) */
         inst->s = inst->x;
+        break;
+    case MN_CLA: /* the register clears take no flags (S8-34, S8-39, S8-40) */
+        inst->a = 0u;
+        break;
+    case MN_CLX:
+        inst->x = 0u;
+        break;
+    case MN_CLY:
+        inst->y = 0u;
+        break;
+    case MN_PHX:
+        push(inst, inst->x);
+        break;
+    case MN_PHY:
+        push(inst, inst->y);
+        break;
+    case MN_PLX: /* N and Z */
+        inst->x = (uint8_t)pull(inst);
+        set_nz(inst, inst->x);
+        break;
+    case MN_PLY:
+        inst->y = (uint8_t)pull(inst);
+        set_nz(inst, inst->y);
         break;
     case MN_INX:
         inst->x = (uint8_t)(((uint32_t)inst->x + 1u) & 0xFFu);
         set_nz(inst, inst->x);
         break;
     case MN_ADC: /* binary only: decimal mode and the T-mode variant are plan 03-12 */
-        if (operand_value(inst, mode, op1, ea, &v) != 0) {
+        if (operand_value(inst, mode, op1, abs_addr, &v) != 0) {
             adc(inst, v);
         }
         break;
     case MN_CMP:
-        if (operand_value(inst, mode, op1, ea, &v) != 0) {
+        if (operand_value(inst, mode, op1, abs_addr, &v) != 0) {
             cmp(inst, v);
         }
         break;
     case MN_EOR: /* N and Z (the T-mode variant is plan 03-12) */
-        if (operand_value(inst, mode, op1, ea, &v) != 0) {
+        if (operand_value(inst, mode, op1, abs_addr, &v) != 0) {
             inst->a = (uint8_t)((uint32_t)inst->a ^ v);
             set_nz(inst, inst->a);
         }
         break;
     case MN_INC: /* memory forms only: one read and one write, N and Z from the result (the accumulator form is plan 03-12) */
         if (has_ea(mode)) {
+            ea = eff_addr(inst, mode, op1, abs_addr);
             lo = ((uint32_t)ds_bus_read(inst, ea) + 1u) & 0xFFu;
             ds_bus_write(inst, ea, (uint8_t)lo);
             set_nz(inst, lo);
@@ -405,8 +502,8 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
         break;
     case MN_JMP: /* only (abs) so far: the high byte is read from the next address, with no 6502 page bug (assumed, LED-CPU-0010); the other two modes are plan 03-13 */
         if (mode == (uint32_t)AM_ABSIND) {
-            lo = ds_bus_read(inst, abs_addr);
-            hi = ds_bus_read(inst, (uint16_t)((uint32_t)abs_addr + 1u));
+            lo = ds_bus_read(inst, (uint16_t)abs_addr);
+            hi = ds_bus_read(inst, (uint16_t)(abs_addr + 1u));
             next = (hi << 8u) | lo;
         }
         break;
@@ -416,9 +513,6 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
     case MN_AND: case MN_ASL: case MN_BIT: case MN_CPX: case MN_CPY: case MN_DEC: case MN_LSR: case MN_ORA: case MN_ROL: case MN_ROR: case MN_SBC:
     case MN_TRB: case MN_TSB: case MN_TST: case MN_SET: case MN_DEX: case MN_DEY: case MN_INY:
         break; /* plan 03-12: arithmetic, logic, shift, compare, bit test, SET */
-    case MN_STX: case MN_STY: case MN_TAX: case MN_TAY: case MN_TSX: case MN_TXA: case MN_TYA: case MN_PHX: case MN_PHY: case MN_PLX: case MN_PLY:
-    case MN_CLA: case MN_CLX: case MN_CLY:
-        break; /* plan 03-11: stores, transfers, stack (CLA CLX CLY are register clears) */
     case MN_BBR0: case MN_BBR1: case MN_BBR2: case MN_BBR3: case MN_BBR4: case MN_BBR5: case MN_BBR6: case MN_BBR7:
     case MN_BBS0: case MN_BBS1: case MN_BBS2: case MN_BBS3: case MN_BBS4: case MN_BBS5: case MN_BBS6: case MN_BBS7:
     case MN_BCC: case MN_BCS: case MN_BMI: case MN_BPL: case MN_BVC: case MN_BRK: case MN_BSR: case MN_RTI: case MN_NOP:
