@@ -131,12 +131,17 @@ struct ds_instance {
     uint8_t s;
     uint8_t p;
     uint8_t speed; /* 0 low (the power-up speed), 1 high (D-90, D-114) */
+    /* bus state (plan 03-16, region BUS0 of the digest; D-104, D-105): io_buffer is the last byte that crossed the data bus in a read or write of the windows $0800-$17FF of the hardware page, mpr_latch the byte of TAM and TMA (plan 03-17); both are constant 0 at power-on under every policy */
+    uint8_t io_buffer;
+    uint8_t mpr_latch;
     uint8_t rom[DS_ROM_CAP];
 };
 
-/* the CPU block has no padding on either side: pc follows the power-up seed and the ROM array follows the speed bit */
+/* the CPU block and the bus block have no padding: pc follows the power-up seed, io_buffer the speed bit, mpr_latch io_buffer, and the ROM array follows mpr_latch */
 _Static_assert(offsetof(struct ds_instance, pc) == offsetof(struct ds_instance, powerup_seed) + sizeof(uint64_t), "padding before the CPU state");
-_Static_assert(offsetof(struct ds_instance, rom) == offsetof(struct ds_instance, speed) + 1u, "padding after the CPU state");
+_Static_assert(offsetof(struct ds_instance, io_buffer) == offsetof(struct ds_instance, speed) + 1u, "padding between the CPU state and io_buffer");
+_Static_assert(offsetof(struct ds_instance, mpr_latch) == offsetof(struct ds_instance, io_buffer) + 1u, "padding between io_buffer and mpr_latch");
+_Static_assert(offsetof(struct ds_instance, rom) == offsetof(struct ds_instance, mpr_latch) + 1u, "padding after the bus state");
 
 struct ds_boot_request {
     uint32_t struct_size; /* sizeof(struct ds_boot_request) */
@@ -183,6 +188,9 @@ uint32_t ds_boot(void *mem, size_t cap, const struct ds_boot_request *request, s
 #define DS_ADDER_DECIMAL 1u      /* ADC and SBC with the D flag set (S8-17) */
 /* the value an unmapped read returns (D-104) */
 #define DS_UNMAPPED_READ 0xFFu
+/* the stub reads of the hardware-page windows whose device does not exist yet (D-104, ASSUMED LED-CPU-0012): the VDC window until Phase 4 and the VCE window until Phase 4 */
+#define DS_VDC_STUB_READ 0x00u
+#define DS_VCE_STUB_READ 0xFFu
 
 typedef int (*ds_stop_fn)(const struct ds_instance *inst, void *ctx);
 

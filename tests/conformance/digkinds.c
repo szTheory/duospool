@@ -272,6 +272,9 @@ void kind_digest_stream(const struct kase *k, struct ctx *c, char *got, size_t g
             check(c, fw[i].len == 8u && pl[0] == inst->a && pl[1] == inst->x && pl[2] == inst->y && pl[3] == inst->s && pl[4] == inst->p &&
                          (unsigned)(pl[5] | ((unsigned)pl[6] << 8)) == (unsigned)inst->pc && pl[7] == inst->speed,
                   msg);
+        } else if (strcmp(fw[i].tag, "BUS0") == 0) {
+            /* io_buffer then mpr_latch (plan 03-16) */
+            check(c, fw[i].len == 2u && pl[0] == inst->io_buffer && pl[1] == inst->mpr_latch, msg);
         } else {
             harness_error(c, "a digest_stream frame names a tag that the case does not know");
             break;

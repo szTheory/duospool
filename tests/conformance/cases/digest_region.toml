@@ -9,8 +9,8 @@ id = "digest_region"
 kind = "digest_region"
 fixture = "plain-256k"
 request = "bind.powerup_policy=seeded-prng-v1;seed=42"
-expect = "tags=PROF:first,CONT,POWR,TIME,RAM8,MPRS,CPU0"
-meaning = "Flipping the first and the last byte of the live state of each of the 7 regions (the first only for PROF) changes the digest and restoring it restores the digest, in the table order PROF CONT POWR TIME RAM8 MPRS CPU0; for CPU0 the first live byte is the low byte of pc and the last is the speed byte"
+expect = "tags=PROF:first,CONT,POWR,TIME,RAM8,MPRS,CPU0,BUS0"
+meaning = "Flipping the first and the last byte of the live state of each of the 8 regions (the first only for PROF) changes the digest and restoring it restores the digest, in the table order PROF CONT POWR TIME RAM8 MPRS CPU0 BUS0; for CPU0 the first live byte is the low byte of pc and the last is the speed byte, for BUS0 the first is io_buffer and the last is mpr_latch"
 required = true
 control = false
 expect_outcome = "pass"

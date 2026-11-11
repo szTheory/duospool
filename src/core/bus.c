@@ -45,19 +45,74 @@ static uint32_t offset_of(uint16_t addr)
     return (uint32_t)addr & 0x1FFFu;
 }
 
+/*
+ * The hardware page, bank $FF: six windows of $400 bytes at physical $1FE000 (H8-9, H8-24), decoded by the offset in the page shifted right by 10 in one switch (D-103, no function-pointer bus).
+ * Window 0 is the VDC (register A1-A0), 1 the VCE (A2-A0), 2 the PSG (A3-A0), 3 the timer (A0), 4 the I/O port (one register for the whole window), 5 the interrupt registers (A1-A0: 2 is $1402, 3 is $1403),
+ * and windows 6 and 7 ($1800-$1FFF) have no device. No device exists yet behind any window except as a stub (the timer and the interrupt controller arrive in plans 03-21 and 03-22, the pad in plan 03-27, the VDC and VCE in Phase 4):
+ *   VDC window reads DS_VDC_STUB_READ and VCE window DS_VCE_STUB_READ (D-104); the windows without a device read the unmapped constant and change nothing.
+ *   io_buffer (D-104, ASSUMED LED-CPU-0013) is the byte of the last read or write in $0800-$17FF (windows 2 to 5): a read returns its stub value with the upper bits of the byte the window does not drive taken from io_buffer
+ *   (the PSG window all eight bits, the timer bit 7 over a 7-bit counter stub of 0, $1402 and $1403 the upper five bits over three stub bits of 0, the interrupt registers $1400 and $1401 and the I/O window all eight), and the byte read becomes the new io_buffer;
+ *   a write in those windows stores its byte in io_buffer (the registers themselves do not exist yet). Reads and writes in the VDC and VCE windows and in the empty windows do not touch io_buffer.
+ */
+enum hw_window { HW_VDC = 0, HW_VCE = 1, HW_PSG = 2, HW_TIMER = 3, HW_IO = 4, HW_IRQ = 5 };
+
+static uint8_t hw_read(struct ds_instance *inst, struct ds_bus *bus, uint32_t offset)
+{
+    uint32_t reg = offset & 0x3FFu;
+    uint8_t value;
+
+    (void)bus; /* the penalty joins in task 3 of plan 03-16 */
+    switch ((enum hw_window)(offset >> 10u)) {
+    case HW_VDC:
+        return (uint8_t)DS_VDC_STUB_READ;
+    case HW_VCE:
+        return (uint8_t)DS_VCE_STUB_READ;
+    case HW_PSG:
+    case HW_IO:
+        value = inst->io_buffer;
+        break;
+    case HW_TIMER:
+        value = (uint8_t)(inst->io_buffer & 0x80u);
+        break;
+    case HW_IRQ:
+        value = (reg & 3u) >= 2u ? (uint8_t)(inst->io_buffer & 0xF8u) : inst->io_buffer;
+        break;
+    default: /* windows 6 and 7: no device, the unmapped constant, no side effect */
+        value = (uint8_t)DS_UNMAPPED_READ;
+        return value;
+    }
+    inst->io_buffer = value;
+    return value;
+}
+
+static void hw_write(struct ds_instance *inst, struct ds_bus *bus, uint32_t offset, uint8_t value)
+{
+    (void)bus; /* the penalty joins in task 3 of plan 03-16 */
+    switch ((enum hw_window)(offset >> 10u)) {
+    case HW_PSG:
+    case HW_TIMER:
+    case HW_IO:
+    case HW_IRQ:
+        inst->io_buffer = value;
+        break;
+    default: /* the VDC and VCE windows (stubs: the write is dropped) and the empty windows */
+        break;
+    }
+}
+
 uint8_t ds_bus_read(struct ds_instance *inst, struct ds_bus *bus, uint16_t addr)
 {
     uint32_t bank = bank_of(inst, addr);
     uint32_t offset = offset_of(addr);
     uint8_t value = 0u;
 
-    (void)bus; /* the penalty joins in task 3 of plan 03-16 */
     switch ((enum bank_cls)bank_class[bank]) {
     case BC_HUCARD:
         return ds_mapper_read(inst, bank, offset, &value) == (uint32_t)DS_MAP_OK ? value : (uint8_t)DS_UNMAPPED_READ;
     case BC_RAM:
         return inst->ram8k[offset & (DS_RAM8K_BYTES - 1u)];
-    case BC_HWPAGE: /* the windows of the hardware page land in task 2 */
+    case BC_HWPAGE:
+        return hw_read(inst, bus, offset);
     case BC_UNMAPPED:
     default:
         break;
@@ -69,11 +124,18 @@ void ds_bus_write(struct ds_instance *inst, struct ds_bus *bus, uint16_t addr, u
 {
     uint32_t bank = bank_of(inst, addr);
 
-    (void)bus;
-    if (bank_class[bank] == (uint8_t)BC_RAM) {
+    switch ((enum bank_cls)bank_class[bank]) {
+    case BC_RAM:
         inst->ram8k[offset_of(addr) & (DS_RAM8K_BYTES - 1u)] = value;
+        break;
+    case BC_HWPAGE:
+        hw_write(inst, bus, offset_of(addr), value);
+        break;
+    case BC_HUCARD: /* ROM and every unmapped bank ignore a write (D-103, D-104) */
+    case BC_UNMAPPED:
+    default:
+        break;
     }
-    /* ROM and every unmapped bank ignore a write (D-103, D-104) */
 }
 
 /*
@@ -82,11 +144,8 @@ void ds_bus_write(struct ds_instance *inst, struct ds_bus *bus, uint16_t addr, u
  */
 void ds_bus_write_phys(struct ds_instance *inst, struct ds_bus *bus, uint32_t phys, uint8_t value)
 {
-    (void)inst;
-    (void)bus;
-    (void)value;
     if (phys == 0x1FE000u || phys == 0x1FE002u || phys == 0x1FE003u) {
-        /* the VDC stub lands in task 2 */
+        hw_write(inst, bus, phys & 0x1FFFu, value); /* the VDC window: a stub that drops the byte until Phase 4 */
     }
 }
 

@@ -131,7 +131,7 @@ void ds_profile_hash(const struct ds_profile *profile, uint8_t out[DS_DIGEST_BYT
 
 /* ---- the region table ---- */
 
-enum region_id { R_PROF, R_CONT, R_POWR, R_TIME, R_RAM8, R_MPRS, R_CPU0, R_COUNT };
+enum region_id { R_PROF, R_CONT, R_POWR, R_TIME, R_RAM8, R_MPRS, R_CPU0, R_BUS0, R_COUNT };
 
 struct region {
     char tag[5];            /* four ASCII bytes and a NUL, which is not written */
@@ -154,6 +154,9 @@ _Static_assert(offsetof(struct ds_instance, s) == offsetof(struct ds_instance, y
 _Static_assert(offsetof(struct ds_instance, p) == offsetof(struct ds_instance, s) + 1u, "s and p are not adjacent");
 _Static_assert(offsetof(struct ds_instance, speed) == offsetof(struct ds_instance, p) + 1u, "p and speed are not adjacent");
 
+/* the bus state is two neighbours in the instance (io_buffer, mpr_latch): the accessor spans them as one live range of two bytes */
+_Static_assert(offsetof(struct ds_instance, mpr_latch) == offsetof(struct ds_instance, io_buffer) + 1u, "io_buffer and mpr_latch are not adjacent");
+
 static const struct region regions[R_COUNT] = {
     [R_PROF] = {"PROF", DS_DIGEST_BYTES, offsetof(struct ds_instance, profile), sizeof(struct ds_profile)},
     [R_CONT] = {"CONT", DS_CONTENT_ID_BYTES + 4u + 4u, offsetof(struct ds_instance, content_id), DS_CONTENT_ID_BYTES},
@@ -163,6 +166,7 @@ static const struct region regions[R_COUNT] = {
     [R_RAM8] = {"RAM8", DS_RAM8K_BYTES, offsetof(struct ds_instance, ram8k), DS_RAM8K_BYTES},
     [R_MPRS] = {"MPRS", DS_MPR_COUNT, offsetof(struct ds_instance, mpr), DS_MPR_COUNT},
     [R_CPU0] = {"CPU0", 8u, offsetof(struct ds_instance, pc), offsetof(struct ds_instance, speed) + 1u - offsetof(struct ds_instance, pc)},
+    [R_BUS0] = {"BUS0", 2u, offsetof(struct ds_instance, io_buffer), offsetof(struct ds_instance, mpr_latch) + 1u - offsetof(struct ds_instance, io_buffer)},
 };
 
 /* the payload of one region: exactly regions[index].payload_len bytes, one explicit field per call, never a struct */
@@ -203,6 +207,10 @@ static void emit_payload(struct writer *w, const struct ds_instance *inst, uint3
         w_u8(w, inst->p);
         w_u16(w, inst->pc);
         w_u8(w, inst->speed);
+        break;
+    case R_BUS0: /* io_buffer then mpr_latch, one explicit field per line (plan 03-16) */
+        w_u8(w, inst->io_buffer);
+        w_u8(w, inst->mpr_latch);
         break;
     default:
         break;
