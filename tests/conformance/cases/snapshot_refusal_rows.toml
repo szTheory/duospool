@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Snapshot refusal rows (plan 03-30 task 2; CORE-05, D-121, Pitfall 20): the thirteen faults of the plan as items of one table case: a wrong profile hash (profile), a wrong content id (content), a bad prefix (prefix), a bad version (version), swapped tags (tag), a short length (truncated), trailing
+# bytes (trailing), a speed of 2, a timer counter of 128, a block transfer remaining count of 1 while no transfer is active and one of 65537 (field), a machine time of 2^63 (time) and the B bit of P (reserved). The plan names remaining 0 while active as a fault; it is legal (the epilogue is next,
+# snapshot_refusal_api accepts it), so the row here is a nonzero count while inactive. Each row edits a copy of a valid snapshot of ds_proto (taken at a mid-run stop under the seeded-prng-v2 policy) with offsets of the hand-kept frame table of tests/conformance/snapkinds.c, and ds_restore must refuse
+# it with exactly the declared code of src/core/snapshot_refusals.def while the target instance (a twin booted with another seed whose restorable members are poisoned) stays byte-identical, compared over the whole instance including the ROM and member by member. Evidence tier E0; the stream is
+# untrusted input (T-03-83, T-03-85).
+id = "snapshot_refusal_rows"
+kind = "snapshot_refuse"
+fixture = "authored:ds-proto"
+request = "bind.powerup_policy=seeded-prng-v2;seed=3"
+expect = "wrong-profile=profile|wrong-content=content|bad-prefix=prefix|bad-version=version|swapped-tags=tag|short=truncated|trailing=trailing|speed-2=field|timer-128=field|blk-rem-inactive=field|blk-rem-65537=field|time-2-63=time|p-b-bit=reserved"
+meaning = "A snapshot with a wrong profile hash or content id, a bad prefix, version or tag order, a short or long length, a speed of 2, a timer counter of 128, a block count where none is active or of 65537, a machine time of 2^63 or the B bit of P is refused with its code and the instance is byte-identical"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 100000

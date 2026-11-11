@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Deferred coverage row of the snapshot refusals (plan 03-30; D-86 pattern, F4): evaluated after every other case of the run, it requires that every code of src/core/snapshot_refusals.def was returned by at least one refuse row of snapshot_refusal_rows, snapshot_refusal_fields,
+# snapshot_refusal_schedule or snapshot_refusal_api, and that every name prints as snapshot.NAME. A refusal code added to the .def without a row that observes it turns this case red. Evidence tier E0.
+id = "snapshot_refusal_coverage"
+kind = "snapshot_refusal_coverage"
+fixture = "none"
+request = "all-snapshot-refuse-rows"
+expect = "every-member-observed"
+meaning = "Every snapshot refusal code of snapshot_refusals.def is returned by at least one snapshot refusal row, with the instance unchanged"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

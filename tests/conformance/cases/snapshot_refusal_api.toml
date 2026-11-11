@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Snapshot API rows and legal edges (plan 03-30 task 2; D-121): a region frame that announces another length (region_length), a NULL buffer (argument), a buffer inside the instance (overlap), ds_snapshot into a buffer one byte short (capacity) or into the instance (overlap); and the legal edges that
+# must be ACCEPTED and must re-serialise to exactly the edited bytes: the unchanged snapshot, a block transfer with no byte left (the epilogue next), one of 65536 bytes, TIA with its alternation state set, a machine time of 2^63 - 1, a valid stimulus, a valid schedule and any latch of port O. A core
+# that refused everything would fail here. Each row edits a copy of a valid snapshot of ds_proto (taken at a mid-run stop under the seeded-prng-v2 policy) with offsets of the hand-kept frame table of tests/conformance/snapkinds.c, and ds_restore must refuse it with exactly the declared code of
+# src/core/snapshot_refusals.def while the target instance (a twin booted with another seed whose restorable members are poisoned) stays byte-identical, compared over the whole instance including the ROM and member by member. Evidence tier E0; the stream is untrusted input (T-03-83, T-03-85).
+id = "snapshot_refusal_api"
+kind = "snapshot_refuse"
+fixture = "authored:ds-proto"
+request = "bind.powerup_policy=seeded-prng-v2;seed=3"
+expect = "bad-region-length=region_length|null-buffer=argument|buffer-in-instance=overlap|snapshot-capacity=capacity|snapshot-overlap=overlap|unchanged=accept|blk-rem-0-active=accept|blk-rem-65536=accept|blk-toggle-tia=accept|time-2-63-1=accept|stim-valid=accept|schd-valid=accept|latch-any=accept"
+meaning = "A frame with another length, a NULL buffer, a buffer inside the instance and a snapshot buffer one byte short or inside the instance are refused, and the legal edges (no byte left, 65536 bytes, TIA alternation, time 2^63 - 1, valid stimulus and schedule, any latch) are accepted and re-serialise identically"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 100000

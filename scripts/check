@@ -2520,6 +2520,36 @@ selftest() {
     fi
   fi
 
+  # (z10) the tiling list of ds_core.h is what makes a member added to struct ds_instance without a snapshot decision a build failure (plan 03-30; D-122, Pattern 8): in a scratch copy of the core headers a one-byte member is added to the struct and nothing else, and a one-line
+  # translation unit that includes the header must then fail to compile with the message of the tiling static assert. The unmutated scratch copy
+  # must compile, so the failure cannot come from a broken scratch tree. The live tree is never written.
+  if st_want mutation-tiling-entry; then
+    st_ran=1
+    ti="$tmp/selftest/tiling"
+    ti_ok=1
+    ti_why=""
+    rm -rf "$ti"
+    mkdir -p "$ti"
+    cp src/core/*.def src/core/ds_core.h "$ti/"
+    printf '#include "ds_core.h"\nint main(void) { return (int)sizeof(struct ds_instance) == 0; }\n' > "$ti/tu.c"
+    if (cd "$ti" && cc -std=c11 -fsyntax-only -I . tu.c > ok.out 2>&1); then :; else ti_ok=0; ti_why="the unmutated scratch header does not compile"; fi
+    if [ "$ti_ok" -eq 1 ]; then
+      ti_n=$(grep -c '^    uint8_t tail_pad\[6\];$' "$ti/ds_core.h" || true)
+      if [ "$ti_n" -ne 1 ]; then
+        echo "HARNESS_ERROR mutation-tiling-entry: ds_core.h must hold exactly one member line 'uint8_t tail_pad[6];' (found $ti_n)"
+        exit 2
+      fi
+      sed 's/^    uint8_t tail_pad\[6\];$/    uint8_t tail_pad[6];\n    uint8_t zz_added_member;/' "$ti/ds_core.h" > "$ti/ds_core.mutated"
+      mv "$ti/ds_core.mutated" "$ti/ds_core.h"
+      if (cd "$ti" && cc -std=c11 -fsyntax-only -I . tu.c > bad.out 2>&1); then ti_ok=0; ti_why="a member without a tiling entry still compiles"; elif ! grep -q 'tiling list does not account' "$ti/bad.out"; then ti_ok=0; ti_why="the mutated header failed for another reason than the tiling static assert"; fi
+    fi
+    if [ "$ti_ok" -eq 1 ]; then
+      echo "SELFTEST mutation-tiling-entry PASS"
+    else
+      echo "SELFTEST mutation-tiling-entry FAIL ($ti_why)"; failed=1
+    fi
+  fi
+
   # (z9) the host hash step of the snapshot case is what turns a snapshot that differs from its digest red (plan 03-30; D-121, W5 and W12 of the plan check): the runner writes the snapshot bytes of the case snapshot_equals_digest and the digest it computed into an evidence directory, and conformance-run snapshot-host-hash hashes the file with the host tool and compares.
   # A scratch evidence directory is made by the live runner for that one case. The unmutated step must pass it (exit 0, STATUS snapshot-host-hash ok), so that the failure below cannot come from a broken step; in a scratch copy of the evidence one snapshot byte is flipped (a byte of
   # the work RAM payload) and the step must exit 1 and print SNAPSHOT_HOST_HASH_MISMATCH with the unchanged core digest. The wiring is checked too:

@@ -224,3 +224,8 @@ chunk_equiv_pad_2btn_correct
 digest_stream_input
 snapshot_equals_digest
 snapshot_restore_sampled
+snapshot_refusal_rows
+snapshot_refusal_fields
+snapshot_refusal_schedule
+snapshot_refusal_api
+snapshot_refusal_coverage
