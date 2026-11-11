@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# I-flag latency of the interrupt sample (D-111; CPU-03, CPU-06). OPEN: no manual page says which value of the I flag the sample sees after CLI, SEI, PLP and RTI, so both values are implemented as the model parameter irq_i_sample (src/core/model_params.def, status open, printed in every run record with this id).
+# pre (default): the sample uses the I value from before the instruction, so an interrupt pending when CLI executes is taken after the next instruction. post: the sample uses the I value the instruction left, no latency. The default is a choice, not evidence ("simpler" is not evidence, D-111).
+# Check 30 of irq_ctl (observe-only) shows the difference in the guest: the A register at the handler entry is $77 (119) under pre and $00 under post. tim_timer check 33 (ASSUMED LED-IRQ-0005) holds under pre only, so the tim_timer case keeps the default. Check 29 holds under both values.
+# Page image read on 2026-11-11 by the plan 03-34 executor from a scratch copy of the hardware manual (sha256 40a32e5d..., never committed): H8-12.
+id = "LED-IRQ-0005"
+statement = "DuoSpool offers two values for the I flag the interrupt sample sees after CLI, SEI, PLP and RTI: pre (the I from before the instruction, the default, the entry follows the next instruction) and post (the I the instruction left, no latency); which one hardware has is not established. The model parameter is irq_i_sample."
+profile = "pce-hucard-2btn"
+status = "open"
+sources = ["FACT|H8-12|gsd-executor image read 2026-11-11: inputs are sampled in the last bus cycle of one instruction; nothing about the I flag the sample uses", "REPORT|research/PITFALLS.md C5|no source measured the latency after CLI or RTI; a MAME changelog entry delays interrupts for a pending pipeline instruction (After Burner); reports, not re-read"]
+evidence = ["E0|tests/conformance/cases/irq_ctl_post.toml: observe row 30 reads 0 under post while irq_ctl_pre reads 119 under pre; the guest tells the two values apart, repeatability only", "E0|tests/conformance/cases/digest_model_irq_i_sample_differs.toml: the selection is in the digest"]
+disagreement = "No manual statement of the I value the sample sees (ER-8 lists I-flag latency as open). research/PITFALLS.md C5 records no measured latency after CLI and RTI, only the MAME delay report. A third 6502-style value waits for evidence (D-111); pre is a default, not evidence."
+pinning_test = "TEST:irq_ctl_post"
+updated = "2026-11-11"
+assumption = "Both values are implemented so that a later observation can settle it; until then the value is bound by the run request (model.irq_i_sample) and printed in the record. The pin shows that the two values differ in the guest, not which one is right."
+revisit_phase = 3
+withheld = ["any claim of hardware cycle accuracy", "any claim of interrupt latency in cycles", "any claim of game compatibility", "any TG-16 or region claim", "any claim about which I value the hardware sample uses"]
+origin = "03-CONTEXT D-111"

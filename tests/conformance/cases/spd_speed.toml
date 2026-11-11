@@ -16,6 +16,6 @@ meaning = "The authored spd_speed fixture measures with the timer that the CPU s
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-CPU-0006"]
 until_mclk = 4000000
 checks = 13

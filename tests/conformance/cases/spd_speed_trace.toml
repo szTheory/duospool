@@ -17,5 +17,5 @@ meaning = "In the instruction trace of the spd_speed fixture the first instructi
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-CPU-0005"]
 until_mclk = 100000

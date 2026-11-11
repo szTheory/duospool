@@ -16,6 +16,6 @@ meaning = "The authored tim_timer fixture takes the TIQ interrupt at reload 0, r
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-IRQ-0003"]
 until_mclk = 4000000
 checks = 33

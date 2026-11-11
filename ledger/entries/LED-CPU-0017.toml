@@ -1,14 +1,14 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 # The VDC and VCE access penalty (D-107; CPU-04, CPU-06). A modelling choice: no page of the hardware or software manual states it. The base counts it is added to are page values (H8-25, S8-53, S8-80); the extra cycle, its scope and its order are not. Not a hardware measurement.
-# The cases vdc_penalty_assumed (the pin) and dev_log_records name this entry; the constant is vdc_vce_penalty_cycles in src/core/constants.def, charged in src/core/bus.c before the device sees the access. To be revisited in the video phase, when the VDC exists.
+# The cases vdc_penalty_assumed (the pin), dev_log_records and spd_speed (checks 9 to 12, written by plan 03-23, E2 self-consistency) name this entry; the constant is vdc_vce_penalty_cycles in src/core/constants.def, charged in src/core/bus.c before the device sees the access. To be revisited in the video phase, when the VDC exists.
 # The emulator readings below come from 03-CONTEXT D-107 and the research notes (research/SUMMARY.md, research/PITFALLS.md), where the discuss advisors recorded them as reading-material observations; they are labelled reports here, none was re-read for this entry and no emulator code is copied.
 id = "LED-CPU-0017"
 statement = "DuoSpool models an access to physical 0x1FE000-0x1FE7FF (the VDC and VCE windows) as costing one more CPU cycle at the current speed, charged per access in the bus before the device sees it, including zero-page-mapped, block and ST accesses, so ST0 to ST2 take 5 cycles in all. Modelling assumption."
 profile = "pce-hucard-2btn"
 status = "assumed"
 sources = ["FACT|H8-25 S8-80|base counts ST0 4, LDA absolute 5, STA absolute 5, LDA zero page 4; the penalty is on no page; read by earlier plans", "REPORT|research/PITFALLS.md|each VDC or VCE access costs one extra cycle (pcetech, MAME v1.10, Mesen2), ST0 to ST2 take 5; reports", "UNKNOWN|the manual|no page states a VDC or VCE access penalty, its scope or its order"]
-evidence = ["E0|tests/conformance/cases/vdc_penalty_assumed.toml: the instruction trace of cyc_probe charges ST0 5, a read or write in the VDC or VCE window the base plus 1, none at 0x800 and above, a zero-page read mapped to the VDC 5, and one cycle of 3 clocks at high speed; literals are the assumption itself; repeatability only"]
+evidence = ["E0|tests/conformance/cases/vdc_penalty_assumed.toml: cyc_probe trace charges ST0 5, VDC and VCE accesses base + 1, none from 0x800, zero-page VDC read 5, 3 clocks per cycle at high speed; literals are the assumption", "E2|tests/conformance/cases/spd_speed.toml: checks 9 to 12, VDC and VCE one step more, PSG none, both speeds; self-consistency (ER-3)"]
 disagreement = "03-CONTEXT D-107 records, as advisor observations (reports, not re-read): MAME differs on zero-page and ST accesses, Geargrafx charges 2 cycles in block transfers and Mesen2 differs in the order of the read and the write. research/PITFALLS.md notes that Mesen2 comments its VRAM stall is not always a multiple of three master clocks. The manual states no penalty at all."
 pinning_test = "TEST:vdc_penalty_assumed"
 updated = "2026-11-11"

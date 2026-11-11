@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# Interrupt controller registers, priority, vectors and acknowledge (D-110; CPU-03). A candidate for supported (E1, documentary) under ER-2 for part (a) only (writer note 3): the statement is split so that only page facts that are image-verified could later promote; part (b) is modelling and stays assumed.
+# Part (a), page facts: $1403 request register bit 0 IRQ2, bit 1 IRQ1, bit 2 TIQ, the two inputs read as inverted pin level (1 = requested), TIQ read-only, set by a borrow, reset by a write, 0 at reset (H8-15); $1402 disable register bits IRQ2D, IRQ1D, TIQD, 1 disables, 0 at reset (H8-16).
+# Part (a) also: priority timer, IRQ1, IRQ2 and vectors $FFFA, $FFF8, $FFF6 (BRK shares $FFF6), inputs sampled in the last bus cycle, entry pushes PCH, PCL, P with B 0, sets I, resets D (H8-12, H8-13). Part (b), assumed: a write is the only acknowledge and clears TIQ only, the latch is set by every borrow.
+# IRQ1 and IRQ2 come only from the declared test stimulus (LED-IRQ-0008); NMI is undriven. Status assumed until plan 03-32 re-reads the pages (ER-1, ER-2, R-8); this entry promotes nothing. The in-guest checks are E2 self-consistency where they count steps.
+# Page images read on 2026-11-11 by the plan 03-34 executor from a scratch copy of the hardware manual (sha256 40a32e5d..., never committed): H8-12, H8-13, H8-14, H8-15, H8-16, H8-18, H8-21.
+id = "LED-IRQ-0004"
+statement = "(a) Page facts: DuoSpool's $1403 bits 0 to 2 are IRQ2, IRQ1 and TIQ, $1402 bits 0 to 2 disable them (1 disables, 0 at reset), priority is timer, IRQ1, IRQ2 with vectors $FFFA, $FFF8, $FFF6. (b) Assumptions: any write to $1403 clears TIQ only, a borrow sets TIQ even when masked, IRQ1 and IRQ2 are level inputs."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|H8-12 H8-13|gsd-executor image read 2026-11-11: sample in last bus cycle; priority timer, IRQ1, IRQ2; vectors FFF6 FFF8 FFFA; B 0, I set, D reset", "FACT|H8-14 to H8-16|gsd-executor image read 2026-11-11: $1403 bits IRQ2, IRQ1, TIQ; $1402 disable bits, 1 disables, 0 at reset; write resets TIQ", "UNKNOWN|only-write acknowledge, masked borrow|no page states either (part b)"]
+evidence = ["E1|tests/conformance/cases/irq_ctl_pre.toml: MAN-class checks 2 to 14 and 16 to 29 for part (a); counted only after the plan 03-32 re-read", "E0|tests/conformance/cases/irq_ctl_pre.toml: all 33 checks on the declared test stimulus, repeatability", "E2|tests/conformance/cases/tim_timer.toml: checks 28 and 32 (latch while masked), self-consistency"]
+disagreement = "H8-14 sets TIQ only if a borrow occurs with I reset and TIQD 0; H8-15 (set by a timer borrow) and H8-21 read as unconditional. The model follows the unconditional reading (tim_timer checks 28 and 32). pcetech (report, not re-read): the timer enable bit does not mask the line. ER-8 lists NMI wiring as open; no reading is recorded and NMI is undriven."
+pinning_test = "TEST:irq_ctl_pre"
+updated = "2026-11-11"
+assumption = "Part (b) is the project's choice: the latch is set by every borrow (unconditional reading of H8-15 and H8-21), a write is the only acknowledge. IRQ1 and IRQ2 are a test hook, not evidence about the VDC (ER-5). Part (a) stays assumed until the plan 03-32 re-read; the pin shows the core does what the rules say."
+revisit_phase = 3
+withheld = ["any claim of hardware cycle accuracy", "any claim of interrupt latency in cycles", "any claim of game compatibility", "any TG-16 or region claim", "any claim that the acknowledge or masked-borrow rules of part (b) match hardware"]
+origin = "03-CONTEXT D-110"

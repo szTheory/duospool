@@ -15,5 +15,5 @@ meaning = "A boot that declared five IRQ1 and IRQ2 test events prints them in it
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-IRQ-0008"]
 irq_stim = ["1200000,1,1", "1500000,1,0", "3200000,1,1", "3200000,2,1", "4294967297,2,0"]

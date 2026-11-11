@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# Speed switch behaviour (D-101; CPU-04, CPU-06). OPEN: no manual page says when a CSL or CSH takes effect or whether a switch costs extra, so one behaviour is chosen as a constant and the other is named. A modelling choice, not a hardware measurement.
+# Chosen: the three cycles are charged at the speed in force when the instruction started, the new speed applies from the next cycle with no grid re-alignment, a switch to the speed already in force changes nothing, and a switch that changes the speed adds no cycles (constant speed_switch_extra_cycles 0 in src/core/constants.def, read by cpu.c and by ds_max_step_mclk, printed with this id).
+# Alternative named, not implemented (last_cycle, ER-8): the last cycle of CSL or CSH already runs at the new speed. A model parameter needs two implemented values and a fixture that tells them apart (D-113), so it is not one.
+# spd_speed checks 2 to 8 are E2 self-consistency (ER-3): the loops are counted with the timer, so they depend on the community-reported 12 master clocks per low-speed cycle (LED-CPU-0003) and the access stamp rule (LED-CPU-0004); checks 7 and 8 are tuned intervals that tell the old-speed charge from the new-speed charge and from no switch.
+# The cycle count, speed byte and machine time of the switching instructions from the trace are judged by spd_speed_trace (the pin of LED-CPU-0005). Page image read on 2026-11-11 by the plan 03-34 executor (hardware manual scratch copy, sha256 40a32e5d..., never committed): H8-25 and H8-18.
+id = "LED-CPU-0006"
+statement = "DuoSpool models a CSL or CSH as charged its 3 cycles at the speed in force when it started, with the new speed from the next cycle, no grid re-alignment and no extra cost, and a switch to the speed already in force as a no-op; the alternative last_cycle (the last cycle already at the new speed) is not implemented. Modelling assumption, open."
+profile = "pce-hucard-2btn"
+status = "open"
+sources = ["FACT|H8-25 H8-18|gsd-executor image read 2026-11-11: CSL and CSH 1 byte 3 cycles in the map; reset sets low speed; nothing on switch timing", "REPORT|research/PITFALLS.md C5|pcetech: unknown whether the count differs when switching; CODE, a Mednafen comment: takes effect for the last cycle of CSL and CSH; not re-read", "UNKNOWN|switch timing and cost|no page; own choice (D-101)"]
+evidence = ["E2|tests/conformance/cases/spd_speed.toml: checks 2 to 8 (loop rate after CSH and CSL, repeated switch, old-speed charge), self-consistency (ER-3)", "E0|tests/conformance/cases/spd_speed_trace.toml: speed byte and charged time of the switching instructions, zero extra cycles asserted"]
+disagreement = "pcetech (report) says it is unknown whether a switch changes the cycle count; a Mednafen comment (code reading, recorded in research/PITFALLS.md C5, not re-read) says the change takes effect for the last cycle of CSL and CSH, which is the alternative last_cycle. The model charges all three at the old speed; the manual is silent."
+pinning_test = "TEST:spd_speed"
+updated = "2026-11-11"
+assumption = "One behaviour, so that every guest loop has one answer; a distinguishing observation would settle it and none exists. A changed constant or the last_cycle reading bumps DS_BEHAVIOUR_EPOCH. The pin shows the core does what the rule says (E2), not that hardware switches that way."
+revisit_phase = 3
+withheld = ["any claim of hardware cycle accuracy", "any claim of interrupt latency in cycles", "any claim of game compatibility", "any TG-16 or region claim", "any claim about when a speed switch takes effect or what it costs on hardware"]
+origin = "03-CONTEXT D-101"

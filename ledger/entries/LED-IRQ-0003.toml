@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# Timer edges (D-109; CPU-03). Modelling choices where no manual page speaks: not a hardware measurement. Constant row timer_hold_on_stop (1 holds the counter on a stop, 0 loads the reload value) in src/core/constants.def, read by src/core/timer.c and printed with this id in the run record.
+# The absence of a $7F window (a borrow loads the reload value at once) is implicit in the closed form of timer.c and is not a row (D-113). Checks 19, 21 to 23, 25 to 28 and 32 of tim_timer name this entry.
+# Evidence tier: the in-guest timer rows are E2 self-consistency (ER-3: they count steps with the community-reported CPU cycle length); timer_pure_function (LED-IRQ-0002) is the only E1-capable timer claim. Nothing is promoted here (only plan 03-32 may promote, and this entry is not one of the eight candidates).
+# Page images read on 2026-11-11 by the plan 03-34 executor from a scratch copy of the hardware manual (sha256 40a32e5d..., never committed): H8-14, H8-15, H8-20, H8-21.
+id = "LED-IRQ-0003"
+statement = "DuoSpool models the timer edges no page states as: a stop holds the counter, a write that repeats the state (1 while running, 0 while stopped) changes nothing, a borrow loads the reload value at once with no $7F window, a counter read takes bit 7 from io_buffer and $0C01 reads as $0C00, and every borrow sets TIQ even when masked. Modelling choices."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|H8-20 H8-21|gsd-executor image read 2026-11-11: reads return bits 6 to 0; a borrow sets TIQ and reloads; write 0 stops, resets prescaler; reload and counter invalid after reset", "FACT|H8-14 H8-15|gsd-executor image read 2026-11-11: TIQ set by a borrow, reset by a write; H8-14 makes the set conditional on I and TIQD", "UNKNOWN|hold, no-op, bit 7, $7F|no page"]
+evidence = ["E0|tests/conformance/cases/tim_timer.toml: checks 19, 21 to 23, 25 to 28, 32 in the guest; E2 self-consistency where they count steps", "E0|tests/conformance/cases/timer_pure_function.toml: the edges of the closed form equal a naive model"]
+disagreement = "ER-8 lists timer stop (hold or reload) and the $7F window as open; readings recorded here are only research/PITFALLS.md C5 (report: MAME history, stop then start reloads) and the Mesen $7F window named in 03-CONTEXT as deferred. TIQ latch when masked: LED-IRQ-0004 (H8-14 against H8-15, H8-21)."
+pinning_test = "TEST:tim_timer"
+updated = "2026-11-11"
+assumption = "Each edge is a modelling choice made so the authored fixture can run: hold on stop is a constant, the rest is in the closed form. The latch follows the unconditional reading of H8-15 and H8-21. The pin shows the core does what the rules say, not that hardware does. Power-up reload and counter are unspecified (H8-20): LED-PROF-0003."
+revisit_phase = 3
+withheld = ["any claim of hardware cycle accuracy", "any claim of interrupt latency in cycles", "any claim of game compatibility", "any TG-16 or region claim", "any claim of timer accuracy or CPU speed accuracy"]
+origin = "03-CONTEXT D-109"
