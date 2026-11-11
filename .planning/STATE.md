@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 3
 current_phase_name: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-current_plan: 15
+current_plan: 16
 status: planning
-stopped_at: Completed 03-10-PLAN.md
-last_updated: "2026-11-11T08:59:11.543Z"
+stopped_at: Completed 03-11-PLAN.md
+last_updated: "2026-11-11T09:20:06.991Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 2 complete, transitioned to Phase 3
-state_head: 2164d9d1b354b9a87a4fe6d3a2cb671e6273282b
+state_head: a1a194546c7a94daacdd45e667be1076a22ff2e6
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 72
-  completed_plans: 48
+  completed_plans: 49
   percent: 33
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 3 — HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-Current Plan: 15
+Current Plan: 16
 Total Plans in Phase: 38
 Status: Ready to execute
 Last activity: 2026-11-11 — Completed 03-04 (W1: optional case keys, guestkinds.c, authored fixture key, machine_time and stop on RESULT)
@@ -107,6 +107,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 03 P08 | 30min | 3 tasks | 22 files |
 | Phase 03 P09 | 70min | 3 tasks | 27 files |
 | Phase 03 P10 | 95min | 3 tasks | 32 files |
+| Phase 03 P11 | 85min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -201,6 +202,8 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-10: expect grammar id=N plus verdict, poison-t0, observe=IDX:VALUE and exclude=IDX items; observe-only rows via a fifth .checks column and CHECK_OBSERVE, NAME.observe from fixture-build
 - [Phase 03]: 03-10: insn sink header inside the sink struct (count, lost, seq), 24-byte records, drop-newest; run.memory_invalid refuses overlap, misalignment and wrap; the dev sink stays sink_unsupported until 03-19
 - [Phase 03]: 03-10: opcode_exercise defined set comes from ds_cpu_op_defined (oracle-checked table), mode=report until plan 03-14 switches it to require
+- [Phase 03]: 03-11: the default power-on policy list (zero, seeded-prng-v1 seed 42) lives in the guest kind; a ROM's DSV1 result and observed bytes must be identical across policies
+- [Phase 03]: 03-11: zero-page and stack wrap are MAN:S8-11 and MAN:H8-3; pointer-wrap forms are ASSUMED:LED-CPU-0010
 
 ### Pending Todos
 
@@ -224,6 +227,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-11T08:59:11.337Z
-Stopped at: Completed 03-10-PLAN.md
+Last session: 2026-11-11T09:20:06.767Z
+Stopped at: Completed 03-11-PLAN.md
 Resume file: None
