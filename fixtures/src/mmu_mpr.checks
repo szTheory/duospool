@@ -23,8 +23,8 @@ checks=60
 15	mpr-change-immediate	MAN:H8-7	A TAM takes effect for the next access: after MPR3 changes from $01 to $02 the same logical address shows bank $02
 16	two-slots-at-once	MAN:H8-7	MPR4 = $03 maps bank $03 at logical $8000 while MPR3 maps another bank at $6000
 17	bank0-two-views	GUEST:bank0-two-views	Bank 0 read through MPR3 at offset 0 is the byte that MPR7 (mapped to bank 0 by the reset) shows at $E000; the model is the byte read through MPR7 and kept in GEXP
-18	bank20-mirror	ASSUMED:LED-LOAD-0003	In a 256 KiB image bank $20 is a mirror of bank 0: its first byte is the $78 (SEI) of the reset code
-19	bank3f-mirror	ASSUMED:LED-LOAD-0003	In a 256 KiB image bank $3F is a mirror of bank $1F: its first byte is $1F
+18	mirror-rule-a	ASSUMED:LED-LOAD-0003	The first byte of one bank above bank $1F under the mirror rule of the image size: 256 KiB bank $20 mirrors bank 0 ($78, the SEI of the reset code), 384 KiB bank $40 is file bank 32 ($20), 1 MiB bank $20 is file bank $20 ($20)
+19	mirror-rule-b	ASSUMED:LED-LOAD-0003	The first byte of the last bank of the window or its mirror: 256 KiB bank $3F mirrors bank $1F ($1F), 384 KiB bank $7F is file bank 47 ($2F), 1 MiB bank $7F is file bank $7F ($7F)
 20	rom-write-ignored	ASSUMED:LED-CPU-0012	A byte stored through HuCard bank $01 is not kept: the tag byte $01 is still there
 21	tma-returns-stored	MAN:S8-101	TMA reads the mapping register that TAM wrote (S8-90, S8-101): $80, a bank number that maps nothing, is stored and read back unchanged
 22	psg-power-on-zero	ASSUMED:LED-CPU-0013	io_buffer is constant 0 at power-on under every policy: before any read or write in $0800-$17FF the PSG window, which reads io_buffer, returns $00

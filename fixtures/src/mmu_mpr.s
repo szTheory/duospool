@@ -4,9 +4,9 @@
 ; mmu_mpr.s - the memory map and the mapping registers seen from the guest (plan 03-16; D-102, D-103, D-104, D-124, D-125, D-127; H8-7, H8-8, H8-9, H8-24, S8-90, S8-101). It is assembled by ca65 in the gate and never committed as a binary.
 ; The guest maps a bank into the logical slots $6000 (MPR3) and $8000 (MPR4) and reads or writes through them, so every check is one translate and one class of the bus: unmapped banks, the 8 KiB work RAM mirrored four times,
 ; HuCard banks whose bytes this file writes itself (segment BANKS: the first byte of file bank k is k and the last byte is k xor $A5, so a bank, an offset and a mirror can each be told apart from the $FF of an unmapped read), and, from
-; check 22 on, the windows of the hardware page and the bus latch (io_buffer). ROMBANKS is the image size in banks (32 gives 256 KiB); the checks that name a mirror hold for the 256 KiB image only and plan 03-20 adds the 384 KiB and
-; 1 MiB literals by conditional assembly on ROMBANKS. Every check reads cells the fixture has written (D-127): RAM cells are written first, HuCard bytes are the BANKS data, and io_buffer is set by a write to the I/O window before every read that depends on it.
-; The classes: MAN rows follow a page (H8-7: the MPR byte supplies the physical address bits A13 to A20; S8-101: TMA reads what TAM stored), ASSUMED rows name the project's modelling assumption (the ledger entries are written by plan 03-20).
+; check 22 on, the windows of the hardware page and the bus latch (io_buffer). ROMBANKS is the image size in banks: 32 gives 256 KiB, 48 gives 384 KiB and 128 gives 1 MiB (plan 03-20; D-127), three images of this one source (scripts/fixture-build). The two checks that name a
+; mirror of the HuCard window (18 and 19) differ by image size and take their bank and literal from conditional assembly on ROMBANKS below; every other check is the same in the three images. Every check reads cells the fixture has written (D-127): RAM cells are written first, HuCard bytes are the BANKS data, and io_buffer is set by a write to the I/O window before every read that depends on it.
+; The classes: MAN rows follow a page (H8-7: the MPR byte supplies the physical address bits A13 to A20; S8-101: TMA reads what TAM stored), ASSUMED rows name the project's modelling assumption (the ledger entries LED-CPU-0011 to LED-CPU-0015 and LED-LOAD-0003).
 ; No HuC, PCEAS, emulator or cc65 library code.
         .setcpu "huc6280"
 
@@ -19,6 +19,29 @@ DSV_CHECKS = 60
 
 SL3 = $08                       ; the TAM and TMA operand of MPR3 (logical $6000-$7FFF)
 SL4 = $10                       ; MPR4 (logical $8000-$9FFF)
+
+; Checks 18 and 19 read the first byte of one bank through MPR3: the bank and the expected byte depend on the mirror rule of the image size (ASSUMED:LED-LOAD-0003, the rule text of the ledger; file bank k carries the tag k in its first byte for k = 1 to ROMBANKS - 1, and bank 0 starts with the SEI $78 of the reset code):
+;   256 KiB (32 banks):  file bank = b mod 32.   Bank $20 mirrors bank 0 ($78), bank $3F mirrors bank $1F ($1F).
+;   384 KiB (48 banks):  file bank = b and $1F below $40, $20 + (b and $0F) from $40.   Bank $40 is file bank 32 ($20), bank $7F is file bank $2F = 47, the last bank of the image ($2F).
+;   1 MiB (128 banks):   file bank = b.   Bank $20 is file bank $20 ($20), bank $7F is file bank $7F ($7F).
+        .if ROMBANKS = 32
+BANK18 = $20
+BYTE18 = $78
+BANK19 = $3F
+BYTE19 = $1F
+        .elseif ROMBANKS = 48
+BANK18 = $40
+BYTE18 = $20
+BANK19 = $7F
+BYTE19 = $2F
+        .elseif ROMBANKS = 128
+BANK18 = $20
+BYTE18 = $20
+BANK19 = $7F
+BYTE19 = $7F
+        .else
+        .error "mmu_mpr.s: no literals for this ROMBANKS (32, 48 and 128 are the three images)"
+        .endif
 
         CHECK_TABLE DSV_CHECKS
         LIT 1, $FF              ; SELFTEST-TARGET
@@ -38,8 +61,8 @@ SL4 = $10                       ; MPR4 (logical $8000-$9FFF)
         LIT 15, $02
         LIT 16, $03
         LIT 17, $00
-        LIT 18, $78
-        LIT 19, $1F
+        LIT 18, BYTE18
+        LIT 19, BYTE19
         LIT 20, $01
         LIT 21, $80
         LIT 22, $00
@@ -171,11 +194,11 @@ fixture_main:
         MAP SL3, $00
         lda a:$6000                     ; check 17 GUEST:bank0-two-views: bank 0 through MPR3 shows the byte that MPR7 shows at $E000
         CHECK_GUEST 17
-        MAP SL3, $20
-        lda a:$6000                     ; check 18 ASSUMED:LED-LOAD-0003: in a 256 KiB image bank $20 is a mirror of bank 0: its first byte is the SEI opcode $78 of the reset code
+        MAP SL3, BANK18
+        lda a:$6000                     ; check 18 ASSUMED:LED-LOAD-0003: the first byte of bank BANK18 under the mirror rule of this image size: 256 KiB bank $20 mirrors bank 0 (the SEI opcode $78 of the reset code), 384 KiB bank $40 is file bank 32 ($20), 1 MiB bank $20 is file bank $20 ($20)
         CHECK_LIT 18
-        MAP SL3, $3F
-        lda a:$6000                     ; check 19 ASSUMED:LED-LOAD-0003: bank $3F mirrors bank $1F of the 256 KiB image
+        MAP SL3, BANK19
+        lda a:$6000                     ; check 19 ASSUMED:LED-LOAD-0003: the first byte of bank BANK19: 256 KiB bank $3F mirrors bank $1F ($1F), 384 KiB bank $7F is file bank 47 ($2F), 1 MiB bank $7F is file bank $7F ($7F)
         CHECK_LIT 19
         MAP SL3, $01
         lda #$5C

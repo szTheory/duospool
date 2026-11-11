@@ -6,8 +6,8 @@
 # usage: fixture-build [--src DIR] [--out DIR]     (--src defaults to fixtures/src, --out to build/gate; run from the repository root or anywhere)
 #   For every SRC/*.s: ca65 --cpu huc6280 -D ROMBANKS=32 -I fixtures/lib into OUT/fx/STEM.o, then ld65 -C fixtures/lib/hucard.cfg -D ROMBANKS=32
 #   into OUT/fixtures/NAME.pce, where NAME is the stem with every underscore turned into a hyphen (a used-list name has no underscore, F2).
-#   A variants list (STEM NAME FLAGS lines, in this script) adds one more image per line from the same source with extra ca65 flags, for the
-#   protocol controls of ds_proto (plan 03-05). Every image is hashed and measured with host tools only (the SHA-256 tool the gate picks,
+#   A variants list (STEM NAME ROMBANKS FLAGS lines, in this script) adds one more image per line from the same source with its own ROMBANKS (given to both tools, so the image is ROMBANKS * 8 KiB) and extra ca65 flags: the
+#   protocol controls of ds_proto (plan 03-05, 32 banks) and the 384 KiB and 1 MiB images of mmu_mpr (plan 03-20, 48 and 128 banks). Every image is hashed and measured with host tools only (the SHA-256 tool the gate picks,
 #   wc -c) and one line  NAME SIZE SHA256  per image is written to OUT/fixtures-authored.used. That second file belongs to this script alone:
 #   the synthetic list OUT/fixtures.used stays with the fixtures mode of conformance-run (F3). Everything this script makes is removed first, so a stale image is never read.
 #   Beside every image it writes OUT/fixtures/NAME.observe, the observe rows of the fixture's .checks file (write_observe below; plan 03-10).
@@ -42,12 +42,15 @@ usage() {
   exit 2
 }
 
-# the variants list: STEM NAME FLAGS, one image per line, built from fixtures/src/STEM.s with the extra ca65 flags (plan 03-05, D-124). NAME is a-z 0-9 and hyphens
-# (F2); a stem with no line here has only its own image. The four ds-proto variants are the DSV1 protocol controls (see fixtures/lib/verdict.inc).
-variants='ds_proto ds-proto-predone -D DSV_PREDONE
-ds_proto ds-proto-nodone -D DSV_NODONE
-ds_proto ds-proto-badsum -D DSV_BADSUM
-ds_proto ds-proto-wrongid -D DSV_WRONGID'
+# the variants list: STEM NAME ROMBANKS FLAGS, one image per line, built from fixtures/src/STEM.s with its own ROMBANKS and the extra ca65 flags (plan 03-05, D-124; the ROMBANKS column is plan 03-20, D-127). NAME is a-z 0-9 and hyphens
+# (F2) and ROMBANKS a number of 8 KiB banks; a stem with no line here has only its own image (32 banks). The four ds-proto variants are the DSV1 protocol controls (see fixtures/lib/verdict.inc); the two mmu-mpr variants are the
+# 384 KiB and 1 MiB images of the memory-map fixture, whose literals that differ by image size come from conditional assembly on ROMBANKS in the one source.
+variants='ds_proto ds-proto-predone 32 -D DSV_PREDONE
+ds_proto ds-proto-nodone 32 -D DSV_NODONE
+ds_proto ds-proto-badsum 32 -D DSV_BADSUM
+ds_proto ds-proto-wrongid 32 -D DSV_WRONGID
+mmu_mpr mmu-mpr-384k 48
+mmu_mpr mmu-mpr-1m 128'
 
 src=$root/fixtures/src
 out=$root/build/gate
@@ -95,13 +98,14 @@ write_observe() {
   fi
 }
 
-# build_one STEM NAME [ca65 flags...]: assemble SRC/STEM.s and link it into OUT/fixtures/NAME.pce, then hash and measure the image and append its used-list line
+# build_one STEM NAME ROMBANKS [ca65 flags...]: assemble SRC/STEM.s with ROMBANKS banks and link it into OUT/fixtures/NAME.pce, then hash and measure the image and append its used-list line
 build_one() {
   b_stem=$1
   b_name=$2
-  shift 2
-  if ca65 --cpu huc6280 -D ROMBANKS=32 "$@" -I "$lib" -o "$out/fx/$b_name.o" "$src/$b_stem.s" > "$out/fx/$b_name.log" 2>&1 \
-    && ld65 -C "$lib/hucard.cfg" -D ROMBANKS=32 -o "$out/fixtures/$b_name.pce" "$out/fx/$b_name.o" >> "$out/fx/$b_name.log" 2>&1; then
+  b_banks=$3
+  shift 3
+  if ca65 --cpu huc6280 -D ROMBANKS="$b_banks" "$@" -I "$lib" -o "$out/fx/$b_name.o" "$src/$b_stem.s" > "$out/fx/$b_name.log" 2>&1 \
+    && ld65 -C "$lib/hucard.cfg" -D ROMBANKS="$b_banks" -o "$out/fixtures/$b_name.pce" "$out/fx/$b_name.o" >> "$out/fx/$b_name.log" 2>&1; then
     :
   else
     cat "$out/fx/$b_name.log"
@@ -130,15 +134,18 @@ for s in "$src"/*.s; do
     '' | *[!a-z0-9_]*) echo "HARNESS_ERROR the fixture source name '$stem' is outside a-z 0-9 _" >&2; exit 2 ;;
   esac
   name=$(printf '%s' "$stem" | tr '_' '-')
-  build_one "$stem" "$name"
+  build_one "$stem" "$name" 32
   # the variants of this source: one image per line of the list, built from the same source with the -D switches of that line
-  while read -r v_stem v_name v_flags; do
+  while read -r v_stem v_name v_banks v_flags; do
     [ "$v_stem" = "$stem" ] || continue
     case $v_name in
       '' | *[!a-z0-9-]*) echo "HARNESS_ERROR the variant name '$v_name' is outside a-z 0-9 -" >&2; exit 2 ;;
     esac
+    case $v_banks in
+      '' | *[!0-9]*) echo "HARNESS_ERROR the ROMBANKS '$v_banks' of the variant '$v_name' is not a number" >&2; exit 2 ;;
+    esac
     # shellcheck disable=SC2086
-    build_one "$stem" "$v_name" $v_flags
+    build_one "$stem" "$v_name" "$v_banks" $v_flags
   done <<VARIANTS
 $variants
 VARIANTS

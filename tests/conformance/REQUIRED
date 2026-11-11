@@ -143,6 +143,11 @@ cyc_probe
 mutate_sweep_cyc_probe
 cycle_adders_manual
 mmu_mpr_256k
+mmu_mpr_384k
+mmu_mpr_1m
+mutate_sweep_mmu_mpr
+mutate_sweep_mmu_mpr_384k
+mutate_sweep_mmu_mpr_1m
 vdc_penalty_assumed
 mmu_mpr_tma_zero_latch
 mmu_mpr_tma_zero_keep
@@ -158,3 +163,5 @@ record_model_bound
 record_run_shown
 record_constants_shown
 bankclass_oracle
+st_bypass
+mutate_sweep_st_bypass

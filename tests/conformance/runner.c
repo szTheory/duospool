@@ -994,6 +994,7 @@ static const struct {
     {"hash_literal", kind_hash_literal, 0},
     {"banksig", kind_banksig, 0},
     {"bankclass_oracle", kind_bankclass_oracle, 0},
+    {"st_bypass", kind_st_bypass, 0},
     {"unmapped", kind_unmapped, 0},
     {"alloc_zero", kind_alloc_zero, 0},
     {"precedence", kind_precedence, 0},

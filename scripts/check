@@ -2285,6 +2285,68 @@ selftest() {
     fi
   fi
 
+  # (st bypass) a wrong literal of the st_bypass case must turn it red (plan 03-20; D-106, ER-7). A scratch mini-root holds a copy of fixture-build, of st_bypass.s and its .checks, of the linker config, of the three fixture library files and
+  # of the case st_bypass. The unmutated copy is built and judged first and must give RESULT st_bypass pass (so the later red cannot come from a broken build); then the one item st=0x1FE002:0xB2 of the case is changed to the wrong value 0xB5 (exit 2
+  # unless the item is found exactly once, so a rewrite of the case cannot make this vacuous) and the same runner must give guest_failure and name the value of that store. Nothing is written under fixtures/ or build/gate/fixtures/: the runner runs
+  # with the mini-root as its working directory, and the kind reads its image from build/gate/fixtures/ there.
+  if st_want mutation-st-bypass-literal; then
+    st_ran=1
+    sb="$tmp/selftest/st-bypass-literal"
+    sb_ok=1
+    sb_why=""
+    rm -rf "$sb"
+    mkdir -p "$sb/scripts" "$sb/fixtures/src" "$sb/fixtures/lib" "$sb/cases" "$sb/ev"
+    cp "$here/fixture-build" "$sb/scripts/"
+    cp fixtures/src/st_bypass.s fixtures/src/st_bypass.checks "$sb/fixtures/src/"
+    cp fixtures/lib/hucard.cfg fixtures/lib/startup.inc fixtures/lib/verdict.inc fixtures/lib/check.inc "$sb/fixtures/lib/"
+    cp tests/conformance/cases/st_bypass.toml "$sb/cases/"
+    sb_n=$(grep -o 'st=0x1FE002:0xB2' tests/conformance/cases/st_bypass.toml | wc -l | tr -d ' ')
+    if [ "$sb_n" -ne 1 ]; then
+      echo "HARNESS_ERROR mutation-st-bypass-literal: the case st_bypass must carry the item st=0x1FE002:0xB2 exactly once (found $sb_n)"
+      exit 2
+    fi
+    if cmake --preset gate > "$tmp/sb.build" 2>&1 && cmake --build --preset gate >> "$tmp/sb.build" 2>&1; then :; else
+      cat "$tmp/sb.build"
+      echo "HARNESS_ERROR mutation-st-bypass-literal: the gate preset does not build"
+      exit 2
+    fi
+    if sh "$here/conformance-flatten" "$sb/cases" > "$sb/cases.tsv" 2> "$tmp/st.err"; then :; else sb_ok=0; sb_why="cannot flatten the scratch case"; fi
+    if [ "$sb_ok" -eq 1 ]; then
+      if (cd "$sb" && sh scripts/fixture-build > fb0.out 2>&1); then :; else
+        if grep -q '^PREFLIGHT_MISSING' "$sb/fb0.out"; then cat "$sb/fb0.out"; echo "HARNESS_ERROR mutation-st-bypass-literal: ca65 or ld65 is missing"; exit 2; fi
+        sb_ok=0
+        sb_why="the scratch fixture does not build"
+      fi
+    fi
+    if [ "$sb_ok" -eq 1 ]; then
+      (cd "$sb" && "$root/build/gate/ds_runner" --cases cases.tsv --evidence-dir ev > before.txt 2> before.err) || true
+      if ! awk '$1 == "RESULT" && $2 == "st_bypass" && $3 == "pass" { f = 1 } END { exit !f }' "$sb/before.txt"; then
+        sb_ok=0
+        sb_why="st_bypass does not pass on the unmutated scratch copy"
+      fi
+    fi
+    if [ "$sb_ok" -eq 1 ]; then
+      sed 's/st=0x1FE002:0xB2/st=0x1FE002:0xB5/' "$sb/cases/st_bypass.toml" > "$sb/cases/st_bypass.mutated"
+      mv "$sb/cases/st_bypass.mutated" "$sb/cases/st_bypass.toml"
+      if sh "$here/conformance-flatten" "$sb/cases" > "$sb/cases.tsv" 2> "$tmp/st.err"; then :; else sb_ok=0; sb_why="cannot flatten the mutated scratch case"; fi
+    fi
+    if [ "$sb_ok" -eq 1 ]; then
+      (cd "$sb" && "$root/build/gate/ds_runner" --cases cases.tsv --evidence-dir ev > after.txt 2> after.err) || true
+      if ! awk '$1 == "RESULT" && $2 == "st_bypass" && $3 == "guest_failure" { f = 1 } END { exit !f }' "$sb/after.txt"; then
+        sb_ok=0
+        sb_why="st_bypass is not guest_failure with one wrong value"
+      elif ! grep -Fq 'store 5: the value is not B5' "$sb/after.err"; then
+        sb_ok=0
+        sb_why="the failing assertion is not the value of store 5"
+      fi
+    fi
+    if [ "$sb_ok" -eq 1 ]; then
+      echo "SELFTEST mutation-st-bypass-literal PASS"
+    else
+      echo "SELFTEST mutation-st-bypass-literal FAIL ($sb_why)"; failed=1
+    fi
+  fi
+
   # (bank class) a reworded ledger clause must stop the bank-class oracle, and a wrong oracle row must turn its case red (plan 03-20; D-103, ER-7, T-03-54). A scratch directory holds a copy of ledger/entries/LED-CPU-0011.toml and a copy
   # with the one clause "banks 0x80-0xF7 unmapped" changed to "banks 0x80-0xF6 unmapped" (the Develo-book reading; exit 2 unless the clause is found exactly once, so a rewrite of the statement cannot make this vacuous). The oracle on the
   # unmutated copy must print 256 rows and exit 0 (so the later red cannot come from a broken script); on the mutated copy it must exit 1, print ORACLE_RULE_TEXT_DRIFT on stderr and print no row. Then the case bankclass_oracle is run with

@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The ST0, ST1 and ST2 bypass under four settings of MPR0 (plan 03-20; D-106, D-107, ER-7, ASSUMED LED-CPU-0016 and LED-CPU-0017): kind st_bypass runs the authored fixture fixtures/src/st_bypass.s with a device-register sink. The fixture executes the three stores
+# four times, each with distinct immediates and with MPR0 mapped to work RAM, to a HuCard bank, to a bank that maps nothing and to the hardware page; the hardware manual says the stores drive the VDC chip enable with A1 and A0 forced to 00, 10 and 11, whatever the mapping registers
+# hold (H8-8 Table 2-2-3; S8-80 to S8-82), so the physical addresses are $1FE000, $1FE002 and $1FE003. The twelve st= items are those addresses, in the order of the source, with the immediates written in the fixture ($A1 $A2 $A3, $B1 $B2 $B3, $C1 $C2 $C3, $D1 $D2 $D3);
+# they come from the fixture source and the page, never from a DuoSpool run. The runner requires the dev log to hold exactly these twelve records (kind ST, the penalty and physical flags, spare bytes zero, stamps strictly increasing), and the guest verdict to pass: its five checks
+# show that no store reached the work RAM in any setting, and in the first that RAM[0] read through MPR0 itself is unchanged. The penalty flag is the labelled assumption of D-107 (LED-CPU-0017), not a page fact. Evidence tier E0 (the core against literals written in the fixture
+# and the case; scripts/check --selftest mutation-st-bypass-literal shows that one wrong value turns it red): no accuracy or compatibility claim, and the word pass is not a support claim.
+id = "st_bypass"
+kind = "st_bypass"
+fixture = "none"
+request = ""
+expect = "id=9;rom=st-bypass;st=0x1FE000:0xA1;st=0x1FE002:0xA2;st=0x1FE003:0xA3;st=0x1FE000:0xB1;st=0x1FE002:0xB2;st=0x1FE003:0xB3;st=0x1FE000:0xC1;st=0x1FE002:0xC2;st=0x1FE003:0xC3;st=0x1FE000:0xD1;st=0x1FE002:0xD2;st=0x1FE003:0xD3"
+meaning = "ST0, ST1 and ST2 with MPR0 mapped to work RAM, a HuCard bank, an unmapped bank and the hardware page each write the immediate to physical $1FE000, $1FE002 and $1FE003 and never reach the work RAM"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+checks = 5

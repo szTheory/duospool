@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Mutation sweep of the mmu_mpr fixture, 384 KiB image (plan 03-20; D-126, D-127, ER-7, FIX-03): the built image of fixtures/src/mmu_mpr.s (mmu-mpr-384k) is loaded once, its DCK1 literal table is found at file offset $1000, and for each of the 60 checks that is not
+# an observe row the value byte of its entry is XORed with $FF in a fresh in-memory copy that is booted and run in this same process. The unmutated image must pass first. Each mutation must flip exactly its own check to $46 and leave the others $50: a check whose
+# literal can be changed without flipping it is vacuous and the case is guest_failure. Checks 49, 59 and 60 are the observe-only rows of the TMA #0 edge (plan 03-17): their value depends on the model parameter tma_zero, the guest only stores the byte it saw, and the
+# case that runs the ROM judges it, so exclude=49,59,60 must equal the observe rows that scripts/fixture-build lists for this image (a sweep that skips more or fewer is harness_failure). So 57 literals are swept. The literals of checks 18 and 19 of this image come from the 384 KiB mirror rule, so a table of its own is swept here.
+# The sweep runs under the default power-on policy only. Evidence tier E0 (a mechanism check of the checks themselves): no accuracy or compatibility claim.
+id = "mutate_sweep_mmu_mpr_384k"
+kind = "mutate_sweep"
+fixture = "authored:mmu-mpr-384k"
+request = ""
+expect = "id=8;exclude=49,59,60"
+meaning = "Changing the expected literal of any one of the 57 non-observe checks of the 384 KiB mmu_mpr image flips exactly that check to fail and no other, so none of those 57 checks is vacuous"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+checks = 60
