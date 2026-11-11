@@ -73,7 +73,9 @@ fi
 # the scanner: one awk program, two modes. It first removes comments (block and line) and, in mode flt, the contents of string and
 # character literals, keeping the line count, so prose such as the words double quote in a comment cannot trigger a rule.
 #   mode inc : print LINE<TAB>OPERAND for every include directive that the include rule does not allow
-#   mode flt : print LINE<TAB>TOKEN for every float or double token
+#   mode flt : print LINE<TAB>TOKEN for every floating-point type name (float, double, _FloatN, _DecimalN, __fp16, __bf16, __float128, _Complex)
+#              and, on a line that holds none, for the first floating constant (a pp-number with a decimal point or an exponent, or a hex
+#              float; a hex integer such as 0x1e3 is not one) in the comment- and literal-stripped source (WR-03, D-54, CORE-02)
 cat > "$tmp/scan.awk" <<'AWK_END'
 function strip(line, blank,    out, n, i, c, d, instr) {
   out = ""
@@ -126,6 +128,21 @@ function inc_bad(s,    t, w, rest, c, cq, k, name) {
   if (name ~ /^ds_[A-Za-z0-9_]+\.h$/ || name ~ /^[A-Za-z0-9_]+\.def$/) return ""
   return "\"" name "\""
 }
+# fnum(s) : the first floating constant of s, or "". The line is walked pp-number by pp-number: a pp-number starts at a digit, or a point and a
+# digit, that follows a character that cannot continue an identifier or a number, and runs over letters, digits, points and the sign of an
+# e/E/p/P exponent. A 0x number is a float only with a point or a p exponent (its e is a digit); any other number only with a point or an e.
+function fnum(s,    rest, t, isf) {
+  rest = " " s
+  while (match(rest, /[^A-Za-z0-9_]\.?[0-9]/)) {
+    rest = substr(rest, RSTART + 1)
+    match(rest, /^\.?[0-9]([eEpP][-+]|[A-Za-z0-9_.])*/)
+    t = substr(rest, 1, RLENGTH)
+    if (t ~ /^0[xX]/) isf = (t ~ /[.pP]/); else isf = (t ~ /[.eE]/)
+    if (isf) return t
+    rest = " " substr(rest, RLENGTH + 1)
+  }
+  return ""
+}
 BEGIN { inblock = 0 }
 {
   out = strip($0, mode == "flt")
@@ -133,10 +150,13 @@ BEGIN { inblock = 0 }
     d = inc_bad(out)
     if (d != "") { gsub(/\t/, " ", d); printf "%d\t%s\n", NR, d }
   } else if (mode == "flt") {
-    if (match(out, /(^|[^A-Za-z0-9_])(float|double)([^A-Za-z0-9_]|$)/)) {
+    if (match(out, /(^|[^A-Za-z0-9_])(float|double|_Float[0-9]+x?|_Decimal[0-9]+x?|__fp16|__bf16|__float128|_Complex|__complex__)([^A-Za-z0-9_]|$)/)) {
       t = substr(out, RSTART, RLENGTH)
-      gsub(/[^a-z]/, "", t)
+      gsub(/[^A-Za-z0-9_]/, "", t)
       printf "%d\t%s\n", NR, t
+    } else {
+      t = fnum(out)
+      if (t != "") printf "%d\t%s\n", NR, t
     }
   }
 }
