@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# cpu_flow.checks - one row per CHECK of fixtures/src/cpu_flow.s (D-125, plan 03-13). Columns separated by one TAB: check index (1-based, the entry number of the DCK1 table), slug, class tag, meaning.
+# Class tags: MAN:<page> (the literal is a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model> (the expected byte is computed in the guest from an assembler label or a saved register, the table entry is an XOR mask of $00),
+# ASSUMED:<LED-id> (the literal is DuoSpool's own model, an assumption: the T bit pushed by BRK and the T load of RTI; the ledger entry LED-CPU-0009 is written in a later plan and carries both readings).
+# A branch row reads a marker: the path that is reached writes $01 (fall through) or $02 (target). P read through PHP then PLA is masked ($C3 for N V Z C, $CF to include D and I): B and T are not part of the literal.
+# No row asserts a cycle count or the page-cross penalty of a taken branch (LED-CPU-0010 assumption). A pass is not a support claim (ER-4).
+id=5
+checks=8
+1	beq-taken	MAN:S8-24	BEQ branches when Z is 1: P = Z only (N, V, C clear), the target path is reached (marker $02)
+2	beq-not-taken	MAN:S8-24	BEQ does not branch when Z is 0: P = N V C set, Z clear, the fall-through path runs (marker $01)
+3	bne-taken	MAN:S8-27	BNE branches when Z is 0: P = N V C set, Z clear, the target path is reached (marker $02)
+4	bne-not-taken	MAN:S8-27	BNE does not branch when Z is 1: P = Z only, the fall-through path runs (marker $01)
+5	jsr-pushed-pcl	GUEST:jsr-site-plus-2	JSR pushes the address of its last byte (the JSR address plus 2), PCH first then PCL (S8-52): the subroutine reads the pushed low byte from the stack page, the expected byte is computed from the assembler label of the JSR
+6	jsr-pushed-pch	GUEST:jsr-site-plus-2	JSR pushes PCH first (at the higher stack address) then PCL (S8-52): the pushed high byte read from the stack page is the high byte of the JSR address plus 2
+7	rts-next-instruction	MAN:S8-71	RTS pulls PCL then PCH and adds 1 (S8-71), so the instruction after the JSR runs exactly once: Y is $00 before the JSR and one INY follows it
+8	rts-s-balance	GUEST:s-before-equals-s-after	JSR and RTS leave S as it was (two pushes, two pulls, S8-52, S8-71): S after the return equals the S saved before the JSR

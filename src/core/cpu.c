@@ -723,7 +723,7 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
             logic_op(inst, mn, t_active, v);
         }
         break;
-    case MN_BNE:
+    case MN_BNE: /* the eight conditional branches (S8-22 to S8-28, S8-32, S8-33): taken when the flag is in the named state; no flag changes */
         taken = ((uint32_t)inst->p & P_Z) == 0u;
         break;
     case MN_BEQ:
@@ -731,6 +731,21 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
         break;
     case MN_BVS:
         taken = ((uint32_t)inst->p & P_V) != 0u;
+        break;
+    case MN_BVC:
+        taken = ((uint32_t)inst->p & P_V) == 0u;
+        break;
+    case MN_BPL:
+        taken = ((uint32_t)inst->p & P_N) == 0u;
+        break;
+    case MN_BMI:
+        taken = ((uint32_t)inst->p & P_N) != 0u;
+        break;
+    case MN_BCC:
+        taken = ((uint32_t)inst->p & P_C) == 0u;
+        break;
+    case MN_BCS:
+        taken = ((uint32_t)inst->p & P_C) != 0u;
         break;
     case MN_BRA: /* the table's 4 cycles already include the branch: no adder (S8-29) */
         taken = 1;
@@ -778,7 +793,7 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
         break;
     case MN_BBR0: case MN_BBR1: case MN_BBR2: case MN_BBR3: case MN_BBR4: case MN_BBR5: case MN_BBR6: case MN_BBR7:
     case MN_BBS0: case MN_BBS1: case MN_BBS2: case MN_BBS3: case MN_BBS4: case MN_BBS5: case MN_BBS6: case MN_BBS7:
-    case MN_BCC: case MN_BCS: case MN_BMI: case MN_BPL: case MN_BVC: case MN_BRK: case MN_BSR: case MN_RTI: case MN_NOP:
+    case MN_BRK: case MN_BSR: case MN_RTI: case MN_NOP:
     case MN_CLI:
         break; /* plan 03-13: flow, CLI, BRK and RTI (SEC, SED and CLV are done in plan 03-12) */
     case MN_RMB0: case MN_RMB1: case MN_RMB2: case MN_RMB3: case MN_RMB4: case MN_RMB5: case MN_RMB6: case MN_RMB7:

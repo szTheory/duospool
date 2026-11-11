@@ -129,3 +129,4 @@ cpu_ldst
 mutate_sweep_cpu_ldst
 cpu_alu
 mutate_sweep_cpu_alu
+cpu_flow
