@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT OR Apache-2.0 */
 /* SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors */
 /*
- * serial.c - the canonical state stream, the state digest and the profile identity hash (CORE-01, PROF-03; D-52, D-27, D-83).
+ * serial.c - the canonical state stream, the state digest and the profile identity hash (CORE-01, PROF-03; D-52, D-27, D-83, D-121).
  * The digest is SHA-256 over a framed stream, never over the bytes of a struct (padding, pointers and layout would leak in, and a
  * field could be added to the struct and silently missed). The stream is the prefix "duospool-state" and a NUL byte, the serializer
  * version as a u32, and then the regions of the table below in order, each framed as its four-byte ASCII tag, a u32 payload length and
@@ -30,6 +30,20 @@ struct writer {
 static void w_bytes(struct writer *w, const uint8_t *p, size_t n)
 {
     w->sink(w->ctx, p, n);
+}
+
+static void w_u8(struct writer *w, uint8_t v)
+{
+    w_bytes(w, &v, 1u);
+}
+
+static void w_u16(struct writer *w, uint16_t v)
+{
+    uint8_t b[2];
+
+    b[0] = (uint8_t)(v & 0xffu);
+    b[1] = (uint8_t)((v >> 8) & 0xffu);
+    w_bytes(w, b, sizeof b);
 }
 
 static void w_u32(struct writer *w, uint32_t v)
@@ -117,7 +131,7 @@ void ds_profile_hash(const struct ds_profile *profile, uint8_t out[DS_DIGEST_BYT
 
 /* ---- the region table ---- */
 
-enum region_id { R_PROF, R_CONT, R_POWR, R_TIME, R_RAM8, R_MPRS, R_PSGN, R_VDCP, R_COUNT };
+enum region_id { R_PROF, R_CONT, R_POWR, R_TIME, R_RAM8, R_MPRS, R_CPU0, R_COUNT };
 
 struct region {
     char tag[5];            /* four ASCII bytes and a NUL, which is not written */
@@ -132,6 +146,14 @@ _Static_assert(offsetof(struct ds_instance, has_seed) == offsetof(struct ds_inst
 _Static_assert(offsetof(struct ds_instance, powerup_seed) == offsetof(struct ds_instance, has_seed) + sizeof(uint32_t),
                "has_seed and powerup_seed are not adjacent");
 
+/* the CPU registers are neighbours in the instance (pc, a, x, y, s, p, speed, no padding): the accessor spans them as one live range of eight bytes */
+_Static_assert(offsetof(struct ds_instance, a) == offsetof(struct ds_instance, pc) + sizeof(uint16_t), "pc and a are not adjacent");
+_Static_assert(offsetof(struct ds_instance, x) == offsetof(struct ds_instance, a) + 1u, "a and x are not adjacent");
+_Static_assert(offsetof(struct ds_instance, y) == offsetof(struct ds_instance, x) + 1u, "x and y are not adjacent");
+_Static_assert(offsetof(struct ds_instance, s) == offsetof(struct ds_instance, y) + 1u, "y and s are not adjacent");
+_Static_assert(offsetof(struct ds_instance, p) == offsetof(struct ds_instance, s) + 1u, "s and p are not adjacent");
+_Static_assert(offsetof(struct ds_instance, speed) == offsetof(struct ds_instance, p) + 1u, "p and speed are not adjacent");
+
 static const struct region regions[R_COUNT] = {
     [R_PROF] = {"PROF", DS_DIGEST_BYTES, offsetof(struct ds_instance, profile), sizeof(struct ds_profile)},
     [R_CONT] = {"CONT", DS_CONTENT_ID_BYTES + 4u + 4u, offsetof(struct ds_instance, content_id), DS_CONTENT_ID_BYTES},
@@ -140,8 +162,7 @@ static const struct region regions[R_COUNT] = {
     [R_TIME] = {"TIME", 8u, offsetof(struct ds_instance, machine_time), sizeof(uint64_t)},
     [R_RAM8] = {"RAM8", DS_RAM8K_BYTES, offsetof(struct ds_instance, ram8k), DS_RAM8K_BYTES},
     [R_MPRS] = {"MPRS", DS_MPR_COUNT, offsetof(struct ds_instance, mpr), DS_MPR_COUNT},
-    [R_PSGN] = {"PSGN", 4u, offsetof(struct ds_instance, psg_noise), sizeof(uint32_t)},
-    [R_VDCP] = {"VDCP", 4u, offsetof(struct ds_instance, vdc_phase), sizeof(uint32_t)},
+    [R_CPU0] = {"CPU0", 8u, offsetof(struct ds_instance, pc), offsetof(struct ds_instance, speed) + 1u - offsetof(struct ds_instance, pc)},
 };
 
 /* the payload of one region: exactly regions[index].payload_len bytes, one explicit field per call, never a struct */
@@ -174,11 +195,14 @@ static void emit_payload(struct writer *w, const struct ds_instance *inst, uint3
     case R_MPRS:
         w_bytes(w, inst->mpr, DS_MPR_COUNT);
         break;
-    case R_PSGN:
-        w_u32(w, inst->psg_noise);
-        break;
-    case R_VDCP:
-        w_u32(w, inst->vdc_phase);
+    case R_CPU0: /* the stream order is a x y s p pc speed, one explicit field per line; pc is a u16 little-endian; B is never stored */
+        w_u8(w, inst->a);
+        w_u8(w, inst->x);
+        w_u8(w, inst->y);
+        w_u8(w, inst->s);
+        w_u8(w, inst->p);
+        w_u16(w, inst->pc);
+        w_u8(w, inst->speed);
         break;
     default:
         break;

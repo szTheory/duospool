@@ -2,18 +2,21 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
 # The state digest is SHA-256 of a framed stream, never of struct bytes (D-52). The kind captures the stream with ds_digest_stream and parses it
-# here without calling ds_digest: the prefix duospool-state and a NUL byte, the serializer version 1, then eight regions each framed as four
-# ASCII tag bytes, a u32 length and the payload, little-endian, in the fixed order PROF CONT POWR TIME RAM8 MPRS PSGN VDCP. Each payload is
+# here without calling ds_digest: the prefix duospool-state and a NUL byte, the serializer version 2, then seven regions each framed as four
+# ASCII tag bytes, a u32 length and the payload, little-endian, in the fixed order PROF CONT POWR TIME RAM8 MPRS CPU0 (plan 03-03, D-121; PSGN and VDCP left the stream; CPU0 is a x y s p, pc as a u16, speed). Each payload is
 # checked against the booted instance, the stream must be consumed exactly, and the SHA-256 of the captured stream must equal ds_digest and the
 # literal below. The literal comes from a throwaway perl script outside the repo (Digest::SHA and Math::BigInt) that wrote the stream of the
 # written rules for a seed-42 boot of plain-256k: the content sha256 is the host shasum of the emitted recipe, the RAM and registers are the
-# splitmix literals of poweron_draw_order. Evidence tier E0: it pins the encoding and shows repeatability, never that the state is right.
+# splitmix literals of poweron_draw_order, and the CPU0 bytes are the reset state written in the plan 03-01 rules (a x y s 0, p = the I bit,
+# speed 0, pc = the reset vector at file bank 0 offsets 8190 and 8191 of the recipe image). The literal was recomputed for serial version 2 by
+# that method, and the stream file it wrote hashes to the same value under shasum -a 256. Evidence tier E0: it pins the encoding and shows
+# repeatability, never that the state is right.
 id = "digest_stream_prefix"
 kind = "digest_stream"
 fixture = "plain-256k"
 request = "bind.powerup_policy=seeded-prng-v1;seed=42"
-expect = "version=1;frames=PROF:32,CONT:40,POWR:16,TIME:8,RAM8:8192,MPRS:8,PSGN:4,VDCP:4;size=262144;enum=1;digest=dc79ac5d3db1b32f0f1108b15e7a8396a3a4dec071967744e6cdd3f911aea2c5"
-meaning = "The digest stream is the framed, little-endian stream of eight regions behind the prefix and version, its payloads match the instance, and ds_digest is the SHA-256 of exactly that stream and of the independently derived literal"
+expect = "version=2;frames=PROF:32,CONT:40,POWR:16,TIME:8,RAM8:8192,MPRS:8,CPU0:8;size=262144;enum=1;digest=eddf37b13d4847f56d5a311a03a45d270e608cf18257f762cdfc2013dca3e678"
+meaning = "The digest stream is the framed, little-endian stream of seven regions behind the prefix and version, its payloads match the instance, and ds_digest is the SHA-256 of exactly that stream and of the independently derived literal"
 required = true
 control = false
 expect_outcome = "pass"

@@ -4,7 +4,9 @@
 # E0 repeatability record (D-53): a 384 KiB synthetic image booted under the seeded-prng-v1 power-on policy with seed 42.
 # It shows that the same inputs print the same bytes. It does not show that the machine behaviour is right. Machine time counts placeholder
 # cycles and the power-on values are modelling assumptions (LED-PROF-0002); the profile, content and digest hashes were recomputed with the host
-# sha tool over streams rebuilt without the C code. The runner skips this comment block and compares the rest byte for byte.
+# sha tool over streams rebuilt without the C code. The digest line was recomputed for serial version 2 (regions PROF CONT POWR TIME RAM8 MPRS
+# CPU0, plan 03-03) with a throwaway perl script that wrote the stream of the documented rules, checked with shasum -a 256 over the stream
+# file. The runner skips this comment block and compares the rest byte for byte.
 [record]
 format_version = 1
 
@@ -106,4 +108,4 @@ size_cap = 1048576
 time = 0
 time_unit = "placeholder-cycles"
 digest_algorithm = "sha256"
-digest = "8016b1cd7ef9284dc1667cd6b9b7317b88cde860b88e86ab7170bf2a10ab202d"
+digest = "e0ec7c318d6582e15284d1f4e9769dc7af1e2344c2fb5bdd05484f57bf1c5d2e"

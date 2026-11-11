@@ -267,10 +267,11 @@ void kind_digest_stream(const struct kase *k, struct ctx *c, char *got, size_t g
             check(c, fw[i].len == DS_RAM8K_BYTES && memcmp(pl, inst->ram8k, DS_RAM8K_BYTES) == 0, msg);
         } else if (strcmp(fw[i].tag, "MPRS") == 0) {
             check(c, fw[i].len == DS_MPR_COUNT && memcmp(pl, inst->mpr, DS_MPR_COUNT) == 0, msg);
-        } else if (strcmp(fw[i].tag, "PSGN") == 0) {
-            check(c, fw[i].len == 4u && rd32(pl) == inst->psg_noise, msg);
-        } else if (strcmp(fw[i].tag, "VDCP") == 0) {
-            check(c, fw[i].len == 4u && rd32(pl) == inst->vdc_phase, msg);
+        } else if (strcmp(fw[i].tag, "CPU0") == 0) {
+            /* a x y s p, then pc as a u16 little-endian, then speed: read byte by byte, in the stream order of the documented rule */
+            check(c, fw[i].len == 8u && pl[0] == inst->a && pl[1] == inst->x && pl[2] == inst->y && pl[3] == inst->s && pl[4] == inst->p &&
+                         (unsigned)(pl[5] | ((unsigned)pl[6] << 8)) == (unsigned)inst->pc && pl[7] == inst->speed,
+                  msg);
         } else {
             harness_error(c, "a digest_stream frame names a tag that the case does not know");
             break;
