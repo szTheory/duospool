@@ -58,12 +58,12 @@ if(DS_ALLOC_SHIM)
 endif()
 
 # The runner sources: runner.c (reader, boot kinds, main) and one file per family of case kinds; synth.c holds the image recipes.
-# Plan 11 added mapkinds.c (moved out of runner.c) and refkinds.c, plan 13 digkinds.c, plan 14 reckinds.c, plan 16 ilvkinds.c, plan 17 fixlist.c; the toy runners below use the same list.
+# Plan 11 added mapkinds.c (moved out of runner.c) and refkinds.c, plan 13 digkinds.c, plan 14 reckinds.c, plan 16 ilvkinds.c, plan 17 fixlist.c, plan 03-03 hashkinds.c (the content identity kinds, moved out of runner.c); the toy runners below use the same list.
 set(DS_RUNNER_SOURCES
   tests/conformance/runner.c tests/conformance/profkinds.c tests/conformance/allockinds.c tests/conformance/mapkinds.c
   tests/conformance/refkinds.c tests/conformance/redkinds.c tests/conformance/powkinds.c tests/conformance/stepkinds.c
   tests/conformance/digkinds.c tests/conformance/reckinds.c tests/conformance/ilvkinds.c tests/conformance/fixlist.c
-  tests/conformance/spinkinds.c tests/conformance/synth.c)
+  tests/conformance/spinkinds.c tests/conformance/synth.c tests/conformance/hashkinds.c)
 add_executable(ds_runner ${DS_RUNNER_SOURCES} ${DS_SHIM_SOURCES})
 target_link_libraries(ds_runner PRIVATE ds_text ds_core)
 target_compile_definitions(ds_runner PRIVATE ${DS_SHIM_DEFINITION})

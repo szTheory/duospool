@@ -2,7 +2,7 @@
 /* SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors */
 /*
  * runner.h - what the conformance runner and its case-kind files share: the assertion counter, the parsed case and request
- * structures and the few helpers every kind uses. The runner itself (runner.c) keeps the TSV reader, the boot and record kinds and
+ * structures and the few helpers every kind uses. The runner itself (runner.c) keeps the TSV reader, the boot kinds and
  * main; profkinds.c holds the kinds that compare the built-in profile with the frozen r1 record. Test code only, never installed.
  */
 #ifndef DS_RUNNER_H
@@ -160,6 +160,22 @@ void set_evidence_detail(const char *text);
 void kind_record_golden(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_record_refusal(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_record_refuses_quote(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+/* moved from runner.c by plan 03-03: the record_lines kind, the record parser it shares with content_id, and the row type of both */
+#define REC_MAX_ROWS 128u
+#define KEY_MAX 72u
+
+struct recrow {
+    char key[KEY_MAX]; /* TABLE.KEY */
+    const char *val;   /* the text after " = ", quotes kept */
+};
+const char *parse_record(char *text, struct recrow *rows, size_t *nrows);
+const struct recrow *find_row(const struct recrow *rows, size_t n, const char *key);
+void kind_record_lines(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+
+/* the content identity kinds (hashkinds.c, moved from runner.c by plan 03-03); hash_recipe is also read by main for --hash */
+int hash_recipe(const char *recipe, char *hex);
+void kind_content_id(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_hash_literal(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 
 /* the interleave kinds (ilvkinds.c, plan 16) */
 void kind_interleave(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
