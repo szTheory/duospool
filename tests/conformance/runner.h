@@ -374,6 +374,11 @@ void kind_snapshot_hash(const struct kase *k, struct ctx *c, char *got, size_t g
 void kind_snapshot_restore(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_snapshot_refuse(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_snapshot_refusal_coverage(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_snapshot_hostile(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 03-31: the bounded in-process hostile corpus of snapshot bytes (D-122, D-133) */
+/* the two helpers of the restore evidence that chunkkinds.c shares (plan 03-31): every restorable member of a booted instance set to one byte (identity members and the ROM are left), and the name of the first member of the tiling list, ROM excluded, whose bytes differ between two instances (NULL when equal) */
+struct ds_instance;
+void snap_poison(struct ds_instance *t, uint8_t byte);
+const char *snap_first_diff(const struct ds_instance *a, const struct ds_instance *b);
 
 /* the --fixtures list (fixlist.c, plan 17): NAME SIZE for every recipe a case materialises and every sweep length; 0, or 2 on a fault */
 int list_fixtures(const size_t *sweep, size_t nsweep);

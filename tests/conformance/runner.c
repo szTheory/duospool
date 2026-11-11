@@ -1030,6 +1030,7 @@ static const struct {
     {"snapshot_hash", kind_snapshot_hash, 0},
     {"snapshot_restore", kind_snapshot_restore, 0},
     {"snapshot_refuse", kind_snapshot_refuse, 0},
+    {"snapshot_hostile", kind_snapshot_hostile, 0},
     {"opcode_exercise", kind_opcode_exercise, 1},
     {"poweron_domain", kind_poweron_domain, 0},
     {"digest_stream", kind_digest_stream, 0},

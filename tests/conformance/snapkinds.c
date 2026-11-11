@@ -104,7 +104,7 @@ static int sk_tiling_ok(void)
     return at == sizeof(struct ds_instance);
 }
 
-static void sk_poison(struct ds_instance *t, uint8_t byte)
+void snap_poison(struct ds_instance *t, uint8_t byte)
 {
     size_t i;
 
@@ -116,7 +116,7 @@ static void sk_poison(struct ds_instance *t, uint8_t byte)
 }
 
 /* the name of the first member whose bytes differ between two instances, ROM excluded; NULL when they are equal member by member */
-static const char *sk_first_diff(const struct ds_instance *a, const struct ds_instance *b)
+const char *snap_first_diff(const struct ds_instance *a, const struct ds_instance *b)
 {
     size_t i;
 
@@ -951,7 +951,7 @@ static void sk_at_stop(struct sk_env *e, struct ds_instance *s, size_t i, unsign
         uint8_t d1[DS_DIGEST_BYTES];
         uint8_t d2[DS_DIGEST_BYTES];
 
-        sk_poison(e->t, poison);
+        snap_poison(e->t, poison);
         rc = ds_restore(e->t, e->snap, e->size);
         e->restores++;
         check(c, rc == (uint32_t)DS_SNAPREF_NONE, "ds_restore refused a snapshot that the source just wrote");
@@ -959,7 +959,7 @@ static void sk_at_stop(struct sk_env *e, struct ds_instance *s, size_t i, unsign
             emit_err("snapshot_restore: boundary %lu: %s\n", (unsigned long)i, ds_snapshot_refusal_name(rc));
             return;
         }
-        diff = sk_first_diff(e->t, s);
+        diff = snap_first_diff(e->t, s);
         check(c, diff == NULL, "the restored instance differs from the source in a member (raw compare, ROM excluded)");
         if (diff != NULL) {
             emit_err("snapshot_restore: boundary %lu: member %s differs after the restore (poison %02X)\n", (unsigned long)i, diff, (unsigned)poison);
@@ -1020,7 +1020,7 @@ static void sk_at_stop(struct sk_env *e, struct ds_instance *s, size_t i, unsign
         check(c, e->t->machine_time == e->rend->machine_time, "the restored instance ends at another machine time than the uninterrupted run");
         check(c, memcmp(e->t->ram8k + V_OFF, e->rend->ram8k + V_OFF, V_SIZE) == 0, "the verdict RAM of the restored instance differs from the uninterrupted run at the end");
         check(c, ds_digest(e->t, d1) == (uint32_t)DS_OK && ds_digest(e->rend, d2) == (uint32_t)DS_OK && memcmp(d1, d2, DS_DIGEST_BYTES) == 0, "the digest of the restored instance differs from the uninterrupted run at the end");
-        diff = sk_first_diff(e->t, e->rend);
+        diff = snap_first_diff(e->t, e->rend);
         check(c, diff == NULL, "the restored instance differs from the uninterrupted run at the end in a member (raw compare, ROM excluded)");
         if (diff != NULL) {
             emit_err("snapshot_restore: boundary %lu: member %s differs at the end of the run\n", (unsigned long)i, diff);
@@ -1646,7 +1646,7 @@ void kind_snapshot_refuse(const struct kase *k, struct ctx *c, char *got, size_t
         memcpy(edit, good, size);
         edit[size] = 0x5Eu;
         sk_rows[r].edit(edit);
-        sk_poison(t, 0xA5u);
+        snap_poison(t, 0xA5u);
         memcpy(base, t, ds_instance_size());
         switch (sk_rows[r].mode) {
         case M_SHORT:
@@ -1705,7 +1705,7 @@ void kind_snapshot_refuse(const struct kase *k, struct ctx *c, char *got, size_t
             }
             refused++;
             check(c, memcmp(base, t, ds_instance_size()) == 0, "a refusal changed the target instance: it is not byte-identical afterwards");
-            check(c, sk_first_diff(t, (const struct ds_instance *)(const void *)base) == NULL, "a refusal changed a member of the target instance");
+            check(c, snap_first_diff(t, (const struct ds_instance *)(const void *)base) == NULL, "a refusal changed a member of the target instance");
         }
     }
     check(c, rows >= 1u, "the refuse case has no row");
@@ -1745,4 +1745,438 @@ void kind_snapshot_refusal_coverage(const struct kase *k, struct ctx *c, char *g
     }
     check(c, members > 0u, "snapshot_refusals.def has no member");
     snprintf(got, gotcap, "members=%u observed=%u", members, seen);
+}
+
+/* ---- snapshot_hostile ---- */
+
+/*
+ * snapshot_hostile (plan 03-31; D-122, D-133, T-03-86, Pitfall 20): the bounded hostile corpus of snapshot bytes, GENERATED IN MEMORY from one good snapshot of the fixture's mid-run state and a fixed splitmix64 stream: no file is read or committed and the generator takes no host randomness, so every run makes the same inputs.
+ * Every input goes to ds_restore on a poisoned twin of the source. The verdict of each is one of two and both are checked, with nothing else allowed: REFUSED (the code is a member of the closed set and the target is byte-identical to its copy from before the call, ROM included) or ACCEPTED (the input has exactly the length of the stream, the accepted bytes re-serialise to
+ * identical bytes, the SHA-256 of the input is the digest of the target, a bounded run of the restored machine takes no undefined step, and a snapshot taken after that run restores again). The layout used to make the inputs is the hand-kept one of this file, so the generator does not use the table the core's restore is written against.
+ * Classes (expect = a list of them, each once, then optionally mid-block, which requires the source to sit inside a block transfer so that the BLKT bytes are live):
+ *   boundary  the length of the buffer at every region boundary and one byte either side (the start and the end of the prefix, the version, each frame and each payload, the end of the stream): shorter and longer than the stream is refused, the exact length is accepted
+ *   length    the length word of every frame set to 0, length - 1, length + 1 and 2^32 - 1: refused
+ *   frame     every byte of the prefix, of the version and of every tag with its low bit flipped, and the versions 0 and 2^32 - 1: refused
+ *   sample    64 truncations at lengths drawn from the stream below the length of the stream: refused
+ *   flip      the low bit flipped in every byte of the control fields (profile hash, content id, power-on policy, time, P and the speed, the bus selection, timer, interrupt controller, the first three stimulus slots, the block transfer state, the port bytes, the schedule count and reserved word and its first three events): refused or accepted,
+ *             whichever the field domain says, never anything else
+ *   data      the low bit (and the high bit of RAM) flipped in the bytes that every value of is a legal state (work RAM, the mapping registers, A, X, Y, S, pc, the bus latches): accepted, which proves that the accepted path is taken and is clean
+ * Counts by class go to the evidence text. Evidence tier E0: the core compared with its own layout; a pass says that no hostile input of these classes was mishandled, not that the format is right.
+ */
+enum { HC_BOUNDARY, HC_LENGTH, HC_FRAME, HC_SAMPLE, HC_FLIP, HC_DATA, HC_N };
+enum { HW_REFUSE, HW_ACCEPT, HW_EITHER };
+#define HS_PAD 80u
+#define HS_RUN_CLOCKS 3000u
+#define HS_SEED UINT64_C(0x484F5354494C4531)
+
+static const char *const hc_names[HC_N] = {"boundary", "length", "frame", "sample", "flip", "data"};
+
+struct hs_env {
+    struct ctx *c;
+    struct ds_instance *t;
+    uint8_t *good;
+    uint8_t *edit;
+    uint8_t *again;
+    unsigned char *base;
+    size_t size;
+    unsigned cls;
+    unsigned total;
+    unsigned n[HC_N];
+    unsigned refused[HC_N];
+    unsigned accepted[HC_N];
+    unsigned ran;
+};
+
+static uint64_t hs_next(uint64_t *state)
+{
+    uint64_t z;
+
+    *state = *state + UINT64_C(0x9E3779B97F4A7C15);
+    z = *state;
+    z = (z ^ (z >> 30)) * UINT64_C(0xBF58476D1CE4E5B9);
+    z = (z ^ (z >> 27)) * UINT64_C(0x94D049BB133111EB);
+    return z ^ (z >> 31);
+}
+
+/* the edit buffer is the good snapshot followed by a canary, so a read past the stream finds a known byte and never one outside the buffer */
+static void hs_fresh(struct hs_env *e)
+{
+    memcpy(e->edit, e->good, e->size);
+    memset(e->edit + e->size, 0x5E, HS_PAD);
+}
+
+/* one hostile input: the first len bytes of the edit buffer go to ds_restore on the poisoned target; want says what the generator knows from the layout (refused, accepted, or only that it is one of the two) */
+static void hs_try(struct hs_env *e, size_t len, int want, unsigned idx)
+{
+    struct ctx *c = e->c;
+    uint32_t rc;
+
+    snap_poison(e->t, (e->total & 1u) != 0u ? 0x5Au : 0xA5u);
+    e->total++;
+    memcpy(e->base, e->t, ds_instance_size());
+    rc = ds_restore(e->t, e->edit, len);
+    e->n[e->cls]++;
+    if (rc != (uint32_t)DS_SNAPREF_NONE) {
+        int known = rc < (uint32_t)DS_SNAPREF_SLOTS && ds_snapshot_refusal_name(rc) != NULL;
+
+        check(c, known, "ds_restore returned a code that is not a member of the closed set of snapshot refusals");
+        check(c, want != HW_ACCEPT, "a hostile input that is a legal state (data class) was refused");
+        check(c, memcmp(e->base, e->t, ds_instance_size()) == 0, "a refused hostile input changed the target: it is not byte-identical afterwards");
+        if (want == HW_ACCEPT || memcmp(e->base, e->t, ds_instance_size()) != 0) {
+            emit_err("snapshot_hostile: %s %u: refused as %s (length %lu)\n", hc_names[e->cls], idx, known ? ds_snapshot_refusal_name(rc) : "?", (unsigned long)len);
+        }
+        e->refused[e->cls]++;
+    } else {
+        size_t w2 = 0u;
+        int again_ok;
+
+        check(c, want != HW_REFUSE, "a hostile input that must be refused (a wrong length, tag, frame length, prefix or version) was accepted");
+        check(c, len == e->size, "an input of another length than the stream was accepted");
+        if (want == HW_REFUSE || len != e->size) {
+            emit_err("snapshot_hostile: %s %u: accepted (length %lu)\n", hc_names[e->cls], idx, (unsigned long)len);
+        }
+        e->accepted[e->cls]++;
+        if (len == e->size) {
+            uint8_t d1[DS_DIGEST_BYTES];
+            uint8_t d2[DS_DIGEST_BYTES];
+            struct ds_run_request rq;
+            struct ds_run_result res;
+            uint32_t rr;
+
+            again_ok = ds_snapshot(e->t, e->again, e->size, &w2) == (uint32_t)DS_SNAPREF_NONE && w2 == e->size && memcmp(e->again, e->edit, e->size) == 0;
+            check(c, again_ok, "an accepted hostile input does not re-serialise to the same bytes");
+            ds_sha256(e->edit, e->size, d1);
+            check(c, ds_digest(e->t, d2) == (uint32_t)DS_OK && memcmp(d1, d2, DS_DIGEST_BYTES) == 0, "the SHA-256 of an accepted hostile input is not the digest of the restored instance");
+            if (!again_ok) {
+                emit_err("snapshot_hostile: %s %u: the accepted input does not re-serialise to itself\n", hc_names[e->cls], idx);
+            }
+            /* the restored machine is run for a bounded time: whatever the field values were (any address of a block transfer, any mapping, any stamp), the step is defined (the sanitizer stage judges it) */
+            memset(&rq, 0, sizeof rq);
+            memset(&res, 0, sizeof res);
+            rq.struct_size = (uint32_t)sizeof rq;
+            rq.until_mclk = e->t->machine_time + (uint64_t)HS_RUN_CLOCKS;
+            rr = ds_run(e->t, &rq, &res);
+            check(c, rr == (uint32_t)DS_RUN_REASON_UNTIL || rr == (uint32_t)DS_RUN_REASON_REFUSED, "a bounded run of an accepted hostile state ended for no declared reason");
+            e->ran++;
+            /* a state that a run reached is a state restore must take (legal at every run stop): the snapshot of it restores back, member for member */
+            memcpy(e->base, e->t, ds_instance_size());
+            check(c, ds_snapshot(e->t, e->again, e->size, NULL) == (uint32_t)DS_SNAPREF_NONE, "the snapshot of a state reached by a run from an accepted hostile state was refused");
+            snap_poison(e->t, 0x5Au);
+            rc = ds_restore(e->t, e->again, e->size);
+            check(c, rc == (uint32_t)DS_SNAPREF_NONE, "the snapshot of a state reached by a run from an accepted hostile state was not restorable");
+            if (rc == (uint32_t)DS_SNAPREF_NONE) {
+                check(c, snap_first_diff(e->t, (const struct ds_instance *)(const void *)e->base) == NULL, "restoring the snapshot of a run-reached state did not give the same state");
+            } else {
+                emit_err("snapshot_hostile: %s %u: a run-reached state was refused as %s\n", hc_names[e->cls], idx, ds_snapshot_refusal_name(rc) != NULL ? ds_snapshot_refusal_name(rc) : "?");
+            }
+        }
+    }
+}
+
+/* the region boundaries of the stream, ascending and distinct */
+static unsigned hs_bounds(size_t *b, unsigned cap)
+{
+    unsigned n = 0u;
+    unsigned r;
+    unsigned i;
+    unsigned j;
+    size_t cand[3u * SK_FRAMES + 3u];
+    unsigned nc = 0u;
+
+    cand[nc++] = 0u;
+    cand[nc++] = (size_t)SK_PREFIX_BYTES;
+    cand[nc++] = (size_t)SK_PREFIX_BYTES + 4u;
+    for (r = 0u; r < SK_FRAMES; r++) {
+        cand[nc++] = sk_frame_off(r);
+        cand[nc++] = sk_payload_off(r);
+        cand[nc++] = sk_payload_off(r) + (size_t)sk_frames[r].len;
+    }
+    for (i = 0u; i < nc; i++) {
+        int dup = 0;
+
+        for (j = 0u; j < n; j++) {
+            dup = dup || b[j] == cand[i];
+        }
+        if (!dup && n < cap) {
+            b[n++] = cand[i];
+        }
+    }
+    for (i = 1u; i < n; i++) { /* insertion sort: n is at most 45 */
+        size_t v = b[i];
+
+        for (j = i; j > 0u && b[j - 1u] > v; j--) {
+            b[j] = b[j - 1u];
+        }
+        b[j] = v;
+    }
+    return n;
+}
+
+static void hs_boundary(struct hs_env *e)
+{
+    size_t b[3u * SK_FRAMES + 3u];
+    unsigned n = hs_bounds(b, (unsigned)(sizeof b / sizeof b[0]));
+    unsigned i;
+    int d;
+
+    e->cls = HC_BOUNDARY;
+    for (i = 0u; i < n; i++) {
+        for (d = -1; d <= 1; d++) {
+            size_t len;
+
+            if (b[i] == 0u && d < 0) {
+                continue;
+            }
+            len = (size_t)((long)b[i] + d);
+            hs_fresh(e);
+            hs_try(e, len, len == e->size ? HW_ACCEPT : HW_REFUSE, (unsigned)(3u * i + (unsigned)(d + 1)));
+        }
+    }
+}
+
+static void hs_length(struct hs_env *e)
+{
+    unsigned r;
+    unsigned q;
+
+    e->cls = HC_LENGTH;
+    for (r = 0u; r < SK_FRAMES; r++) {
+        const uint32_t v[4] = {0u, sk_frames[r].len - 1u, sk_frames[r].len + 1u, 0xFFFFFFFFu};
+
+        for (q = 0u; q < 4u; q++) {
+            hs_fresh(e);
+            sk_put32(e->edit + sk_frame_off(r) + 4u, v[q]);
+            hs_try(e, e->size, HW_REFUSE, 4u * r + q);
+        }
+    }
+}
+
+static void hs_frame(struct hs_env *e)
+{
+    unsigned i;
+    unsigned r;
+    unsigned q;
+    unsigned idx = 0u;
+
+    e->cls = HC_FRAME;
+    for (i = 0u; i < SK_PREFIX_BYTES + 4u; i++) { /* the prefix, its NUL and the version */
+        hs_fresh(e);
+        e->edit[i] ^= 0x01u;
+        hs_try(e, e->size, HW_REFUSE, idx++);
+    }
+    for (q = 0u; q < 2u; q++) {
+        hs_fresh(e);
+        sk_put32(e->edit + SK_PREFIX_BYTES, q == 0u ? 0u : 0xFFFFFFFFu);
+        hs_try(e, e->size, HW_REFUSE, idx++);
+    }
+    for (r = 0u; r < SK_FRAMES; r++) {
+        for (q = 0u; q < 4u; q++) {
+            hs_fresh(e);
+            e->edit[sk_frame_off(r) + q] ^= 0x01u;
+            hs_try(e, e->size, HW_REFUSE, idx++);
+        }
+    }
+}
+
+static void hs_sample(struct hs_env *e)
+{
+    uint64_t st = HS_SEED;
+    unsigned i;
+
+    e->cls = HC_SAMPLE;
+    for (i = 0u; i < 64u; i++) {
+        size_t len = (size_t)(hs_next(&st) % (uint64_t)e->size); /* 0 to size - 1: always shorter than the stream */
+
+        hs_fresh(e);
+        hs_try(e, len, HW_REFUSE, i);
+    }
+}
+
+/* the control fields: payload byte ranges (from, to) of a region; the flip is the low bit of every byte */
+static const struct {
+    unsigned rg;
+    size_t from;
+    size_t to;
+} hs_ctl[] = {
+    {RG_PROF, 0u, 32u},   {RG_CONT, 0u, 40u},   {RG_POWR, 0u, 16u},  {RG_TIME, 0u, 8u},     {RG_CPU0, 4u, 5u},      {RG_CPU0, 7u, 8u},     {RG_BUS0, 2u, 3u},
+    {RG_TIMR, 0u, 11u},   {RG_IRQC, 0u, 3u},    {RG_IRQS, 0u, 30u},  {RG_BLKT, 0u, 11u},    {RG_IOPT, 0u, 6u},      {RG_SCHD, 0u, 48u},    {RG_SCHD, 16384u, 16392u},
+};
+
+static void hs_flip(struct hs_env *e)
+{
+    unsigned i;
+    unsigned idx = 0u;
+
+    e->cls = HC_FLIP;
+    for (i = 0u; i < (unsigned)(sizeof hs_ctl / sizeof hs_ctl[0]); i++) {
+        size_t at;
+
+        for (at = hs_ctl[i].from; at < hs_ctl[i].to; at++) {
+            hs_fresh(e);
+            e->edit[sk_payload_off(hs_ctl[i].rg) + at] ^= 0x01u;
+            hs_try(e, e->size, HW_EITHER, idx++);
+        }
+    }
+}
+
+static void hs_data(struct hs_env *e)
+{
+    static const size_t ram[4] = {0u, 1u, 4095u, 8191u};
+    unsigned i;
+    unsigned idx = 0u;
+
+    e->cls = HC_DATA;
+    for (i = 0u; i < 8u; i++) { /* work RAM: the first, second and last two bytes, the low bit and the high bit */
+        hs_fresh(e);
+        e->edit[sk_payload_off(RG_RAM8) + ram[i >> 1]] ^= (i & 1u) != 0u ? 0x80u : 0x01u;
+        hs_try(e, e->size, HW_ACCEPT, idx++);
+    }
+    for (i = 0u; i < DS_MPR_COUNT; i++) { /* every byte value is a legal mapping register */
+        hs_fresh(e);
+        e->edit[sk_payload_off(RG_MPRS) + i] ^= 0x01u;
+        hs_try(e, e->size, HW_ACCEPT, idx++);
+    }
+    for (i = 0u; i < 6u; i++) { /* A, X, Y, S and the two bytes of pc */
+        hs_fresh(e);
+        e->edit[sk_payload_off(RG_CPU0) + (i < 4u ? i : i + 1u)] ^= 0x01u;
+        hs_try(e, e->size, HW_ACCEPT, idx++);
+    }
+    for (i = 0u; i < 2u; i++) { /* the data bus latch and the mapping latch */
+        hs_fresh(e);
+        e->edit[sk_payload_off(RG_BUS0) + i] ^= 0x01u;
+        hs_try(e, e->size, HW_ACCEPT, idx++);
+    }
+}
+
+void kind_snapshot_hostile(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    struct hs_env e;
+    struct booted bs;
+    struct booted bt;
+    struct ds_instance *s;
+    struct ds_instance *t = NULL;
+    struct ds_run_request rq;
+    struct ds_run_result res;
+    char rom[48];
+    char twin[PK_LIST_MAX];
+    char list[PK_LIST_MAX];
+    char *rest = list;
+    char *item;
+    uint64_t until = 0u;
+    unsigned want_cls = 0u;
+    int want_block = 0;
+    int first = 1;
+    unsigned q;
+    unsigned total = 0u;
+    unsigned refused = 0u;
+    unsigned accepted = 0u;
+    int ok = 1;
+    uint32_t rc;
+    int off;
+
+    memset(&bs, 0, sizeof bs);
+    memset(&bt, 0, sizeof bt);
+    memset(&e, 0, sizeof e);
+    if (authored_name(k->val[K_FIXTURE], rom, sizeof rom) != 0 || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until == 0u || sk_twin_request(k->val[K_REQUEST], twin, sizeof twin) != 0
+        || pk_copy_text(k->val[K_EXPECT], list, sizeof list) != 0) {
+        ok = 0;
+    }
+    while (ok && (item = pk_next_item(&rest, ';')) != NULL) {
+        if (first) {
+            char *r2 = item;
+            char *w;
+
+            first = 0;
+            while ((w = pk_next_item(&r2, ',')) != NULL) {
+                for (q = 0u; q < HC_N && strcmp(w, hc_names[q]) != 0; q++) {
+                }
+                if (q == HC_N || (want_cls & (1u << q)) != 0u) {
+                    ok = 0;
+                    break;
+                }
+                want_cls |= 1u << q;
+            }
+        } else if (strcmp(item, "mid-block") == 0 && !want_block) {
+            want_block = 1;
+        } else {
+            ok = 0;
+        }
+    }
+    if (!ok || want_cls == 0u) {
+        harness_error(c, "a snapshot_hostile case needs fixture = authored:NAME, until_mclk, a seeded request and expect = a list of boundary, length, frame, sample, flip, data (each once)[;mid-block]");
+        return;
+    }
+    s = sk_boot(c, k, rom, k->val[K_REQUEST], 1, &bs);
+    if (s == NULL) {
+        return;
+    }
+    t = sk_boot(c, k, rom, twin, 0, &bt);
+    if (t == NULL) {
+        release_boot(&bs);
+        return;
+    }
+    memset(&rq, 0, sizeof rq);
+    memset(&res, 0, sizeof res);
+    rq.struct_size = (uint32_t)sizeof rq;
+    rq.until_mclk = until;
+    rc = ds_run(s, &rq, &res);
+    note_run(c, s->machine_time, rc);
+    check(c, rc == (uint32_t)DS_RUN_REASON_UNTIL && res.steps > 4u, "the run to the snapshot stop took four steps or fewer");
+    if (want_block) {
+        check(c, s->blk_active == 1u && s->blk_remaining > 0u && s->blk_remaining < 65536u, "the source is not inside a block transfer at the stop: the BLKT bytes of the corpus would not be live");
+    }
+    e.c = c;
+    e.t = t;
+    e.size = ds_snapshot_size();
+    e.good = (uint8_t *)malloc(e.size + HS_PAD);
+    e.edit = (uint8_t *)malloc(e.size + HS_PAD);
+    e.again = (uint8_t *)malloc(e.size + HS_PAD);
+    e.base = (unsigned char *)malloc(ds_instance_size());
+    if (e.good == NULL || e.edit == NULL || e.again == NULL || e.base == NULL) {
+        harness_error(c, "out of memory for the hostile corpus");
+        goto done;
+    }
+    check(c, ds_snapshot(s, e.good, e.size, NULL) == (uint32_t)DS_SNAPREF_NONE, "ds_snapshot of the source was refused");
+    check(c, sk_stream_size() == e.size, "the hand-kept frames of this file do not add up to ds_snapshot_size()");
+    if ((want_cls & (1u << HC_BOUNDARY)) != 0u) {
+        hs_boundary(&e);
+    }
+    if ((want_cls & (1u << HC_LENGTH)) != 0u) {
+        hs_length(&e);
+    }
+    if ((want_cls & (1u << HC_FRAME)) != 0u) {
+        hs_frame(&e);
+    }
+    if ((want_cls & (1u << HC_SAMPLE)) != 0u) {
+        hs_sample(&e);
+    }
+    if ((want_cls & (1u << HC_FLIP)) != 0u) {
+        hs_flip(&e);
+    }
+    if ((want_cls & (1u << HC_DATA)) != 0u) {
+        hs_data(&e);
+    }
+    for (q = 0u; q < HC_N; q++) {
+        if ((want_cls & (1u << q)) != 0u) {
+            check(c, e.n[q] > 0u, "a requested class of the corpus generated no input");
+        }
+        total += e.n[q];
+        refused += e.refused[q];
+        accepted += e.accepted[q];
+    }
+    check(c, refused > 0u && accepted > 0u, "the corpus did not take both paths: it has no refused or no accepted input");
+    check(c, e.ran == accepted, "an accepted input was not run");
+    off = snprintf(got, gotcap, "cases=%u refused=%u accepted=%u", total, refused, accepted);
+    for (q = 0u; q < HC_N && off > 0 && (size_t)off < gotcap; q++) {
+        if ((want_cls & (1u << q)) != 0u) {
+            off += snprintf(got + off, gotcap - (size_t)off, " %s=%u/%u", hc_names[q], e.n[q], e.accepted[q]);
+        }
+    }
+done:
+    free(e.good);
+    free(e.edit);
+    free(e.again);
+    free(e.base);
+    release_boot(&bs);
+    release_boot(&bt);
 }

@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Hostile snapshot corpus (plan 03-31 task 1; CORE-05, D-122, D-133, T-03-86): the len0 image of fixtures/src/cpu_blk.s is run to a stop inside its 65536-byte block transfer with an input script and an interrupt stimulus declared, so that every region of the snapshot is live (the block transfer state, the stimulus list, the schedule and the port bytes), and the runner
+# (kind snapshot_hostile, tests/conformance/snapkinds.c) makes hostile inputs from that one snapshot in memory: nothing is read from or written to a file, the generator is a fixed splitmix64 stream and the corpus is bounded. This first slice is the boundary class: the length of the buffer at every region boundary and one byte either side of it. A shorter or longer buffer is refused and
+# the target instance is byte-identical afterwards; the exact length is accepted and re-serialises to identical bytes; every accepted input is then run for a bounded time under the sanitizers stage. Evidence tier E0: the core compared with its own layout; a pass is not a claim about the format or about any hardware.
+id = "snapshot_hostile"
+kind = "snapshot_hostile"
+fixture = "authored:cpu-blk-len0"
+request = "bind.powerup_policy=seeded-prng-v2;seed=3"
+expect = "boundary;mid-block"
+meaning = "Hostile snapshot inputs generated in memory around every region boundary of the snapshot of a machine inside a block transfer are refused with the instance unchanged or accepted and re-serialised identically, and the sanitizers stage runs them clean"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 1000000
+input = "pad_2btn_correct"
+irq_stim = ["6000000,1,1", "6000100,1,0", "6000200,2,1"]
