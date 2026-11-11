@@ -29,7 +29,7 @@ E4 = differential vs another emulator (finds disagreements, decides nothing).
 ### CPU & Bus (HuC6280)
 
 - [ ] **CPU-01**: The core executes the HuC6280 instruction set (65C02 base plus HuC6280 additions: block transfers, ST0/ST1/ST2, TAM/TMA, SXY/SAX/SAY, CSH/CSL, SET/T-flag, TST, BSR, bit ops) with flag/register effects verified by authored fixtures against the HuC6280 manual (E1/E2).
-- [ ] **CPU-02**: The MMU maps logical addresses through MPR0–7 to the 21-bit physical space (256 × 8 KiB banks), including RAM, HuCard banks, I/O page, and a defined unmapped-read value, verified by fixtures.
+- [x] **CPU-02**: The MMU maps logical addresses through MPR0–7 to the 21-bit physical space (256 × 8 KiB banks), including RAM, HuCard banks, I/O page, and a defined unmapped-read value, verified by fixtures.
 - [ ] **CPU-03**: The timer (reload, decrement rate tied to the master clock, IRQ) and interrupt controller (disable/status registers, documented priority, sampling point) behave as documented, verified by fixtures that report results in guest RAM.
 - [ ] **CPU-04**: High/low CPU speed switching changes instruction timing on the master-clock timeline, and VDC/VCE access penalties are applied as documented.
 - [ ] **CPU-05**: Block-transfer instructions are resumable at byte granularity. A bounded run can stop mid-transfer and continue with identical results to an uninterrupted run, and interrupt handling around block transfers follows the recorded model.
@@ -71,7 +71,7 @@ E4 = differential vs another emulator (finds disagreements, decides nothing).
 - [x] **CORE-03**: Power-on state is defined by a documented, seeded policy (RAM, MPRs, PSG noise, VDC phase), so a fresh run is reproducible and the policy is recorded with each run.
 - [ ] **CORE-04**: Execution is bounded in master-clock time with an explicit stop reason and overshoot. A bounded run may stop mid-frame or mid-instruction-sequence and resume with results identical to an uninterrupted run.
 - [ ] **CORE-05**: A snapshot taken at any stop point, restored into a fresh instance and continued, produces outputs identical to continuing the original (state-completeness check, E0).
-- [ ] **CORE-06**: A CPU instruction trace and a device-register write log can be enabled without changing machine behavior.
+- [x] **CORE-06**: A CPU instruction trace and a device-register write log can be enabled without changing machine behavior.
 - [ ] **RUN-01**: A headless runner loads content plus a profile and an input script, runs for a bounded machine time, and emits guest-progress markers, machine time, raw video, raw audio, and trace as separate artifacts.
 - [x] **RUN-02**: The runner and harness report distinct outcomes: pass, guest failure, timeout, harness failure, skip, cancelled, and missing artifact. No outcome other than pass counts as passing.
 
@@ -161,7 +161,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PROF-04 | Phase 1 | Complete |
 | PROF-05 | Phase 1 | Complete |
 | CPU-01 | Phase 3 | Pending |
-| CPU-02 | Phase 3 | Pending |
+| CPU-02 | Phase 3 | Complete |
 | CPU-03 | Phase 3 | Pending |
 | CPU-04 | Phase 3 | Pending |
 | CPU-05 | Phase 3 | Pending |
@@ -188,7 +188,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CORE-03 | Phase 2 | Complete |
 | CORE-04 | Phase 3 | Pending |
 | CORE-05 | Phase 3 | Pending |
-| CORE-06 | Phase 3 | Pending |
+| CORE-06 | Phase 3 | Complete |
 | RUN-01 | Phase 6 | Pending |
 | RUN-02 | Phase 2 | Complete |
 | FIX-01 | Phase 3 | Pending |

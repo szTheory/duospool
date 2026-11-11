@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 3
 current_phase_name: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-current_plan: 24
+current_plan: 25
 status: planning
-stopped_at: Completed 03-19-PLAN.md
-last_updated: "2026-11-11T12:21:50.376Z"
+stopped_at: Completed 03-20-PLAN.md
+last_updated: "2026-11-11T12:44:35.837Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 2 complete, transitioned to Phase 3
-state_head: fc8ed84a2269d9849c00e2374c40782643176850
+state_head: 2481ae67e0e6cd0b07d174c7eea87f4b6a8bad77
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 72
-  completed_plans: 57
+  completed_plans: 58
   percent: 33
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 3 — HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-Current Plan: 24
+Current Plan: 25
 Total Plans in Phase: 38
 Status: Ready to execute
 Last activity: 2026-11-11 — Completed 03-04 (W1: optional case keys, guestkinds.c, authored fixture key, machine_time and stop on RESULT)
@@ -116,6 +116,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 03 P17 | 70min | 3 tasks | 30 files |
 | Phase 03 P18 | 95min | 3 tasks | 39 files |
 | Phase 03 P19 | 120min | 3 tasks | 22 files |
+| Phase 03 P20 | 25min | 3 tasks | 38 files |
 
 ## Accumulated Context
 
@@ -225,6 +226,9 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-19: DS_SINK_MAX_RECORDS is 1048576 records for either sink; a capacity above it is run.sink_unsupported, judged before the record range.
 - [Phase 03]: 03-19: the observer matrix stop callback folds machine time, pc, registers and the bus latch at every call, so a hook that disturbs any of them is seen at the next call.
 - [Phase 03]: 03-19: --trace-out takes a case id only; the runner builds build/gate/traces/ID.insn and .dev itself and refuses cases whose fixture is neither authored and listed nor synthetic.
+- [Phase 03]: 03-20: the bank-class oracle hard-codes the ends of the five runs of the LED-CPU-0011 statement and guards the five clauses literally (ORACLE_RULE_TEXT_DRIFT); conformance-run rewrites build/gate/bankclass.tsv in each run and every runner invocation passes --bank-oracle
+- [Phase 03]: 03-20: mmu_mpr is three images of one source by ROMBANKS (256K, 384K, 1M); checks 18 and 19 take their bank and literal from conditional assembly, so all three keep 60 checks and the exclude list 49,59,60
+- [Phase 03]: 03-20: st_bypass runs a new authored fixture (ST0 to ST2 under four MPR0 settings) and compares the whole dev log with twelve records written in the case; W3 ledger entries LED-CPU-0011 to -0017 (except -0015) are assumed with E0 evidence and one real pin each
 
 ### Pending Todos
 
@@ -248,6 +252,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-11T12:21:50.211Z
-Stopped at: Completed 03-19-PLAN.md
+Last session: 2026-11-11T12:44:35.680Z
+Stopped at: Completed 03-20-PLAN.md
 Resume file: None
