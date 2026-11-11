@@ -635,6 +635,27 @@ stage_rights_negatives() {
   return "$r"
 }
 
+# fixture-build (D-123, D-85, Pitfall 15): the authored fixtures are assembled by ca65 and ld65 in this run and never committed. fixture_build_run is the
+# build alone: the conformance and sanitizers stages call it first, so they never read a stale or absent ROM (stage inputs are produced in the same run).
+# stage_fixture_build adds the fail-closed control: with PATH set to an empty scratch directory the script must exit 2 and print PREFLIGHT_MISSING for
+# both tools, because command -v is a builtin and nothing external is needed to say so. A missing assembler is a stage ERROR, never a skip or a pass.
+fixture_build_run() {
+  checker sh "$here/fixture-build"
+}
+
+stage_fixture_build() {
+  fixture_build_run || return $?
+  fb_empty="$tmp/fb-empty-path"
+  mkdir -p "$fb_empty"
+  if env PATH="$fb_empty" /bin/sh "$here/fixture-build" > "$tmp/fb.out" 2>&1; then r=0; else r=$?; fi
+  if [ "$r" -ne 2 ] || ! grep -qx 'PREFLIGHT_MISSING ca65' "$tmp/fb.out" || ! grep -qx 'PREFLIGHT_MISSING ld65' "$tmp/fb.out" || grep -q '^STATUS fixture-build' "$tmp/fb.out"; then
+    echo "CONTROL BROKEN fixture-build-empty-path (exit $r, wanted 2 with PREFLIGHT_MISSING ca65 and ld65 and no STATUS line)"
+    sed 's/^/  /' "$tmp/fb.out"
+    return 1
+  fi
+  return 0
+}
+
 # build (D-60, D-41): configure and build the gate preset, warnings as errors. The compiler output is shown only when something
 # fails, and a build that finishes without producing the runner is a harness error (the later conformance stage would judge a
 # stale binary otherwise).
@@ -655,6 +676,7 @@ stage_build() {
 # run every case in one supervised runner process and judge the RESULT lines with conformance-ingest. The build is part of the
 # step, so a stale binary is never judged. The runner decides nothing; the verdict is the ingest's.
 stage_conformance() {
+  fixture_build_run || return $?
   checker sh "$here/conformance-run" run
 }
 
@@ -671,6 +693,7 @@ stage_excluded_mode_controls() {
 # after proving with three planted canaries (heap overflow, signed overflow, signed left shift) that the sanitizers report. The
 # stage runs its own build and its own runner; it never judges a results file that an earlier run left behind.
 stage_sanitizers() {
+  fixture_build_run || return $?
   checker sh "$here/conformance-run" sanitize
 }
 
@@ -1907,6 +1930,7 @@ run_stage workflow-negatives stage_workflow_negatives
 run_stage docs-claims stage_docs_claims
 run_stage docs-claims-negatives stage_docs_claims_negatives
 run_stage ci-timings-controls stage_ci_timings_controls
+run_stage fixture-build stage_fixture_build
 run_stage build stage_build
 run_stage outcome-sync stage_outcome_sync
 run_stage conformance stage_conformance

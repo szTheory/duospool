@@ -243,9 +243,9 @@ static int run_item(const struct kase *k, char *text, struct ctx *c)
         harness_error(c, err);
         return 0;
     }
-    status = ds_run((struct ds_instance *)(void *)b.mem, budget, step, stop_at, &sc);
-    check(c, status == want_status, "ds_run returned a different status than expected");
-    check(c, !have_time || inst->machine_time == want_time, "machine time after ds_run differs from the expected value");
+    status = ds_run_placeholder((struct ds_instance *)(void *)b.mem, budget, step, stop_at, &sc);
+    check(c, status == want_status, "ds_run_placeholder returned a different status than expected");
+    check(c, !have_time || inst->machine_time == want_time, "machine time after ds_run_placeholder differs from the expected value");
     check(c, status == (uint32_t)DS_RUN_REFUSED || inst->machine_time <= budget, "machine time went past the budget");
     release_boot(&b);
     return 0;

@@ -1,0 +1,103 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# fixture-build - assemble the authored HuCard fixtures in the gate; no ROM-like binary is ever committed (D-123, D-133).
+# usage: fixture-build [--src DIR] [--out DIR]     (--src defaults to fixtures/src, --out to build/gate; run from the repository root or anywhere)
+#   For every SRC/*.s: ca65 --cpu huc6280 -D ROMBANKS=32 -I fixtures/lib into OUT/fx/STEM.o, then ld65 -C fixtures/lib/hucard.cfg -D ROMBANKS=32
+#   into OUT/fixtures/NAME.pce, where NAME is the stem with every underscore turned into a hyphen (a used-list name has no underscore, F2).
+#   The image is hashed and measured with host tools only (the SHA-256 tool the gate picks, wc -c) and one line  NAME SIZE SHA256  per image is
+#   written to OUT/fixtures-authored.used. That second file belongs to this script alone: the synthetic list OUT/fixtures.used stays with the
+#   fixtures mode of conformance-run (F3). Everything this script makes is removed first, so a stale image is never read.
+#   Assembler identity is by behaviour (the encoding matrix of a later plan and the image hash pins), never by --version: the V2.19 tag prints
+#   V2.18 (D-128).
+# stdout: PREFLIGHT_MISSING NAME for each missing tool, or on success the marker line  STATUS fixture-build ok n=N
+# exit  : 0 built | 1 an assembler or linker error, or no source | 2 a tool is missing or a harness error (never a skip, D-123)
+# Before anything external runs, the tool check uses only shell builtins, so an empty PATH still reports the missing tools and exits 2.
+set -eu
+LC_ALL=C; export LC_ALL
+
+missing=0
+for tool in ca65 ld65; do
+  if ! command -v "$tool" > /dev/null 2>&1; then
+    echo "PREFLIGHT_MISSING $tool"
+    missing=$((missing + 1))
+  fi
+done
+if [ "$missing" -gt 0 ]; then
+  exit 2
+fi
+
+case $0 in
+  */*) here=${0%/*} ;;
+  *) here=. ;;
+esac
+here=$(cd "$here" && pwd)
+root=$(cd "$here/.." && pwd)
+
+usage() {
+  echo "usage: fixture-build [--src DIR] [--out DIR]" >&2
+  exit 2
+}
+
+src=$root/fixtures/src
+out=$root/build/gate
+while [ $# -gt 0 ]; do
+  case $1 in
+    --src) [ $# -ge 2 ] || usage; src=$2; shift 2 ;;
+    --out) [ $# -ge 2 ] || usage; out=$2; shift 2 ;;
+    *) usage ;;
+  esac
+done
+
+if command -v sha256sum > /dev/null 2>&1; then
+  sha_tool=sha256sum
+elif command -v shasum > /dev/null 2>&1; then
+  sha_tool="shasum -a 256"
+else
+  echo "HARNESS_ERROR neither sha256sum nor shasum is available" >&2
+  exit 2
+fi
+[ -d "$src" ] || { echo "HARNESS_NO_FILE $src" >&2; exit 2; }
+lib=$root/fixtures/lib
+[ -f "$lib/hucard.cfg" ] || { echo "HARNESS_NO_FILE $lib/hucard.cfg" >&2; exit 2; }
+
+rm -rf "$out/fx" "$out/fixtures" "$out/fixtures-authored.used"
+mkdir -p "$out/fx" "$out/fixtures" || { echo "HARNESS_ERROR cannot create $out" >&2; exit 2; }
+: > "$out/fixtures-authored.used"
+
+n=0
+for s in "$src"/*.s; do
+  [ -f "$s" ] || continue
+  stem=$(basename "$s" .s)
+  case $stem in
+    '' | *[!a-z0-9_]*) echo "HARNESS_ERROR the fixture source name '$stem' is outside a-z 0-9 _" >&2; exit 2 ;;
+  esac
+  name=$(printf '%s' "$stem" | tr '_' '-')
+  if ca65 --cpu huc6280 -D ROMBANKS=32 -I "$lib" -o "$out/fx/$stem.o" "$s" > "$out/fx/$stem.log" 2>&1 \
+    && ld65 -C "$lib/hucard.cfg" -D ROMBANKS=32 -o "$out/fixtures/$name.pce" "$out/fx/$stem.o" >> "$out/fx/$stem.log" 2>&1; then
+    :
+  else
+    cat "$out/fx/$stem.log"
+    echo "FIXTURE_BUILD_FAILED $stem"
+    exit 1
+  fi
+  sha=$($sha_tool "$out/fixtures/$name.pce" | awk '{ print $1 }')
+  bytes=$(wc -c < "$out/fixtures/$name.pce" | tr -d ' ')
+  case $sha in
+    '' | *[!0-9a-f]*) echo "HARNESS_ERROR the host sha tool gave no digest for $name" >&2; exit 2 ;;
+  esac
+  if [ "${#sha}" -ne 64 ] || [ "$bytes" -eq 0 ]; then
+    echo "HARNESS_ERROR the host tools gave an unusable digest or size for $name" >&2
+    exit 2
+  fi
+  printf '%s %s %s\n' "$name" "$bytes" "$sha" >> "$out/fixtures-authored.used"
+  n=$((n + 1))
+done
+
+if [ "$n" -eq 0 ]; then
+  echo "FIXTURE_BUILD_EMPTY no fixtures/src/*.s source was found"
+  exit 1
+fi
+echo "STATUS fixture-build ok n=$n"
+exit 0

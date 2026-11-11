@@ -40,7 +40,7 @@ uint32_t ds_advance(struct ds_instance *inst, uint64_t cycles)
     return (uint32_t)DS_ADVANCE_OK;
 }
 
-uint32_t ds_run(struct ds_instance *inst, uint64_t budget, uint64_t step, ds_stop_fn stop, void *ctx)
+uint32_t ds_run_placeholder(struct ds_instance *inst, uint64_t budget, uint64_t step, ds_stop_fn stop, void *ctx)
 {
     uint64_t consumed = 0u;
 

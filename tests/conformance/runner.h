@@ -175,6 +175,9 @@ void kind_field_flip(const struct kase *k, struct ctx *c, char *got, size_t gotc
 /* the kinds that produce the outcomes timeout and cancelled (spinkinds.c, plan 18): one function for budget_spin and spin_forever */
 void kind_spin(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 
+/* the guest kind (spinkinds.c until plan 03-04): boots a built authored ROM, runs it with ds_run and judges its DSV1 verdict block from raw RAM */
+void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+
 /* the --fixtures list (fixlist.c, plan 17): NAME SIZE for every recipe a case materialises and every sweep length; 0, or 2 on a fault */
 int list_fixtures(const size_t *sweep, size_t nsweep);
 

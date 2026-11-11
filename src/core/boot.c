@@ -356,6 +356,8 @@ uint32_t ds_boot(void *mem, size_t cap, const struct ds_boot_request *request, s
     inst->powerup_seed = inst->has_seed != 0u ? request->powerup_seed : UINT64_C(0);
     ds_poweron_apply(inst);
     __builtin_memcpy(inst->rom, request->content, request->len);
+    /* reset (D-92, D-114): the CPU takes its vector through the normal bus path at machine time 0, so the ROM must already be in place */
+    ds_cpu_reset(inst);
     /* content identity (D-47): SHA-256 of the copied bytes exactly as supplied, taken only after every check has passed */
     ds_sha256(inst->rom, request->len, inst->content_id);
     return finish(result, DS_OK, DS_NO_FIELD, inst);
