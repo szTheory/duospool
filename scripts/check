@@ -915,6 +915,15 @@ stage_opcode_oracle() {
   checker sh "$here/opcode-check" --work build/gate/opcode-oracle
 }
 
+# opcode-oracle-negatives (CPU-06, D-97; plan 03-09): the two-way check must go red in every direction it is built to catch. Every tests/gate/opcode-oracle/<case>/ is a mini-root holding src/core/cpu_ops.def and
+# tests/oracle/huc6280-opcodes.tsv, copies of the real files with one change: ok-tree (no change) must pass, cycles-differ (one base cycle count of the def) must give OPC_FIELD, def-row-missing (the def lacks a row the
+# table has) OPC_MISSING_ROW and, because the def then holds 233 defined opcodes, OPC_UNDEF_COUNT, tsv-extra-row (the table lists an opcode twice) OPC_EXTRA_ROW, and undef-count (an opcode marked undefined on both sides,
+# so the tables agree row by row) OPC_UNDEF_COUNT alone. The mini-roots were generated once from the real files by a throwaway script and are committed; the real stage judges the live files, so a drift of the
+# live table never changes a control.
+stage_opcode_oracle_negatives() {
+  run_controls --ok-prefix --require-negative tests/gate/opcode-oracle tests/gate/opcode-oracle sh "$here/opcode-check" --root @DIR@ @EXPECT@
+}
+
 # xasm-negatives (FIX-01, D-129; plan 03-08): the encoding oracle must go red for each failure it is built to catch. Every tests/gate/xasm/<case>/ is a mini-root holding tests/oracle/huc6280-opcodes.tsv:
 # ok-<case> must pass, tsv-byte-changed (one opcode byte of the transcription changed) must give XASM_MISMATCH and tsv-bad-shape (a byte count that does not fit its mode) XASM_TSV_SHAPE. Then four probes made at run time:
 # (1) a shim ca65 placed first on PATH rewrites one instruction (lda #$11 becomes lda #$12) before calling the real assembler, so the assembled byte differs from the table: XASM_MISMATCH; the shim lives in a
@@ -2062,6 +2071,47 @@ selftest() {
     fi
   fi
 
+  # (z5) the field comparison of the opcode oracle is what turns the cycles-differ control red (T-03-27, plan 03-09): same shape as (z3). The control, run with --expect OPC_FIELD, is met on an unmutated copy;
+  # with the line tagged rule-field deleted from the copy of the awk program a changed cycle count is no longer reported, so the same run must exit 1: the control flipped.
+  if st_want mutation-opcode-oracle-field; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    xr="tests/gate/opcode-oracle/cycles-differ"
+    if sh "$cp_dir/opcode-check" --root "$xr" --expect OPC_FIELD > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c 'rule-field' "$cp_dir/lib/opcode-rules.awk" || true)
+    grep -v 'rule-field' "$cp_dir/lib/opcode-rules.awk" > "$cp_dir/lib/opcode-rules.mutated" || true
+    mv "$cp_dir/lib/opcode-rules.mutated" "$cp_dir/lib/opcode-rules.awk"
+    after=$(grep -c 'rule-field' "$cp_dir/lib/opcode-rules.awk" || true)
+    if sh "$cp_dir/opcode-check" --root "$xr" --expect OPC_FIELD > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -ge 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+      echo "SELFTEST mutation-opcode-oracle-field PASS"
+    else
+      echo "SELFTEST mutation-opcode-oracle-field FAIL (alive $st_alive, before $before, after $after, exit $r)"; failed=1
+    fi
+  fi
+
+  # (z6) CR-01 for opcode-check: a stage 1 that prints nothing (an emptied scratch copy of the awk program) must give OPC_STAGE_DEAD and exit 2, never a pass and never the exit 1 of a violation.
+  # The unmutated copy must pass on the clean control first, which shows the run is alive.
+  if st_want mutation-opcode-oracle-dead-stage; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    xr="tests/gate/opcode-oracle/ok-tree"
+    if sh "$cp_dir/opcode-check" --root "$xr" > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -q '^STATUS opcode-oracle ok' "$tmp/st.out"; then st_alive=1; fi
+    echo 'BEGIN { exit 0 }' > "$cp_dir/lib/opcode-rules.awk"
+    if sh "$cp_dir/opcode-check" --root "$xr" > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$r" -eq 2 ] && grep -q 'OPC_STAGE_DEAD' "$tmp/st.out" && ! grep -q '^STATUS opcode-oracle ok' "$tmp/st.out"; then
+      echo "SELFTEST mutation-opcode-oracle-dead-stage PASS"
+    else
+      echo "SELFTEST mutation-opcode-oracle-dead-stage FAIL (alive $st_alive, exit $r)"; failed=1
+    fi
+  fi
+
   # (x) CR-01: a gate script that pipes awk (or the hash tool) into another command reads the status of the last stage, so a program that dies
   # looks like "no violations". For every site that used to be the left side of a pipe, the script is run twice with a shim first on PATH. The
   # shim is the real awk except that it exits 2 when any argument contains the marker text of that one program, so exactly one awk call dies. The
@@ -2135,6 +2185,10 @@ selftest() {
       xa_ok="tests/gate/xasm/ok-tsv"
       as_case xasm-stage1 'STATUS xasm ok' "$as_dir" 'stage=1' sh "$here/xasm-check" --root "$xa_ok"
       as_case xasm-stage2 'STATUS xasm ok' "$as_dir" 'stage=2' sh "$here/xasm-check" --root "$xa_ok"
+      oc_ok="tests/gate/opcode-oracle/ok-tree"
+      as_case opcode-oracle-stage1-def 'STATUS opcode-oracle ok' "$as_dir" 'kind=def' sh "$here/opcode-check" --root "$oc_ok"
+      as_case opcode-oracle-stage1-tsv 'STATUS opcode-oracle ok' "$as_dir" 'kind=tsv' sh "$here/opcode-check" --root "$oc_ok"
+      as_case opcode-oracle-stage2 'STATUS opcode-oracle ok' "$as_dir" 'stage=2' sh "$here/opcode-check" --root "$oc_ok"
       as_case audit-history-pairs 'audit-history: clean' "$as_dir" '$1, $3' sh "$here/audit-history" --allow "$tmp/selftest/awk-audit.allow" "$as_repo"
       as_case audit-history-tree-paths 'audit-history: clean' "$as_dir" 'split($1, m' sh "$here/audit-history" --allow "$tmp/selftest/awk-audit.allow" "$as_repo"
       as_case audit-history-hashes 'audit-history: clean' "$as_dir" '{ print $1 }' sh "$here/audit-history" --allow "$tmp/selftest/awk-audit.allow" "$as_repo"
@@ -2261,6 +2315,7 @@ run_stage fixture-lint stage_fixture_lint
 run_stage fixture-lint-negatives stage_fixture_lint_negatives
 run_stage xasm stage_xasm
 run_stage opcode-oracle stage_opcode_oracle
+run_stage opcode-oracle-negatives stage_opcode_oracle_negatives
 run_stage xasm-negatives stage_xasm_negatives
 run_stage workflow stage_workflow
 run_stage workflow-negatives stage_workflow_negatives

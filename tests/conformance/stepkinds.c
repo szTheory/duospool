@@ -23,6 +23,11 @@
  *                   run to a nonzero machine time, ds_run is called with each malformed request of that CODE (a table of variants in this file). Every call must
  *                   return REFUSED with refusal run.CODE, take 0 steps, report overshoot 0 and leave the whole instance, digest and raw bytes, unchanged; a
  *                   second call with a NULL result must return REFUSED too. The codes every row observed are kept for run_refusal_coverage.
+ *   run_overshoot   expect is roms=LIST;calls=N;span=N;seed=N;bound=N (plan 03-09; D-94, CORE-04). LIST is comma-separated: an authored image name (ds-proto) or a synthetic recipe (plain-256k, plain-384k).
+ *                   Each ROM is booted once and run by N calls; call i goes to the absolute deadline machine time + 1 (an even call, which takes exactly one instruction) or machine time + 1 +
+ *                   (r mod span) (an odd call, r from a fixed generator seeded with seed). Every call must end on an instruction boundary at or past its deadline with overshoot = time - until,
+ *                   a single step no longer than ds_max_step_mclk(), and every overshoot below it; the largest overshoot seen must be above 0 (a case that never overshoots proves nothing). bound=N is
+ *                   the value ds_max_step_mclk() must have: a literal from the manual (17 cycles of a block transfer plus the 8 of an interrupt entry, times 12), so that a change of the derivation shows here.
  *   run_refusal_coverage  DEFERRED (D-86 pattern, evaluated after the case loop): every member of run_refusals.def must have been observed by a run_refuse row.
  */
 #include <stdint.h>
@@ -193,6 +198,127 @@ void kind_run_until(const struct kase *k, struct ctx *c, char *got, size_t gotca
     }
     check(c, n >= 1u, "the run_until case lists no item");
     snprintf(got, gotcap, "items=%u", n);
+}
+
+/* ---- kind run_overshoot ---- */
+
+#define OV_ROMS_MAX 4u
+#define OV_CALLS_MAX 256u
+
+/* a fixed 64-bit generator for the deadlines (test code only; the values carry no meaning) */
+static uint64_t ov_next(uint64_t *x)
+{
+    *x = *x * UINT64_C(6364136223846793005) + UINT64_C(1442695040888963407);
+    return *x >> 33;
+}
+
+/* boot one ROM: a synthetic recipe (plain-*) through boot_accepted, an authored image through boot_built_rom */
+static const char *ov_boot(const char *rom, const char *request, struct booted *b, const struct ds_instance **inst)
+{
+    struct spec s;
+
+    if (strncmp(rom, "plain-", 6u) == 0) {
+        return boot_accepted(rom, request, b, &s, inst);
+    }
+    return boot_built_rom(rom, request, b, inst);
+}
+
+static void ov_rom(const char *rom, const char *request, uint64_t calls, uint64_t span, uint64_t seed, uint64_t guard, uint64_t *maxo, struct ctx *c)
+{
+    struct booted b;
+    const struct ds_instance *inst = NULL;
+    struct ds_instance *w;
+    struct ds_run_result r;
+    uint64_t x = seed;
+    uint64_t i;
+    const char *err = ov_boot(rom, request, &b, &inst);
+
+    if (err != NULL) {
+        harness_error(c, err);
+        return;
+    }
+    w = (struct ds_instance *)(void *)b.mem;
+    for (i = 0u; i < calls; i++) {
+        uint64_t before = inst->machine_time;
+        uint64_t until = before + UINT64_C(1) + ((i & 1u) != 0u ? ov_next(&x) % span : UINT64_C(0));
+        uint32_t reason = run_abs(w, until, NULL, &r);
+
+        check(c, reason == (uint32_t)DS_RUN_REASON_UNTIL && r.steps >= 1u, "ds_run did not take a step to a deadline ahead of machine time");
+        check(c, inst->machine_time >= until && r.machine_time == inst->machine_time, "ds_run ended before its deadline");
+        check(c, r.overshoot == inst->machine_time - until, "the overshoot is not machine time minus the deadline");
+        check(c, r.overshoot < guard, "the overshoot reached ds_max_step_mclk()");
+        if ((i & 1u) == 0u) {
+            check(c, r.steps == 1u && inst->machine_time - before <= guard, "a single step took longer than ds_max_step_mclk()");
+        }
+        if (r.overshoot > *maxo) {
+            *maxo = r.overshoot;
+        }
+    }
+    note_run(c, inst->machine_time, (uint32_t)DS_RUN_REASON_UNTIL);
+    release_boot(&b);
+}
+
+void kind_run_overshoot(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    char list[PK_LIST_MAX];
+    char roms[PK_LIST_MAX];
+    char *rest = list;
+    char *kv;
+    uint64_t calls = 0u;
+    uint64_t span = 0u;
+    uint64_t seed = 0u;
+    uint64_t bound = 0u;
+    uint64_t maxo = 0u;
+    uint64_t guard = ds_max_step_mclk();
+    int have = 0;
+    unsigned n = 0u;
+
+    roms[0] = '\0';
+    if (pk_copy_text(k->val[K_EXPECT], list, sizeof list) != 0) {
+        harness_error(c, "the expect list is too long");
+        return;
+    }
+    while ((kv = pk_next_item(&rest, ';')) != NULL) {
+        char *eq = strchr(kv, '=');
+
+        if (eq == NULL) {
+            harness_error(c, "a run_overshoot expect is roms=LIST;calls=N;span=N;seed=N;bound=N");
+            return;
+        }
+        *eq = '\0';
+        if (strcmp(kv, "roms") == 0 && strlen(eq + 1) > 0u && strlen(eq + 1) < sizeof roms) {
+            memcpy(roms, eq + 1, strlen(eq + 1) + 1u);
+            have |= 1;
+        } else if (strcmp(kv, "calls") == 0 && parse_u64(eq + 1, &calls) == 0 && calls > 0u && calls <= OV_CALLS_MAX) {
+            have |= 2;
+        } else if (strcmp(kv, "span") == 0 && parse_u64(eq + 1, &span) == 0 && span > 0u) {
+            have |= 4;
+        } else if (strcmp(kv, "seed") == 0 && parse_u64(eq + 1, &seed) == 0) {
+            have |= 8;
+        } else if (strcmp(kv, "bound") == 0 && parse_u64(eq + 1, &bound) == 0 && bound > 0u) {
+            have |= 16;
+        } else {
+            harness_error(c, "a run_overshoot expect is roms=LIST;calls=N;span=N;seed=N;bound=N");
+            return;
+        }
+    }
+    if (have != 31) {
+        harness_error(c, "a run_overshoot expect is roms=LIST;calls=N;span=N;seed=N;bound=N");
+        return;
+    }
+    check(c, guard == bound, "ds_max_step_mclk() is not the value the manual gives for the longest opcode plus the interrupt entry");
+    rest = roms;
+    while ((kv = pk_next_item(&rest, ',')) != NULL && !c->harness) {
+        if (n >= OV_ROMS_MAX || strlen(kv) == 0u || strspn(kv, "abcdefghijklmnopqrstuvwxyz0123456789-") != strlen(kv)) {
+            harness_error(c, "a run_overshoot rom name is [a-z0-9-] and there are at most four");
+            return;
+        }
+        ov_rom(kv, k->val[K_REQUEST], calls, span, seed + (uint64_t)n, guard, &maxo, c);
+        n++;
+    }
+    check(c, n >= 3u, "the run_overshoot case names fewer than three ROMs");
+    check(c, maxo > 0u, "no call overshot its deadline: the case proves nothing about the bound");
+    snprintf(got, gotcap, "roms=%u maxo=%llu", n, (unsigned long long)maxo);
 }
 
 /* ---- kind run_chunk_sum ---- */

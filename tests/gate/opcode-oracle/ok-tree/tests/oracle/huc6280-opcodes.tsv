@@ -1,0 +1,283 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# huc6280-opcodes.tsv: the HuC6280 opcode table, transcribed from the manufacturer manual page images (plan 03-08; D-96, D-97; ER-1, ER-9; R-1, R-2).
+# This file is numeric data with page cites. It holds no manual text and no page image (ER-9). It is the independent second table that plan 03-09 compares the core table with, and the matrix input of scripts/xasm-check (D-129).
+# It was made before src/core/cpu_ops.def existed, and no value in it was taken from a DuoSpool source, from ca65 output or from another emulator.
+# Method: the opcode map H8-25 (hardware manual page 25, PDF page 28) was read as a page image, cell by cell (mnemonic, mode label, bytes, cycles).
+# Every instruction page S8-17 to S8-108 (software manual, PDF page n+2, footer checked) was read as a page image for its machine code, mode, bytes and cycles. The flags come from Tables 2-3-1 to 2-3-3 (S8-7, S8-8, S8-9), read as page images, not from the OCR layer.
+# Verifier: gsd-executor (Claude Sonnet 5.5) reading page images rendered at 110 to 300 dpi. Date: 2026-11-11. The PDFs are the three of 03-RESEARCH, fetched to a scratch directory outside the repository, sha256 equal to the recorded values (fixtures/lib/TOOLS.md).
+# Result of the two reads: the 232 opcodes that have an instruction page agree between the map and the pages in mnemonic, mode, bytes and cycles, except the printing errors listed below (CSL and CSH appear only in the map). Where the two differ the machine code printed on the instruction page decides.
+# Columns, one row per opcode 00 to FF in order, TAB separated: opcode (two hex digits), mnemonic, mode, bytes, cycles, flags, cite. The column header is not a data row, so it is not repeated here.
+# Mnemonics: BBRn, BBSn, RMBn and SMBn carry their bit number (the manual writes BBRi, TAMi and the like); TAM and TMA are the TAMi and TMAi of the manual; the manual's NCP in the map is NOP.
+# Modes: IMPLIED, ACC (accumulator, written A), IMM, ZP, ZPX, ZPY, ABS, ABSX, ABSY, IND (zero page indirect), INDX, INDY, ABSIND (JMP (hhll)), ABSINDX (JMP (hhll,X)), REL, ZPREL (BBR and BBS: zero page byte then relative byte),
+# BLK (block transfer: source, destination and length words), MASK (TAM and TMA: one operand byte, a single set bit, 2 to the power i; the manual labels them IMPLIED), IMMZP, IMMZPX, IMMABS, IMMABSX (TST: immediate byte first, then the address), and - for an undefined opcode.
+# Bytes: instruction length. Cycles: the base count printed by the manual, nothing added: the taken-branch, T-flag and decimal adders live in their own ledger rows (LED-CPU-0002). Block transfers print * in the map; the formula is 17+6x with x the length (H8-6, S8-89), written 17+6x here.
+# The map footnote of H8-25 prints that formula as 17+16z, a misprint (R-1); it is not used. TII, TIN, TIA, TAI and TDD tables are on S8-98, S8-100, S8-96, S8-89 and S8-94; the flowchart pages S8-88, S8-93, S8-95 and S8-97 were seen and S8-99 was not read.
+# Flags: eight characters in the order N V T B D I Z C as the manual tables show them. A letter means the flag is set from the result, - means unaffected, 0 or 1 means set to that value. In the N position 7 means memory bit 7 and in the V position 6 means memory bit 6 (BIT, TRB, TSB, TST).
+# RESTORED (PLP, RTI) means the flags are loaded from the stack. unlisted (CSL, CSH) means no flag-table row and no instruction page exists for the opcode: the map shows it, the flag table does not.
+# UNDEF: the 22 empty cells of the H8-25 map. Their bytes, cycles and flags are - because the empty cells give no numbers, and scripts/xasm-check skips them. The complement of the 234 defined rows is exactly these 22 opcodes.
+# Cite: H8-25 plus the instruction page, plus the flag table page, plus H8-6 for block transfers. CSL and CSH have only H8-25 (the software manual has no page for them, research mismatch 4).
+# Printing errors of the manual read as the intended value (research mismatch 7 and the new ones found here):
+#   H8-25 grid, opcodes 34 to 37: the printed cells read, in order of opcode, AND ZP,X 2/4, RMB3 ZP 2/7, ROL (IND) 2/7 and ROL ZP,X 2/6. S8-25, S8-18, S8-68 and S8-67 give 34 BIT ZP,X 2/4, 35 AND ZP,X 2/4, 36 ROL ZP,X 2/6 and 37 RMB3 ZP 2/7. This file follows the instruction pages.
+#   H8-25 grid, opcodes B4 and B5: the printed cells read LDA ZP,X 2/4 and LDA ZP 2/7. S8-55 and S8-53 give B4 LDY ZP,X 2/4 and B5 LDA ZP,X 2/4. This file follows the instruction pages.
+#   H8-25 grid: opcode 7D prints its mode as (ABS,X) where S8-17 gives ABS,X; the letter O stands for the digit 0 in RMB0, BBR0, ST0, SMB0 and BBS0; 6D prints ADS for ADC, 40 prints RT1 for RTI, 43 prints TRAi for TMAi, EA prints NCP for NOP, 88 prints DY for DEY.
+#   Instruction pages: S8-74 prints BSC for SBC at F1, S8-47 prints AND for EOR at 5D, S8-96 prints TAI for TIA at E3. The mode word IMPLID printed on many pages is IMPLIED.
+#   The reference-page column of Tables 2-3-1 to 2-3-3 lists several pages that differ from the instruction pages found by footer (for example SET at S8-88 where the page is S8-78). The cites here use the footer page number of the page that was read.
+# Whether the manual itself is right about the hardware is not claimed: this file says what the page images print (documentary, E1 only after the re-read that ER-1 and R-8 require for any promotion).
+00	BRK	IMPLIED	1	8	--0101--	H8-25+S8-30+S8-7
+01	ORA	INDX	2	7	N-0---Z-	H8-25+S8-58+S8-8
+02	SXY	IMPLIED	1	3	--0-----	H8-25+S8-87+S8-9
+03	ST0	IMM	2	4	--0-----	H8-25+S8-80+S8-9
+04	TSB	ZP	2	6	760---Z-	H8-25+S8-103+S8-9
+05	ORA	ZP	2	4	N-0---Z-	H8-25+S8-58+S8-8
+06	ASL	ZP	2	6	N-0---ZC	H8-25+S8-19+S8-7
+07	RMB0	ZP	2	7	--0-----	H8-25+S8-67+S8-8
+08	PHP	IMPLIED	1	3	--0-----	H8-25+S8-60+S8-8
+09	ORA	IMM	2	2	N-0---Z-	H8-25+S8-58+S8-8
+0A	ASL	ACC	1	2	N-0---ZC	H8-25+S8-19+S8-7
+0B	UNDEF	-	-	-	-	H8-25
+0C	TSB	ABS	3	7	760---Z-	H8-25+S8-103+S8-9
+0D	ORA	ABS	3	5	N-0---Z-	H8-25+S8-58+S8-8
+0E	ASL	ABS	3	7	N-0---ZC	H8-25+S8-19+S8-7
+0F	BBR0	ZPREL	3	6	--0-----	H8-25+S8-20+S8-7
+10	BPL	REL	2	2	--0-----	H8-25+S8-28+S8-7
+11	ORA	INDY	2	7	N-0---Z-	H8-25+S8-58+S8-8
+12	ORA	IND	2	7	N-0---Z-	H8-25+S8-58+S8-8
+13	ST1	IMM	2	4	--0-----	H8-25+S8-81+S8-9
+14	TRB	ZP	2	6	760---Z-	H8-25+S8-102+S8-9
+15	ORA	ZPX	2	4	N-0---Z-	H8-25+S8-58+S8-8
+16	ASL	ZPX	2	6	N-0---ZC	H8-25+S8-19+S8-7
+17	RMB1	ZP	2	7	--0-----	H8-25+S8-67+S8-8
+18	CLC	IMPLIED	1	2	--0----0	H8-25+S8-35+S8-7
+19	ORA	ABSY	3	5	N-0---Z-	H8-25+S8-58+S8-8
+1A	INC	ACC	1	2	N-0---Z-	H8-25+S8-48+S8-8
+1B	UNDEF	-	-	-	-	H8-25
+1C	TRB	ABS	3	7	760---Z-	H8-25+S8-102+S8-9
+1D	ORA	ABSX	3	5	N-0---Z-	H8-25+S8-58+S8-8
+1E	ASL	ABSX	3	7	N-0---ZC	H8-25+S8-19+S8-7
+1F	BBR1	ZPREL	3	6	--0-----	H8-25+S8-20+S8-7
+20	JSR	ABS	3	7	--0-----	H8-25+S8-52+S8-8
+21	AND	INDX	2	7	N-0---Z-	H8-25+S8-18+S8-7
+22	SAX	IMPLIED	1	3	--0-----	H8-25+S8-72+S8-8
+23	ST2	IMM	2	4	--0-----	H8-25+S8-82+S8-9
+24	BIT	ZP	2	4	760---Z-	H8-25+S8-25+S8-7
+25	AND	ZP	2	4	N-0---Z-	H8-25+S8-18+S8-7
+26	ROL	ZP	2	6	N-0---ZC	H8-25+S8-68+S8-8
+27	RMB2	ZP	2	7	--0-----	H8-25+S8-67+S8-8
+28	PLP	IMPLIED	1	4	RESTORED	H8-25+S8-64+S8-8
+29	AND	IMM	2	2	N-0---Z-	H8-25+S8-18+S8-7
+2A	ROL	ACC	1	2	N-0---ZC	H8-25+S8-68+S8-8
+2B	UNDEF	-	-	-	-	H8-25
+2C	BIT	ABS	3	5	760---Z-	H8-25+S8-25+S8-7
+2D	AND	ABS	3	5	N-0---Z-	H8-25+S8-18+S8-7
+2E	ROL	ABS	3	7	N-0---ZC	H8-25+S8-68+S8-8
+2F	BBR2	ZPREL	3	6	--0-----	H8-25+S8-20+S8-7
+30	BMI	REL	2	2	--0-----	H8-25+S8-26+S8-7
+31	AND	INDY	2	7	N-0---Z-	H8-25+S8-18+S8-7
+32	AND	IND	2	7	N-0---Z-	H8-25+S8-18+S8-7
+33	UNDEF	-	-	-	-	H8-25
+34	BIT	ZPX	2	4	760---Z-	H8-25+S8-25+S8-7
+35	AND	ZPX	2	4	N-0---Z-	H8-25+S8-18+S8-7
+36	ROL	ZPX	2	6	N-0---ZC	H8-25+S8-68+S8-8
+37	RMB3	ZP	2	7	--0-----	H8-25+S8-67+S8-8
+38	SEC	IMPLIED	1	2	--0----1	H8-25+S8-75+S8-8
+39	AND	ABSY	3	5	N-0---Z-	H8-25+S8-18+S8-7
+3A	DEC	ACC	1	2	N-0---Z-	H8-25+S8-44+S8-7
+3B	UNDEF	-	-	-	-	H8-25
+3C	BIT	ABSX	3	5	760---Z-	H8-25+S8-25+S8-7
+3D	AND	ABSX	3	5	N-0---Z-	H8-25+S8-18+S8-7
+3E	ROL	ABSX	3	7	N-0---ZC	H8-25+S8-68+S8-8
+3F	BBR3	ZPREL	3	6	--0-----	H8-25+S8-20+S8-7
+40	RTI	IMPLIED	1	7	RESTORED	H8-25+S8-70+S8-8
+41	EOR	INDX	2	7	N-0---Z-	H8-25+S8-47+S8-8
+42	SAY	IMPLIED	1	3	--0-----	H8-25+S8-73+S8-8
+43	TMA	MASK	2	4	--0-----	H8-25+S8-101+S8-9
+44	BSR	REL	2	8	--0-----	H8-25+S8-31+S8-7
+45	EOR	ZP	2	4	N-0---Z-	H8-25+S8-47+S8-8
+46	LSR	ZP	2	6	0-0---ZC	H8-25+S8-56+S8-8
+47	RMB4	ZP	2	7	--0-----	H8-25+S8-67+S8-8
+48	PHA	IMPLIED	1	3	--0-----	H8-25+S8-59+S8-8
+49	EOR	IMM	2	2	N-0---Z-	H8-25+S8-47+S8-8
+4A	LSR	ACC	1	2	0-0---ZC	H8-25+S8-56+S8-8
+4B	UNDEF	-	-	-	-	H8-25
+4C	JMP	ABS	3	4	--0-----	H8-25+S8-51+S8-8
+4D	EOR	ABS	3	5	N-0---Z-	H8-25+S8-47+S8-8
+4E	LSR	ABS	3	7	0-0---ZC	H8-25+S8-56+S8-8
+4F	BBR4	ZPREL	3	6	--0-----	H8-25+S8-20+S8-7
+50	BVC	REL	2	2	--0-----	H8-25+S8-32+S8-7
+51	EOR	INDY	2	7	N-0---Z-	H8-25+S8-47+S8-8
+52	EOR	IND	2	7	N-0---Z-	H8-25+S8-47+S8-8
+53	TAM	MASK	2	5	--0-----	H8-25+S8-90+S8-9
+54	CSL	IMPLIED	1	3	unlisted	H8-25
+55	EOR	ZPX	2	4	N-0---Z-	H8-25+S8-47+S8-8
+56	LSR	ZPX	2	6	0-0---ZC	H8-25+S8-56+S8-8
+57	RMB5	ZP	2	7	--0-----	H8-25+S8-67+S8-8
+58	CLI	IMPLIED	1	2	--0--0--	H8-25+S8-37+S8-7
+59	EOR	ABSY	3	5	N-0---Z-	H8-25+S8-47+S8-8
+5A	PHY	IMPLIED	1	3	--0-----	H8-25+S8-62+S8-8
+5B	UNDEF	-	-	-	-	H8-25
+5C	UNDEF	-	-	-	-	H8-25
+5D	EOR	ABSX	3	5	N-0---Z-	H8-25+S8-47+S8-8
+5E	LSR	ABSX	3	7	0-0---ZC	H8-25+S8-56+S8-8
+5F	BBR5	ZPREL	3	6	--0-----	H8-25+S8-20+S8-7
+60	RTS	IMPLIED	1	7	--0-----	H8-25+S8-71+S8-8
+61	ADC	INDX	2	7	NV0---ZC	H8-25+S8-17+S8-7
+62	CLA	IMPLIED	1	2	--0-----	H8-25+S8-34+S8-7
+63	UNDEF	-	-	-	-	H8-25
+64	STZ	ZP	2	4	--0-----	H8-25+S8-86+S8-9
+65	ADC	ZP	2	4	NV0---ZC	H8-25+S8-17+S8-7
+66	ROR	ZP	2	6	N-0---ZC	H8-25+S8-69+S8-8
+67	RMB6	ZP	2	7	--0-----	H8-25+S8-67+S8-8
+68	PLA	IMPLIED	1	4	N-0---Z-	H8-25+S8-63+S8-8
+69	ADC	IMM	2	2	NV0---ZC	H8-25+S8-17+S8-7
+6A	ROR	ACC	1	2	N-0---ZC	H8-25+S8-69+S8-8
+6B	UNDEF	-	-	-	-	H8-25
+6C	JMP	ABSIND	3	7	--0-----	H8-25+S8-51+S8-8
+6D	ADC	ABS	3	5	NV0---ZC	H8-25+S8-17+S8-7
+6E	ROR	ABS	3	7	N-0---ZC	H8-25+S8-69+S8-8
+6F	BBR6	ZPREL	3	6	--0-----	H8-25+S8-20+S8-7
+70	BVS	REL	2	2	--0-----	H8-25+S8-33+S8-7
+71	ADC	INDY	2	7	NV0---ZC	H8-25+S8-17+S8-7
+72	ADC	IND	2	7	NV0---ZC	H8-25+S8-17+S8-7
+73	TII	BLK	7	17+6x	--0-----	H8-25+S8-98+S8-9+H8-6
+74	STZ	ZPX	2	4	--0-----	H8-25+S8-86+S8-9
+75	ADC	ZPX	2	4	NV0---ZC	H8-25+S8-17+S8-7
+76	ROR	ZPX	2	6	N-0---ZC	H8-25+S8-69+S8-8
+77	RMB7	ZP	2	7	--0-----	H8-25+S8-67+S8-8
+78	SEI	IMPLIED	1	2	--0--1--	H8-25+S8-77+S8-8
+79	ADC	ABSY	3	5	NV0---ZC	H8-25+S8-17+S8-7
+7A	PLY	IMPLIED	1	4	N-0---Z-	H8-25+S8-66+S8-8
+7B	UNDEF	-	-	-	-	H8-25
+7C	JMP	ABSINDX	3	7	--0-----	H8-25+S8-51+S8-8
+7D	ADC	ABSX	3	5	NV0---ZC	H8-25+S8-17+S8-7
+7E	ROR	ABSX	3	7	N-0---ZC	H8-25+S8-69+S8-8
+7F	BBR7	ZPREL	3	6	--0-----	H8-25+S8-20+S8-7
+80	BRA	REL	2	4	--0-----	H8-25+S8-29+S8-7
+81	STA	INDX	2	7	--0-----	H8-25+S8-83+S8-9
+82	CLX	IMPLIED	1	2	--0-----	H8-25+S8-39+S8-7
+83	TST	IMMZP	3	7	760---Z-	H8-25+S8-104+S8-9
+84	STY	ZP	2	4	--0-----	H8-25+S8-85+S8-9
+85	STA	ZP	2	4	--0-----	H8-25+S8-83+S8-9
+86	STX	ZP	2	4	--0-----	H8-25+S8-84+S8-9
+87	SMB0	ZP	2	7	--0-----	H8-25+S8-79+S8-8
+88	DEY	IMPLIED	1	2	N-0---Z-	H8-25+S8-46+S8-7
+89	BIT	IMM	2	2	760---Z-	H8-25+S8-25+S8-7
+8A	TXA	IMPLIED	1	2	N-0---Z-	H8-25+S8-106+S8-9
+8B	UNDEF	-	-	-	-	H8-25
+8C	STY	ABS	3	5	--0-----	H8-25+S8-85+S8-9
+8D	STA	ABS	3	5	--0-----	H8-25+S8-83+S8-9
+8E	STX	ABS	3	5	--0-----	H8-25+S8-84+S8-9
+8F	BBS0	ZPREL	3	6	--0-----	H8-25+S8-21+S8-7
+90	BCC	REL	2	2	--0-----	H8-25+S8-22+S8-7
+91	STA	INDY	2	7	--0-----	H8-25+S8-83+S8-9
+92	STA	IND	2	7	--0-----	H8-25+S8-83+S8-9
+93	TST	IMMABS	4	8	760---Z-	H8-25+S8-104+S8-9
+94	STY	ZPX	2	4	--0-----	H8-25+S8-85+S8-9
+95	STA	ZPX	2	4	--0-----	H8-25+S8-83+S8-9
+96	STX	ZPY	2	4	--0-----	H8-25+S8-84+S8-9
+97	SMB1	ZP	2	7	--0-----	H8-25+S8-79+S8-8
+98	TYA	IMPLIED	1	2	N-0---Z-	H8-25+S8-108+S8-9
+99	STA	ABSY	3	5	--0-----	H8-25+S8-83+S8-9
+9A	TXS	IMPLIED	1	2	--0-----	H8-25+S8-107+S8-9
+9B	UNDEF	-	-	-	-	H8-25
+9C	STZ	ABS	3	5	--0-----	H8-25+S8-86+S8-9
+9D	STA	ABSX	3	5	--0-----	H8-25+S8-83+S8-9
+9E	STZ	ABSX	3	5	--0-----	H8-25+S8-86+S8-9
+9F	BBS1	ZPREL	3	6	--0-----	H8-25+S8-21+S8-7
+A0	LDY	IMM	2	2	N-0---Z-	H8-25+S8-55+S8-8
+A1	LDA	INDX	2	7	N-0---Z-	H8-25+S8-53+S8-8
+A2	LDX	IMM	2	2	N-0---Z-	H8-25+S8-54+S8-8
+A3	TST	IMMZPX	3	7	760---Z-	H8-25+S8-104+S8-9
+A4	LDY	ZP	2	4	N-0---Z-	H8-25+S8-55+S8-8
+A5	LDA	ZP	2	4	N-0---Z-	H8-25+S8-53+S8-8
+A6	LDX	ZP	2	4	N-0---Z-	H8-25+S8-54+S8-8
+A7	SMB2	ZP	2	7	--0-----	H8-25+S8-79+S8-8
+A8	TAY	IMPLIED	1	2	N-0---Z-	H8-25+S8-92+S8-9
+A9	LDA	IMM	2	2	N-0---Z-	H8-25+S8-53+S8-8
+AA	TAX	IMPLIED	1	2	N-0---Z-	H8-25+S8-91+S8-9
+AB	UNDEF	-	-	-	-	H8-25
+AC	LDY	ABS	3	5	N-0---Z-	H8-25+S8-55+S8-8
+AD	LDA	ABS	3	5	N-0---Z-	H8-25+S8-53+S8-8
+AE	LDX	ABS	3	5	N-0---Z-	H8-25+S8-54+S8-8
+AF	BBS2	ZPREL	3	6	--0-----	H8-25+S8-21+S8-7
+B0	BCS	REL	2	2	--0-----	H8-25+S8-23+S8-7
+B1	LDA	INDY	2	7	N-0---Z-	H8-25+S8-53+S8-8
+B2	LDA	IND	2	7	N-0---Z-	H8-25+S8-53+S8-8
+B3	TST	IMMABSX	4	8	760---Z-	H8-25+S8-104+S8-9
+B4	LDY	ZPX	2	4	N-0---Z-	H8-25+S8-55+S8-8
+B5	LDA	ZPX	2	4	N-0---Z-	H8-25+S8-53+S8-8
+B6	LDX	ZPY	2	4	N-0---Z-	H8-25+S8-54+S8-8
+B7	SMB3	ZP	2	7	--0-----	H8-25+S8-79+S8-8
+B8	CLV	IMPLIED	1	2	-00-----	H8-25+S8-38+S8-7
+B9	LDA	ABSY	3	5	N-0---Z-	H8-25+S8-53+S8-8
+BA	TSX	IMPLIED	1	2	N-0---Z-	H8-25+S8-105+S8-9
+BB	UNDEF	-	-	-	-	H8-25
+BC	LDY	ABSX	3	5	N-0---Z-	H8-25+S8-55+S8-8
+BD	LDA	ABSX	3	5	N-0---Z-	H8-25+S8-53+S8-8
+BE	LDX	ABSY	3	5	N-0---Z-	H8-25+S8-54+S8-8
+BF	BBS3	ZPREL	3	6	--0-----	H8-25+S8-21+S8-7
+C0	CPY	IMM	2	2	N-0---ZC	H8-25+S8-43+S8-7
+C1	CMP	INDX	2	7	N-0---ZC	H8-25+S8-41+S8-7
+C2	CLY	IMPLIED	1	2	--0-----	H8-25+S8-40+S8-7
+C3	TDD	BLK	7	17+6x	--0-----	H8-25+S8-94+S8-9+H8-6
+C4	CPY	ZP	2	4	N-0---ZC	H8-25+S8-43+S8-7
+C5	CMP	ZP	2	4	N-0---ZC	H8-25+S8-41+S8-7
+C6	DEC	ZP	2	6	N-0---Z-	H8-25+S8-44+S8-7
+C7	SMB4	ZP	2	7	--0-----	H8-25+S8-79+S8-8
+C8	INY	IMPLIED	1	2	N-0---Z-	H8-25+S8-50+S8-8
+C9	CMP	IMM	2	2	N-0---ZC	H8-25+S8-41+S8-7
+CA	DEX	IMPLIED	1	2	N-0---Z-	H8-25+S8-45+S8-7
+CB	UNDEF	-	-	-	-	H8-25
+CC	CPY	ABS	3	5	N-0---ZC	H8-25+S8-43+S8-7
+CD	CMP	ABS	3	5	N-0---ZC	H8-25+S8-41+S8-7
+CE	DEC	ABS	3	7	N-0---Z-	H8-25+S8-44+S8-7
+CF	BBS4	ZPREL	3	6	--0-----	H8-25+S8-21+S8-7
+D0	BNE	REL	2	2	--0-----	H8-25+S8-27+S8-7
+D1	CMP	INDY	2	7	N-0---ZC	H8-25+S8-41+S8-7
+D2	CMP	IND	2	7	N-0---ZC	H8-25+S8-41+S8-7
+D3	TIN	BLK	7	17+6x	--0-----	H8-25+S8-100+S8-9+H8-6
+D4	CSH	IMPLIED	1	3	unlisted	H8-25
+D5	CMP	ZPX	2	4	N-0---ZC	H8-25+S8-41+S8-7
+D6	DEC	ZPX	2	6	N-0---Z-	H8-25+S8-44+S8-7
+D7	SMB5	ZP	2	7	--0-----	H8-25+S8-79+S8-8
+D8	CLD	IMPLIED	1	2	--0-0---	H8-25+S8-36+S8-7
+D9	CMP	ABSY	3	5	N-0---ZC	H8-25+S8-41+S8-7
+DA	PHX	IMPLIED	1	3	--0-----	H8-25+S8-61+S8-8
+DB	UNDEF	-	-	-	-	H8-25
+DC	UNDEF	-	-	-	-	H8-25
+DD	CMP	ABSX	3	5	N-0---ZC	H8-25+S8-41+S8-7
+DE	DEC	ABSX	3	7	N-0---Z-	H8-25+S8-44+S8-7
+DF	BBS5	ZPREL	3	6	--0-----	H8-25+S8-21+S8-7
+E0	CPX	IMM	2	2	N-0---ZC	H8-25+S8-42+S8-7
+E1	SBC	INDX	2	7	NV0---ZC	H8-25+S8-74+S8-8
+E2	UNDEF	-	-	-	-	H8-25
+E3	TIA	BLK	7	17+6x	--0-----	H8-25+S8-96+S8-9+H8-6
+E4	CPX	ZP	2	4	N-0---ZC	H8-25+S8-42+S8-7
+E5	SBC	ZP	2	4	NV0---ZC	H8-25+S8-74+S8-8
+E6	INC	ZP	2	6	N-0---Z-	H8-25+S8-48+S8-8
+E7	SMB6	ZP	2	7	--0-----	H8-25+S8-79+S8-8
+E8	INX	IMPLIED	1	2	N-0---Z-	H8-25+S8-49+S8-8
+E9	SBC	IMM	2	2	NV0---ZC	H8-25+S8-74+S8-8
+EA	NOP	IMPLIED	1	2	--0-----	H8-25+S8-57+S8-8
+EB	UNDEF	-	-	-	-	H8-25
+EC	CPX	ABS	3	5	N-0---ZC	H8-25+S8-42+S8-7
+ED	SBC	ABS	3	5	NV0---ZC	H8-25+S8-74+S8-8
+EE	INC	ABS	3	7	N-0---Z-	H8-25+S8-48+S8-8
+EF	BBS6	ZPREL	3	6	--0-----	H8-25+S8-21+S8-7
+F0	BEQ	REL	2	2	--0-----	H8-25+S8-24+S8-7
+F1	SBC	INDY	2	7	NV0---ZC	H8-25+S8-74+S8-8
+F2	SBC	IND	2	7	NV0---ZC	H8-25+S8-74+S8-8
+F3	TAI	BLK	7	17+6x	--0-----	H8-25+S8-89+S8-9+H8-6
+F4	SET	IMPLIED	1	2	--1-----	H8-25+S8-78+S8-8
+F5	SBC	ZPX	2	4	NV0---ZC	H8-25+S8-74+S8-8
+F6	INC	ZPX	2	6	N-0---Z-	H8-25+S8-48+S8-8
+F7	SMB7	ZP	2	7	--0-----	H8-25+S8-79+S8-8
+F8	SED	IMPLIED	1	2	--0-1---	H8-25+S8-76+S8-8
+F9	SBC	ABSY	3	5	NV0---ZC	H8-25+S8-74+S8-8
+FA	PLX	IMPLIED	1	4	N-0---Z-	H8-25+S8-65+S8-8
+FB	UNDEF	-	-	-	-	H8-25
+FC	UNDEF	-	-	-	-	H8-25
+FD	SBC	ABSX	3	5	NV0---ZC	H8-25+S8-74+S8-8
+FE	INC	ABSX	3	7	N-0---Z-	H8-25+S8-48+S8-8
+FF	BBS7	ZPREL	3	6	--0-----	H8-25+S8-21+S8-7

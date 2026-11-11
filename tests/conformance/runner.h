@@ -153,6 +153,7 @@ void kind_splitmix(const struct kase *k, struct ctx *c, char *got, size_t gotcap
 void kind_poweron(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_run_until(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_run_chunk_sum(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_run_overshoot(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_run_refuse(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_run_refusal_coverage(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_poweron_domain(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
