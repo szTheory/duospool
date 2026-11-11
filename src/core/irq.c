@@ -126,5 +126,6 @@ uint32_t ds_irq_pending(const struct ds_instance *inst, uint64_t stamp)
 {
     uint32_t bits = ds_irq_pending_query(inst, stamp);
 
+    /* the priority is this one statement, timer then IRQ1 then IRQ2 (H8-13): the toy control irq-priority-swap (tests/controls) anchors on it and swaps the first two */
     return (bits & IRQ_BIT_TIQ) != 0u ? VEC_TIMER_LOW : (bits & IRQ_BIT_IRQ1) != 0u ? VEC_IRQ1_LOW : (bits & IRQ_BIT_IRQ2) != 0u ? VEC_IRQ2_LOW : 0u;
 }

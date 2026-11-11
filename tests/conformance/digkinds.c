@@ -7,7 +7,9 @@
  * writes the stream of the written rules (Digest::SHA and Math::BigInt, outside the repo). Test code only, never installed.
  *   digest_stream   boots the request, captures ds_digest_stream, and checks the prefix, the NUL, the version and the frame of each region in
  *                   order, every payload against the instance, the stream length, and then that SHA-256 of the captured stream equals
- *                   ds_digest. expect items, separated by ';': version=N, frames=TAG:LEN,TAG:LEN,..., size=N, enum=N, digest=HEX64
+ *                   ds_digest. expect items, separated by ';': version=N, frames=TAG:LEN,TAG:LEN,..., size=N, enum=N, digest=HEX64, and the optional item poke=timer-irq
+ *                   (plan 03-22): before the capture the runner writes the nonzero values timer_origin $0102030405060708, timer_counter $11, timer_reload $22, timer_enabled 1, irq_disable 5 and tiq_latch 1 into the booted instance (a test hook: the boot leaves them zero), so the encoding of the
+ *                   regions TIMR and IRQC is pinned with nonzero bytes in a literal derived outside the code. A case key irq_stim is declared to the instance before the capture, so the encoding of IRQS is pinned the same way.
  *   digest_pair     request is two requests separated by "||"; the first is booted twice, into blocks prefilled with different bytes, and
  *                   the second once; the two boots of the first must agree, and expect is same (the second agrees too) or differ
  *   digest_region   boots the request, and for every region reached through ds_region_info flips one byte of live state, the first and the
@@ -138,7 +140,7 @@ static const char *block_boot(const char *fixture, const char *request, unsigned
 
 /* ---- kind digest_stream ---- */
 
-#define DS_REGIONS_MAX 8u
+#define DS_REGIONS_MAX 12u
 
 struct frame_want {
     char tag[5];
@@ -181,6 +183,7 @@ void kind_digest_stream(const struct kase *k, struct ctx *c, char *got, size_t g
     struct frame_want fw[DS_REGIONS_MAX];
     int nframes = 0;
     int have_frames = 0;
+    int poke = 0;
     uint32_t want_version = 0u;
     int have_version = 0;
     size_t want_size = 0u;
@@ -219,6 +222,8 @@ void kind_digest_stream(const struct kase *k, struct ctx *c, char *got, size_t g
             continue;
         } else if (strncmp(item, "digest=", 7) == 0 && strlen(item + 7) == 64u) {
             memcpy(want_digest, item + 7, 65u);
+        } else if (strcmp(item, "poke=timer-irq") == 0) {
+            poke = 1;
         } else {
             release_boot(&b);
             harness_error(c, "a digest_stream expect item is malformed");
@@ -231,6 +236,26 @@ void kind_digest_stream(const struct kase *k, struct ctx *c, char *got, size_t g
         return;
     }
 
+    {
+        uint32_t refusal = 0u;
+        const char *serr = apply_irq_stim((struct ds_instance *)(void *)b.mem, k, &refusal); /* the case's declared stimulus, before the capture (plan 03-22) */
+
+        if (serr != NULL || refusal != 0u) {
+            release_boot(&b);
+            harness_error(c, serr != NULL ? serr : "the irq_stim list of the case was refused by ds_irq_stim_set");
+            return;
+        }
+    }
+    if (poke) {
+        struct ds_instance *wr = (struct ds_instance *)(void *)b.mem;
+
+        wr->timer_origin = UINT64_C(0x0102030405060708);
+        wr->timer_counter = 0x11u;
+        wr->timer_reload = 0x22u;
+        wr->timer_enabled = 1u;
+        wr->irq_disable = 5u;
+        wr->tiq_latch = 1u;
+    }
     memset(&cp, 0, sizeof cp);
     ds_digest_stream(inst, cap_sink, &cp);
     check(c, !cp.over, "the captured stream is longer than the capture buffer");
@@ -280,6 +305,21 @@ void kind_digest_stream(const struct kase *k, struct ctx *c, char *got, size_t g
         } else if (strcmp(fw[i].tag, "BUS0") == 0) {
             /* io_buffer, mpr_latch (plan 03-16), then the selection of the model parameter tma_zero (plan 03-17) */
             check(c, fw[i].len == 3u && pl[0] == inst->io_buffer && pl[1] == inst->mpr_latch && pl[2] == inst->tma_zero, msg);
+        } else if (strcmp(fw[i].tag, "TIMR") == 0) {
+            /* the origin as a u64 little-endian, then counter, reload and the start bit (plan 03-22): 11 bytes */
+            check(c, fw[i].len == 11u && rd64(pl) == inst->timer_origin && pl[8] == inst->timer_counter && pl[9] == inst->timer_reload && pl[10] == inst->timer_enabled, msg);
+        } else if (strcmp(fw[i].tag, "IRQC") == 0) {
+            /* the disable mask, the TIQ latch and the selection of the model parameter irq_i_sample (plan 03-22): 3 bytes */
+            check(c, fw[i].len == 3u && pl[0] == inst->irq_disable && pl[1] == inst->tiq_latch && pl[2] == inst->irq_i_sample, msg);
+        } else if (strcmp(fw[i].tag, "IRQS") == 0) {
+            /* sixteen slots of time (u64 little-endian), line and level, an unused slot zero (plan 03-22): 160 bytes */
+            unsigned slot;
+            int same = fw[i].len == 160u;
+
+            for (slot = 0u; same && slot < 16u; slot++) {
+                same = rd64(pl + 10u * slot) == inst->irq_stim_at[slot] && pl[10u * slot + 8u] == inst->irq_stim_line[slot] && pl[10u * slot + 9u] == inst->irq_stim_level[slot];
+            }
+            check(c, same, msg);
         } else {
             harness_error(c, "a digest_stream frame names a tag that the case does not know");
             break;

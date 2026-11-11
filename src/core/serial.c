@@ -131,7 +131,7 @@ void ds_profile_hash(const struct ds_profile *profile, uint8_t out[DS_DIGEST_BYT
 
 /* ---- the region table ---- */
 
-enum region_id { R_PROF, R_CONT, R_POWR, R_TIME, R_RAM8, R_MPRS, R_CPU0, R_BUS0, R_COUNT };
+enum region_id { R_PROF, R_CONT, R_POWR, R_TIME, R_RAM8, R_MPRS, R_CPU0, R_BUS0, R_TIMR, R_IRQC, R_IRQS, R_COUNT };
 
 struct region {
     char tag[5];            /* four ASCII bytes and a NUL, which is not written */
@@ -158,6 +158,15 @@ _Static_assert(offsetof(struct ds_instance, speed) == offsetof(struct ds_instanc
 _Static_assert(offsetof(struct ds_instance, mpr_latch) == offsetof(struct ds_instance, io_buffer) + 1u, "io_buffer and mpr_latch are not adjacent");
 _Static_assert(offsetof(struct ds_instance, tma_zero) == offsetof(struct ds_instance, mpr_latch) + 1u, "mpr_latch and tma_zero are not adjacent");
 
+/*
+ * The timer, the interrupt controller and the declared stimulus (plan 03-22; D-121): each region is one live span of the instance, in the order of the declarations of ds_core.h, whose adjacency struct ds_instance asserts. TIMR is timer_origin
+ * (u64) and then timer_counter, timer_reload and timer_enabled (11 bytes); IRQC is irq_disable, tiq_latch and the selection of the model parameter irq_i_sample (3 bytes); IRQS is the 16 slots of the declared IRQ1 and IRQ2 stimulus, each the time (u64),
+ * the line (0 for an unused slot) and the level (160 bytes; the slots are in struct-of-arrays storage, the stream interleaves them per slot, and an unused slot is all zero by construction of ds_irq_stim_set).
+ */
+_Static_assert(offsetof(struct ds_instance, timer_enabled) + 1u - offsetof(struct ds_instance, timer_origin) == 11u, "the timer fields are not the 11 bytes of the TIMR payload");
+_Static_assert(offsetof(struct ds_instance, irq_i_sample) + 1u - offsetof(struct ds_instance, irq_disable) == 3u, "the controller bytes are not the 3 bytes of the IRQC payload");
+_Static_assert(offsetof(struct ds_instance, irq_stim_level) + DS_IRQ_STIM_MAX - offsetof(struct ds_instance, irq_stim_at) == DS_IRQ_STIM_MAX * (sizeof(uint64_t) + 2u), "the stimulus arrays are not the 160 bytes of the IRQS payload");
+
 static const struct region regions[R_COUNT] = {
     [R_PROF] = {"PROF", DS_DIGEST_BYTES, offsetof(struct ds_instance, profile), sizeof(struct ds_profile)},
     [R_CONT] = {"CONT", DS_CONTENT_ID_BYTES + 4u + 4u, offsetof(struct ds_instance, content_id), DS_CONTENT_ID_BYTES},
@@ -168,6 +177,9 @@ static const struct region regions[R_COUNT] = {
     [R_MPRS] = {"MPRS", DS_MPR_COUNT, offsetof(struct ds_instance, mpr), DS_MPR_COUNT},
     [R_CPU0] = {"CPU0", 8u, offsetof(struct ds_instance, pc), offsetof(struct ds_instance, speed) + 1u - offsetof(struct ds_instance, pc)},
     [R_BUS0] = {"BUS0", 3u, offsetof(struct ds_instance, io_buffer), offsetof(struct ds_instance, tma_zero) + 1u - offsetof(struct ds_instance, io_buffer)},
+    [R_TIMR] = {"TIMR", 11u, offsetof(struct ds_instance, timer_origin), offsetof(struct ds_instance, timer_enabled) + 1u - offsetof(struct ds_instance, timer_origin)},
+    [R_IRQC] = {"IRQC", 3u, offsetof(struct ds_instance, irq_disable), offsetof(struct ds_instance, irq_i_sample) + 1u - offsetof(struct ds_instance, irq_disable)},
+    [R_IRQS] = {"IRQS", DS_IRQ_STIM_MAX * (8u + 2u), offsetof(struct ds_instance, irq_stim_at), offsetof(struct ds_instance, irq_stim_level) + DS_IRQ_STIM_MAX - offsetof(struct ds_instance, irq_stim_at)},
 };
 
 /* the payload of one region: exactly regions[index].payload_len bytes, one explicit field per call, never a struct */
@@ -214,6 +226,27 @@ static void emit_payload(struct writer *w, const struct ds_instance *inst, uint3
         w_u8(w, inst->mpr_latch);
         w_u8(w, inst->tma_zero);
         break;
+    case R_TIMR: /* the origin of the prescaler phase as a u64 little-endian, then counter, reload and the start bit (plan 03-21, 03-22; D-109, D-121), one explicit field per line */
+        w_u64(w, inst->timer_origin);
+        w_u8(w, inst->timer_counter);
+        w_u8(w, inst->timer_reload);
+        w_u8(w, inst->timer_enabled);
+        break;
+    case R_IRQC: /* the disable mask, the TIQ latch and the selection of the model parameter irq_i_sample as an index into its allowed list (plan 03-22; D-110, D-111, D-113, D-121) */
+        w_u8(w, inst->irq_disable);
+        w_u8(w, inst->tiq_latch);
+        w_u8(w, inst->irq_i_sample);
+        break;
+    case R_IRQS: { /* the 16 slots of the declared stimulus, each the time (u64), the line and the level; an unused slot is zero (plan 03-22; D-112, D-121) */
+        uint32_t slot;
+
+        for (slot = 0u; slot < DS_IRQ_STIM_MAX; slot++) {
+            w_u64(w, inst->irq_stim_at[slot]);
+            w_u8(w, inst->irq_stim_line[slot]);
+            w_u8(w, inst->irq_stim_level[slot]);
+        }
+        break;
+    }
     default:
         break;
     }

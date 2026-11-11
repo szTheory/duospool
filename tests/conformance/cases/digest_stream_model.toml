@@ -3,12 +3,13 @@
 #
 # The selected value of a model parameter is machine state and is in the digest stream (plan 03-17; D-113, D-121): the same boot as digest_stream_prefix with the run-request key model.tma_zero=a_unchanged, applied by ds_model_set before the first step. The stream differs from that case in the last
 # byte of the BUS0 frame only (the selection index of tma_zero: 1 = a_unchanged, where the default bus_latch is 0). The literal comes from the same throwaway perl script outside the repo as digest_stream_prefix (it first reproduced the committed version 3 digest, then appended the three-byte BUS0
-# payload 00 00 01 and set the version to 4); the stream file it wrote hashes to the literal under shasum -a 256 (8390 bytes). Evidence tier E0: it pins the encoding of the selection byte and shows repeatability, never that the state is right.
+# payload 00 00 01 and set the version to 4); the stream file it wrote hashes to the literal under shasum -a 256 (8390 bytes). Plan 03-22 (serial version 5) recomputed it the same way as digest_stream_prefix: the version 4 stream of this boot was checked against the committed literal 7fc0dc11...,
+# then the version was set to 5 and the zero frames TIMR, IRQC and IRQS were appended (8588 bytes). Evidence tier E0: it pins the encoding of the selection byte and shows repeatability, never that the state is right.
 id = "digest_stream_model"
 kind = "digest_stream"
 fixture = "plain-256k"
 request = "bind.powerup_policy=seeded-prng-v1;seed=42;model.tma_zero=a_unchanged"
-expect = "version=4;frames=PROF:32,CONT:40,POWR:16,TIME:8,RAM8:8192,MPRS:8,CPU0:8,BUS0:3;size=262144;enum=1;digest=7fc0dc11aedfde9b1fcd276b8a10590a7e5fdd4923c194a28cd9946d0aaddead"
+expect = "version=5;frames=PROF:32,CONT:40,POWR:16,TIME:8,RAM8:8192,MPRS:8,CPU0:8,BUS0:3,TIMR:11,IRQC:3,IRQS:160;size=262144;enum=1;digest=69f3aae59aa7d22700cf92c4ca50acf2d580441628c2f3d1a47a3c22684680c9"
 meaning = "With model.tma_zero=a_unchanged the digest stream is the one of the default boot except for the last byte of the BUS0 frame, and its SHA-256 equals the independently derived literal"
 required = true
 control = false

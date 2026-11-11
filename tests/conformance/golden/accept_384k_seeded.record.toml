@@ -14,6 +14,8 @@
 # Plan 03-18 changed the layout, format_version 2 to 3: after [power_on] the record now holds [model_tma_zero] (the default, bound_by default), [constants] (the nine rows of src/core/constants.def, each NAME = "VALUE LEDGER") and [run] (reason none for a boot that ran nothing),
 # and [withheld] gained the ledger ids of the model row and of the constants rows. The literals were written by hand from the two def files, never copied from printer output. The digest line did not change (no state was added), and the profile and content hashes did not change.
 # Plan 03-22 added the second row of src/core/model_params.def, irq_i_sample (default pre, ledger LED-IRQ-0005, status open): the record gains the table [model_irq_i_sample] after [model_tma_zero] and [withheld] the id LED-IRQ-0005 (18 ids, under the cap of 24). The two blocks were written by hand from the def and are not printer output; the layout otherwise did not change.
+# Plan 03-22 also added the regions TIMR, IRQC and IRQS and the serial version 5, so the digest line changed: it was recomputed with a throwaway python script outside the repo that rebuilt the version 4 stream of this boot (and checked it against the committed version 4 digest 1843d592... under
+# shasum -a 256), set the version to 5 and appended the frames TIMR (11 zero bytes), IRQC (3) and IRQS (160); the 8588-byte stream file hashes to the new value under shasum -a 256. The profile and content hashes did not change.
 [record]
 format_version = 3
 
@@ -144,4 +146,4 @@ size_cap = 1048576
 time = 0
 time_unit = "master-clocks"
 digest_algorithm = "sha256"
-digest = "1843d59244491f412b4832b1bc19ea34df832a3ff46ca648de578b511333084a"
+digest = "e990ac30d47b991228e9fe5a5aa578624400fefc82ecf03610366c31fbd5c7a4"
