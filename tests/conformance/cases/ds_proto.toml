@@ -1,17 +1,20 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
-# Guest tracer (plan 03-01, D-95, D-123, D-124): the authored fixture fixtures/src/ds_proto.s is assembled by ca65 in the gate (never committed), boots on the core, runs
-# through ds_run to the absolute deadline until (master clocks, 4000000 is about 333,000 low-speed CPU cycles) and writes a DSV1 verdict block into work RAM that the runner
+# Guest tracer (plan 03-01, D-95, D-123, D-124; keys of plan 03-04): the authored fixture fixtures/src/ds_proto.s is assembled by ca65 in the gate (never committed), named by
+# fixture = authored:ds-proto, boots on the core, runs through ds_run to the absolute deadline until_mclk (master clocks, 4000000 is about 333,000 low-speed CPU cycles)
+# with checks = 2 as the count the case demands, and writes a DSV1 verdict block into work RAM that the runner
 # judges from raw RAM. The literals come from a manual page (check 1: the software manual page S8-17 ADC example, $7F + $01 = $80 with V set) and from an in-guest computation
 # (check 2: two different loops over a ROM table); none comes from DuoSpool output. Evidence tier E0, a mechanism check of the tracer slice: no accuracy or compatibility claim.
 id = "ds_proto"
 kind = "guest"
-fixture = "none"
+fixture = "authored:ds-proto"
 request = ""
-expect = "rom=ds-proto;id=1;checks=2;until=4000000"
+expect = "id=1"
 meaning = "The authored ds_proto fixture boots from its reset vector, runs to the deadline in master clocks and leaves a consistent DSV1 block whose two check results are both pass"
 required = true
 control = false
 expect_outcome = "pass"
 pins = []
+until_mclk = 4000000
+checks = 2

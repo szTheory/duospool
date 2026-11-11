@@ -14,7 +14,9 @@
 # Rule of this stage:
 #   INV_CASE_FIELD   a case file that is not a well-formed case: one of the ten keys of D-58 and D-79(a) (id kind fixture request expect
 #                    meaning required control expect_outcome pins) is absent (request included, an empty value is allowed), a key is of the
-#                    wrong type or unknown, a table or a syntax error is present, the file name is not an id, or id differs from the file stem
+#                    wrong type or unknown, a table or a syntax error is present, the file name is not an id, or id differs from the file stem.
+#                    The seven optional keys of plan 03-04 (until_mclk policies checks input irq_stim sinks chunks) may be absent; present, each has
+#                    its type (until_mclk and checks integers, the rest strings), and any other key is still unknown.
 BEGIN {
   FS = "\t"
   fname = ENVIRON["fname"]
@@ -23,6 +25,10 @@ BEGIN {
   n = split("id kind fixture request expect meaning required control expect_outcome pins", fl, " ")
   split("s s s s s s b b s a", ft, " ")
   for (i = 1; i <= n; i++) want[fl[i]] = ft[i]
+  # the optional keys (plan 03-04, F1): in want so that they are not unknown, but never in the missing-key loop (that loop runs over fl, the ten keys)
+  nopt = split("until_mclk policies checks input irq_stim sinks chunks", ol, " ")
+  split("i s i s s s s", ot, " ")
+  for (i = 1; i <= nopt; i++) want[ol[i]] = ot[i]
 }
 function viol(code, line, detail) { nv++; vbuf[nv] = sprintf("V\t%s\t%s\t%s", code, line, detail) }
 $1 == "END" { sentinel = 1; next }

@@ -15,8 +15,19 @@
 
 #define REC_CAP 16384u
 
-/* the ten keys of a case (D-58 nine plus the request key of D-79(a)) */
-enum { K_ID, K_KIND, K_FIXTURE, K_REQUEST, K_EXPECT, K_MEANING, K_REQUIRED, K_CONTROL, K_EXPECT_OUTCOME, K_PINS, NKEYS };
+/*
+ * the keys of a case: the ten mandatory ones (D-58 nine plus the request key of D-79(a)) and the seven optional ones of plan 03-04 (D-57, D-58, D-79
+ * amended): until_mclk and checks are integers, the others are strings whose grammar belongs to the kind that reads them. Three places list the keys:
+ * this enum, the key table in runner.c and the want table of scripts/lib/inventory-rules.awk.
+ */
+enum {
+    K_ID, K_KIND, K_FIXTURE, K_REQUEST, K_EXPECT, K_MEANING, K_REQUIRED, K_CONTROL, K_EXPECT_OUTCOME, K_PINS,
+    K_UNTIL_MCLK, K_POLICIES, K_CHECKS, K_INPUT, K_IRQ_STIM, K_SINKS, K_CHUNKS, NKEYS
+};
+
+/* the keys a case may omit: one bit per key, so run_case refuses a missing key only when its bit is clear */
+#define K_OPTIONAL_MASK                                                                                                                                       \
+    ((1u << K_UNTIL_MCLK) | (1u << K_POLICIES) | (1u << K_CHECKS) | (1u << K_INPUT) | (1u << K_IRQ_STIM) | (1u << K_SINKS) | (1u << K_CHUNKS))
 
 struct kase {
     const char *stem;
@@ -31,6 +42,9 @@ struct ctx {
     int failed;
     int harness;
     int timeout; /* a machine-time budget ended the case (outcome timeout, kinds budget_spin) */
+    int has_run; /* a kind ran the machine: the RESULT line then ends machine_time=N stop=REASON (note_run, guestkinds.c; D-95) */
+    uint64_t run_mclk;
+    const char *run_stop;
     char why[160];
 };
 
@@ -193,10 +207,13 @@ void kind_field_flip(const struct kase *k, struct ctx *c, char *got, size_t gotc
 /* the kinds that produce the outcomes timeout and cancelled (spinkinds.c, plan 18): one function for budget_spin and spin_forever */
 void kind_spin(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 
-/* the guest kind (spinkinds.c until plan 03-04): boots a built authored ROM, runs it with ds_run and judges its DSV1 verdict block from raw RAM */
+/* the guest kind (guestkinds.c since plan 03-04): boots a built authored ROM, runs it with ds_run and judges its DSV1 verdict block from raw RAM */
 void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 /* boot build/gate/fixtures/ROM.pce over the request text: NULL and the accepted instance, or why not (a harness fault of the case); release_boot frees it */
 const char *boot_built_rom(const char *rom, const char *request, struct booted *b, const struct ds_instance **inst);
+/* the NAME of a fixture key authored:NAME (0 on success; NAME is [a-z0-9-]) and the recording of a run for the machine_time and stop tail of a RESULT line */
+int authored_name(const char *fixture, char *out, size_t cap);
+void note_run(struct ctx *c, uint64_t machine_time, uint32_t reason);
 
 /* the --fixtures list (fixlist.c, plan 17): NAME SIZE for every recipe a case materialises and every sweep length; 0, or 2 on a fault */
 int list_fixtures(const size_t *sweep, size_t nsweep);

@@ -7,7 +7,7 @@
  * the file src/core/advance.c) and the Phase 2 kinds that used it (advance, run_budget) are gone: every kind that steps the machine runs ds_run to an
  * absolute until_mclk, never a relative budget, so run(N) then run(M) is run(N+M) by construction. the two placeholder registers of the
  * first phases left the digest in plan 03-03 and the instance in plan 03-36. The timeout-budget mini-root keeps its expect text
- * budget=N,step=M: it now means absolute deadlines in chunks of step master clocks (spinkinds.c).
+ * budget=N,step=M: it now means absolute deadlines in chunks of step master clocks (guestkinds.c).
  *   run_until       expect is a list of items separated by '|'. The first item is rom=NAME (a built authored image, build/gate/fixtures/NAME.pce);
  *                   every other item runs on its own fresh boot and has comma-separated keys until (absolute deadline in master clocks, required),
  *                   stop (- never, N: the stop callback holds once machine time is at least N), result (until, the default, or callback), steps (required),
@@ -135,6 +135,7 @@ static int item_run(const char *rom, const char *request, const struct item *it,
     }
     w = (struct ds_instance *)(void *)b.mem;
     reason = run_abs(w, it->until, &sc, &r);
+    note_run(c, inst->machine_time, reason);
     check(c, reason == it->result, "ds_run returned a different reason than expected");
     check(c, r.steps == it->steps, "ds_run took a different number of steps than the instruction cycle table gives");
     check(c, !it->have_time || (inst->machine_time == it->time && r.machine_time == it->time), "machine time after ds_run differs from the expected value");
@@ -197,7 +198,7 @@ void kind_run_until(const struct kase *k, struct ctx *c, char *got, size_t gotca
 /* ---- kind run_chunk_sum ---- */
 
 #define CS_LISTS_MAX 8u
-#define CS_DONE_STATE_OFF 0x1F04u /* the DSV1 state byte of a guest (spinkinds.c) */
+#define CS_DONE_STATE_OFF 0x1F04u /* the DSV1 state byte of a guest (guestkinds.c) */
 
 struct endstate {
     uint64_t time;
@@ -316,6 +317,7 @@ void kind_run_chunk_sum(const struct kase *k, struct ctx *c, char *got, size_t g
         harness_error(c, err);
         return;
     }
+    note_run(c, ref.time, (uint32_t)DS_RUN_REASON_UNTIL);
     check(c, ref.ok && ref.steps > 0u, "the reference run took no step or its digest was refused");
     check(c, ref.done, "the guest is not in its done state at the deadline: the chunk comparison would not be past done (D-95)");
     rest = chunks;
@@ -539,9 +541,12 @@ void kind_run_refuse(const struct kase *k, struct ctx *c, char *got, size_t gotc
     memset(&r, 0, sizeof r);
     {
         struct ds_run_request first;
+        uint32_t reason;
 
         rr_base_request(&first, RR_MACHINE_TIME_FIRST);
-        check(c, ds_run((struct ds_instance *)(void *)b.mem, &first, &r) == (uint32_t)DS_RUN_REASON_UNTIL && inst->machine_time >= RR_MACHINE_TIME_FIRST,
+        reason = ds_run((struct ds_instance *)(void *)b.mem, &first, &r);
+        note_run(c, inst->machine_time, reason);
+        check(c, reason == (uint32_t)DS_RUN_REASON_UNTIL && inst->machine_time >= RR_MACHINE_TIME_FIRST,
               "the valid first run of the run_refuse boot did not reach its deadline");
     }
     rr_variants(c, code, (struct ds_instance *)(void *)b.mem, inst, &calls);

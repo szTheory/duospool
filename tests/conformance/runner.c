@@ -620,14 +620,23 @@ static int write_evidence(const char *path, const char *id, const char *kind, co
 /* ---- the cases TSV (scripts/conformance-flatten): K<TAB>STEM<TAB>TABLE<TAB>KEY<TAB>TYPE<TAB>VALUE rows and a last END row ---- */
 
 
-/* the ten keys of a case (D-58 nine plus the request key of D-79(a)) and the TSV type of each */
+/* the keys of a case (runner.h) and the TSV type of each; the keys of the second row are optional (K_OPTIONAL_MASK) */
 static const struct {
     const char *name;
     char type;
 } key_def[NKEYS] = {
     {"id", 's'},      {"kind", 's'},    {"fixture", 's'},         {"request", 's'},  {"expect", 's'},
     {"meaning", 's'}, {"required", 'b'}, {"control", 'b'}, {"expect_outcome", 's'}, {"pins", 'a'},
+    {"until_mclk", 'i'}, {"policies", 's'}, {"checks", 'i'}, {"input", 's'}, {"irq_stim", 's'}, {"sinks", 's'}, {"chunks", 's'},
 };
+
+/* an integer key is an unsigned decimal of one to nineteen digits (T-03-11), so it always fits a uint64_t */
+static int is_uint_text(const char *v)
+{
+    size_t n = strlen(v);
+
+    return n >= 1u && n <= 19u && strspn(v, "0123456789") == n;
+}
 
 #define MAX_CASES 1024u
 
@@ -764,7 +773,7 @@ static int load_cases(char *text, const char **why)
                 k->bad = k->bad != NULL ? k->bad : "unknown key";
             } else if (k->has[key]) {
                 k->bad = k->bad != NULL ? k->bad : "duplicate key";
-            } else if (f[4][0] != key_def[key].type || f[4][1] != '\0') {
+            } else if (f[4][0] != key_def[key].type || f[4][1] != '\0' || (key_def[key].type == 'i' && !is_uint_text(f[5]))) {
                 k->bad = k->bad != NULL ? k->bad : "key has the wrong type";
             } else {
                 k->has[key] = 1;
@@ -1017,6 +1026,7 @@ static int run_case(const struct kase *k, const char *evdir)
     struct ctx c;
     char got[64] = "";
     char evid[256];
+    char tail[80] = "";
     const char *kind = k->has[K_KIND] ? k->val[K_KIND] : "-";
     const char *expect = k->has[K_EXPECT] ? k->val[K_EXPECT] : "-";
     const char *diag;
@@ -1028,7 +1038,7 @@ static int run_case(const struct kase *k, const char *evdir)
     memset(&c, 0, sizeof c);
     ev_detail[0] = '\0';
     for (j = 0; j < NKEYS; j++) {
-        if (!k->has[j] && k->bad == NULL) {
+        if (!k->has[j] && ((K_OPTIONAL_MASK >> j) & 1u) == 0u && k->bad == NULL) {
             harness_error(&c, "a key is missing");
         }
     }
@@ -1061,7 +1071,10 @@ static int run_case(const struct kase *k, const char *evdir)
     if (diag != NULL) {
         emit_err("case %s: %s\n", k->stem, diag);
     }
-    emit_out("RESULT %s %s assertions=%u evidence=%s\n", k->stem, outcome_name[oc], c.n, evid);
+    if (c.has_run) {
+        snprintf(tail, sizeof tail, " machine_time=%llu stop=%s", (unsigned long long)c.run_mclk, c.run_stop);
+    }
+    emit_out("RESULT %s %s assertions=%u evidence=%s%s\n", k->stem, outcome_name[oc], c.n, evid, tail);
     return 0;
 }
 

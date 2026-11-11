@@ -3,7 +3,7 @@
 /*
  * fixlist.c - the runner's --fixtures list (plan 17, FIX-02, D-59). It prints one line  NAME SIZE  for every synthetic recipe that the
  * gate can emit, de-duplicated and sorted in byte order:
- *   - the recipe of every case that has a fixture key other than none, for each request of the case (the text before and after each
+ *   - the recipe of every case that has a fixture key other than none and authored:NAME (an authored ROM is built, not synthesised), for each request of the case (the text before and after each
  *     "||"), when the request materialises bytes: ptr is ok and len is within the content limit (ptr=null, ptr=dummy and
  *     len=size_max materialise none). The recipe is the one synth_name gives for the fixture and the effective len, so a len=N
  *     override is named plain-256k:N (or len:N over a len:N fixture) and not mistaken for a pure stream;
@@ -80,7 +80,8 @@ int list_fixtures(const size_t *sweep, size_t nsweep)
         char *part;
         size_t natural;
 
-        if (!k->has[K_FIXTURE] || strcmp(k->val[K_FIXTURE], "none") == 0) {
+        /* none has no image; authored:NAME is built by scripts/fixture-build and listed in the authored used list, never a synthetic recipe (plan 03-04, F3) */
+        if (!k->has[K_FIXTURE] || strcmp(k->val[K_FIXTURE], "none") == 0 || strncmp(k->val[K_FIXTURE], "authored:", 9u) == 0) {
             continue;
         }
         natural = synth_size(k->val[K_FIXTURE]);
