@@ -1,19 +1,20 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
-# CSL and CSH length and cycles, and the power-up speed (D-101; CPU-04). A candidate for supported (E1, documentary) under ER-2, but the status stays assumed until plan 03-32 re-reads the pages and checks every condition (ER-1, ER-2, R-8); this entry promotes nothing.
-# Only what the manual shows is in the statement: the H8-25 instruction map cells of CSL (opcode 54) and CSH (D4), 1 byte and 3 cycles each, and the reset list of H8-18 (low speed mode is set). The software manual has no page for CSL or CSH (R-6, research mismatch 4). Everything about switching (which speed the three cycles are charged at, no extra cost) is LED-CPU-0006.
-# One pin per entry (F9): spd_speed_trace, which compares the core's charged time and speed byte in the instruction trace with these page literals and shows the first instruction at the low speed. cycle_adders_manual items 15 to 18 assert the same three cycles (that case pins LED-CPU-0002); spd_speed checks 1 and 13 are E2 self-consistency.
-# Page images read on 2026-11-11 by the plan 03-34 executor from a scratch copy of the hardware manual (sha256 40a32e5d..., never committed): H8-18 and H8-25.
+# CSL and CSH length and cycles, and the power-up speed (D-101; CPU-04). Supported (E1, documentary) by plan 03-32 under ER-2: the equality of the core with two page statements, not a hardware measurement and not a statement about switching.
+# ER-2 record (plan 03-32, verifier gsd-executor, 2026-11-11). Condition 1: H8-25 (map cells CSL 54 and CSH D4, 1 byte, 3 cycles each; no software manual page, R-6) and H8-18 (system reset: low speed mode is set; also I set, D reset, MPR7 $00, timer stopped) were read as page images from a scratch copy of the hardware manual (sha256 40a32e5d..., never committed).
+# Condition 2: the literals of spd_speed_trace are the 3 cycles of the H8-25 cells and the low speed of the first instruction after reset (H8-18), written in the case; the 1 byte shows in the listing addresses (CSH at $E100, the next instruction at $E101). None comes from cpu_ops.def or from a DuoSpool run. Condition 3: the statement says equals what the manual shows.
+# Condition 4: withheld lists the three required items and the switch. Condition 5: pin TEST:spd_speed_trace. The same case also asserts the switching rule of LED-CPU-0006 (the new speed from the next instruction, no extra cost); that rule is not claimed here and stays open there. Everything about switching (which speed the three cycles are charged at, no extra cost) is LED-CPU-0006.
+# cycle_adders_manual items 15 to 18 assert the same three cycles (that case pins LED-CPU-0002); spd_speed checks 1 and 13 are E2 self-consistency and do not count here.
 id = "LED-CPU-0005"
 statement = "The DuoSpool CSL and CSH are 1 byte and 3 cycles each, as the manual's instruction map shows for opcodes 54 and D4, and the machine is in low speed mode after reset, as the manual's reset list states; no more than that is claimed here."
 profile = "pce-hucard-2btn"
-status = "assumed"
+status = "supported"
 sources = ["FACT|H8-25|gsd-executor image read 2026-11-11: map cells CSL (54) and CSH (D4), 1 byte, 3 cycles; no software manual page (R-6)", "FACT|H8-18|gsd-executor image read 2026-11-11: system reset sets low speed mode (also I set, D reset, MPR7 00)", "REPORT|research/PITFALLS.md C5|pcetech: low speed at power-up, CSL and CSH 3 cycles; agrees, not re-read"]
-evidence = ["E1|tests/conformance/cases/spd_speed_trace.toml: 1 byte (addresses of the listing) and 3 cycles of CSL and CSH against the H8-25 cells, first instruction at low speed; counted only after the plan 03-32 re-read", "E0|tests/conformance/cases/cycle_adders_manual.toml: items 15 to 18 trace CSH, INX, CSL, INX; the measured quantity is the core's own charged time"]
+evidence = ["E1|tests/conformance/cases/spd_speed_trace.toml: 1 byte (listing addresses) and 3 cycles of CSL and CSH against the H8-25 cells, first instruction at low speed; pages re-read in plan 03-32", "E0|tests/conformance/cases/cycle_adders_manual.toml: items 15 to 18 trace CSH, INX, CSL, INX; the measured quantity is the core's own charged time"]
 disagreement = "none among the pages read: H8-25 and H8-18 are the only pages, and the pcetech report in research/PITFALLS.md C5 agrees with them. No page states anything about switching: that is LED-CPU-0006, where the emulator reading of the switch is recorded."
 pinning_test = "TEST:spd_speed_trace"
 updated = "2026-11-11"
-assumption = "The statement is worded as the equality of the core with the H8-25 cells and the H8-18 reset line; assumed because ER-2 promotion belongs to plan 03-32, which re-reads the pages. The 12 master clocks of a low-speed cycle are LED-CPU-0003 and are not part of this entry."
+assumption = "The statement is the equality of the core with the H8-25 cells and the H8-18 reset line. The pinned case also asserts the switching rule of LED-CPU-0006, which is not claimed here. The 12 master clocks of a low-speed cycle are LED-CPU-0003."
 revisit_phase = 3
 withheld = ["any claim of hardware cycle accuracy", "any claim of interrupt latency in cycles", "any claim of game compatibility", "any TG-16 or region claim", "any claim about when a speed switch takes effect or what it costs"]
 origin = "03-CONTEXT D-101"

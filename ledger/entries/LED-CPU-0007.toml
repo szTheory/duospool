@@ -1,21 +1,21 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
-# Block transfer cost, length and register restore (D-100; CPU-05, CPU-01). Status assumed until plan 03-32, the only plan that may promote the eight ER-2 candidates (this is one) and only when the ER-2 conditions hold; nothing is promoted here.
-# The cost is cited from H8-6 and S8-88 and S8-89, never from the H8-25 footnote, which prints 17+16z (a misprint of 17+6x, errata R-1; the scan itself prints it, so it is not an OCR error). The pages were read as images by the phase researcher on 2026-11-10 and again by the plan 03-25 executor on
-# 2026-11-11 from scratch copies of the manuals (sha256 40a32e5d... and 51eeda39..., never committed).
-# The pin is the len0 image of fixtures/src/cpu_blk.s (checks 39 to 42, length operand 0 = 65536 bytes); the plain image (cpu_blk, checks 36 to 38) carries the same count at 935, 933 and 679 bytes. The model of the transfer (aliasing, the 14 and 3 cycle split, the access offsets) is LED-CPU-0008,
-# the interrupt rule is LED-IRQ-0007.
-# Evidence tiers: the cycle rows count timer steps with the community-reported cycle length (LED-CPU-0003), so they are E2 self-consistency (ER-3); the chunk case is E0 (ER-7).
+# Block transfer cost, length and register restore (D-100; CPU-05, CPU-01). Status stays assumed after the plan 03-32 review: the entry was one of the eight ER-2 candidates and one condition cannot be shown (see below); nothing is promoted here.
+# Plan 03-32 re-read as page images (gsd-executor, 2026-11-11, scratch copies of the manuals, sha256 40a32e5d... and 51eeda39..., never committed): H8-6 (length 0 is 65536; six bus cycles per byte; (17 + 6x) cycles; A, X, Y saved on the stack and returned; three stack bytes), S8-88 (flowchart: Y, A, X saved, length 0 is 65,536),
+# S8-89 (TAI F3, 7 bytes, 17+6x), S8-94 (TDD C3), S8-96 (E3, printed as TAI there), S8-98 (TII 73) and S8-100 (TIN D3), each 7 bytes and 17+6x. The cost is cited from these pages and never from the H8-25 footnote, which prints 17+16z (a misprint of 17+6x, errata R-1; the scan itself prints it, so it is not an OCR error).
+# ER-2 review: the pages are image-verified, the literals are page numbers, the wording is an equality with the manual, withheld is complete and the pin is a real test. What fails is the evidence for the cost clause, the headline of the entry: the cost is shown only through the timer counter (cpu_blk_len0 check 41, cpu_blk checks 36 to 38),
+# and those checks use the community-reported CPU cycle length (LED-CPU-0003), so they are E2 self-consistency and cannot support a promotion (ER-3). The clauses that are E1-capable, length 0 = 65536 and A, X, Y and S given back, are MAN:H8-6 checks (cpu_blk 30, 31, 39, 40, 42), but ledger ids are final (03-CONTEXT section K) and the entry is not split.
+# What would promote it: a trace-based count of a block transfer, measured like the items of cycle_adders_manual and compared with 17 + 6x for a length of x. The pin is the len0 image of fixtures/src/cpu_blk.s (checks 39 to 42); the model of the transfer (aliasing, the 14 and 3 cycle split, the access offsets) is LED-CPU-0008, the interrupt rule is LED-IRQ-0007.
 id = "LED-CPU-0007"
 statement = "The DuoSpool block transfers TII, TDD, TIN, TIA and TAI take 17 + 6x CPU cycles for a length of x bytes, move 65536 bytes when the length operand is 0, and give A, X and Y back (the prologue pushes them, the epilogue pops them). These are the values the manual states on H8-6, S8-88 and S8-89."
 profile = "pce-hucard-2btn"
 status = "assumed"
-sources = ["FACT|H8-6|page image 2026-11-10 and 2026-11-11: length 0 is 65536; six bus cycles per byte; (17 + 6x) cycles; A X Y saved and returned", "FACT|S8-88 S8-89|page images, same dates: Y A X saved and popped; F3 SL SH DL DH LL LH, 7 bytes, 17+6x cycles", "UNKNOWN|cycle length|12 and 3 master clocks per cycle are community reports (LED-CPU-0003)"]
+sources = ["FACT|H8-6|gsd-executor image 2026-11-11: length 0 is 65536; six bus cycles per byte; (17 + 6x) cycles; A X Y saved and returned","FACT|S8-88 S8-89 S8-94 S8-96 S8-98 S8-100|same read: Y A X saved and popped; 7 bytes, 17+6x for TAI TDD TIA (E3) TII TIN","UNKNOWN|cycle length|12 and 3 master clocks per cycle are community reports (LED-CPU-0003)"]
 evidence = ["E2|tests/conformance/cases/cpu_blk_len0.toml: checks 39 to 42, length 0 moves 65536 bytes, 17 + 6x on the timer counter; self-consistency", "E2|tests/conformance/cases/cpu_blk.toml: checks 36 to 38 count 17 + 6x at both speeds; A X Y S returned", "E0|tests/conformance/cases/chunk_equiv_cpu_blk_len0.toml: stops inside the transfer equal the whole run"]
 disagreement = "The H8-25 instruction map footnote prints 17+16z for the block transfer cost: a printed misprint of 17+6x (errata R-1, image-verified, not an OCR error). H8-6 prints (17 + 6x) and S8-88 and S8-89 print 17+6x, which the entry follows; the footnote is not used. No other reading of the count is recorded in 03-CONTEXT or 03-RESEARCH."
 pinning_test = "TEST:cpu_blk_len0"
 updated = "2026-11-11"
-assumption = "The count, the length rule and the restore are page values, but the in-guest cycle rows use the community-reported cycle length, so they show only that the core agrees with itself (E2, ER-3); plan 03-32 checks the ER-2 conditions before any promotion."
+assumption = "The count, the length rule and the restore are page values (re-read 2026-11-11), but the cost rows count timer steps with the community-reported cycle length, so they show only that the core agrees with itself (E2, ER-3); no E1 evidence exists for the cost clause, so the entry stays assumed."
 revisit_phase = 3
 withheld = ["any claim of hardware cycle accuracy", "any claim of interrupt latency in cycles", "any claim of game compatibility", "any TG-16 or region claim"]
 origin = "03-CONTEXT D-100"

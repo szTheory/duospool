@@ -1,13 +1,14 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 # TAM and TMA edges (D-105; CPU-02, CPU-06). Modelling choices where the manual defines only the one-hot operand: not a hardware measurement. Checks 49 to 60 of the mmu_mpr fixture name this entry.
+# Plan 03-32 filled the disagreement column from the only records that exist (03-CONTEXT ER-8 and D-105, the plan 03-17 SUMMARY and the plan brief relaying the discuss advisors' notes). The emulator names and the sources are still not recorded, so none is named and no source was read.
 id = "LED-CPU-0015"
 statement = "DuoSpool models the TAM and TMA operands the manual leaves open as: TAM with several bits writes every selected MPR, TAM #0 changes nothing, TMA with several bits returns the highest selected index, TMA #0 follows the parameter tma_zero (bus_latch, the default, returns the one-byte latch set by the last TAM or TMA with a nonzero operand; a_unchanged leaves A). Modelling choices."
 profile = "pce-hucard-2btn"
 status = "assumed"
 sources = ["FACT|S8-90 S8-101|only the one-hot operand 2^i is defined (MPRi <- A, A <- MPRi, codes 53 and 43, i = 0 to 7); no page states a zero or multi-bit operand; read by the plan 03-17 executor 2026-11-11", "REPORT|PITFALLS.md C5|pcetech: TAM #0 writes nothing, TMA #0 unknown", "UNKNOWN|multi-bit, TMA #0, latch|no page; the project own choice (D-105)"]
 evidence = ["E0|tests/conformance/cases/mmu_mpr_tma_zero_latch.toml: under bus_latch the guest sees the latch byte after TMA #0; repeatability only", "E0|tests/conformance/cases/mmu_mpr_tma_zero_keep.toml: under a_unchanged the same ROM sees its own A", "E0|tests/conformance/cases/mmu_mpr_256k.toml: multi-bit TAM and TMA rows, checks 50 to 58"]
-disagreement = "ER-8 records that four emulators handle TMA with a multi-bit or zero operand in three ways. Their names and readings are not recorded in this repository and were not re-read by the plan that wrote this entry, so none is named here as a report; the choices above are not a vote among them. A later plan that reads those sources with provenance fills this column."
+disagreement = "Advisor notes, reading material only (community or code observations, not hardware facts; no emulator is named in the repository records, ER-8 says four emulators in three ways): several bits, the highest selected index (the model) versus the OR of the selected registers; TMA #0, A unchanged versus the last bus value. Not a vote."
 pinning_test = "TEST:mmu_mpr_tma_zero_latch"
 updated = "2026-11-11"
 assumption = "Each edge is one constant chosen so that the authored fixture can run: tam_zero_noop and tma_multibit_highest in src/core/constants.def, tma_zero in src/core/model_params.def. The pin shows the guest sees the latch byte under the default and the keep case shows A under the other value; neither shows what hardware does."
