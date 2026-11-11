@@ -37,16 +37,38 @@ S8-11	img	gsd-phase-researcher	2026-11-10	zero page high byte is always logical 
 S8-17	img	gsd-phase-researcher	2026-11-10	ADC: immediate 2 bytes 2 cycles; zero page 4; absolute 5; T=1 adds 3 cycles; D=1 adds 1 cycle and V is unaffected; flags N V Z C
 S8-20	img	gsd-phase-researcher	2026-11-10	BBRi 3 bytes 6 cycles, 2 more when taken; machine code 10i+F
 S8-30	img	gsd-phase-researcher	2026-11-10	BRK $00, 1 byte, 8 cycles; pushes PCH, PCL, P; B pushed 1; T=0 B=1 D=0 I=1
+S8-34	img	gsd-executor	2026-11-11	CLA $62, 1 byte, 2 cycles; A <- $00; no flag changes (T reads 0)
+S8-39	img	gsd-executor	2026-11-11	CLX $82, 1 byte, 2 cycles; X <- $00; no flag changes
+S8-40	img	gsd-executor	2026-11-11	CLY $C2, 1 byte, 2 cycles; Y <- $00; no flag changes
 S8-53	img	gsd-executor	2026-11-11	LDA: A <- M; immediate A9 2 bytes 2 cycles, zp 4, zp,X 4, (zp) 7, (zp,X) 7, (zp),Y 7, abs 5, abs,X 5, abs,Y 5; flags N and Z only, T reads 0
+S8-54	img	gsd-executor	2026-11-11	LDX: immediate A2 2 bytes 2 cycles, zp A6 4, zp,Y B6 4, abs AE 5, abs,Y BE 5; flags N and Z only
+S8-55	img	gsd-executor	2026-11-11	LDY: immediate A0 2 bytes 2 cycles, zp A4 4, zp,X B4 4, abs AC 5, abs,X BC 5; flags N and Z only
+S8-59	img	gsd-executor	2026-11-11	PHA $48, 1 byte, 3 cycles; Ms <- A, S <- S - 1; no flag changes
+S8-61	img	gsd-executor	2026-11-11	PHX $DA, 1 byte, 3 cycles; Ms <- X, S <- S - 1; no flag changes
+S8-62	img	gsd-executor	2026-11-11	PHY $5A, 1 byte, 3 cycles; Ms <- Y, S <- S - 1; no flag changes
+S8-63	img	gsd-executor	2026-11-11	PLA $68, 1 byte, 4 cycles; S <- S + 1, A <- Ms; flags N and Z
+S8-64	img	gsd-executor	2026-11-11	PLP $28, 1 byte, 4 cycles; S <- S + 1, P <- Ms; the flag row reads RESTORED
+S8-65	img	gsd-executor	2026-11-11	PLX $FA, 1 byte, 4 cycles; S <- S + 1, X <- Ms; flags N and Z
+S8-66	img	gsd-executor	2026-11-11	PLY $7A, 1 byte, 4 cycles; S <- S + 1, Y <- Ms; flags N and Z
 S8-70	img	gsd-phase-researcher	2026-11-10	RTI $40, 1 byte, 7 cycles; P pulled first, then PCL, PCH
 S8-74	img	gsd-phase-researcher	2026-11-10	SBC: A - M - not C; same cycle table as ADC; D=1 adds 1 cycle
 S8-80	img	gsd-phase-researcher	2026-11-10	ST0 $03 nn, 2 bytes, 4 cycles; CE7 asserted, (A1,A0) = (0,0)
+S8-83	img	gsd-executor	2026-11-11	STA: zp 85, zp,X 95, (zp) 92, (zp,X) 81, (zp),Y 91, abs 8D, abs,X 9D, abs,Y 99; M <- A; no flag changes
+S8-84	img	gsd-executor	2026-11-11	STX: zp 86, zp,Y 96, abs 8E; M <- X; no flag changes
+S8-85	img	gsd-executor	2026-11-11	STY: zp 84, zp,X 94, abs 8C; M <- Y; no flag changes
+S8-86	img	gsd-executor	2026-11-11	STZ: zp 64, zp,X 74, abs 9C, abs,X 9E; M <- $00; no flag changes
 S8-88	img	gsd-phase-researcher	2026-11-10	TAI flowchart: Y, A, X saved; first byte post-increment, second post-decrement
 S8-89	img	gsd-phase-researcher	2026-11-10	TAI $F3, 7 bytes, 17+6x cycles, T=0; X, A, Y popped at the end
 S8-90	img	gsd-phase-researcher	2026-11-10	TAMi $53, operand 2^i, 2 bytes, 5 cycles
+S8-91	img	gsd-executor	2026-11-11	TAX $AA, 1 byte, 2 cycles; X <- A; flags N and Z
+S8-92	img	gsd-executor	2026-11-11	TAY $A8, 1 byte, 2 cycles; Y <- A; flags N and Z
 S8-101	img	gsd-phase-researcher	2026-11-10	TMAi $43, 2 bytes, 4 cycles
 S8-103	img	gsd-phase-researcher	2026-11-10	TSB $04 zero page 6 cycles, $0C absolute 7 cycles; N from memory bit 7, V from bit 6
 S8-104	img	gsd-phase-researcher	2026-11-10	TST $83 $A3 3 bytes 7 cycles, $93 $B3 4 bytes 8 cycles; operand order opcode, immediate, address
+S8-105	img	gsd-executor	2026-11-11	TSX $BA, 1 byte, 2 cycles; X <- S; flags N and Z
+S8-106	img	gsd-executor	2026-11-11	TXA $8A, 1 byte, 2 cycles; A <- X; flags N and Z
+S8-107	img	gsd-executor	2026-11-11	TXS $9A, 1 byte, 2 cycles; S <- X; no flag changes
+S8-108	img	gsd-executor	2026-11-11	TYA $98, 1 byte, 2 cycles; A <- Y; flags N and Z
 CDBIOS-p28	img	gsd-phase-researcher	2026-11-10	EX_JOYSNS output byte: bit 0 ONE, 1 TWO, 2 SELECT, 3 RUN, 4 UP, 5 RIGHT, 6 DOWN, 7 LEFT; 1 is on (printed page 28)
 S8-7	ocr	gsd-phase-researcher	2026-11-10	instruction table 2-3-1 read from the OCR text layer only; not image-read
 S8-8	ocr	gsd-phase-researcher	2026-11-10	instruction table 2-3-2 read from the OCR text layer only; not image-read
