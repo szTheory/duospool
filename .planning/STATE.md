@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 3
 current_phase_name: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
 status: planning
-stopped_at: Phase 2 complete, ready to plan Phase 3
-last_updated: "2026-11-11T02:31:12.331Z"
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-11-11T06:11:31.770Z"
 last_activity: 2026-11-10
 last_activity_desc: Phase 2 complete, transitioned to Phase 3
-state_head: 42b7ddaef7bf363e4a9374da3718f74f00cb17fe
+state_head: 20d575b00fe39aa64258920d804e54ff551b2e76
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 34
-  completed_plans: 34
+  total_plans: 72
+  completed_plans: 35
   percent: 33
 ---
 
@@ -23,14 +23,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-09)
 
 **Core value:** For every hardware/content profile DuoSpool claims to support, a fresh, deterministic, headless run can reproduce the machine's behavior and show the evidence (guest progress, machine time, raw video, raw audio) that backs the claim.
-**Current focus:** Phase 2 — Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate
+**Current focus:** Phase 3 — HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
 
 ## Current Position
 
 Phase: 3 — HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-11-10 — Phase 2 complete, transitioned to Phase 3
+Current Plan: 2
+Total Plans in Phase: 38
+Status: Ready to execute
+Last activity: 2026-11-11 — Completed 03-01 (W1 tracer: ds_proto through fixture-build, ds_run in master clocks, DSV1 judged from guest RAM)
 
 Progress: [███░░░░░░░] 33%
 
@@ -91,6 +92,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 02 P20 | 70min | 3 tasks | 49 files |
 | Phase 02 P21 | 80 min | 3 tasks | 27 files |
 | Phase 02 P22 | 35 min | 2 tasks | 7 files |
+| Phase 03 P01 | 25min | 3 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -167,6 +169,8 @@ Recent decisions affecting current work:
 - [Phase 02]: 02-21: ds_runner leak (exclusion file buffer) found only by clang LeakSanitizer on Linux; fixed at the cause. CI-01 un-ticked: criterion 5 unverified-pending-push
 - [Phase 02]: 02-22: checkpoint answer authorised-branch-pr; one branch and one PR pushed, first CI run 42939483070 green (100 s, default awk gawk, second mawk); remote settings stay pending hand-offs
 - [Phase 02]: 02-22: audit-history gained a kind-scoped allowance (TEXT-PATTERN:KIND); the two home-path-mac summary hits are allowlisted by kind with the owner's reason
+- [Phase 03]: 03-01: DSV1 outcome mapping reading of D-124: harness-side preconditions give harness_failure, guest-written faults give guest_failure, UNTIL without done gives timeout (a visible guest fault wins over timeout)
+- [Phase 03]: 03-01: ds_cpu_reset is called from ds_boot so a booted instance is always in reset state; ds_cpu_step returns mclk and ds_run adds them in one statement
 
 ### Pending Todos
 
@@ -190,6 +194,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-11T01:37:15.671Z
-Stopped at: Phase 2 complete, ready to plan Phase 3
+Last session: 2026-11-11T06:11:31.635Z
+Stopped at: Completed 03-01-PLAN.md
 Resume file: None
