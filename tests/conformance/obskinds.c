@@ -851,8 +851,13 @@ static int ob_exec(struct ctx *c, const struct ob_src *src, uint64_t until, cons
                 harness_error(c, "out of memory for the log copy of the observer matrix");
                 rc = -1;
             } else {
-                memcpy(o->ilog.rec, m.iblock + OBS_GUARD, (size_t)ic * DS_INSN_RECORD_BYTES);
-                memcpy(o->dlog.rec, m.dblock + OBS_GUARD, (size_t)dc * DS_DEV_RECORD_BYTES);
+                /* a memcpy of zero bytes still must not get a null pointer (UBSan nonnull-attribute, gcc and clang on Linux), so a log with no record is not copied */
+                if (ic > 0u) {
+                    memcpy(o->ilog.rec, m.iblock + OBS_GUARD, (size_t)ic * DS_INSN_RECORD_BYTES);
+                }
+                if (dc > 0u) {
+                    memcpy(o->dlog.rec, m.dblock + OBS_GUARD, (size_t)dc * DS_DEV_RECORD_BYTES);
+                }
                 o->ilog.count = ic;
                 o->dlog.count = dc;
             }
