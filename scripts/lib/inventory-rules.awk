@@ -17,6 +17,9 @@
 #                    wrong type or unknown, a table or a syntax error is present, the file name is not an id, or id differs from the file stem.
 #                    The seven optional keys of plan 03-04 (until_mclk policies checks input irq_stim sinks chunks) may be absent; present, each has
 #                    its type (until_mclk and checks integers, the rest strings), and any other key is still unknown.
+#   INV_CASE_TYPE    until_mclk or checks of a case is not an integer (plan 03-04, T-03-11); the wrong type of any other key stays INV_CASE_FIELD.
+#                    The rule line carries the tag rule-case-int-key; no selftest covers it: deleting the line leaves the control case-optional-wrong-type
+#                    without its code, so the inventory-negatives stage (run_controls) goes red.
 BEGIN {
   FS = "\t"
   fname = ENVIRON["fname"]
@@ -42,6 +45,7 @@ $1 == "ERR" { if (what == "case") viol("INV_CASE_FIELD", $3, "syntax " $2); next
   }
   if ($1 != "") { viol("INV_CASE_FIELD", $5, "table " $1); next }
   if (!($2 in want)) { viol("INV_CASE_FIELD", $5, "unknown key " $2); next }
+  if (($2 == "until_mclk" || $2 == "checks") && $3 != "i") { viol("INV_CASE_TYPE", $5, "type of " $2 " is not an integer"); next }  # rule-case-int-key
   if ($3 != want[$2]) { viol("INV_CASE_FIELD", $5, "type of " $2); bad[$2] = 1; next }
   have[$2] = 1; val[$2] = $4; ln[$2] = $5
 }

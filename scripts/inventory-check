@@ -18,6 +18,8 @@
 #                           pinning_test is not TEST:that-case (both directions, D-72, ledger/SCHEMA.md)
 #     INV_CASE_FIELD        a case without all ten keys (id kind fixture request expect meaning required control expect_outcome pins), with a key of
 #                           the wrong type or an unknown key, with an id that is not its file stem; also a REQUIRED id whose case says required = false
+#     INV_CASE_TYPE         until_mclk or checks (two of the seven optional case keys of plan 03-04: until_mclk policies checks input irq_stim sinks
+#                           chunks) is present and not an integer; those keys may be absent
 #     INV_REQUIRED_EMPTY    REQUIRED lists no id (an emptied list must not switch the inventory off)
 #     INV_BAD_LINE          a REQUIRED line that is not a case id [a-z][a-z0-9_]*, or an id listed twice
 #   Also NO_SENTINEL and STAGE2_DEAD (a dead stage never passes). ledger-check stays structure-only: TEST pin resolution lives only here (D-58).
