@@ -1523,6 +1523,7 @@ static const struct {
     {"interleave_canaries", kind_interleave_canaries, 0},
     {"liveness_shared_state_selfcheck", kind_liveness_shared_state_selfcheck, 0},
     {"coverage", kind_coverage, 1},
+    {"run_refusal_coverage", kind_run_refusal_coverage, 1},
 };
 
 static const char *outcome_of(const struct ctx *c, enum outcome *oc)

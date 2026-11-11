@@ -349,6 +349,8 @@ void kind_run_chunk_sum(const struct kase *k, struct ctx *c, char *got, size_t g
 #define RR_MACHINE_TIME_FIRST 600u /* the boot is run to this deadline first, so the instance is not at its boot state */
 
 static unsigned char rr_observed[DS_RUNREF_SLOTS];
+static unsigned char rr_sink_a[RR_SINK_BYTES]; /* valid buffers that overlap nothing: the refusal must not depend on a bad pointer (W6) */
+static unsigned char rr_sink_b[RR_SINK_BYTES];
 
 /* one refused call on instance arg (the live block w, or NULL) with request rq (or NULL): the refusal, the result fields and the unchanged instance */
 static void rr_call(struct ctx *c, struct ds_instance *w, const struct ds_instance *inst, struct ds_instance *arg, const struct ds_run_request *rq, uint32_t code)
@@ -391,6 +393,25 @@ static void rr_base_request(struct ds_run_request *rq, uint64_t until)
     rq->until_mclk = until;
 }
 
+/* a call that must NOT be refused (the edge of the time_wrap rule): the reason and 0 steps, and the instance unchanged */
+static void rr_accept(struct ctx *c, struct ds_instance *w, const struct ds_instance *inst, const struct ds_run_request *rq, uint32_t reason)
+{
+    struct ds_run_result res;
+    size_t size = ds_instance_size();
+    unsigned char *copy = (unsigned char *)malloc(size);
+
+    if (copy == NULL) {
+        harness_error(c, "out of memory for the instance copy");
+        return;
+    }
+    memcpy(copy, w, size);
+    memset(&res, 0xAA, sizeof res);
+    check(c, ds_run(w, rq, &res) == reason && res.reason == reason && res.refusal == (uint32_t)DS_RUNREF_NONE, "a request at the edge of the wrap rule got the wrong reason or was refused");
+    check(c, res.steps == 0u && res.overshoot == 0u, "a request at the edge of the wrap rule took a step");
+    check(c, memcmp(copy, w, size) == 0 && res.machine_time == inst->machine_time, "a zero-step call at the edge of the wrap rule changed the instance");
+    free(copy);
+}
+
 /* the variants of one code; the base request is a valid one that would run the machine if it were accepted */
 static void rr_variants(struct ctx *c, const char *code_name, struct ds_instance *w, const struct ds_instance *inst, unsigned *calls)
 {
@@ -407,8 +428,61 @@ static void rr_variants(struct ctx *c, const char *code_name, struct ds_instance
             rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_struct_size);
             (*calls)++;
         }
+    } else if (strcmp(code_name, "instance_null") == 0) {
+        rr_base_request(&rq, until);
+        rr_call(c, w, inst, NULL, &rq, (uint32_t)DS_RUNREF_instance_null);
+        (*calls)++;
+    } else if (strcmp(code_name, "request_null") == 0) {
+        rr_call(c, w, inst, w, NULL, (uint32_t)DS_RUNREF_request_null);
+        (*calls)++;
+    } else if (strcmp(code_name, "reserved") == 0) {
+        const uint32_t value[3] = {1u, 0x80000000u, 0xFFFFFFFFu};
+        unsigned i;
+
+        for (i = 0u; i < 3u; i++) {
+            rr_base_request(&rq, until);
+            rq.reserved = value[i];
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_reserved);
+            (*calls)++;
+        }
+    } else if (strcmp(code_name, "sink_unsupported") == 0) {
+        unsigned i;
+
+        /* the dev sink alone, the insn sink alone, both: each points at a valid buffer that overlaps neither the instance nor the request (W6) */
+        for (i = 0u; i < 3u; i++) {
+            rr_base_request(&rq, until);
+            rq.insn = i != 0u ? (void *)rr_sink_a : NULL;
+            rq.dev = i != 1u ? (void *)rr_sink_b : NULL;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_sink_unsupported);
+            (*calls)++;
+        }
+    } else if (strcmp(code_name, "time_wrap") == 0) {
+        uint64_t guard = ds_max_step_mclk();
+        uint64_t saved = w->machine_time;
+        struct stop_ctx now = {0, 0u};
+
+        /* a deadline within one maximum step of 2^64 (a step could end past it and wrap machine time: Pitfall 20) */
+        rr_base_request(&rq, UINT64_MAX);
+        rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_time_wrap);
+        rr_base_request(&rq, UINT64_MAX - guard + UINT64_C(1));
+        rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_time_wrap);
+        /* ... and machine time within one maximum step of 2^64, with an ordinary deadline */
+        w->machine_time = UINT64_MAX - guard + UINT64_C(1);
+        rr_base_request(&rq, 0u);
+        rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_time_wrap);
+        (*calls) += 3u;
+        /* the edge itself is not refused: a deadline of 2^64 - 1 - guard with a stop that holds returns CALLBACK before any step, and a machine time of 2^64 - 1 - guard with a deadline of 0 returns UNTIL */
+        w->machine_time = saved;
+        rr_base_request(&rq, UINT64_MAX - guard);
+        rq.stop = stop_at;
+        rq.stop_ctx = &now;
+        rr_accept(c, w, inst, &rq, (uint32_t)DS_RUN_REASON_CALLBACK);
+        w->machine_time = UINT64_MAX - guard;
+        rr_base_request(&rq, 0u);
+        rr_accept(c, w, inst, &rq, (uint32_t)DS_RUN_REASON_UNTIL);
+        w->machine_time = saved;
     } else {
-        harness_error(c, "the run_refuse code is not one of run_refusals.def, or its variants are not written yet");
+        harness_error(c, "the run_refuse code is not one of run_refusals.def");
     }
 }
 
@@ -474,4 +548,30 @@ void kind_run_refuse(const struct kase *k, struct ctx *c, char *got, size_t gotc
     check(c, calls >= 1u, "the run_refuse case made no refused call");
     release_boot(&b);
     snprintf(got, gotcap, "calls=%u", calls);
+}
+
+/* ---- kind run_refusal_coverage (deferred, D-86 pattern) ---- */
+
+void kind_run_refusal_coverage(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    uint32_t n;
+    unsigned members = 0u;
+    unsigned seen = 0u;
+
+    (void)k;
+    for (n = 1u; n < (uint32_t)DS_RUNREF_SLOTS; n++) {
+        const char *name = ds_run_refusal_name(n);
+
+        if (name == NULL) {
+            continue;
+        }
+        members++;
+        seen += rr_observed[n] != 0u ? 1u : 0u;
+        check(c, rr_observed[n] != 0u, "a run refusal code was never observed by a run_refuse row");
+        if (rr_observed[n] == 0u) {
+            emit_err("run_refusal_coverage: %s was not observed by any run_refuse row\n", name);
+        }
+    }
+    check(c, members > 0u, "run_refusals.def has no member");
+    snprintf(got, gotcap, "members=%u observed=%u", members, seen);
 }

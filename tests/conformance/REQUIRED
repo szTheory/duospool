@@ -108,3 +108,9 @@ interleave_canaries
 liveness_shared_state_selfcheck
 ds_proto
 run_refuse_struct_size
+run_refuse_instance_null
+run_refuse_request_null
+run_refuse_reserved
+run_refuse_sink_unsupported
+run_refuse_time_wrap
+run_refusal_coverage

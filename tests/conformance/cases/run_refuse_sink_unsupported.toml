@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# ds_run refusal run.sink_unsupported (plan 03-35; D-93, F4, T-03-94): a sink pointer. The refusal carries 0 steps and overshoot 0, and the instance (raw bytes and digest) is the same before and after.
+# The boot of the authored ds-proto has run past 600 master clocks first, so the instance is not at its boot state. Variants: dev only, insn only, both, each a valid non-overlapping buffer (W6). Until plan 03-10 every sink is unsupported; from plan 03-10 the insn sink is accepted but the dev sink is still refused, and plan 03-19 re-points this row to an oversized capacity.
+# Evidence tier E0 (repeatability and a literal): the refusal names and the non-mutation rule are the specification of this plan, not a hardware claim.
+id = "run_refuse_sink_unsupported"
+kind = "run_refuse"
+fixture = "none"
+request = ""
+expect = "rom=ds-proto;refuse=sink_unsupported"
+meaning = "A ds_run request that carries an observer sink the build cannot take is refused as run.sink_unsupported and leaves the instance byte-identical"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
