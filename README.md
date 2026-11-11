@@ -55,7 +55,7 @@ Unless you explicitly state otherwise, any contribution intentionally submitted 
 defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.
 
 Authored fixture directories are 0BSD ([LICENSE-0BSD](LICENSE-0BSD)), declared per directory.
-No 0BSD fixture directory exists yet: Phase 1 ships no fixtures, and each later fixture directory declares 0BSD in its own directory.
+Fixture manifests under `fixtures/manifest/` declare 0BSD per entry; no ROM-like binary is committed, and each later fixture directory declares 0BSD in its own directory.
 
 ## Rights
 
