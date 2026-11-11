@@ -512,15 +512,16 @@ struct ob_cfg {
     uint32_t icap;
     uint32_t dcap;
     int poison;
+    int large; /* 1 for the two configurations that never drop (large and poison): the kind lowers their instruction capacity to what the deadline can execute, see ob_cfg_fit */
 };
 
 static const struct ob_cfg ob_cfgs[OB_CFG_MAX] = {
-    {"off", 0, 0u, 0u, 0},
-    {"large", 1, OB_INSN_LARGE, OB_DEV_LARGE, 0},
-    {"drop4", 1, 4u, 4u, 0},
-    {"poison", 1, OB_INSN_LARGE, OB_DEV_LARGE, 1},
-    {"cap0", 1, 0u, 0u, 1}, /* a non-NULL record pointer and a poisoned header with capacity 0 */
-    {"cap1", 1, 1u, 1u, 1},
+    {"off", 0, 0u, 0u, 0, 0},
+    {"large", 1, OB_INSN_LARGE, OB_DEV_LARGE, 0, 1},
+    {"drop4", 1, 4u, 4u, 0, 0},
+    {"poison", 1, OB_INSN_LARGE, OB_DEV_LARGE, 1, 1},
+    {"cap0", 1, 0u, 0u, 1, 0}, /* a non-NULL record pointer and a poisoned header with capacity 0 */
+    {"cap1", 1, 1u, 1u, 1, 0},
 };
 
 /* a run mode: one call to the deadline (whole), N calls to equal parts of it (chunk) or one call whose stop callback holds at its K-th invocation (stop) */
@@ -532,12 +533,15 @@ struct ob_mode {
     char name[24];
 };
 
-/* the stop callback of every run: it never changes anything, counts its invocations, folds the machine time, pc, A, X, Y, S, P, speed and bus latch of each into an FNV-1a value (so a hook that disturbs a register or the latch for even one
+/* the stop callback of every run: it never changes anything, counts its invocations, folds the machine time, pc, A, X, Y, S, P, speed, bus latch and block transfer state of each into an FNV-1a value (so a hook that disturbs a register or the latch for even one
  * instruction is seen at the next call, whatever the guest does with it later), and holds at invocation `at` (0 = never) */
 struct ob_stopper {
     uint64_t calls;
     uint64_t fold;
     uint64_t at;
+    uint64_t last;     /* the machine time of the previous invocation (0 before the first: a boot is at machine time 0) */
+    uint64_t cont;     /* the steps that continued a block transfer (the byte steps and the epilogue): a step that began with blk_active set; the instruction hook is offered once per instruction, so these are steps without an offer (plan 03-26) */
+    uint8_t prev_blk;  /* blk_active at the previous invocation */
 };
 
 static int ob_stop(const struct ds_instance *inst, void *ctx)
@@ -547,6 +551,11 @@ static int ob_stop(const struct ds_instance *inst, void *ctx)
     unsigned i;
 
     s->calls = s->calls + 1u;
+    if (t != s->last) { /* a step has completed since the previous invocation (the first invocation of a call comes before its first step, at the same machine time) */
+        s->cont = s->cont + (s->prev_blk != 0u ? 1u : 0u);
+        s->last = t;
+        s->prev_blk = inst->blk_active;
+    }
     for (i = 0u; i < 8u; i++) {
         s->fold = (s->fold ^ ((t >> (8u * i)) & UINT64_C(0xFF))) * OB_FNV_PRIME;
     }
@@ -554,6 +563,8 @@ static int ob_stop(const struct ds_instance *inst, void *ctx)
     s->fold = (s->fold ^ (((uint64_t)inst->a << 8u) | (uint64_t)inst->x)) * OB_FNV_PRIME;
     s->fold = (s->fold ^ (((uint64_t)inst->y << 8u) | (uint64_t)inst->s)) * OB_FNV_PRIME;
     s->fold = (s->fold ^ (((uint64_t)inst->p << 16u) | ((uint64_t)inst->speed << 8u) | (uint64_t)inst->io_buffer)) * OB_FNV_PRIME;
+    s->fold = (s->fold ^ (((uint64_t)inst->blk_active << 40u) | ((uint64_t)inst->blk_opcode << 32u) | ((uint64_t)inst->blk_toggle << 24u) | (uint64_t)inst->blk_remaining)) * OB_FNV_PRIME;
+    s->fold = (s->fold ^ (((uint64_t)inst->blk_src << 16u) | (uint64_t)inst->blk_dst)) * OB_FNV_PRIME;
     return s->at != 0u && s->calls >= s->at;
 }
 
@@ -565,12 +576,24 @@ struct ob_log {
     uint64_t seq;
 };
 
-/* the observable outcome of one run: everything a sink must not change, plus the two logs */
+/* where the program of a run comes from (plan 03-26): a built authored image (rom), or the in-process random program of an index (randprog.c); k is the case, whose request is booted over and whose irq_stim is declared to every boot */
+struct ob_src {
+    const char *rom;
+    int random;
+    unsigned index;
+    const unsigned char *img; /* the image of the random program, built once for the runs of the whole matrix */
+    const struct kase *k;
+};
+
+/* the observable outcome of one run: everything a sink must not change, plus the two logs; bstops counts the calls that took a step and ended inside a block transfer and pstops those of them with the timer interrupt and IRQ2 both pending at the stop stamp */
 struct ob_out {
     struct end e;
     uint8_t verdict[V_SIZE];
     uint64_t scalls;
     uint64_t sfold;
+    uint64_t bstops;
+    uint64_t pstops;
+    uint64_t cont; /* steps that continued a block transfer: executed steps without an instruction offer to the instruction sink */
     struct ob_log ilog;
     struct ob_log dlog;
 };
@@ -695,6 +718,7 @@ static void ob_end_of(struct ob_out *o, struct ds_instance *w, uint32_t reason, 
     memcpy(o->verdict, w->ram8k + V_OFF, V_SIZE);
     o->scalls = st->calls;
     o->sfold = st->fold;
+    o->cont = st->cont;
 }
 
 /* the per-call header of a sink must be a consistent count of what that call offered: count = min(seq, capacity), lost = seq - count; the offered number is returned in *seq */
@@ -710,7 +734,7 @@ static int ob_header_consistent(const unsigned char *header, uint32_t cap, uint6
 }
 
 /* one run of the machine under one configuration and mode: 0 on success (checks made on c), -1 after a harness error. A whole or stop run is one ds_run call; a chunk run is o->n calls to equal parts of the deadline. */
-static int ob_exec(struct ctx *c, const char *rom, const char *request, uint64_t until, const struct ob_cfg *cf, const struct ob_mode *md, struct ob_out *o)
+static int ob_exec(struct ctx *c, const struct ob_src *src, uint64_t until, const struct ob_cfg *cf, const struct ob_mode *md, struct ob_out *o)
 {
     struct booted b;
     const struct ds_instance *ci = NULL;
@@ -722,8 +746,10 @@ static int ob_exec(struct ctx *c, const char *rom, const char *request, uint64_t
     uint32_t reason = 0u;
     uint64_t calls = md->kind == OBM_CHUNK ? md->n : 1u;
     uint64_t j;
+    uint64_t cont0 = 0u;
+    uint32_t refusal = 0u;
     char msg[200];
-    const char *err = boot_built_rom(rom, request, &b, &ci);
+    const char *err = src->random ? boot_random(src->img, src->k->val[K_REQUEST], &b, &ci) : boot_built_rom(src->rom, src->k->val[K_REQUEST], &b, &ci);
     int rc = 0;
 
     memset(o, 0, sizeof *o);
@@ -731,15 +757,24 @@ static int ob_exec(struct ctx *c, const char *rom, const char *request, uint64_t
         harness_error(c, err);
         return -1;
     }
+    w = (struct ds_instance *)(void *)b.mem;
+    err = apply_irq_stim(w, src->k, &refusal); /* the declared stimulus of the case (plan 03-26, D-112): a test hook, applied to every run of the matrix */
+    if (err != NULL || refusal != 0u) {
+        release_boot(&b);
+        harness_error(c, err != NULL ? err : "ds_irq_stim_set refused the irq_stim list of the case");
+        return -1;
+    }
     if (ob_mem_make(&m, cf) != 0) {
         release_boot(&b);
         harness_error(c, "out of memory for the observer sinks");
         return -1;
     }
-    w = (struct ds_instance *)(void *)b.mem;
     st.calls = 0u;
     st.fold = OB_FNV_BASIS;
     st.at = md->kind == OBM_STOP ? md->n : 0u;
+    st.last = 0u;
+    st.cont = 0u;
+    st.prev_blk = 0u;
     memset(&res, 0, sizeof res);
     for (j = 1u; j <= calls && rc == 0; j++) {
         memset(&rq, 0, sizeof rq);
@@ -749,11 +784,18 @@ static int ob_exec(struct ctx *c, const char *rom, const char *request, uint64_t
         rq.stop_ctx = &st;
         rq.insn = m.isk;
         rq.dev = m.dsk;
+        cont0 = st.cont;
         reason = ds_run(w, &rq, &res);
         if (reason == (uint32_t)DS_RUN_REASON_REFUSED) {
             harness_error(c, "ds_run refused a request of the observer matrix");
             rc = -1;
             break;
+        }
+        if (res.steps > 0u && res.stop_point == (uint32_t)DS_STOP_BLOCK_BYTE) {
+            o->bstops++;
+            if (ds_irq_pending_query(ci, ci->machine_time) == 5u) {
+                o->pstops++;
+            }
         }
         if (cf->on && m.isk != NULL) {
             uint64_t iseq = 0u;
@@ -765,10 +807,10 @@ static int ob_exec(struct ctx *c, const char *rom, const char *request, uint64_t
             check(c, ob_header_consistent(m.isk->header, cf->icap, &iseq), msg);
             snprintf(msg, sizeof msg, "the dev header of the %s sink in mode %s is not a consistent count (count = min(seq, capacity), lost = seq - count)", cf->name, md->name);
             check(c, ob_header_consistent(m.dsk->header, cf->dcap, &dseq), msg);
-            snprintf(msg, sizeof msg, "the insn header of the %s sink in mode %s does not count one offer per executed instruction of the call", cf->name, md->name);
-            check(c, iseq == res.steps, msg);
-            if (md->kind == OBM_CHUNK && cf->icap == OB_INSN_LARGE) { /* the large and the poisoned sink: their accumulated logs are compared in the kind */
-                if (ob_log_append(&o->ilog, OB_INSN_LARGE, DS_INSN_RECORD_BYTES, irec, get_u32(m.isk->header)) != 0 || ob_log_append(&o->dlog, OB_DEV_LARGE, DS_DEV_RECORD_BYTES, drec, get_u32(m.dsk->header)) != 0) {
+            snprintf(msg, sizeof msg, "the insn header of the %s sink in mode %s does not count one offer per executed instruction of the call (steps that continue a block transfer are not instructions)", cf->name, md->name);
+            check(c, iseq == res.steps - (st.cont - cont0), msg);
+            if (md->kind == OBM_CHUNK && cf->large) { /* the large and the poisoned sink: their accumulated logs are compared in the kind */
+                if (ob_log_append(&o->ilog, cf->icap, DS_INSN_RECORD_BYTES, irec, get_u32(m.isk->header)) != 0 || ob_log_append(&o->dlog, cf->dcap, DS_DEV_RECORD_BYTES, drec, get_u32(m.dsk->header)) != 0) {
                     harness_error(c, "the accumulated log of a chunked run overflowed or could not be allocated");
                     rc = -1;
                 }
@@ -825,7 +867,7 @@ static void ob_same_as(struct ctx *c, const struct ob_out *ref, const struct ob_
     snprintf(msg, sizeof msg, "the %s sink in mode %s changed the digest of the instance", cfg, mode);
     check(c, o->e.digest_ok && ref->e.digest_ok && memcmp(o->e.digest, ref->e.digest, DS_DIGEST_BYTES) == 0, msg);
     snprintf(msg, sizeof msg, "the %s sink in mode %s changed the stop sequence (the stop callback was called at other times)", cfg, mode);
-    check(c, o->scalls == ref->scalls && o->sfold == ref->sfold, msg);
+    check(c, o->scalls == ref->scalls && o->sfold == ref->sfold && o->bstops == ref->bstops && o->pstops == ref->pstops, msg);
 }
 
 /* two accumulated or copied logs hold the same records and the same offers */
@@ -853,26 +895,45 @@ static void ob_prefix_of(struct ctx *c, const struct ob_out *large, const struct
     check(c, o->dlog.count == 0u || (large->dlog.rec != NULL && o->dlog.rec != NULL && memcmp(o->dlog.rec, large->dlog.rec, (size_t)o->dlog.count * DS_DEV_RECORD_BYTES) == 0), msg);
 }
 
-/* the grammar of the keys of an observer case: expect = compare=verdict,machine_time,stops,digest (the four things compared, each once); sinks = the configurations besides off, from ob_cfgs, large among them;
+/* the grammar of the keys of an observer case: expect = compare=verdict,machine_time,stops,digest (the four things compared, each once), then optionally pending-stop (plan 03-26: in every mode but whole the reference run must end at least one call inside a block transfer with the timer interrupt and IRQ2
+ * both pending at the stop stamp) and random=N (N in-process random programs, randprog.c, 1 to 64, with fixture = none); sinks = the configurations besides off, from ob_cfgs, large among them;
  * chunks = the modes, whole first: whole, chunk:N (2 to 64 calls), stop:K (the stop callback holds at its K-th invocation) */
-static int ob_parse_expect(const char *text)
+static int ob_parse_expect(const char *text, int *pending, unsigned *random)
 {
     char list[PK_LIST_MAX];
     char *rest = list;
     char *item;
     unsigned seen = 0u;
+    int first = 1;
 
+    *pending = 0;
+    *random = 0u;
     if (pk_copy_text(text, list, sizeof list) != 0 || strncmp(text, "compare=", 8u) != 0) {
         return -1;
     }
-    rest = list + 8;
-    while ((item = pk_next_item(&rest, ',')) != NULL) {
-        unsigned bit = strcmp(item, "verdict") == 0 ? 1u : strcmp(item, "machine_time") == 0 ? 2u : strcmp(item, "stops") == 0 ? 4u : strcmp(item, "digest") == 0 ? 8u : 0u;
+    while ((item = pk_next_item(&rest, ';')) != NULL) {
+        uint64_t v = 0u;
 
-        if (bit == 0u || (seen & bit) != 0u) {
+        if (first) {
+            char *r2 = item + 8;
+            char *w;
+
+            first = 0;
+            while ((w = pk_next_item(&r2, ',')) != NULL) {
+                unsigned bit = strcmp(w, "verdict") == 0 ? 1u : strcmp(w, "machine_time") == 0 ? 2u : strcmp(w, "stops") == 0 ? 4u : strcmp(w, "digest") == 0 ? 8u : 0u;
+
+                if (bit == 0u || (seen & bit) != 0u) {
+                    return -1;
+                }
+                seen |= bit;
+            }
+        } else if (strcmp(item, "pending-stop") == 0 && !*pending) {
+            *pending = 1;
+        } else if (strncmp(item, "random=", 7u) == 0 && *random == 0u && parse_u64(item + 7, &v) == 0 && v >= 1u && v <= 64u) {
+            *random = (unsigned)v;
+        } else {
             return -1;
         }
-        seen |= bit;
     }
     return seen == 15u ? 0 : -1;
 }
@@ -939,24 +1000,23 @@ static int ob_parse_modes(const char *text, struct ob_mode *modes, unsigned *nmo
     return *nmodes >= 1u && modes[0].kind == OBM_WHOLE ? 0 : -1;
 }
 
-void kind_observer(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+/* the whole matrix for one program: every mode, each with the no-sink reference and every configuration; *runs counts the machine runs */
+static void ob_matrix(struct ctx *c, const struct ob_src *src, uint64_t until, const int *want, const struct ob_mode *modes, unsigned nmodes, int pending, unsigned *runs)
 {
-    char rom[48];
-    uint64_t until = 0u;
-    int want[OB_CFG_MAX];
-    struct ob_mode modes[OB_MODES_MAX];
-    unsigned nmodes = 0u;
     struct ob_out whole_large;
+    struct ob_cfg cfg[OB_CFG_MAX];
     int have_whole = 0;
     unsigned mi;
-    unsigned runs = 0u;
+    unsigned q;
 
     memset(&whole_large, 0, sizeof whole_large);
-    if (!k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until == 0u || until > UINT64_C(0xFFFFFFFF) || !k->has[K_SINKS] || !k->has[K_CHUNKS]
-        || authored_name(k->val[K_FIXTURE], rom, sizeof rom) != 0 || ob_parse_expect(k->val[K_EXPECT]) != 0 || ob_parse_sinks(k->val[K_SINKS], want) != 0
-        || ob_parse_modes(k->val[K_CHUNKS], modes, &nmodes) != 0) {
-        harness_error(c, "an observer case needs fixture = authored:NAME, until_mclk, expect = compare=verdict,machine_time,stops,digest, sinks = a list of off-less configurations with large (large, drop4, poison, cap0, cap1) and chunks = whole first, then chunk:N or stop:K");
-        return;
+    for (q = 0u; q < OB_CFG_MAX; q++) {
+        cfg[q] = ob_cfgs[q];
+        if (cfg[q].large) {
+            uint64_t fit = until / 6u + 16u; /* an instruction takes at least two cycles of at least three master clocks, so a deadline cannot execute more instructions than this; a large sink that still loses a record is harness_failure below */
+
+            cfg[q].icap = fit < (uint64_t)OB_INSN_LARGE ? (uint32_t)fit : (uint32_t)OB_INSN_LARGE;
+        }
     }
     for (mi = 0u; mi < nmodes && !c->harness; mi++) {
         struct ob_out ref;
@@ -965,20 +1025,28 @@ void kind_observer(const struct kase *k, struct ctx *c, char *got, size_t gotcap
 
         memset(&ref, 0, sizeof ref);
         memset(&large, 0, sizeof large);
-        if (ob_exec(c, rom, k->val[K_REQUEST], until, &ob_cfgs[0], &modes[mi], &ref) != 0) {
+        if (ob_exec(c, src, until, &cfg[0], &modes[mi], &ref) != 0) {
             break;
         }
-        runs++;
+        (*runs)++;
         if (mi == 0u) {
-            note_run(c, ref.e.mclk, ref.e.reason);
+            if (!src->random || src->index == 0u) {
+                note_run(c, ref.e.mclk, ref.e.reason);
+            }
             check(c, ref.e.digest_ok && ref.e.steps > 4u, "the reference run without a sink took four steps or fewer, or its digest could not be taken");
         }
-        if (ob_exec(c, rom, k->val[K_REQUEST], until, &ob_cfgs[1], &modes[mi], &large) != 0) {
+        if (pending && modes[mi].kind != OBM_WHOLE) {
+            char msg[200];
+
+            snprintf(msg, sizeof msg, "no call of the reference run in mode %s ended inside a block transfer with the timer interrupt and IRQ2 both pending at the stop stamp (ds_irq_pending_query)", modes[mi].name);
+            check(c, ref.pstops > 0u, msg);
+        }
+        if (ob_exec(c, src, until, &cfg[1], &modes[mi], &large) != 0) {
             ob_out_free(&ref);
             break;
         }
-        runs++;
-        ob_same_as(c, &ref, &large, ob_cfgs[1].name, modes[mi].name);
+        (*runs)++;
+        ob_same_as(c, &ref, &large, cfg[1].name, modes[mi].name);
         if (large.ilog.lost != 0u || large.dlog.lost != 0u) {
             harness_error(c, "the large sink of the observer matrix lost a record: the log is evidence here and would be incomplete");
         }
@@ -991,17 +1059,17 @@ void kind_observer(const struct kase *k, struct ctx *c, char *got, size_t gotcap
             if (!want[ci]) {
                 continue;
             }
-            if (ob_exec(c, rom, k->val[K_REQUEST], until, &ob_cfgs[ci], &modes[mi], &o) != 0) {
+            if (ob_exec(c, src, until, &cfg[ci], &modes[mi], &o) != 0) {
                 break;
             }
-            runs++;
-            ob_same_as(c, &ref, &o, ob_cfgs[ci].name, modes[mi].name);
+            (*runs)++;
+            ob_same_as(c, &ref, &o, cfg[ci].name, modes[mi].name);
             if (modes[mi].kind != OBM_CHUNK) {
-                ob_prefix_of(c, &large, &o, &ob_cfgs[ci], modes[mi].name);
-            } else if (ob_cfgs[ci].icap == OB_INSN_LARGE) {
+                ob_prefix_of(c, &large, &o, &cfg[ci], modes[mi].name);
+            } else if (cfg[ci].large) {
                 char msg[200];
 
-                snprintf(msg, sizeof msg, "the logs accumulated over the %s run with the %s sink differ from those of the large sink", modes[mi].name, ob_cfgs[ci].name);
+                snprintf(msg, sizeof msg, "the logs accumulated over the %s run with the %s sink differ from those of the large sink", modes[mi].name, cfg[ci].name);
                 check(c, ob_logs_equal(&large, &o), msg);
             }
             ob_out_free(&o);
@@ -1010,7 +1078,7 @@ void kind_observer(const struct kase *k, struct ctx *c, char *got, size_t gotcap
             whole_large = large;
             have_whole = 1;
             memset(&large, 0, sizeof large);
-            check(c, whole_large.ilog.seq == ref.e.steps, "the large insn sink of the whole run did not offer one record per executed instruction");
+            check(c, whole_large.ilog.seq == ref.e.steps - ref.cont, "the large insn sink of the whole run did not offer one record per executed instruction (steps that continue a block transfer are not instructions)");
         } else if (have_whole && modes[mi].kind == OBM_CHUNK) {
             char msg[200];
 
@@ -1028,7 +1096,51 @@ void kind_observer(const struct kase *k, struct ctx *c, char *got, size_t gotcap
         ob_out_free(&large);
     }
     ob_out_free(&whole_large);
-    snprintf(got, gotcap, "modes=%u runs=%u", nmodes, runs);
+}
+
+void kind_observer(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    char rom[48];
+    uint64_t until = 0u;
+    int want[OB_CFG_MAX];
+    struct ob_mode modes[OB_MODES_MAX];
+    unsigned nmodes = 0u;
+    int pending = 0;
+    unsigned nrandom = 0u;
+    unsigned runs = 0u;
+    unsigned pi;
+    unsigned nprog = 1u;
+    unsigned char *img = NULL;
+    struct ob_src src;
+
+    rom[0] = '\0';
+    if (!k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until == 0u || until > UINT64_C(0xFFFFFFFF) || !k->has[K_SINKS] || !k->has[K_CHUNKS] || ob_parse_expect(k->val[K_EXPECT], &pending, &nrandom) != 0
+        || ob_parse_sinks(k->val[K_SINKS], want) != 0 || ob_parse_modes(k->val[K_CHUNKS], modes, &nmodes) != 0 || (nrandom == 0u && authored_name(k->val[K_FIXTURE], rom, sizeof rom) != 0)) {
+        harness_error(c, "an observer case needs fixture = authored:NAME (or fixture = none with random=N in its expect), until_mclk, expect = compare=verdict,machine_time,stops,digest[;pending-stop][;random=N], sinks = a list of off-less configurations with large (large, drop4, poison, cap0, cap1) and chunks = whole first, then chunk:N or stop:K");
+        return;
+    }
+    memset(&src, 0, sizeof src);
+    src.k = k;
+    src.rom = rom;
+    if (nrandom != 0u) {
+        img = (unsigned char *)malloc(RP_IMAGE_BYTES);
+        if (img == NULL) {
+            harness_error(c, "out of memory for the random program image");
+            return;
+        }
+        src.random = 1;
+        src.img = img;
+        nprog = nrandom;
+    }
+    for (pi = 0u; pi < nprog && !c->harness; pi++) {
+        src.index = pi;
+        if (img != NULL) {
+            rp_build(img, rp_seed(pi));
+        }
+        ob_matrix(c, &src, until, want, modes, nmodes, pending, &runs);
+    }
+    free(img);
+    snprintf(got, gotcap, "programs=%u modes=%u runs=%u", nprog, nmodes, runs);
 }
 
 /* ---- kind dev_log: the device-register log (plan 03-19; D-119, CORE-06) ---- */

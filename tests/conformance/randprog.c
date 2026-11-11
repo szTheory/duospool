@@ -20,7 +20,7 @@
 #define RP_SPIN_OFF 0x1FF0u /* offset in bank 0 of the spin loop: logical $FFF0 under the reset mapping */
 #define RP_BRA_OPCODE 0x80u
 #define RP_SEED_BASE UINT64_C(0x5EED000000000003)
-#define RP_SEED_STEP UINT64_C(0x9E3779B97F4A7C15)
+#define RP_SEED_STEP UINT64_C(0xD6E8FEB86659FD93) /* an odd constant unrelated to the splitmix gamma, so that the streams of two programs are not shifted copies of one stream */
 
 static uint64_t rp_next(uint64_t *state)
 {
@@ -33,10 +33,12 @@ static uint64_t rp_next(uint64_t *state)
     return z ^ (z >> 31);
 }
 
-/* the seed of program index: a fixed function of the index alone */
+/* the seed of program index: a fixed function of the index alone, one splitmix64 output of a state that is spread by the index (adjacent indexes give unrelated streams) */
 uint64_t rp_seed(unsigned index)
 {
-    return RP_SEED_BASE + (uint64_t)index * RP_SEED_STEP;
+    uint64_t state = RP_SEED_BASE + (uint64_t)index * RP_SEED_STEP;
+
+    return rp_next(&state);
 }
 
 /* a defined opcode: drawn until the table says the row is an instruction (234 of 256 rows are, so the loop ends at once for every seed; the bound keeps it finite whatever the table says) */
@@ -47,11 +49,31 @@ static uint8_t rp_opcode(uint64_t *state)
     for (tries = 0u; tries < 4096u; tries++) {
         uint8_t op = (uint8_t)(rp_next(state) & 0xFFu);
 
-        if (ds_cpu_op_defined((uint32_t)op) != 0) {
+        int derail = op == 0x00u || op == 0x20u || op == 0x40u || op == 0x4Cu || op == 0x60u || op == 0x6Cu || op == 0x7Cu; /* BRK, JSR, RTI, JMP (three forms), RTS: one in sixteen is kept, so most programs get past their first instructions */
+
+        if (ds_cpu_op_defined((uint32_t)op) != 0 && (!derail || (rp_next(state) & 15u) == 0u)) {
             return op;
         }
     }
     return 0xEAu; /* NOP, defined in every table */
+}
+
+/* the operands of the instructions that decide how far a program gets are shaped, still from the stream: a relative branch (BRA, BSR, the eight conditions, the sixteen bit branches) goes forward by at most 31 bytes, so a program is not caught in a backward
+ * loop after a few instructions, and a block transfer moves at most 255 bytes except one in 32, which keeps the length operand 0 (65536 bytes), so a program is not held in one transfer for the whole deadline; every other byte is as drawn */
+static void rp_shape(unsigned char *p, size_t start, size_t len, uint8_t op, uint64_t *state)
+{
+    int branch = (op & 0x1Fu) == 0x10u || op == 0x80u || op == 0x44u || (op & 0x0Fu) == 0x0Fu;
+    int block = op == 0x73u || op == 0xC3u || op == 0xD3u || op == 0xE3u || op == 0xF3u;
+
+    if (branch && len >= 2u) {
+        p[start + len - 1u] = (unsigned char)(p[start + len - 1u] & 0x1Fu);
+    }
+    if (block && len == 7u) {
+        p[start + 6u] = 0u;
+        if ((rp_next(state) & 31u) != 0u) {
+            p[start + 5u] = (unsigned char)(1u + (p[start + 5u] % 255u));
+        }
+    }
 }
 
 /* fill the bank (RP_BANK_BYTES at p) with instructions up to `limit` bytes; the tail past the last whole instruction keeps the operand bytes of the last one cut short, which is still defined input */
@@ -69,10 +91,13 @@ static void rp_bank(unsigned char *p, size_t limit, uint64_t *state)
         if (bytes == 0u || bytes > 7u) {
             bytes = 1u;
         }
+        size_t start = at;
+
         p[at++] = op;
         for (i = 1u; i < bytes && at < limit; i++) {
             p[at++] = (uint8_t)(rp_next(state) & 0xFFu);
         }
+        rp_shape(p, start, at - start, op, state);
     }
 }
 
@@ -101,14 +126,14 @@ void rp_build(unsigned char *img, uint64_t seed)
     }
 }
 
-/* boot program index over the request text (the default request when empty): NULL and the accepted instance, or why not (a fault of the case); release_boot frees the image and the instance */
-const char *boot_random(unsigned index, const char *request, struct booted *b, const struct ds_instance **inst)
+/* boot a copy of the image img (RP_IMAGE_BYTES bytes, built once by the caller with rp_build and kept for the several boots of one program) over the request text (the default request when empty): NULL and the accepted instance, or why not (a fault of the case); release_boot frees the copy and the instance */
+const char *boot_random(const unsigned char *img, const char *request, struct booted *b, const struct ds_instance **inst)
 {
     b->mem = NULL;
     b->content = (unsigned char *)malloc(RP_IMAGE_BYTES);
     if (b->content == NULL) {
         return "out of memory for the random program image";
     }
-    rp_build(b->content, rp_seed(index));
+    memcpy(b->content, img, RP_IMAGE_BYTES);
     return boot_content(request, RP_IMAGE_BYTES, b, inst);
 }

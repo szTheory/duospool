@@ -88,6 +88,7 @@ struct cs_prog {
     char rom[48];
     int random;
     unsigned index;
+    unsigned char *img; /* the image of the random program, built once for all the runs of the program */
 };
 
 /* the observable outcome of one run */
@@ -132,7 +133,7 @@ static int cs_exec(struct ctx *c, const struct kase *k, const struct cs_prog *pg
     uint32_t refusal = 0u;
     uint64_t j = 0u;
     uint64_t d = 0u;
-    const char *err = pg->random ? boot_random(pg->index, k->val[K_REQUEST], &b, &ci) : boot_built_rom(pg->rom, k->val[K_REQUEST], &b, &ci);
+    const char *err = pg->random ? boot_random(pg->img, k->val[K_REQUEST], &b, &ci) : boot_built_rom(pg->rom, k->val[K_REQUEST], &b, &ci);
 
     memset(o, 0, sizeof *o);
     if (err != NULL) {
@@ -151,6 +152,9 @@ static int cs_exec(struct ctx *c, const struct kase *k, const struct cs_prog *pg
     while (d < until) {
         j++;
         d = cs_deadline(sc, j, until);
+        if (d <= ci->machine_time && d < until) {
+            continue; /* a deadline the previous call overshot takes no step (the contract of ds_run, checked once after the loop): the next call is the first deadline of the schedule that is ahead, so a chunk of one clock costs one call per step and not one per clock */
+        }
         memset(&rq, 0, sizeof rq);
         rq.struct_size = (uint32_t)sizeof rq;
         rq.until_mclk = d;
@@ -168,6 +172,19 @@ static int cs_exec(struct ctx *c, const struct kase *k, const struct cs_prog *pg
             if (ds_irq_pending_query(ci, ci->machine_time) == CS_PENDING_BOTH) {
                 o->pstops++;
             }
+        }
+    }
+    if (!o->bad) { /* a deadline behind the machine time returns UNTIL with zero steps and changes nothing */
+        uint64_t before = ci->machine_time;
+
+        memset(&rq, 0, sizeof rq);
+        rq.struct_size = (uint32_t)sizeof rq;
+        rq.until_mclk = until > 0u ? until - 1u : 0u;
+        rq.stop = cs_stop;
+        rq.stop_ctx = &seen;
+        memset(&res, 0, sizeof res);
+        if (ds_run(w, &rq, &res) != (uint32_t)DS_RUN_REASON_UNTIL || res.steps != 0u || ci->machine_time != before) {
+            o->bad = 1;
         }
     }
     o->time = ci->machine_time;
@@ -268,7 +285,7 @@ static void cs_compare(struct ctx *c, const struct cs_out *ref, const struct cs_
 {
     char msg[200];
 
-    snprintf(msg, sizeof msg, "%s: a call of the schedule %s was refused or did not end on its deadline", what, sc->name);
+    snprintf(msg, sizeof msg, "%s: a call of the schedule %s was refused, did not end on its deadline, or the call to a deadline behind the machine time took a step", what, sc->name);
     check(c, !o->bad, msg);
     snprintf(msg, sizeof msg, "%s: the machine time or the step count under the schedule %s differs from the uninterrupted run to the same absolute deadline", what, sc->name);
     check(c, o->time == ref->time && o->steps == ref->steps, msg);
@@ -321,6 +338,13 @@ void kind_chunk_equiv(const struct kase *k, struct ctx *c, char *got, size_t got
         harness_error(c, "a chunk_equiv case needs fixture = authored:NAME, or fixture = none with random=N in its expect");
         return;
     }
+    if (pg.random) {
+        pg.img = (unsigned char *)malloc(RP_IMAGE_BYTES);
+        if (pg.img == NULL) {
+            harness_error(c, "out of memory for the random program image");
+            return;
+        }
+    }
     for (pi = 0u; pi < nprog && !c->harness; pi++) {
         struct cs_out ref;
         unsigned si;
@@ -328,6 +352,7 @@ void kind_chunk_equiv(const struct kase *k, struct ctx *c, char *got, size_t got
 
         pg.index = pi;
         if (pg.random) {
+            rp_build(pg.img, rp_seed(pi));
             snprintf(what, sizeof what, "random program %u", pi);
         } else {
             snprintf(what, sizeof what, "%s", pg.rom);
@@ -339,7 +364,7 @@ void kind_chunk_equiv(const struct kase *k, struct ctx *c, char *got, size_t got
         if (pi == 0u) {
             note_run(c, ref.time, (uint32_t)DS_RUN_REASON_UNTIL);
         }
-        check(c, !ref.bad && ref.digest_ok && ref.steps > 4u, "the uninterrupted run took four steps or fewer, ended off its deadline or its digest was refused");
+        check(c, !ref.bad && ref.digest_ok && ref.steps > 4u, "the uninterrupted run took four steps or fewer, ended off its deadline, took a step to a deadline behind the machine time or its digest was refused");
         if (fixture) {
             check(c, ref.done && ref.done_at < until, "the guest is not in its done state before the deadline: the chunk comparison would not be past done (D-95)");
             done_at = ref.done_at;
@@ -356,5 +381,6 @@ void kind_chunk_equiv(const struct kase *k, struct ctx *c, char *got, size_t got
             pends += o.pstops;
         }
     }
+    free(pg.img);
     snprintf(got, gotcap, "runs=%u bs=%llu ps=%llu done=%llu", runs, (unsigned long long)blocks, (unsigned long long)pends, (unsigned long long)done_at);
 }

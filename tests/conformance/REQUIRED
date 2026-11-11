@@ -199,3 +199,11 @@ cpu_blk_irq_pending
 mutate_sweep_cpu_blk_irq
 cpu_blk_stop_resume
 chunk_equiv_cpu_blk_len0
+chunk_equiv_ds_proto
+chunk_equiv_tim_timer
+chunk_equiv_cpu_blk
+chunk_equiv_irq_ctl_pre
+chunk_equiv_cpu_blk_irq
+chunk_equiv_random32
+observer_cpu_blk
+observer_random

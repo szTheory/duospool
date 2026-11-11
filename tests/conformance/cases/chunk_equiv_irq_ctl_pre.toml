@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Chunk invariance of the authored irq_ctl fixture under the default irq_i_sample = pre (plan 03-26, plan check W8 and B3; D-93, D-95, D-111, CORE-04, ER-7): the interrupt controller fixture, which takes the declared IRQ1 and IRQ2 test stimulus (irq_stim: events AT,LINE,LEVEL in master clocks, a
+# test hook and never a claim about the VDC, ER-5, D-112) and the timer interrupt through their vectors, is run in calls to the deadlines of seven schedules (chunks key: 1, 7, 168 and 3072 master clocks, a fixed 357368, 3072k-1 and 3072k+1). The kind applies the case's irq_stim to every boot, the
+# uninterrupted run included. Each schedule must end with the machine time, the step count, the verdict RAM, the digest and the sequence of step boundaries (the stop sequence) of the uninterrupted run to the same absolute deadline past the guest's done state. A snapshot does not exist yet (plan
+# 03-30), so equality is of outputs, machine time, stop sequence and digests. Evidence tier E0: the core compared with itself (repeatability and consistency, ER-7); no accuracy, compatibility, cycle-accurate or hardware claim, and the word pass is not a support claim.
+id = "chunk_equiv_irq_ctl_pre"
+kind = "chunk_equiv"
+fixture = "authored:irq-ctl"
+request = ""
+expect = "compare=verdict,machine_time,stops,digest"
+meaning = "The irq_ctl fixture with its declared IRQ1 and IRQ2 stimulus run in calls to the deadlines of seven chunk schedules ends with the machine time, step count, verdict RAM, stop sequence and digest of the uninterrupted run"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4700000
+chunks = "1,7,168,3072,frame,tick-1,tick+1"
+irq_stim = ["1200000,1,1", "1500000,1,0", "2200000,2,1", "2500000,2,0", "3200000,1,1", "3200000,2,1", "3500000,1,0", "3500000,2,0", "4200000,1,1", "4500000,1,0"]

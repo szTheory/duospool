@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Chunk invariance of 32 random programs (plan 03-26; D-93, D-119, D-127, CORE-04, ER-7, T-03-71, T-03-72): tests/conformance/randprog.c builds each program in memory from a splitmix64 stream whose seed is a fixed function of its index (no host randomness, no file, nothing committed): a 256 KiB image whose banks are runs of instructions with opcodes drawn
+# from the defined rows of the table (234 of 256) and random operands, the reset vector at the first instruction of bank 0 and the four other vectors at a spin loop. Each program is run to one absolute deadline (600000 master clocks, bounded, T-03-71) in a single call and then in calls to the deadlines of seven schedules (chunks key: 1, 7, 168 and 3072 master clocks,
+# a fixed 357368, 3072k-1 and 3072k+1), and the machine time, step count, verdict RAM, digest and sequence of step boundaries (the stop sequence) must equal those of the uninterrupted run. The random programs take paths no fixture takes (every instruction row, block transfers of random lengths, writes to the hardware page, the timer and interrupt registers,
+# changes of the mapping and of the speed), so this is the widest chunk invariance claim of the phase, and it runs in the sanitizers stage too (T-03-72). Evidence tier E0: the core compared with itself, repeatability and consistency only (ER-7); the programs have no meaning, no literal comes from a DuoSpool run, no accuracy, compatibility,
+# cycle-accurate or hardware claim, and the word pass is not a support claim.
+id = "chunk_equiv_random32"
+kind = "chunk_equiv"
+fixture = "none"
+request = ""
+expect = "compare=verdict,machine_time,stops,digest;random=32"
+meaning = "32 in-process random programs, each run to one absolute deadline in a single call and in calls to the deadlines of seven chunk schedules, end with the machine time, step count, verdict RAM, stop sequence and digest of the uninterrupted run"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 600000
+chunks = "1,7,168,3072,frame,tick-1,tick+1"
