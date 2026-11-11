@@ -250,7 +250,7 @@ static int same_record(const struct ds_instance *x, const struct ds_instance *y)
     size_t lx = 0u;
     size_t ly = 0u;
 
-    if (ds_text_record(x, bx, sizeof bx, &lx) != DS_TEXT_OK || ds_text_record(y, by, sizeof by, &ly) != DS_TEXT_OK) {
+    if (ds_text_record(x, NULL, bx, sizeof bx, &lx) != DS_TEXT_OK || ds_text_record(y, NULL, by, sizeof by, &ly) != DS_TEXT_OK) {
         return 0;
     }
     return lx == ly && lx > 0u && memcmp(bx, by, lx) == 0;

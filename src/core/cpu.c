@@ -633,7 +633,7 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
         ds_bus_write(inst, bus, ea, (uint8_t)((uint32_t)ds_bus_read(inst, bus, ea) | (1u << (mn - (uint32_t)MN_SMB0))));
         break;
     case MN_TMA: /* A <- the selected MPR, no flag changes (S8-101): the one-hot operand is the documented use. The two edges the manual does not define are single constants (D-105, ASSUMED LED-CPU-0015; four emulators
-                    disagree, ER-8): a multi-bit operand returns the HIGHEST selected index (the loop below overwrites A in ascending order), and the operand $00 follows the model parameter tma_zero: bus_latch (the default)
+                    disagree, ER-8): a multi-bit operand returns the HIGHEST selected index (constants.def tma_multibit_highest), and the operand $00 follows the model parameter tma_zero: bus_latch (the default)
                     returns mpr_latch, a_unchanged leaves A alone. The latch takes the byte that a TMA with a nonzero operand returned; TMA #0 does not change it. No flag changes. */
         if (op1 == 0u) {
             if (inst->tma_zero == (uint8_t)DS_TMA_ZERO_BUS_LATCH) {
@@ -641,9 +641,11 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
             }
             break;
         }
+        v = 0u; /* nonzero once the first selected register was taken: with tma_multibit_highest 0 (constants.def) the lowest index wins, with 1 every later one overwrites A */
         for (i = 0u; i < (uint32_t)DS_MPR_COUNT; i++) {
-            if ((op1 & (1u << i)) != 0u) {
+            if ((op1 & (1u << i)) != 0u && (v == 0u || (uint32_t)DS_CONST_tma_multibit_highest != 0u)) {
                 inst->a = inst->mpr[i];
+                v = 1u;
             }
         }
         inst->mpr_latch = inst->a;
@@ -795,7 +797,7 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
                 ds_mpr_write(inst, i, inst->a);
             }
         }
-        if (op1 != 0u) {
+        if (op1 != 0u || (uint32_t)DS_CONST_tam_zero_noop == 0u) { /* constants.def: tam_zero_noop 1 keeps the latch under the operand $00 */
             inst->mpr_latch = inst->a;
         }
         break;

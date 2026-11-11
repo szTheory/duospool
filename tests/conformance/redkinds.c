@@ -215,7 +215,7 @@ void kind_redaction(const struct kase *k, struct ctx *c, char *got, size_t gotca
         harness_error(c, "the synthetic ROM was refused: the redaction case needs an accepted boot");
         return;
     }
-    if (ds_text_record(res.instance, text, sizeof text, &len) != DS_TEXT_OK) {
+    if (ds_text_record(res.instance, NULL, text, sizeof text, &len) != DS_TEXT_OK) {
         free(content);
         free(mem);
         harness_error(c, "ds_text_record failed on the synthetic ROM");

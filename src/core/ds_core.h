@@ -181,17 +181,27 @@ uint32_t ds_boot(void *mem, size_t cap, const struct ds_boot_request *request, s
 
 /* ---- machine time, CPU and bounded run (cpu.c, run.c; plan 03-01, D-90..D-95) ---- */
 
-/* one CPU cycle is 12 master clocks at the power-up low speed and 3 at high speed; the interrupt entry is 8 cycles (assumed, D-90, D-98, D-99) */
-#define DS_MCLK_PER_CYCLE_LOW 12u
-#define DS_MCLK_PER_CYCLE_HIGH 3u
+/*
+ * The named modelling constants (constants.def, plan 03-18): one enumerator DS_CONST_name per row, so the value the run record prints is the value the core reads. A constant is one value with a ledger id, never a model parameter.
+ */
+enum ds_constant {
+#define DS_CONST(name, value, ledger) DS_CONST_##name = value,
+#include "constants.def"
+#undef DS_CONST
+    DS_CONST_END_OF_LIST
+};
+
+/* one CPU cycle is 12 master clocks at the power-up low speed and 3 at high speed (constants.def, D-90); the interrupt entry is 8 cycles (assumed, D-98, D-99) */
+#define DS_MCLK_PER_CYCLE_LOW ((uint32_t)DS_CONST_cycle_mclk_low)
+#define DS_MCLK_PER_CYCLE_HIGH ((uint32_t)DS_CONST_cycle_mclk_high)
 #define DS_INT_ENTRY_CYCLES 8u
 /* the named cycle adders of D-98 and D-107, applied on top of the opcode table's base counts (ds_max_step_mclk adds them to the table maximum) */
 #define DS_ADDER_BRANCH_TAKEN 2u /* a taken conditional branch, BBR and BBS included (S8-20); BRA and BSR are fixed counts in the table */
 #define DS_ADDER_T_MODE 3u       /* ADC, AND, EOR, ORA with the T flag set (S8-17) */
 #define DS_ADDER_DECIMAL 1u      /* ADC and SBC with the D flag set (S8-17) */
-#define DS_ADDER_VDC_ACCESS 1u   /* one CPU cycle, at the speed the instruction started at, for every bus access to physical $1FE000-$1FE7FF (the VDC and VCE windows), zero-page-mapped, block and ST accesses included; charged in the bus before the device sees the access (D-107, ASSUMED LED-CPU-0017: the scope and the order are modelling assumptions) */
+#define DS_ADDER_VDC_ACCESS ((uint32_t)DS_CONST_vdc_vce_penalty_cycles) /* constants.def: one CPU cycle, at the speed the instruction started at, per bus access to physical $1FE000-$1FE7FF (the VDC and VCE windows), zero-page-mapped, block and ST accesses included; charged in the bus before the device sees it (D-107, ASSUMED LED-CPU-0017) */
 /* the value an unmapped read returns (D-104) */
-#define DS_UNMAPPED_READ 0xFFu
+#define DS_UNMAPPED_READ ((uint32_t)DS_CONST_unmapped_read) /* constants.def */
 /* the stub reads of the hardware-page windows whose device does not exist yet (D-104, ASSUMED LED-CPU-0012): the VDC window until Phase 4 and the VCE window until Phase 4 */
 #define DS_VDC_STUB_READ 0x00u
 #define DS_VCE_STUB_READ 0xFFu

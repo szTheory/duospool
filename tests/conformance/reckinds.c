@@ -28,6 +28,25 @@
 #include "runner.h"
 #include "synth.h"
 
+/* what the record says about the request that made the instance: the result of the last run (NULL: none) and the model rows the request bound with model.NAME (bit i is row i of model_params.def) */
+static struct ds_text_run run_of(const struct spec *s, const struct ds_run_result *result)
+{
+    struct ds_text_run run;
+    unsigned i;
+    uint32_t row;
+
+    run.result = result;
+    run.model_bound = 0u;
+    for (i = 0u; i < s->nmodel; i++) {
+        for (row = 0u; row < (uint32_t)DS_MODEL_COUNT; row++) {
+            if (strcmp(s->model_name[i], ds_model_name(row)) == 0) {
+                run.model_bound |= UINT32_C(1) << row;
+            }
+        }
+    }
+    return run;
+}
+
 const char *records_dir = NULL;
 const char *golden_dir = NULL;
 
@@ -62,6 +81,7 @@ void record_for_accept(const struct kase *k, struct ctx *c)
     static char text[REC_CAP];
     struct booted b;
     struct spec s;
+    struct ds_text_run run;
     const struct ds_instance *inst = NULL;
     size_t len = 0u;
     const char *err;
@@ -74,7 +94,8 @@ void record_for_accept(const struct kase *k, struct ctx *c)
         harness_error(c, err);
         return;
     }
-    if (ds_text_record(inst, text, sizeof text, &len) != DS_TEXT_OK) {
+    run = run_of(&s, NULL);
+    if (ds_text_record(inst, &run, text, sizeof text, &len) != DS_TEXT_OK) {
         harness_error(c, "ds_text_record failed on an accepted instance");
     } else {
         record_emit(k, c, text, len);
@@ -121,6 +142,7 @@ void kind_record_golden(const struct kase *k, struct ctx *c, char *got, size_t g
     char path[512];
     struct booted b;
     struct spec s;
+    struct ds_text_run run;
     const struct ds_instance *inst = NULL;
     const char *name = k->val[K_EXPECT];
     const char *err;
@@ -156,9 +178,10 @@ void kind_record_golden(const struct kase *k, struct ctx *c, char *got, size_t g
         harness_error(c, err);
         return;
     }
-    check(c, ds_text_record(inst, text, sizeof text, &len) == DS_TEXT_OK && len == strlen(text) && len > 0u,
+    run = run_of(&s, NULL);
+    check(c, ds_text_record(inst, &run, text, sizeof text, &len) == DS_TEXT_OK && len == strlen(text) && len > 0u,
           "ds_text_record failed on an accepted instance");
-    check(c, ds_text_record(inst, again, sizeof again, &alen) == DS_TEXT_OK && alen == len && memcmp(again, text, len + 1u) == 0,
+    check(c, ds_text_record(inst, &run, again, sizeof again, &alen) == DS_TEXT_OK && alen == len && memcmp(again, text, len + 1u) == 0,
           "a second print differs from the first");
     body = golden_body(golden);
     blen = strlen(body);
@@ -219,7 +242,7 @@ void kind_record_refusal(const struct kase *k, struct ctx *c, char *got, size_t 
     if (st != DS_TEXT_OK || reason == NULL) {
         return;
     }
-    check(c, strncmp(text, "[record]\nformat_version = 2\n\n[core]\nbuild_id = \"", 47u) == 0, "the refusal record does not start with the record and core tables");
+    check(c, strncmp(text, "[record]\nformat_version = 3\n\n[core]\nbuild_id = \"", 47u) == 0, "the refusal record does not start with the record and core tables");
     check(c, strstr(text, "\nbehaviour_epoch = 2\n") != NULL, "the refusal record has no behaviour_epoch line");
     refusal_tail(tail, sizeof tail, reason, s.profile, s.rev);
     tlen = strlen(tail);
@@ -322,7 +345,15 @@ void kind_record_refuses_quote(const struct kase *k, struct ctx *c, char *got, s
 /* ---- kind record_lines: the canonical record skeleton, line by line (D-53, D-69); moved here from runner.c by plan 03-03 ---- */
 
 /* the keys the record must print, in order: table.key (D-53: record, core, profile with its sha256, 13 field tables, withheld, content with the
- * sha256 first, power_on, limits, machine). The count below is pinned: a plan that adds a key or a table edits this list and the count in one commit */
+ * sha256 first, power_on, one model_NAME table per row of model_params.def, constants (one key per row of constants.def), run, limits, machine).
+ * The count below is pinned: a plan that adds a key or a table edits this list and the count in one commit */
+/* the number of rows of constants.def */
+#define DS_CONST(name, value, ledger) +1
+enum { CONST_ROWS = 0
+#include "constants.def"
+};
+#undef DS_CONST
+
 static char exp_key[REC_MAX_ROWS][KEY_MAX];
 static size_t n_exp;
 
@@ -376,6 +407,27 @@ static void build_expected_keys(void)
     exp_add("", "power_on", "policy_version");
     exp_add("", "power_on", "seed_present");
     exp_add("", "power_on", "seed");
+    for (i = 0u; i < (uint32_t)DS_MODEL_COUNT; i++) { /* one table per row of model_params.def, in file order */
+        char tab[KEY_MAX];
+        size_t n = strlen(ds_model_name(i));
+
+        if (n + 7u >= sizeof tab) {
+            break;
+        }
+        memcpy(tab, "model_", 6u);
+        memcpy(tab + 6, ds_model_name(i), n + 1u);
+        exp_add("", tab, "value");
+        exp_add("", tab, "ledger");
+        exp_add("", tab, "status");
+        exp_add("", tab, "bound_by");
+    }
+#define DS_CONST(name, value, ledger) exp_add("", "constants", #name);
+#include "constants.def"
+#undef DS_CONST
+    exp_add("", "run", "reason");
+    exp_add("", "run", "overshoot");
+    exp_add("", "run", "stop_point");
+    exp_add("", "run", "steps");
     exp_add("", "limits", "size_cap");
     exp_add("", "machine", "time");
     exp_add("", "machine", "time_unit");
@@ -478,8 +530,38 @@ static int refuses_with(const struct ds_instance *t, enum ds_text_status want, c
     enum ds_text_status st;
 
     memset(buf, 0x7f, cap);
-    st = ds_text_record(t, buf, cap, &len);
+    st = ds_text_record(t, NULL, buf, cap, &len);
     return st == want && len == 0u && buf[0] == '\0';
+}
+
+/* the TABLE.KEY=VALUE items of an expect, separated by semicolons: each names a row of the record and its value (the literals come from the case, never from the printer) */
+static void check_items(struct ctx *c, const struct recrow *rows, size_t nrows, const char *expect)
+{
+    char want[256];
+    const char *p;
+
+    for (p = expect; !c->harness && *p != '\0';) {
+        const char *end = strchr(p, ';');
+        size_t n = end != NULL ? (size_t)(end - p) : strlen(p);
+        char *eq;
+        const struct recrow *row;
+
+        if (n == 0u || n >= sizeof want) {
+            harness_error(c, "an expect item is empty or too long");
+            break;
+        }
+        memcpy(want, p, n);
+        want[n] = '\0';
+        eq = strchr(want, '=');
+        if (eq == NULL) {
+            harness_error(c, "an expect item has no =");
+            break;
+        }
+        *eq = '\0';
+        row = find_row(rows, nrows, want);
+        check(c, row != NULL && value_is(row->val, eq + 1), "a scalar line of the record differs from the case expectation");
+        p += n + (end != NULL ? 1u : 0u);
+    }
 }
 
 /*
@@ -500,11 +582,10 @@ void kind_record_lines(const struct kase *k, struct ctx *c, char *got, size_t go
     struct recrow rows[REC_MAX_ROWS];
     struct booted b;
     struct spec s;
+    struct ds_text_run run;
     const struct ds_instance *inst = NULL;
     const struct ds_profile *builtin;
     struct ds_instance *tmp;
-    char want[256];
-    const char *p;
     size_t len = 0u;
     size_t plen = 0u;
     size_t nrows = 0u;
@@ -524,7 +605,8 @@ void kind_record_lines(const struct kase *k, struct ctx *c, char *got, size_t go
         release_boot(&b);
         return;
     }
-    st = ds_text_record(inst, text, sizeof text, &len);
+    run = run_of(&s, NULL);
+    st = ds_text_record(inst, &run, text, sizeof text, &len);
     check(c, st == DS_TEXT_OK, "ds_text_record failed on an accepted instance");
     if (st != DS_TEXT_OK) {
         release_boot(&b);
@@ -544,7 +626,8 @@ void kind_record_lines(const struct kase *k, struct ctx *c, char *got, size_t go
     err = parse_record(work, rows, &nrows);
     check(c, err == NULL, err != NULL ? err : "layout");
     build_expected_keys();
-    check(c, n_exp == 61u, "the expected record does not hold 61 rows (format_version, 2 core, 3 profile, 39 field, 1 withheld, 6 content, 4 power_on, 1 limit, 4 machine)");
+    /* 61 rows before plan 03-18 (format_version, 2 core, 3 profile, 39 field, 1 withheld, 6 content, 4 power_on, 1 limit, 4 machine), plus the 4 rows of the run table and, from the defs, 4 rows per model parameter and 1 per constant */
+    check(c, n_exp == 61u + 4u + 4u * (unsigned)DS_MODEL_COUNT + (unsigned)CONST_ROWS, "the expected record does not hold 65 rows plus 4 per model parameter and 1 per constant");
     check(c, err == NULL && nrows == n_exp, "the number of rows differs from the skeleton");
     for (i = 0u; err == NULL && i < nrows && i < n_exp; i++) {
         if (strcmp(rows[i].key, exp_key[i]) != 0) {
@@ -554,26 +637,8 @@ void kind_record_lines(const struct kase *k, struct ctx *c, char *got, size_t go
     check(c, err == NULL && i == n_exp, "a row is missing, extra or out of order against the skeleton");
 
     /* the scalar lines of the case */
-    for (p = k->val[K_EXPECT]; err == NULL && !c->harness && *p != '\0';) {
-        const char *end = strchr(p, ';');
-        size_t n = end != NULL ? (size_t)(end - p) : strlen(p);
-        char *eq;
-        const struct recrow *row;
-        if (n == 0u || n >= sizeof want) {
-            harness_error(c, "an expect item is empty or too long");
-            break;
-        }
-        memcpy(want, p, n);
-        want[n] = '\0';
-        eq = strchr(want, '=');
-        if (eq == NULL) {
-            harness_error(c, "an expect item has no =");
-            break;
-        }
-        *eq = '\0';
-        row = find_row(rows, nrows, want);
-        check(c, row != NULL && value_is(row->val, eq + 1), "a scalar line of the record differs from the case expectation");
-        p += n + (end != NULL ? 1u : 0u);
+    if (err == NULL) {
+        check_items(c, rows, nrows, k->val[K_EXPECT]);
     }
 
     /* every field table: status, value and binder follow from the built-in profile and the request */
@@ -597,6 +662,38 @@ void kind_record_lines(const struct kase *k, struct ctx *c, char *got, size_t go
         check(c, rb != NULL && value_is(rb->val, open ? "run-request" : "constant"), "a field bound_by line differs");
     }
 
+    /* every model table: the value is the request's own when it named model.NAME, else the first allowed value; the binder follows; ledger and status are the def's own words */
+    for (f = 0u; f < (uint32_t)DS_MODEL_COUNT && nrows == n_exp; f++) {
+        char key[KEY_MAX];
+        const char *name = ds_model_name(f);
+        const char *want_value = ds_model_default(f);
+        int bound = 0;
+        unsigned m;
+        const struct recrow *rv;
+        const struct recrow *rl;
+        const struct recrow *rs;
+        const struct recrow *rb;
+
+        for (m = 0u; m < s.nmodel; m++) {
+            if (strcmp(s.model_name[m], name) == 0) {
+                want_value = s.model_value[m];
+                bound = 1;
+            }
+        }
+        snprintf(key, sizeof key, "model_%s.value", name);
+        rv = find_row(rows, nrows, key);
+        snprintf(key, sizeof key, "model_%s.ledger", name);
+        rl = find_row(rows, nrows, key);
+        snprintf(key, sizeof key, "model_%s.status", name);
+        rs = find_row(rows, nrows, key);
+        snprintf(key, sizeof key, "model_%s.bound_by", name);
+        rb = find_row(rows, nrows, key);
+        check(c, rv != NULL && value_is(rv->val, want_value), "a model value line differs from the request or the default");
+        check(c, rl != NULL && value_is(rl->val, ds_model_ledger(f)), "a model ledger line differs from the row of model_params.def");
+        check(c, rs != NULL && value_is(rs->val, ds_model_status(f)), "a model status line differs from the row of model_params.def");
+        check(c, rb != NULL && value_is(rb->val, bound ? "run-request" : "default"), "a model bound_by line differs from the request");
+    }
+
     /* the profile text is an exact part of the record, followed by the content table */
     st = ds_text_profile(&inst->profile, ptext, sizeof ptext, &plen);
     check(c, st == DS_TEXT_OK && plen == strlen(ptext), "ds_text_profile failed");
@@ -608,15 +705,15 @@ void kind_record_lines(const struct kase *k, struct ctx *c, char *got, size_t go
     }
 
     /* printing twice gives the same bytes */
-    st = ds_text_record(inst, again, sizeof again, &plen);
+    st = ds_text_record(inst, &run, again, sizeof again, &plen);
     check(c, st == DS_TEXT_OK && plen == len && memcmp(again, text, len + 1u) == 0, "a second print differs from the first");
 
     /* the capacity edge: len + 1 bytes fit, len bytes do not, and the failed print leaves nothing */
-    st = ds_text_record(inst, scratch, len + 1u, &plen);
+    st = ds_text_record(inst, &run, scratch, len + 1u, &plen);
     check(c, st == DS_TEXT_OK && plen == len && memcmp(scratch, text, len + 1u) == 0, "a buffer of exactly len + 1 bytes did not fit the record");
     check(c, refuses_with(inst, DS_TEXT_ERR_CAPACITY, scratch, len), "a buffer one byte short did not give capacity and an empty text");
     plen = 99u;
-    check(c, ds_text_record(inst, NULL, 0u, &plen) == DS_TEXT_ERR_ARGUMENT && plen == 0u, "a NULL buffer is not an argument error");
+    check(c, ds_text_record(inst, &run, NULL, 0u, &plen) == DS_TEXT_ERR_ARGUMENT && plen == 0u, "a NULL buffer is not an argument error");
 
     /* D-69: a quote, a backslash or a byte outside printable ASCII is refused, never escaped */
     tmp = (struct ds_instance *)malloc(sizeof *tmp);
@@ -647,6 +744,9 @@ void kind_record_lines(const struct kase *k, struct ctx *c, char *got, size_t go
         memcpy(tmp, inst, sizeof *tmp);
         tmp->byte_order = 7u;
         check(c, refuses_with(tmp, DS_TEXT_ERR_STATE, scratch, sizeof scratch), "an unknown byte order was not refused");
+        memcpy(tmp, inst, sizeof *tmp);
+        tmp->tma_zero = 9u;
+        check(c, refuses_with(tmp, DS_TEXT_ERR_STATE, scratch, sizeof scratch), "a model selection outside its allowed list was not refused");
         free(tmp);
     }
     snprintf(got, gotcap, "rows=%u", (unsigned)nrows);

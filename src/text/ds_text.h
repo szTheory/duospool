@@ -13,7 +13,7 @@
  * *outlen as 0, so a failed print can never be read as a short record.
  * On success the text is NUL-terminated inside cap and *outlen is its length without the terminator.
  * The accept record prints, in order, the tables record, core, profile (id, rev and the resolved sha256 from ds_profile_hash), the 13
- * field_NAME tables, withheld (the sorted ledger ids that bound the run), content, power_on, limits and machine (the machine time in
+ * field_NAME tables, withheld (the sorted ledger ids that bound the run), content, power_on, the model_NAME tables, constants, run, limits and machine (the machine time in
  * the unit master-clocks, and the state digest from ds_digest). The refusal record prints record, core and refusal (reason,
  * requested_id, requested_rev) and nothing after: a run that was refused has no machine. Every value is read from the instance through
  * the core's accessors; there is no struct that repackages them. A digest and a profile hash are evidence of repeatability only.
@@ -30,8 +30,8 @@
 #define DS_TEXT_REQUEST_ID_MAX 64u
 #define DS_TEXT_REASON_MAX 40u
 
-/* version of the record layout: bumped whenever a table or a key is added, removed or reordered */
-#define DS_TEXT_FORMAT_VERSION 2u
+/* version of the record layout: bumped whenever a table or a key is added, removed or reordered (3: plan 03-18 adds the model tables, the constants table and the run table) */
+#define DS_TEXT_FORMAT_VERSION 3u
 
 enum ds_text_status {
     DS_TEXT_OK = 0,
@@ -41,8 +41,20 @@ enum ds_text_status {
     DS_TEXT_ERR_STATE = 4     /* an enumerated value of the instance is not a member of its set */
 };
 
-/* the whole accept record of a booted instance */
-enum ds_text_status ds_text_record(const struct ds_instance *inst, char *buf, size_t cap, size_t *outlen);
+/*
+ * What the record says about the run that produced the instance, none of which the instance itself holds: the result of the last ds_run call (NULL when no run is named: the [run] table then prints reason none, overshoot 0, steps 0)
+ * and which model parameters a run-request key set (bit i is row i of model_params.def; a clear bit prints bound_by default). A NULL struct says no run and no binding. Plain data, copied by the caller from its own request.
+ */
+struct ds_text_run {
+    const struct ds_run_result *result;
+    uint32_t model_bound;
+};
+
+/*
+ * The whole accept record of a booted instance: after [power_on] one [model_NAME] table per row of model_params.def (value, ledger, status, bound_by), the [constants] table (one NAME = "VALUE LEDGER" line per row of constants.def) and the
+ * [run] table (reason, overshoot, stop_point, steps); [withheld] is the sorted union of the profile's unresolved ids, the ledger ids of the bound open fields, the model rows' ids and the constants rows' ids.
+ */
+enum ds_text_status ds_text_record(const struct ds_instance *inst, const struct ds_text_run *run, char *buf, size_t cap, size_t *outlen);
 
 /*
  * The refusal record of a boot that was refused: reason is a refusal number (not 0, and a member of the refusal set, else

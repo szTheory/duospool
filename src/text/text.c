@@ -171,6 +171,20 @@ static void fail(struct out *o, enum ds_text_status why)
     }
 }
 
+/* the named constants (constants.def): name, value and ledger id of every row, in file order; the core reads the same rows as the enumerators DS_CONST_name, so a printed value is the value in use */
+struct const_row {
+    const char *name;
+    uint32_t value;
+    const char *ledger;
+};
+
+#define DS_CONST(name, value, ledger) {#name, (uint32_t)(value), ledger},
+static const struct const_row const_rows[] = {
+#include "constants.def"
+};
+#undef DS_CONST
+#define CONST_COUNT ((uint32_t)(sizeof const_rows / sizeof const_rows[0]))
+
 /* the [profile] table and the 13 field tables, key order from the X-table (profile_fields.def) */
 static void emit_profile(struct out *o, const struct ds_profile *p)
 {
@@ -257,9 +271,10 @@ static void emit_content(struct out *o, const struct ds_instance *inst)
  *   - the ledger ids of every field that the run request bound (a run-request binding is no support claim, D-49),
  *   - the unresolved behaviours of the profile (LED-IRQ-0001, LED-VID-0002, LED-VID-0003),
  *   - the load rules that are assumptions: LED-LOAD-0003 (the 384 KiB mirror rule), LED-LOAD-0005 (the bank window and unmapped
- *     reads) and LED-PROF-0002 (the power-on values).
+ *     reads) and LED-PROF-0002 (the power-on values),
+ *   - the ledger id of every row of model_params.def and of every row of constants.def (plan 03-18).
  */
-#define WH_MAX 24u    /* a line of the record is limited to 400 characters: 24 ids of 12 characters stay well inside it */
+#define WH_MAX 24u    /* a line of the record is limited to 400 characters: the ids line prints each id as 12 characters, two quotes, a comma and a blank, so 24 ids take 7 + 24 * 16 + 1 = 392 */
 #define WH_ID_MAX 16u /* an id and its terminator */
 
 struct idset {
@@ -354,6 +369,13 @@ static void emit_withheld(struct out *o, const struct ds_profile *p)
         bad |= id == NULL || idset_add_list(&set, id) != 0;
     }
     bad |= idset_add_list(&set, "LED-LOAD-0003|LED-LOAD-0005|LED-PROF-0002") != 0;
+    for (i = 0u; i < (uint32_t)DS_MODEL_COUNT; i++) { /* every model row is printed, so its ledger id bounds the run whether the value is the default or was requested (D-113) */
+        const char *ledger = ds_model_ledger(i);
+        bad |= ledger == NULL || idset_add_list(&set, ledger) != 0;
+    }
+    for (i = 0u; i < CONST_COUNT; i++) { /* every named constant is in force in every run (D-113) */
+        bad |= idset_add_list(&set, const_rows[i].ledger) != 0;
+    }
     if (bad) {
         fail(o, DS_TEXT_ERR_STATE);
         return;
@@ -388,6 +410,96 @@ static void emit_power_on(struct out *o, const struct ds_instance *inst)
     kv_u32(o, "policy_version", DS_POWERON_POLICY_VERSION);
     kv_bool(o, "seed_present", inst->has_seed == 1u);
     kv_u64(o, "seed", inst->has_seed == 1u ? inst->powerup_seed : UINT64_C(0));
+}
+
+/* a model value is a token inside the allowed list and is not NUL-terminated: copy it into a bounded buffer and print it through the checked string path */
+static void kv_model_value(struct out *o, const char *key, const char *token, size_t n)
+{
+    char tmp[32];
+    size_t i;
+
+    if (token == NULL || n == 0u || n >= sizeof tmp) {
+        fail(o, DS_TEXT_ERR_STATE);
+        return;
+    }
+    for (i = 0u; i < n; i++) {
+        tmp[i] = token[i];
+    }
+    tmp[n] = '\0';
+    kv_str(o, key, tmp, sizeof tmp);
+}
+
+/*
+ * One [model_NAME] table per row of model_params.def, in file order (plan 03-18; D-113, T-03-50): the value the instance holds, the ledger id and the status of the row (assumed or open, never a claim) and who bound the value, default when no run-request key
+ * set it and run-request when one did. A value read from an instance whose selection is outside the allowed list is a state error.
+ */
+static void emit_model(struct out *o, const struct ds_instance *inst, const struct ds_text_run *run)
+{
+    uint32_t i;
+
+    for (i = 0u; i < (uint32_t)DS_MODEL_COUNT; i++) {
+        size_t n = 0u;
+        const char *value = ds_model_value(inst, i, &n);
+        const char *status = ds_model_status(i);
+        const char *ledger = ds_model_ledger(i);
+        int bound = run != NULL && i < 32u && ((run->model_bound >> i) & 1u) != 0u;
+
+        if (value == NULL || status == NULL || ledger == NULL) {
+            fail(o, DS_TEXT_ERR_STATE);
+            return;
+        }
+        table(o, "model_", ds_model_name(i));
+        kv_model_value(o, "value", value, n);
+        kv_str(o, "ledger", ledger, 16u);
+        kv_str(o, "status", status, 16u);
+        kv_lit(o, "bound_by", bound ? "run-request" : "default");
+    }
+}
+
+/* the [constants] table: one line per row of constants.def, NAME = "VALUE LEDGER" (the value in decimal, a blank, the ledger id), in file order */
+static void emit_constants(struct out *o)
+{
+    uint32_t i;
+
+    table(o, "", "constants");
+    for (i = 0u; i < CONST_COUNT; i++) {
+        put_lit(o, const_rows[i].name);
+        put_lit(o, " = \"");
+        put_u32(o, const_rows[i].value);
+        put_ch(o, ' ');
+        put_lit(o, const_rows[i].ledger);
+        put_lit(o, "\"\n");
+    }
+}
+
+/*
+ * The [run] table (plan 03-18; D-95): how the run named by the caller ended. reason is none for a record of a boot that ran nothing, then until, callback or refused; overshoot is the
+ * master clocks the last step ended past the deadline; stop_point is where the run stopped (none, instruction or block_byte); steps counts the steps this call took. A NULL result prints none, 0, none, 0.
+ */
+static void emit_run(struct out *o, const struct ds_text_run *run)
+{
+    const struct ds_run_result *r = run != NULL ? run->result : NULL;
+    const char *reason = "none";
+    const char *stop = "none";
+
+    if (r != NULL) {
+        reason = r->reason == (uint32_t)DS_RUN_REASON_UNTIL      ? "until"
+                 : r->reason == (uint32_t)DS_RUN_REASON_CALLBACK ? "callback"
+                 : r->reason == (uint32_t)DS_RUN_REASON_REFUSED  ? "refused"
+                                                                 : NULL;
+        stop = r->stop_point == (uint32_t)DS_STOP_INSTRUCTION  ? "instruction"
+               : r->stop_point == (uint32_t)DS_STOP_BLOCK_BYTE ? "block_byte"
+                                                               : NULL;
+        if (reason == NULL || stop == NULL) {
+            fail(o, DS_TEXT_ERR_STATE);
+            return;
+        }
+    }
+    table(o, "", "run");
+    kv_lit(o, "reason", reason);
+    kv_u64(o, "overshoot", r != NULL ? r->overshoot : UINT64_C(0));
+    kv_lit(o, "stop_point", stop);
+    kv_u64(o, "steps", r != NULL ? r->steps : UINT64_C(0));
 }
 
 /*
@@ -466,7 +578,7 @@ static void emit_header(struct out *o)
     kv_u32(o, "behaviour_epoch", DS_BEHAVIOUR_EPOCH);
 }
 
-enum ds_text_status ds_text_record(const struct ds_instance *inst, char *buf, size_t cap, size_t *outlen)
+enum ds_text_status ds_text_record(const struct ds_instance *inst, const struct ds_text_run *run, char *buf, size_t cap, size_t *outlen)
 {
     struct out o;
     enum ds_text_status st = begin(&o, buf, cap, outlen, inst);
@@ -479,6 +591,9 @@ enum ds_text_status ds_text_record(const struct ds_instance *inst, char *buf, si
     emit_withheld(&o, &inst->profile);
     emit_content(&o, inst);
     emit_power_on(&o, inst);
+    emit_model(&o, inst, run);
+    emit_constants(&o);
+    emit_run(&o, run);
     table(&o, "", "limits");
     kv_u32(&o, "size_cap", (uint32_t)DS_ROM_CAP);
     emit_machine(&o, inst);

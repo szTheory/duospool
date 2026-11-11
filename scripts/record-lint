@@ -3,7 +3,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
 # record-lint - structure and hygiene checker for run records (D-53, D-55, D-69). A record is the canonical text of one run: an accept record
-# (record, core, profile, 13 field tables, withheld, content, power_on, limits, machine) or a refusal record (record, core, refusal). This
+# (record, core, profile, 13 field tables, withheld, content, power_on, the model tables, constants, run, limits, machine) or a refusal record (record, core, refusal). This
 # check enforces shape and host-independence, not truth: a clean record is not evidence that the machine behaved correctly.
 # usage: record-lint [--expect CODE[,CODE...]] FILE|DIR...
 #   A DIR stands for every *.toml file directly inside it (a directory without one is a harness error). Stage 1 is scripts/lib/toml-subset.awk

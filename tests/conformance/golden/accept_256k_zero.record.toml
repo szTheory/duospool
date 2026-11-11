@@ -11,8 +11,10 @@
 # it was recomputed with a throwaway perl script that wrote the version 3 stream of the documented rules, after the same script had reproduced the committed version 2 digest from the version 2 stream, and the stream file hashes
 # to the value under shasum -a 256. Plan 03-17 added the third BUS0 byte (the selection index of the model parameter tma_zero, 0 at boot) and the serial version 4, so the digest line changed again:
 # it was recomputed with the same throwaway perl script after it had reproduced the committed version 3 digest, and the stream file hashes to the value under shasum -a 256. The runner skips this comment block and compares the rest byte for byte.
+# Plan 03-18 changed the layout, format_version 2 to 3: after [power_on] the record now holds [model_tma_zero] (the default, bound_by default), [constants] (the nine rows of src/core/constants.def, each NAME = "VALUE LEDGER") and [run] (reason none for a boot that ran nothing),
+# and [withheld] gained the ledger ids of the model row and of the constants rows. The literals were written by hand from the two def files, never copied from printer output. The digest line did not change (no state was added), and the profile and content hashes did not change.
 [record]
-format_version = 2
+format_version = 3
 
 [core]
 build_id = "unset"
@@ -89,7 +91,7 @@ value = "zero"
 bound_by = "run-request"
 
 [withheld]
-ids = ["LED-AUD-0001", "LED-IO-0001", "LED-IRQ-0001", "LED-LOAD-0001", "LED-LOAD-0002", "LED-LOAD-0003", "LED-LOAD-0005", "LED-PROF-0002", "LED-VID-0001", "LED-VID-0002", "LED-VID-0003"]
+ids = ["LED-AUD-0001", "LED-CPU-0003", "LED-CPU-0004", "LED-CPU-0010", "LED-CPU-0012", "LED-CPU-0015", "LED-CPU-0017", "LED-IO-0001", "LED-IRQ-0001", "LED-LOAD-0001", "LED-LOAD-0002", "LED-LOAD-0003", "LED-LOAD-0005", "LED-PROF-0002", "LED-VID-0001", "LED-VID-0002", "LED-VID-0003"]
 
 [content]
 sha256 = "cb038cda079ab0edec440521c4dc250a8a8c2af6e068470dbda7f05ff07b0287"
@@ -104,6 +106,29 @@ policy = "zero"
 policy_version = 1
 seed_present = false
 seed = 0
+
+[model_tma_zero]
+value = "bus_latch"
+ledger = "LED-CPU-0015"
+status = "assumed"
+bound_by = "default"
+
+[constants]
+cycle_mclk_low = "12 LED-CPU-0003"
+cycle_mclk_high = "3 LED-CPU-0003"
+reset_cost_mclk = "0 LED-CPU-0004"
+undefined_opcode_bytes = "1 LED-CPU-0010"
+undefined_opcode_cycles = "2 LED-CPU-0010"
+unmapped_read = "255 LED-CPU-0012"
+vdc_vce_penalty_cycles = "1 LED-CPU-0017"
+tam_zero_noop = "1 LED-CPU-0015"
+tma_multibit_highest = "1 LED-CPU-0015"
+
+[run]
+reason = "none"
+overshoot = 0
+stop_point = "none"
+steps = 0
 
 [limits]
 size_cap = 1048576

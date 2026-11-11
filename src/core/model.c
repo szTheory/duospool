@@ -175,6 +175,9 @@ const char *ds_model_value(const struct ds_instance *inst, uint32_t index, size_
     }
 }
 
+/* the state check below reads "no step was taken" as machine time 0, which holds only while a boot charges no time (constants.def, ASSUMED LED-CPU-0004) */
+_Static_assert((uint64_t)DS_CONST_reset_cost_mclk == UINT64_C(0), "ds_model_set tests machine_time == 0 as the state before the first step: a nonzero reset cost needs a separate step counter");
+
 uint32_t ds_model_set(struct ds_instance *inst, const char *name, const char *value)
 {
     uint32_t row = (uint32_t)DS_MODEL_COUNT;

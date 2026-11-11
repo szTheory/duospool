@@ -123,7 +123,7 @@ void kind_content_id(const struct kase *k, struct ctx *c, char *got, size_t gotc
     }
     snprintf(got, gotcap, "%.16s", have);
 
-    check(c, ds_text_record(inst, text, sizeof text, &len) == DS_TEXT_OK, "ds_text_record failed on an accepted instance");
+    check(c, ds_text_record(inst, NULL, text, sizeof text, &len) == DS_TEXT_OK, "ds_text_record failed on an accepted instance");
     if (len != 0u) {
         err = parse_record(text, rows, &nrows);
         check(c, err == NULL, err != NULL ? err : "layout");
