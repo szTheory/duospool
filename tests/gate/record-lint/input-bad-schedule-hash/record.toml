@@ -1,0 +1,129 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# record-lint control input-bad-schedule-hash (plan 03-28): the schedule identity of the input table is not 64 lowercase hex digits (one digit is missing); exactly REC_TABLES
+[record]
+format_version = 1
+
+[core]
+build_id = "unset"
+behaviour_epoch = 1
+
+[profile]
+id = "pce-hucard-2btn"
+rev = 1
+sha256 = "da2b433d08c7494048d6744976de2c5b0f5c2de269ef38bb6018eecc223a1bf0"
+
+[field_media_slot]
+status = "owner-selected"
+value = "hucard"
+bound_by = "constant"
+
+[field_expansion_port]
+status = "owner-selected"
+value = "absent"
+bound_by = "constant"
+
+[field_vdc_count]
+status = "owner-selected"
+value = "1"
+bound_by = "constant"
+
+[field_vpc]
+status = "owner-selected"
+value = "false"
+bound_by = "constant"
+
+[field_chip_revision]
+status = "owner-selected"
+value = "huc6280"
+bound_by = "constant"
+
+[field_input_port1]
+status = "owner-selected"
+value = "pad2"
+bound_by = "constant"
+
+[field_io_1000_d6_value]
+status = "open"
+value = "1"
+bound_by = "run-request"
+
+[field_io_1000_d7_value]
+status = "open"
+value = "1"
+bound_by = "run-request"
+
+[field_lines_per_frame]
+status = "open"
+value = "262"
+bound_by = "run-request"
+
+[field_psg_tick_divisor]
+status = "open"
+value = "6"
+bound_by = "run-request"
+
+[field_content_byte_order]
+status = "open"
+value = "pce"
+bound_by = "run-request"
+
+[field_content_copier_header]
+status = "open"
+value = "refuse"
+bound_by = "run-request"
+
+[field_powerup_policy]
+status = "open"
+value = "zero"
+bound_by = "run-request"
+
+[withheld]
+ids = ["LED-AUD-0001", "LED-IO-0001", "LED-IRQ-0001", "LED-LOAD-0001", "LED-LOAD-0002", "LED-LOAD-0003", "LED-LOAD-0005", "LED-PROF-0002", "LED-VID-0001", "LED-VID-0002", "LED-VID-0003"]
+
+[content]
+sha256 = "cb038cda079ab0edec440521c4dc250a8a8c2af6e068470dbda7f05ff07b0287"
+size = 262144
+mapper = "plain"
+mapper_rule = "plain-v1"
+byte_order = "pce"
+header_handling = "none"
+
+[power_on]
+policy = "zero"
+policy_version = 1
+seed_present = false
+seed = 0
+
+[model_tma_zero]
+value = "bus_latch"
+ledger = "LED-CPU-0015"
+status = "assumed"
+bound_by = "default"
+
+[stimulus]
+events = 0
+
+[input]
+events = 0
+schedule_sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b85"
+
+[constants]
+cycle_mclk_low = "12 LED-CPU-0003"
+cycle_mclk_high = "3 LED-CPU-0003"
+
+[run]
+reason = "none"
+overshoot = 0
+stop_point = "none"
+steps = 0
+
+[limits]
+size_cap = 1048576
+
+[machine]
+time = 0
+time_unit = "placeholder-cycles"
+digest_algorithm = "sha256"
+digest = "b1a4d2b63fd49f803b89437ed55ccdde679b766c0f70d59981f1b5b4276d166b"

@@ -13,6 +13,7 @@
 #include "ds_mapper.h"
 #include "ds_poweron.h"
 #include "ds_serial.h"
+#include "ds_sha256.h"
 #include "ds_text.h"
 
 /* the build id comes from the CMake cache variable DS_BUILD_ID; a build that sets none prints the literal "unset" */
@@ -489,6 +490,83 @@ static void emit_stimulus(struct out *o, const struct ds_instance *inst)
     }
 }
 
+/* an unsigned decimal of up to 64 bits written into dst (at most 20 bytes, no terminator); returns the number of bytes */
+static unsigned dec_u64(char *dst, uint64_t v)
+{
+    char tmp[20];
+    unsigned n = 0u;
+    unsigned i;
+
+    do {
+        tmp[n] = (char)('0' + (unsigned)(v % UINT64_C(10)));
+        n++;
+        v /= UINT64_C(10);
+    } while (v != UINT64_C(0));
+    for (i = 0u; i < n; i++) {
+        dst[i] = tmp[n - 1u - i];
+    }
+    return n;
+}
+
+/*
+ * The [input] table (plan 03-28; D-117, D-53 amended, T-03-79, ER-5): which input schedule the run was given. events is the number of declared events and schedule_sha256 the sha256 of the canonical encoding of the schedule: one line per event, in slot order,
+ * AT,PORT,MASK in plain decimal (the machine time in master clocks, the port from 1, the logical button mask in the CD BIOS layout) with no padding, each line closed by one LF (0x0A) and nothing else in the stream. A run with no input hashes the empty stream, so a no-input run is
+ * an explicit empty script with its own identity (the sha256 of zero bytes, e3b0c442...), not a missing key. The identity says which declared events were given to the core and says nothing about any pad (a script is a test input declared by the case, E2 at most). A schedule that
+ * ds_input_push could not have produced (a count above DS_INPUT_MAX, a nonzero reserved word, a used slot with a port outside 1 to 5, a mask above bit 7 or with opposite directions, times that go back, an equal time whose port does not increase, a nonzero unused slot) is a state error:
+ * the printer never guesses. The table prints no ledger id (the [withheld] list is full at 24 of 24 and this table adds none).
+ */
+static void emit_input(struct out *o, const struct ds_instance *inst)
+{
+    struct ds_sha256 h;
+    uint8_t digest[DS_SHA256_BYTES];
+    uint32_t n = inst->input_count;
+    uint32_t i;
+
+    if (n > (uint32_t)DS_INPUT_MAX || inst->input_reserved != 0u) {
+        fail(o, DS_TEXT_ERR_STATE);
+        return;
+    }
+    for (i = 0u; i < (uint32_t)DS_INPUT_MAX; i++) {
+        const struct ds_input_event *e = &inst->input_ev[i];
+
+        if (i < n) {
+            int bad = e->port < 1u || e->port > (uint32_t)DS_PORT_COUNT || e->mask > 0xffu || ((e->mask & 0x50u) == 0x50u) || ((e->mask & 0xa0u) == 0xa0u);
+
+            if (!bad && i > 0u) {
+                const struct ds_input_event *p = &inst->input_ev[i - 1u];
+                bad = e->at < p->at || (e->at == p->at && e->port <= p->port);
+            }
+            if (bad) {
+                fail(o, DS_TEXT_ERR_STATE);
+                return;
+            }
+        } else if (e->at != UINT64_C(0) || e->port != 0u || e->mask != 0u) {
+            fail(o, DS_TEXT_ERR_STATE);
+            return;
+        }
+    }
+    ds_sha256_init(&h);
+    for (i = 0u; i < n; i++) {
+        const struct ds_input_event *e = &inst->input_ev[i];
+        char line[48];
+        unsigned len = dec_u64(line, e->at);
+
+        line[len] = ',';
+        len++;
+        len += dec_u64(line + len, (uint64_t)e->port);
+        line[len] = ',';
+        len++;
+        len += dec_u64(line + len, (uint64_t)e->mask);
+        line[len] = '\n';
+        len++;
+        ds_sha256_update(&h, (const uint8_t *)line, (size_t)len);
+    }
+    ds_sha256_final(&h, digest);
+    table(o, "", "input");
+    kv_u32(o, "events", n);
+    kv_hex(o, "schedule_sha256", digest, DS_SHA256_BYTES);
+}
+
 /* the [constants] table: one line per row of constants.def, NAME = "VALUE LEDGER" (the value in decimal, a blank, the ledger id), in file order */
 static void emit_constants(struct out *o)
 {
@@ -626,6 +704,7 @@ enum ds_text_status ds_text_record(const struct ds_instance *inst, const struct 
     emit_power_on(&o, inst);
     emit_model(&o, inst, run);
     emit_stimulus(&o, inst);
+    emit_input(&o, inst);
     emit_constants(&o);
     emit_run(&o, run);
     table(&o, "", "limits");

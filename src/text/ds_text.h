@@ -30,8 +30,8 @@
 #define DS_TEXT_REQUEST_ID_MAX 64u
 #define DS_TEXT_REASON_MAX 40u
 
-/* version of the record layout: bumped whenever a table or a key is added, removed or reordered (3: plan 03-18 adds the model tables, the constants table and the run table; 4: plan 03-23 adds the stimulus table after the model tables and four rows to the constants table) */
-#define DS_TEXT_FORMAT_VERSION 4u
+/* version of the record layout: bumped whenever a table or a key is added, removed or reordered (3: plan 03-18 adds the model tables, the constants table and the run table; 4: plan 03-23 adds the stimulus table after the model tables and four rows to the constants table; 5: plan 03-28 adds the input table, events and schedule_sha256, between the stimulus and constants tables) */
+#define DS_TEXT_FORMAT_VERSION 5u
 
 enum ds_text_status {
     DS_TEXT_OK = 0,
@@ -51,7 +51,7 @@ struct ds_text_run {
 };
 
 /*
- * The whole accept record of a booted instance: after [power_on] one [model_NAME] table per row of model_params.def (value, ledger, status, bound_by), the [constants] table (one NAME = "VALUE LEDGER" line per row of constants.def) and the
+ * The whole accept record of a booted instance: after [power_on] one [model_NAME] table per row of model_params.def (value, ledger, status, bound_by), the [stimulus] table, the [input] table (events and schedule_sha256, the sha256 of the canonical encoding AT,PORT,MASK plus LF per event; plan 03-28), the [constants] table (one NAME = "VALUE LEDGER" line per row of constants.def) and the
  * [run] table (reason, overshoot, stop_point, steps); [withheld] is the sorted union of the profile's unresolved ids, the ledger ids of the bound open fields, the model rows' ids and the constants rows' ids.
  */
 enum ds_text_status ds_text_record(const struct ds_instance *inst, const struct ds_text_run *run, char *buf, size_t cap, size_t *outlen);

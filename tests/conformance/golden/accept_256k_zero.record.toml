@@ -21,8 +21,10 @@
 # Plan 03-25 added the region BLKT (the block transfer in progress: active, opcode, alternation state, remaining count as a u32, source and destination as u16, 11 zero bytes at boot) and the serial version 6, so the digest line changed: it was recomputed with a throwaway python script outside
 # the repo that took the 8588-byte version 5 stream of this boot from the core's stream writer, checked that its sha256 equals the committed version 5 digest above, set the version to 6 and appended the frame BLKT with 11 zero bytes; the 8607-byte stream hashes to the new value under shasum -a 256.
 # The same plan added the constants rows block_prologue_cycles and block_irq_after_epilogue of src/core/constants.def, whose ledger ids LED-CPU-0008 and LED-IRQ-0007 joined [withheld] (24 ids, the cap of the record printer: any further id needs a layout change). The literals were written by hand from the def, not copied from printer output.
+# Plan 03-28 changed the layout, format_version 4 to 5: the table [input] (events = 0 for a boot that is given no input script, then schedule_sha256, the sha256 of the canonical encoding of the declared schedule: one line AT,PORT,MASK in decimal and one LF per event) follows [stimulus]. A no-input boot is an explicit empty script, so the identity is the sha256 of zero bytes,
+# e3b0c442..., checked with shasum -a 256 over an empty file and not taken from printer output; the block was written by hand from the layout, and no ledger id joined [withheld] (24 of 24 is unchanged). The digest line, the profile hash and the content hash did not change (the schedule is not in the digest before plan 03-29).
 [record]
-format_version = 4
+format_version = 5
 
 [core]
 build_id = "unset"
@@ -129,6 +131,10 @@ bound_by = "default"
 
 [stimulus]
 events = 0
+
+[input]
+events = 0
+schedule_sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
 [constants]
 cycle_mclk_low = "12 LED-CPU-0003"

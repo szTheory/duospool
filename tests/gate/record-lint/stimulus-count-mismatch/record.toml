@@ -106,6 +106,10 @@ bound_by = "default"
 events = 2
 event_1 = "1200000,1,1"
 
+[input]
+events = 0
+schedule_sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
 [constants]
 cycle_mclk_low = "12 LED-CPU-0003"
 cycle_mclk_high = "3 LED-CPU-0003"

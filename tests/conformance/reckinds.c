@@ -24,6 +24,7 @@
 #include <string.h>
 
 #include "ds_core.h"
+#include "ds_sha256.h"
 #include "ds_text.h"
 #include "runner.h"
 #include "synth.h"
@@ -242,7 +243,7 @@ void kind_record_refusal(const struct kase *k, struct ctx *c, char *got, size_t 
     if (st != DS_TEXT_OK || reason == NULL) {
         return;
     }
-    check(c, strncmp(text, "[record]\nformat_version = 4\n\n[core]\nbuild_id = \"", 47u) == 0, "the refusal record does not start with the record and core tables");
+    check(c, strncmp(text, "[record]\nformat_version = 5\n\n[core]\nbuild_id = \"", 47u) == 0, "the refusal record does not start with the record and core tables");
     check(c, strstr(text, "\nbehaviour_epoch = 2\n") != NULL, "the refusal record has no behaviour_epoch line");
     refusal_tail(tail, sizeof tail, reason, s.profile, s.rev);
     tlen = strlen(tail);
@@ -345,7 +346,7 @@ void kind_record_refuses_quote(const struct kase *k, struct ctx *c, char *got, s
 /* ---- kind record_lines: the canonical record skeleton, line by line (D-53, D-69); moved here from runner.c by plan 03-03 ---- */
 
 /* the keys the record must print, in order: table.key (D-53: record, core, profile with its sha256, 13 field tables, withheld, content with the
- * sha256 first, power_on, one model_NAME table per row of model_params.def, stimulus (the key events: this skeleton declares no stimulus, so no event line; plan 03-23), constants (one key per row of constants.def), run, limits, machine).
+ * sha256 first, power_on, one model_NAME table per row of model_params.def, stimulus (the key events: this skeleton declares no stimulus, so no event line; plan 03-23), input (events and schedule_sha256; plan 03-28), constants (one key per row of constants.def), run, limits, machine).
  * The count below is pinned: a plan that adds a key or a table edits this list and the count in one commit */
 /* the number of rows of constants.def */
 #define DS_CONST(name, value, ledger) +1
@@ -430,6 +431,8 @@ static void build_expected_keys(void)
         snprintf(evkey, sizeof evkey, "event_%u", (unsigned)(i + 1u));
         exp_add("", "stimulus", evkey);
     }
+    exp_add("", "input", "events");
+    exp_add("", "input", "schedule_sha256");
 #define DS_CONST(name, value, ledger) exp_add("", "constants", #name);
 #include "constants.def"
 #undef DS_CONST
@@ -612,6 +615,50 @@ static void check_stimulus_rows(struct ctx *c, const struct recrow *rows, size_t
 }
 
 /*
+ * The [input] table against the case's own input script (plan 03-28; D-117, T-03-79), used by kind record_lines: events is the number of events of the script the key input names (read by the one reader of the runner from the rows that scripts/conformance-flatten --inputs
+ * wrote; a case with no input key declares an explicit empty script and must print events = 0), and schedule_sha256 is the sha256 of the canonical encoding written here with snprintf, one line AT,PORT,MASK in decimal and one LF per event, from the parsed values and not from the record:
+ * a formatting path other than the printer's. Same hash code as the printer; that code is checked against the host tool by the hash kinds, and the case also pins a literal computed with the host sha256 tool. The table prints no colon, slash or backslash.
+ */
+static void check_input_rows(struct ctx *c, const struct recrow *rows, size_t nrows, const struct kase *k)
+{
+    struct ds_input_event ev[INPUT_PARSE_MAX];
+    unsigned n = 0u;
+    int declared = 0;
+    unsigned i;
+    size_t r;
+    uint64_t events = 0u;
+    struct ds_sha256 h;
+    uint8_t dig[DS_SHA256_BYTES];
+    char hex[2u * DS_SHA256_BYTES + 3u];
+    const struct recrow *ri;
+    const char *err = input_events(k, ev, INPUT_PARSE_MAX, &n, &declared);
+
+    if (err != NULL) {
+        harness_error(c, err);
+        return;
+    }
+    check(c, find_row(rows, nrows, "input.events") != NULL && parse_u64(find_row(rows, nrows, "input.events")->val, &events) == 0 && events == (uint64_t)n, "the input table does not hold the number of events of the script the case names");
+    ds_sha256_init(&h);
+    for (i = 0u; i < n; i++) {
+        char line[64];
+        int len = snprintf(line, sizeof line, "%llu,%u,%u\n", (unsigned long long)ev[i].at, (unsigned)ev[i].port, (unsigned)ev[i].mask);
+
+        ds_sha256_update(&h, (const uint8_t *)line, (size_t)len);
+    }
+    ds_sha256_final(&h, dig);
+    for (i = 0u; i < DS_SHA256_BYTES; i++) {
+        snprintf(hex + 2u * i, 3u, "%02x", (unsigned)dig[i]);
+    }
+    ri = find_row(rows, nrows, "input.schedule_sha256");
+    check(c, ri != NULL && value_is(ri->val, hex), "the input identity is not the sha256 of the canonical encoding of the script's events");
+    for (r = 0u; r < nrows; r++) {
+        if (strncmp(rows[r].key, "input.", 6u) == 0) {
+            check(c, strchr(rows[r].val, ':') == NULL && strchr(rows[r].val, '/') == NULL && strchr(rows[r].val, '\\') == NULL, "an input value holds a colon, a slash or a backslash");
+        }
+    }
+}
+
+/*
  * kind record_lines: boot the request (an accepted one), print the record into a buffer (nothing goes to stdout, D-80) and require
  *   the exact table and key order of the skeleton, LF and printable ASCII only, one blank line between tables and nowhere else,
  *   the scalar lines listed in the case expect (TABLE.KEY=VALUE separated by semicolons), the status, value and binder of each of
@@ -663,6 +710,19 @@ void kind_record_lines(const struct kase *k, struct ctx *c, char *got, size_t go
         }
         exp_events = nev;
     }
+    {
+        uint32_t input_refusal = 0u;
+
+        err = apply_input((struct ds_instance *)(void *)b.mem, k, &input_refusal); /* the case's declared input script, before the first step: the record names it (plan 03-28) */
+        if (err == NULL && input_refusal != 0u) {
+            err = "ds_input_push refused the input script of a record_lines case";
+        }
+        if (err != NULL) {
+            harness_error(c, err);
+            release_boot(&b);
+            return;
+        }
+    }
     builtin = ds_profile_builtin(inst->profile.id, inst->profile.rev);
     check(c, builtin != NULL, "the booted profile is not the built-in r1");
     if (builtin == NULL) {
@@ -690,8 +750,8 @@ void kind_record_lines(const struct kase *k, struct ctx *c, char *got, size_t go
     err = parse_record(work, rows, &nrows);
     check(c, err == NULL, err != NULL ? err : "layout");
     build_expected_keys();
-    /* 61 rows before plan 03-18 (format_version, 2 core, 3 profile, 39 field, 1 withheld, 6 content, 4 power_on, 1 limit, 4 machine), plus the 4 rows of the run table, the 1 row of the stimulus table of a record with no event (plan 03-23) and, from the defs, 4 rows per model parameter and 1 per constant */
-    check(c, n_exp == 61u + 4u + 1u + exp_events + 4u * (unsigned)DS_MODEL_COUNT + (unsigned)CONST_ROWS, "the expected record does not hold 66 rows plus 1 per declared event, 4 per model parameter and 1 per constant");
+    /* 61 rows before plan 03-18 (format_version, 2 core, 3 profile, 39 field, 1 withheld, 6 content, 4 power_on, 1 limit, 4 machine), plus the 4 rows of the run table, the 1 row of the stimulus table of a record with no event (plan 03-23), the 2 rows of the input table (plan 03-28) and, from the defs, 4 rows per model parameter and 1 per constant */
+    check(c, n_exp == 61u + 4u + 1u + 2u + exp_events + 4u * (unsigned)DS_MODEL_COUNT + (unsigned)CONST_ROWS, "the expected record does not hold 68 rows plus 1 per declared stimulus event, 4 per model parameter and 1 per constant");
     check(c, err == NULL && nrows == n_exp, "the number of rows differs from the skeleton");
     for (i = 0u; err == NULL && i < nrows && i < n_exp; i++) {
         if (strcmp(rows[i].key, exp_key[i]) != 0) {
@@ -704,6 +764,7 @@ void kind_record_lines(const struct kase *k, struct ctx *c, char *got, size_t go
     if (err == NULL) {
         check_items(c, rows, nrows, k->val[K_EXPECT]);
         check_stimulus_rows(c, rows, nrows, k);
+        check_input_rows(c, rows, nrows, k);
     }
 
     /* every field table: status, value and binder follow from the built-in profile and the request */
@@ -840,6 +901,43 @@ void kind_record_lines(const struct kase *k, struct ctx *c, char *got, size_t go
         tmp->irq_stim_at[1] = UINT64_C(0);
         tmp->irq_stim_at[5] = UINT64_C(1);
         check(c, refuses_with(tmp, &run, DS_TEXT_ERR_STATE, scratch, sizeof scratch), "a nonzero time in an unused stimulus slot was not refused");
+        /* the input slots (plan 03-28): a schedule that ds_input_push could not have produced is a state error, never printed; each control starts from a valid two-event schedule */
+        memcpy(tmp, inst, sizeof *tmp);
+        memset(tmp->input_ev, 0, sizeof tmp->input_ev);
+        tmp->input_count = 2u;
+        tmp->input_ev[0].at = UINT64_C(10);
+        tmp->input_ev[0].port = 1u;
+        tmp->input_ev[0].mask = 0x08u;
+        tmp->input_ev[1].at = UINT64_C(10);
+        tmp->input_ev[1].port = 2u;
+        tmp->input_ev[1].mask = 0x00u;
+        check(c, !refuses_with(tmp, &run, DS_TEXT_ERR_STATE, scratch, sizeof scratch), "a valid input schedule was refused");
+        tmp->input_ev[1].port = 1u;
+        check(c, refuses_with(tmp, &run, DS_TEXT_ERR_STATE, scratch, sizeof scratch), "an equal input time with a port that does not increase was not refused");
+        tmp->input_ev[1].port = 2u;
+        tmp->input_ev[1].at = UINT64_C(9);
+        check(c, refuses_with(tmp, &run, DS_TEXT_ERR_STATE, scratch, sizeof scratch), "input times that go back were not refused");
+        tmp->input_ev[1].at = UINT64_C(11);
+        tmp->input_ev[1].port = 6u;
+        check(c, refuses_with(tmp, &run, DS_TEXT_ERR_STATE, scratch, sizeof scratch), "an input port above 5 was not refused");
+        tmp->input_ev[1].port = 0u;
+        check(c, refuses_with(tmp, &run, DS_TEXT_ERR_STATE, scratch, sizeof scratch), "an input port of 0 in a used slot was not refused");
+        tmp->input_ev[1].port = 2u;
+        tmp->input_ev[1].mask = 0x100u;
+        check(c, refuses_with(tmp, &run, DS_TEXT_ERR_STATE, scratch, sizeof scratch), "an input mask with a bit above bit 7 was not refused");
+        tmp->input_ev[1].mask = 0x50u;
+        check(c, refuses_with(tmp, &run, DS_TEXT_ERR_STATE, scratch, sizeof scratch), "UP and DOWN held together were not refused");
+        tmp->input_ev[1].mask = 0xa0u;
+        check(c, refuses_with(tmp, &run, DS_TEXT_ERR_STATE, scratch, sizeof scratch), "LEFT and RIGHT held together were not refused");
+        tmp->input_ev[1].mask = 0x00u;
+        tmp->input_ev[5].at = UINT64_C(1);
+        check(c, refuses_with(tmp, &run, DS_TEXT_ERR_STATE, scratch, sizeof scratch), "a nonzero time in an unused input slot was not refused");
+        tmp->input_ev[5].at = UINT64_C(0);
+        tmp->input_reserved = 1u;
+        check(c, refuses_with(tmp, &run, DS_TEXT_ERR_STATE, scratch, sizeof scratch), "a nonzero reserved word of the input schedule was not refused");
+        tmp->input_reserved = 0u;
+        tmp->input_count = (uint32_t)DS_INPUT_MAX + 1u;
+        check(c, refuses_with(tmp, &run, DS_TEXT_ERR_STATE, scratch, sizeof scratch), "an input count above the cap was not refused");
         free(tmp);
     }
     snprintf(got, gotcap, "rows=%u", (unsigned)nrows);
