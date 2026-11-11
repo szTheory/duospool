@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 3
 current_phase_name: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-current_plan: 18
+current_plan: 19
 status: planning
-stopped_at: Completed 03-13-PLAN.md
-last_updated: "2026-11-11T10:04:38.967Z"
+stopped_at: Completed 03-14-PLAN.md
+last_updated: "2026-11-11T10:26:50.949Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 2 complete, transitioned to Phase 3
-state_head: b2453a3a0e5b76c5176f46806fd8b27a6841ff1d
+state_head: 25a64e7d83a791075c51e503af4ecc1c7a9fc056
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 72
-  completed_plans: 51
+  completed_plans: 52
   percent: 33
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 3 — HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-Current Plan: 18
+Current Plan: 19
 Total Plans in Phase: 38
 Status: Ready to execute
 Last activity: 2026-11-11 — Completed 03-04 (W1: optional case keys, guestkinds.c, authored fixture key, machine_time and stop on RESULT)
@@ -110,6 +110,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 03 P11 | 85min | 3 tasks | 10 files |
 | Phase 03 P12 | 30min | 3 tasks | 12 files |
 | Phase 3 P13 | 45min | 3 tasks | 8 files |
+| Phase 3 P14 | 30min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -208,6 +209,7 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-11: zero-page and stack wrap are MAN:S8-11 and MAN:H8-3; pointer-wrap forms are ASSUMED:LED-CPU-0010
 - [Phase 03]: 03-12: subtract is A - M - not C (S8-74); decimal V unchanged, decimal N Z C and T plus decimal are ASSUMED LED-CPU-0010; TSB and TRB assert memory and Z only
 - [Phase 03]: 03-12: shared-state toy made phase-independent with a strictly increasing hidden counter; DSV1 limit of 96 checks per fixture
+- [Phase 3]: 03-14: ST0-ST2 go through ds_bus_write_phys (physical $1FE000|n, MPRs ignored); CSL/CSH charged at the old speed; cpu_huc carries the 18 mode-coverage checks because cpu_alu is at the 96-check DSV1 limit; opcode_exercise is mode=require with the five block transfers excluded by hex opcode
 
 ### Pending Todos
 
@@ -231,6 +233,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-11T10:04:38.814Z
-Stopped at: Completed 03-13-PLAN.md
+Last session: 2026-11-11T10:26:50.794Z
+Stopped at: Completed 03-14-PLAN.md
 Resume file: None

@@ -126,7 +126,7 @@ Plans:
   3. A fixture run in bounded chunks of varying size produces outputs identical to an uninterrupted run. This includes stops mid-frame and mid-block-transfer, including a length-0 (65,536-byte) transfer. A snapshot taken at any stop point and restored into a fresh instance continues identically.
   4. Turning on the CPU instruction trace and the device-register write log leaves verdicts, machine time, and state digests unchanged.
   5. Each cycle count and access penalty in use has a ledger entry that cites its source or labels it a modelling assumption. This covers speed switching and VDC/VCE access penalties. Unresolved edges are named profile or model parameters, not silent choices: interrupt latency around block transfers and after CLI/RTI, TAM/TMA #0, power-up MPR values, and ST0-ST2 MMU bypass.
-**Plans**: 17/38 plans executed in 38 sequential waves, listed in execution order (context waves W1-W8 of 03-CONTEXT; W6-W7 are the Phase 3.1 cut line; ids 03-34..03-38 were added by the round-1 plan-check revision)
+**Plans**: 18/38 plans executed in 38 sequential waves, listed in execution order (context waves W1-W8 of 03-CONTEXT; W6-W7 are the Phase 3.1 cut line; ids 03-34..03-38 were added by the round-1 plan-check revision)
 
 Plans:
 - [x] 03-01-PLAN.md — W1 tracer: ca65 ds_proto through fixture-build, absolute-deadline ds_run in master clocks, minimal CPU and bus, DSV1 judged from guest RAM
@@ -146,7 +146,7 @@ Plans:
 - [x] 03-11-PLAN.md — W2: load, store, transfer, stack semantics; cpu_ldst; default policies list
 - [x] 03-12-PLAN.md — W2: ALU, decimal and T flag; cpu_alu; adc-carry toy
 - [x] 03-13-PLAN.md — W2: control flow, BRK, RTI; cpu_flow
-- [ ] 03-14-PLAN.md — W2: HuC6280 additions except block transfers; cpu_huc; opcode coverage required
+- [x] 03-14-PLAN.md — W2: HuC6280 additions except block transfers; cpu_huc; opcode coverage required
 - [ ] 03-15-PLAN.md — W2: opcode and cycle pin cases, cyc_probe sweep, W2 ledger entries
 - [ ] 03-16-PLAN.md — W3 tracer: full bus and MMU, windows, stubs, io_buffer, VDC/VCE penalty; mmu_mpr; unmapped toy
 - [ ] 03-17-PLAN.md — W3: model_params.def with tma_zero, TAM/TMA edges
@@ -238,7 +238,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phases 4 and 5
 |-------|----------------|--------|-----------|
 | 1. Owner Decisions, Claim Ledger and Toolchain Spike | 12/12 | Complete    | 2026-11-09 |
 | 2. Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate | 22/22 | Complete    | 2026-11-10 |
-| 3. HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad | 17/38 | In Progress | - |
+| 3. HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad | 18/38 | In Progress | - |
 | 4. VCE/VDC Raw Video | 0/TBD | Not started | - |
 | 5. PSG Raw Audio | 0/TBD | Not started | - |
 | 6. Headless Runner, Installed-Consumer Proof and Staged Verification | 0/TBD | Not started | - |
