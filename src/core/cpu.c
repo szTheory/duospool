@@ -162,6 +162,9 @@ void ds_cpu_reset(struct ds_instance *inst)
     inst->s = 0u;
     inst->p = (uint8_t)P_I;
     inst->speed = 0u;
+    inst->timer_enabled = 0u; /* the timer is stopped, the disable register is 0 and the TIQ request is clear after reset (H8-18, H8-16, H8-15); the counter and the reload register are left as the power-on policy made them */
+    inst->tiq_latch = 0u;
+    inst->irq_disable = 0u;
     ds_mpr_write(inst, 7u, 0u);
     lo = ds_bus_read(inst, NULL, 0xFFFEu); /* the reset costs no time (D-92): no bus accounting */
     hi = ds_bus_read(inst, NULL, 0xFFFFu);
@@ -498,18 +501,49 @@ static uint16_t tst_addr(const struct ds_instance *inst, uint32_t mode, uint32_t
     }
 }
 
+/*
+ * The interrupt entry (plan 03-21; D-110, D-111, LED-CPU-0009 assumed; H8-12, H8-13): the program counter (PCH then PCL) and the status byte are pushed with B = 0 and the T bit as it is now, I is set, D and T are cleared, and the program counter is
+ * loaded from the vector, the low byte at vector and the high byte at vector + 1, through the mapping registers like any access. It takes DS_INT_ENTRY_CYCLES cycles (8, an assumption of this project: the manual does not give a figure, ASSUMED LED-CPU-0009)
+ * at the speed in force after the instruction, plus the penalty cycles its own accesses were charged. It runs inside the step of the instruction it follows, so no latch survives between steps (D-111). Returns the master clocks it took.
+ */
+static uint32_t interrupt_entry(struct ds_instance *inst, struct ds_obs_log *log, uint64_t start, uint32_t vector)
+{
+    uint32_t mclk = inst->speed != 0u ? DS_MCLK_PER_CYCLE_HIGH : DS_MCLK_PER_CYCLE_LOW;
+    struct ds_bus bus = {0u, log, start, mclk, DS_INT_ENTRY_CYCLES - 1u, 0u}; /* the entry's own accesses are stamped inside its cycles */
+    uint32_t pc = inst->pc;
+    uint32_t lo;
+    uint32_t hi;
+
+    push(inst, &bus, (pc >> 8u) & 0xFFu);
+    push(inst, &bus, pc & 0xFFu);
+    push(inst, &bus, (uint32_t)inst->p & ~0x10u); /* B pushed 0 (H8-12); T is whatever the interrupted instruction left, and is cleared below (D-99) */
+    inst->p = (uint8_t)(((uint32_t)inst->p | P_I) & ~(P_D | P_T));
+    lo = ds_bus_read(inst, &bus, (uint16_t)vector);
+    hi = ds_bus_read(inst, &bus, (uint16_t)(vector + 1u));
+    inst->pc = (uint16_t)((hi << 8u) | lo);
+    return (DS_INT_ENTRY_CYCLES + bus.penalty) * mclk;
+}
+
 /* one instruction; log is the instruction sink writer of the running ds_run call or NULL (plan 03-10): the hook is called once per executed instruction with the state before it runs (D-119) */
 uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
 {
-    struct ds_bus bus_state = {0u, log}; /* what this instruction's bus accesses add to it and the observer log they report to: a local of the step, nothing survives it (D-92) */
+    uint32_t mclk_per_cycle = inst->speed != 0u ? DS_MCLK_PER_CYCLE_HIGH : DS_MCLK_PER_CYCLE_LOW; /* the speed this instruction starts at: CSL and CSH are charged at the old speed, the new one applies from the next instruction (D-101) */
+    struct ds_bus bus_state = {0u, log, inst->machine_time, mclk_per_cycle, 0u, 0u}; /* what this instruction's bus accesses add to it, the observer log they report to and the stamp rule of the accesses (start, cycle length, last cycle, read-modify-write): a local of the step, nothing survives it (D-92, D-108) */
     struct ds_bus *bus = &bus_state;
     uint32_t pc = inst->pc;
+    uint32_t i_before = (uint32_t)inst->p & P_I; /* the I value in force before the instruction: the interrupt sample uses it (irq_i_sample = pre, D-111) */
     uint8_t opcode = ds_bus_read(inst, bus, inst->pc);
     const struct ds_op *op = &ops[opcode];
     uint32_t mn = op->mn;
     uint32_t mode = op->mode;
     uint32_t bytes = op->bytes; /* the 22 undefined rows hold one byte and two cycles: the D-96 assumption (LED-CPU-0010) lives in the def */
     uint32_t cycles = op->cycles;
+    int t_active = ((uint32_t)inst->p & P_T) != 0u; /* T as the instruction before this one left it: only ADC, AND, EOR and ORA read it (S8-17) */
+    uint32_t total;
+    uint32_t vector;
+
+    bus->last = cycles + flag_cycles(mn, t_active, inst->p) - 1u; /* the last cycle of the instruction before the penalty: where a single data access is stamped (D-92) */
+    bus->rmw = op->cls == (uint8_t)CL_RMW ? 1u : 0u;
     uint32_t op1 = bytes >= 2u ? ds_bus_read(inst, bus, (uint16_t)(pc + 1u)) : 0u;
     uint32_t op2 = bytes >= 3u ? ds_bus_read(inst, bus, (uint16_t)(pc + 2u)) : 0u;
     uint32_t next = (pc + bytes) & 0xFFFFu;
@@ -520,8 +554,6 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
     uint32_t hi;
     int taken = 0;
     uint32_t i;
-    int t_active = ((uint32_t)inst->p & P_T) != 0u; /* T as the instruction before this one left it: only ADC, AND, EOR and ORA read it (S8-17) */
-    uint32_t mclk_per_cycle = inst->speed != 0u ? DS_MCLK_PER_CYCLE_HIGH : DS_MCLK_PER_CYCLE_LOW; /* the speed this instruction starts at: CSL and CSH are charged at the old speed, the new one applies from the next instruction (D-101) */
 
     ds_obs_insn(log, inst, opcode); /* a void hook over a const instance: the observer cannot change the machine (D-119) */
     inst->p = (uint8_t)((uint32_t)inst->p & ~P_T); /* T is reset in the fetch cycle of every instruction (H8-5) */
@@ -880,7 +912,19 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
     cycles += flag_cycles(mn, t_active, inst->p);
     cycles += bus->penalty; /* the VDC and VCE accesses this instruction made, charged by the bus (D-107) */
     inst->pc = (uint16_t)next;
-    return cycles * mclk_per_cycle;
+    total = cycles * mclk_per_cycle;
+    /*
+     * The interrupt sample (D-111, H8-12: the interrupt inputs are sampled in the last bus cycle of the instruction; ties are inclusive): the stamp is the start of the last cycle, the end of the instruction minus the length of that cycle, which
+     * is at the speed the instruction started at (a CSL or CSH ends at its old speed). A timer register write in that cycle has already taken effect. With irq_i_sample = pre, the only value of this plan, the I flag of the sample is the one in
+     * force before the instruction, so after CLI, SEI, PLP and RTI the next instruction decides. The entry runs now, in the same step, so there is no persisted latch and no stop point between an instruction and its entry.
+     */
+    if (i_before == 0u) {
+        vector = ds_irq_pending(inst, bus->start + (uint64_t)total - (uint64_t)mclk_per_cycle);
+        if (vector != 0u) {
+            total += interrupt_entry(inst, log, bus->start + (uint64_t)total, vector);
+        }
+    }
+    return total;
 }
 
 uint32_t ds_cpu_step(struct ds_instance *inst)

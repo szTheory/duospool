@@ -241,7 +241,7 @@ void ds_obs_insn(struct ds_obs_log *log, const struct ds_instance *inst, uint32_
     }
 }
 
-void ds_obs_dev(struct ds_obs_log *log, const struct ds_instance *inst, uint32_t phys, uint32_t value, uint32_t kind, uint32_t flags)
+void ds_obs_dev(struct ds_obs_log *log, const struct ds_instance *inst, uint64_t stamp, uint32_t phys, uint32_t value, uint32_t kind, uint32_t flags)
 {
     uint8_t *r;
     uint32_t i;
@@ -253,7 +253,7 @@ void ds_obs_dev(struct ds_obs_log *log, const struct ds_instance *inst, uint32_t
     if (r == NULL) {
         return;
     }
-    put_u64(r, inst->machine_time);
+    put_u64(r, stamp);
     put_u32(r + 8, phys);
     r[12] = (uint8_t)(value & 0xFFu);
     r[13] = (uint8_t)(kind & 0xFFu);

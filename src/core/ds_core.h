@@ -123,6 +123,8 @@ struct ds_instance {
     uint32_t powerup_policy;   /* enum ds_policy of ds_poweron.h: 1 zero, 2 seeded-prng-v1 */
     uint32_t has_seed;         /* 1 when the request carried a seed */
     uint64_t powerup_seed;     /* the seed of the run, 0 when has_seed is 0 */
+    /* the timer (plan 03-21, timer.c; D-109): the master-clock stamp of the last prescaler step boundary the state was folded to, or of the start write. Eight bytes, so it sits on the 8-byte boundary between the seed and the CPU block; the other timer bytes follow tma_zero. Not in the digest yet (the TIMR region lands in plan 03-22) */
+    uint64_t timer_origin;
     /* HuC6280 state (plan 03-01, D-102): eight bytes, no padding, no pointers, no caches. p holds N V T D I Z C in their own bit positions; B is never stored */
     uint16_t pc;
     uint8_t a;
@@ -136,15 +138,27 @@ struct ds_instance {
     uint8_t mpr_latch;
     /* the selected value of the model parameter tma_zero (plan 03-17, model_params.def): an index into its allowed list, 0 = bus_latch = the default, so a zeroed instance holds the default; set only by ds_model_set before the first step, carried in region BUS0 */
     uint8_t tma_zero;
+    /* the timer and the interrupt controller (plans 03-21 and 03-22; D-109, D-110): timer_counter is the 7-bit counter value at timer_origin, timer_reload the 7-bit reload register, timer_enabled the start bit, tiq_latch the TIQ request bit and irq_disable the three bits of the disable register (1 = disabled, bit 2 TIQD); all zero at reset (H8-18) */
+    uint8_t timer_counter;
+    uint8_t timer_reload;
+    uint8_t timer_enabled;
+    uint8_t tiq_latch;
+    uint8_t irq_disable;
     uint8_t rom[DS_ROM_CAP];
 };
 
-/* the CPU block and the bus block have no padding: pc follows the power-up seed, io_buffer the speed bit, mpr_latch io_buffer, tma_zero mpr_latch, and the ROM array follows tma_zero */
-_Static_assert(offsetof(struct ds_instance, pc) == offsetof(struct ds_instance, powerup_seed) + sizeof(uint64_t), "padding before the CPU state");
+/* the timer origin, the CPU block, the bus block and the timer bytes have no padding: timer_origin follows the power-up seed, pc the timer origin, io_buffer the speed bit, mpr_latch io_buffer, tma_zero mpr_latch, the timer and interrupt bytes follow tma_zero in order, and the ROM array follows the last of them */
+_Static_assert(offsetof(struct ds_instance, timer_origin) == offsetof(struct ds_instance, powerup_seed) + sizeof(uint64_t), "padding before the timer origin");
+_Static_assert(offsetof(struct ds_instance, pc) == offsetof(struct ds_instance, timer_origin) + sizeof(uint64_t), "padding before the CPU state");
 _Static_assert(offsetof(struct ds_instance, io_buffer) == offsetof(struct ds_instance, speed) + 1u, "padding between the CPU state and io_buffer");
 _Static_assert(offsetof(struct ds_instance, mpr_latch) == offsetof(struct ds_instance, io_buffer) + 1u, "padding between io_buffer and mpr_latch");
 _Static_assert(offsetof(struct ds_instance, tma_zero) == offsetof(struct ds_instance, mpr_latch) + 1u, "padding between mpr_latch and tma_zero");
-_Static_assert(offsetof(struct ds_instance, rom) == offsetof(struct ds_instance, tma_zero) + 1u, "padding after the bus state");
+_Static_assert(offsetof(struct ds_instance, timer_counter) == offsetof(struct ds_instance, tma_zero) + 1u, "padding between tma_zero and the timer bytes");
+_Static_assert(offsetof(struct ds_instance, timer_reload) == offsetof(struct ds_instance, timer_counter) + 1u, "padding in the timer bytes");
+_Static_assert(offsetof(struct ds_instance, timer_enabled) == offsetof(struct ds_instance, timer_reload) + 1u, "padding in the timer bytes");
+_Static_assert(offsetof(struct ds_instance, tiq_latch) == offsetof(struct ds_instance, timer_enabled) + 1u, "padding in the timer bytes");
+_Static_assert(offsetof(struct ds_instance, irq_disable) == offsetof(struct ds_instance, tiq_latch) + 1u, "padding in the timer bytes");
+_Static_assert(offsetof(struct ds_instance, rom) == offsetof(struct ds_instance, irq_disable) + 1u, "padding after the timer bytes");
 
 struct ds_boot_request {
     uint32_t struct_size; /* sizeof(struct ds_boot_request) */
@@ -276,6 +290,11 @@ void ds_op_meta(uint32_t opcode, uint32_t *bytes, uint32_t *cycles); /* the tabl
 struct ds_bus {
     uint32_t penalty;        /* CPU cycles added by accesses to physical $1FE000-$1FE7FF during this step (D-107): DS_ADDER_VDC_ACCESS per access */
     struct ds_obs_log *obs;  /* the observer log of the running ds_run call or NULL (plan 03-19): the hardware-page accesses call the dev hook through it, a hook over a const instance that cannot change the machine (D-119) */
+    /* the access stamp (plan 03-21; D-92, D-108): the master-clock stamp of an access is start + (last + penalty) * cycle_mclk, the last cycle of the instruction (a single data access) with the penalty cycles charged so far, and one cycle earlier for the read of a read-modify-write instruction (rmw). The rule is one assumption of this project (LED-CPU-0004, no page states it) */
+    uint64_t start;          /* machine time at the start of the step (or of the interrupt entry) */
+    uint32_t cycle_mclk;     /* master clocks per CPU cycle at the speed the step started at (D-101) */
+    uint32_t last;           /* zero-based index of the last cycle of the instruction before the penalty: its table cycles plus the flag adders, minus one */
+    uint32_t rmw;            /* 1 for a read-modify-write instruction, whose read is one cycle before the last */
 };
 
 /* the class of a bank (bus.c, plan 03-20; D-103, ASSUMED LED-CPU-0011): the value of the const bank_class[256] table the bus dispatches on, for the independent bank-class oracle of the runner; a bank above 255 gives DS_BANK_CLASS_NONE */
@@ -285,6 +304,15 @@ uint32_t ds_bank_class(uint32_t bank);
 uint8_t ds_bus_read(struct ds_instance *inst, struct ds_bus *bus, uint16_t addr);
 void ds_bus_write(struct ds_instance *inst, struct ds_bus *bus, uint16_t addr, uint8_t value);
 void ds_mpr_write(struct ds_instance *inst, uint32_t index, uint8_t value); /* the only writer of mpr[] */
+
+/*
+ * The interrupt controller (irq.c, plan 03-21; D-110, D-111): the disable register at $1402 and the request register at $1403 of the hardware page, the TIQ source and the sample. Plan 03-22 adds IRQ1 and IRQ2.
+ * ds_irq_read returns the three register bits of the register (reg 2 the disable bits, reg 3 the request bits, bit 2 TIQ) at the stamp and changes nothing; ds_irq_write stores the disable bits (reg 2) or acknowledges TIQ (reg 3: any
+ * write clears the TIQ request only) after folding the timer to the stamp. ds_irq_pending is the pure sample: 0 when nothing is pending or deliverable, else the logical address of the vector's low byte of the source to take.
+ */
+uint32_t ds_irq_read(const struct ds_instance *inst, uint32_t reg, uint64_t stamp);
+void ds_irq_write(struct ds_instance *inst, uint32_t reg, uint8_t value, uint64_t stamp);
+uint32_t ds_irq_pending(const struct ds_instance *inst, uint64_t stamp);
 void ds_bus_write_phys(struct ds_instance *inst, struct ds_bus *bus, uint32_t phys, uint8_t value); /* the physical write of ST0 to ST2 (D-106): $1FE000 | n for n in 0, 2, 3, the MPRs are never consulted; any other address is dropped */
 
 /* ---- model parameters (model_params.def, model_refusals.def, model.c; plan 03-17; D-105, D-113) ---- */

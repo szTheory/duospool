@@ -15,6 +15,7 @@
 #include "ds_core.h"
 #include "ds_mapper.h"
 #include "ds_obs.h"
+#include "ds_timer.h"
 
 /* the 8 KiB work RAM is mirrored four times in banks $F8-$FB with & $1FFF (D-103): the mask is only right for this size */
 _Static_assert(DS_RAM8K_BYTES == 0x2000u, "the work RAM mirror mask assumes 8 KiB");
@@ -79,14 +80,33 @@ static void charge_penalty(struct ds_bus *bus, uint32_t offset)
     }
 }
 
+/*
+ * The stamp of an access in master clocks (plan 03-21; D-92, D-108): start + (last + penalty) * cycle_mclk, where start is the machine time at the start of the step, last the index of the last cycle of the instruction before the penalty
+ * and penalty the cycles this step's accesses have been charged so far (this access included, since the penalty is charged first). A single data access is in the last cycle; the read of a read-modify-write instruction is one cycle earlier (bus->rmw).
+ * No dummy accesses and no other in-instruction offsets are modelled (the default rule of D-92, ASSUMED LED-CPU-0004). A NULL bus (the reset reads, a test) has no step: the stamp is the machine time.
+ */
+static uint64_t access_stamp(const struct ds_instance *inst, const struct ds_bus *bus, int is_read)
+{
+    uint32_t idx;
+
+    if (bus == NULL) {
+        return inst->machine_time;
+    }
+    idx = bus->last + bus->penalty;
+    if (is_read && bus->rmw != 0u && idx > 0u) {
+        idx = idx - 1u;
+    }
+    return bus->start + (uint64_t)idx * (uint64_t)bus->cycle_mclk;
+}
+
 /* the base of the hardware page: physical $1FE000 (H8-9, H8-24) */
 #define HW_PAGE_PHYS 0x1FE000u
 
 /* one dev record for an access to the page at offset: a NULL bus (the reset reads, a test) logs nothing, like it charges nothing */
-static void log_dev(const struct ds_instance *inst, const struct ds_bus *bus, uint32_t offset, uint32_t value, uint32_t kind)
+static void log_dev(const struct ds_instance *inst, const struct ds_bus *bus, uint64_t stamp, uint32_t offset, uint32_t value, uint32_t kind)
 {
     if (bus != NULL) {
-        ds_obs_dev(bus->obs, inst, HW_PAGE_PHYS | offset, value, kind, (offset < 0x800u ? (uint32_t)DS_DEV_FLAG_PENALTY : 0u) | (kind == (uint32_t)DS_DEV_ST ? (uint32_t)DS_DEV_FLAG_PHYS : 0u));
+        ds_obs_dev(bus->obs, inst, stamp, HW_PAGE_PHYS | offset, value, kind, (offset < 0x800u ? (uint32_t)DS_DEV_FLAG_PENALTY : 0u) | (kind == (uint32_t)DS_DEV_ST ? (uint32_t)DS_DEV_FLAG_PHYS : 0u));
     }
 }
 
@@ -94,8 +114,10 @@ static uint8_t hw_read(struct ds_instance *inst, struct ds_bus *bus, uint32_t of
 {
     uint32_t reg = offset & 0x3FFu;
     uint8_t value;
+    uint64_t stamp;
 
     charge_penalty(bus, offset);
+    stamp = access_stamp(inst, bus, 1);
     switch ((enum hw_window)(offset >> 10u)) {
     case HW_VDC:
         return (uint8_t)DS_VDC_STUB_READ;
@@ -105,11 +127,11 @@ static uint8_t hw_read(struct ds_instance *inst, struct ds_bus *bus, uint32_t of
     case HW_IO:
         value = inst->io_buffer;
         break;
-    case HW_TIMER:
-        value = (uint8_t)(inst->io_buffer & 0x80u);
+    case HW_TIMER: /* the counter at the access stamp over bit 7 of the bus latch; both addresses read the same (D-109) */
+        value = (uint8_t)((uint32_t)(inst->io_buffer & 0x80u) | (uint32_t)ds_timer_read(inst, reg, stamp));
         break;
-    case HW_IRQ:
-        value = (reg & 3u) >= 2u ? (uint8_t)(inst->io_buffer & 0xF8u) : inst->io_buffer;
+    case HW_IRQ: /* $1402 and $1403: the three register bits over the upper five of the latch (H8-24); $1400 and $1401 read the latch whole */
+        value = (reg & 3u) >= 2u ? (uint8_t)((uint32_t)(inst->io_buffer & 0xF8u) | ds_irq_read(inst, reg, stamp)) : inst->io_buffer;
         break;
     default: /* windows 6 and 7: no device, the unmapped constant, no side effect */
         value = (uint8_t)DS_UNMAPPED_READ;
@@ -117,7 +139,7 @@ static uint8_t hw_read(struct ds_instance *inst, struct ds_bus *bus, uint32_t of
     }
     inst->io_buffer = value;
     if ((enum hw_window)(offset >> 10u) == HW_IO) { /* the $1000 window is the one whose reads are logged (D-119) */
-        log_dev(inst, bus, offset, value, (uint32_t)DS_DEV_READ);
+        log_dev(inst, bus, stamp, offset, value, (uint32_t)DS_DEV_READ);
     }
     return value;
 }
@@ -125,19 +147,30 @@ static uint8_t hw_read(struct ds_instance *inst, struct ds_bus *bus, uint32_t of
 /* kind is DS_DEV_WRITE for a write through the mapping registers and DS_DEV_ST for the physical write of ST0 to ST2 */
 static void hw_write(struct ds_instance *inst, struct ds_bus *bus, uint32_t offset, uint8_t value, uint32_t kind)
 {
+    uint64_t stamp;
+
     charge_penalty(bus, offset);
+    stamp = access_stamp(inst, bus, 0);
     switch ((enum hw_window)(offset >> 10u)) {
-    case HW_PSG:
     case HW_TIMER:
-    case HW_IO:
+        inst->io_buffer = value;
+        ds_timer_write(inst, offset & 0x3FFu, value, stamp);
+        break;
     case HW_IRQ:
+        inst->io_buffer = value;
+        if (((offset & 0x3FFu) & 3u) >= 2u) { /* $1402 the disable register, $1403 the TIQ acknowledge; $1400 and $1401 name no register */
+            ds_irq_write(inst, offset & 0x3FFu, value, stamp);
+        }
+        break;
+    case HW_PSG:
+    case HW_IO:
         inst->io_buffer = value;
         break;
     default: /* the VDC and VCE windows (stubs: the write is dropped) and the empty windows */
         break;
     }
     if ((offset >> 10u) <= (uint32_t)HW_IRQ) { /* every write to windows 0 to 5 is logged, a device or not (D-119); windows 6 and 7 have none */
-        log_dev(inst, bus, offset, value, kind);
+        log_dev(inst, bus, stamp, offset, value, kind);
     }
 }
 

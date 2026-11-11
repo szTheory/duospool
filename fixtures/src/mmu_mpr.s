@@ -246,28 +246,35 @@ fixture_main:
         sta a:$6805                     ; a write in the PSG window
         lda a:$6807                     ; check 31 ASSUMED:LED-CPU-0013: a write in $0800-$17FF stores its byte in io_buffer, so the next PSG read returns it
         CHECK_LIT 31
+; the timer exists since plan 03-21 (timer.c): the checks below read the counter of a timer that this block puts in a known state, so they hold under every power-on policy (the counter and the reload register are not reset values, H8-18): reload 0, start (the counter takes the reload value, H8-22), stop (the counter is held), 7 cycles apart, so no prescaler step has passed
+        lda #$00
+        sta a:$6C00
+        lda #$01
+        sta a:$6C01
+        lda #$00
+        sta a:$6C01
         SETIO $A5
-        lda a:$6C00                     ; check 32 ASSUMED:LED-CPU-0013: the timer counter read has 7 bits, so bit 7 comes from io_buffer ($A5: bit 7 set) over a counter stub of 0 (H8-24)
+        lda a:$6C00                     ; check 32 ASSUMED:LED-CPU-0013: the timer counter read has 7 bits, so bit 7 comes from io_buffer ($A5: bit 7 set) over the held counter value 0 (H8-24; re-judged in plan 03-21: the counter is real now)
         CHECK_LIT 32
         SETIO $25
-        lda a:$6C00                     ; check 33 ASSUMED:LED-CPU-0013: with bit 7 of io_buffer clear ($25) the same read is $00
+        lda a:$6C00                     ; check 33 ASSUMED:LED-CPU-0013: with bit 7 of io_buffer clear ($25) the same read is $00 (the stopped timer holds its counter, ASSUMED:LED-IRQ-0003)
         CHECK_LIT 33
         SETIO $A5
         lda a:$6C00                     ; a timer read ($80)
         lda a:$6800                     ; check 34 ASSUMED:LED-CPU-0013: a read in $0800-$17FF makes the byte read the new io_buffer
         CHECK_LIT 34
         SETIO $FF
-        lda a:$6C01                     ; check 35 ASSUMED:LED-CPU-0013: the timer window is one 7-bit read for both of its addresses until plan 03-21: bit 7 from io_buffer, the rest 0
+        lda a:$6C01                     ; check 35 ASSUMED:LED-CPU-0013: both addresses of the timer window read the counter (D-109, plan 03-21): bit 7 from io_buffer, the held counter 0, so $80
         CHECK_LIT 35
         lda #$7F
-        sta a:$6C00                     ; a write to the timer reload register (a stub: the byte is not kept)
+        sta a:$6C00                     ; a write to the timer reload register (since plan 03-21 it sets the 7-bit reload register and, like every write in $0800-$17FF, stores its byte in io_buffer; the timer is stopped, so nothing counts)
         lda a:$6800                     ; check 36 ASSUMED:LED-CPU-0013: the write stored its byte in io_buffer
         CHECK_LIT 36
         SETIO $A5
-        lda a:$7402                     ; check 37 ASSUMED:LED-CPU-0013: $1402, the interrupt disable register (H8-24): three register bits (stub 0), the upper five from io_buffer: $A5 and $F8 = $A0
+        lda a:$7402                     ; check 37 ASSUMED:LED-CPU-0013: $1402, the interrupt disable register (H8-24, H8-16): three register bits (0 at reset, plan 03-21 keeps them in the instance), the upper five from io_buffer: $A5 and $F8 = $A0
         CHECK_LIT 37
         SETIO $A5
-        lda a:$7403                     ; check 38 ASSUMED:LED-CPU-0013: $1403, the interrupt request register, reads the same way
+        lda a:$7403                     ; check 38 ASSUMED:LED-CPU-0013: $1403, the interrupt request register (H8-15), reads the same way: its three bits are 0 here (no timer interrupt is requested: the timer was stopped before a step passed), so $A0
         CHECK_LIT 38
         SETIO $FF
         lda a:$77FE                     ; check 39 ASSUMED:LED-CPU-0013: the window repeats (H8-24: A1-A0 select the register): offset $3FE has A1 = 1 and A0 = 0, so it is $1402: $FF and $F8 = $F8
@@ -276,7 +283,7 @@ fixture_main:
         lda a:$7400                     ; check 40 ASSUMED:LED-CPU-0013: the interrupt window addresses with A1 = 0 name no register: the read is io_buffer ($A5)
         CHECK_LIT 40
         lda #$0F
-        sta a:$7402                     ; a write to the interrupt disable register (a stub: the byte is not kept)
+        sta a:$7402                     ; a write to the interrupt disable register (since plan 03-21 it sets the three disable bits, all three here, and stores its byte in io_buffer; nothing runs with interrupts enabled after this point)
         lda a:$6800                     ; check 41 ASSUMED:LED-CPU-0013: the write stored its byte in io_buffer
         CHECK_LIT 41
         lda #$96

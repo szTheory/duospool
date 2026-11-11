@@ -8,7 +8,7 @@
  *     +00 u64 start stamp (machine time in master clocks)  +08 u16 pc  +10 u8 opcode  +11 u8 A  +12 u8 X  +13 u8 Y  +14 u8 S  +15 u8 P  +16 u8 speed  +17..+23 zero
  * The device-register sink (dev, plan 03-19) receives one record per logged access to the hardware page: every write to windows 0 to 5 ($0000-$17FF of the page, the ST0 to ST2 physical writes included) and every read and write of
  * window 4 (the $1000 window); reads of the other windows are not logged:
- *   record (DS_DEV_RECORD_BYTES = 24, little-endian): +00 u64 stamp (the start stamp of the instruction that made the access: one instruction can log several accesses and seq orders them; the access stamp of the timer plan may refine it)
+ *   record (DS_DEV_RECORD_BYTES = 24, little-endian): +00 u64 stamp (the stamp of the access in master clocks, since plan 03-21 the access stamp of the bus: the instruction's start stamp plus the cycle of the access inside it times the cycle length, D-92 and D-108; seq orders accesses with one stamp)
  *     +08 u32 phys (physical address, $1FE000 | offset in the page)  +12 u8 value (the byte written, or the byte the read returned)  +13 u8 kind (DS_DEV_WRITE, DS_DEV_READ or DS_DEV_ST)
  *     +14 u8 flags (DS_DEV_FLAG_PENALTY: the access paid the VDC and VCE penalty, DS_DEV_FLAG_PHYS: a physical access that did not consult the mapping registers)  +15 u8 aux (the bus latch io_buffer after the access, D-104)
  *     +16 u16 pc (the instruction's address)  +18..+23 zero
@@ -74,8 +74,8 @@ struct ds_obs_log {
 uint32_t ds_obs_sinks_check(const struct ds_run_request *request, const struct ds_instance *inst, const struct ds_run_result *result);
 void ds_obs_begin(struct ds_obs_log *log, struct ds_insn_sink *insn, struct ds_dev_sink *dev); /* zero the running counts and overwrite the headers of the sinks that are carried */
 void ds_obs_insn(struct ds_obs_log *log, const struct ds_instance *inst, uint32_t opcode);     /* one record, or lost++; log NULL or no insn sink does nothing */
-/* one dev record for an access (the bus calls it after the access, so aux is the latch it left); log NULL or no dev sink does nothing */
-void ds_obs_dev(struct ds_obs_log *log, const struct ds_instance *inst, uint32_t phys, uint32_t value, uint32_t kind, uint32_t flags);
+/* one dev record for an access at the stamp the bus computed for it (the bus calls it after the access, so aux is the latch it left); log NULL or no dev sink does nothing */
+void ds_obs_dev(struct ds_obs_log *log, const struct ds_instance *inst, uint64_t stamp, uint32_t phys, uint32_t value, uint32_t kind, uint32_t flags);
 void ds_obs_end(struct ds_obs_log *log); /* overwrite the headers with the final counts; log NULL does nothing */
 
 /* one instruction with the observer hook (cpu.c): ds_cpu_step is ds_cpu_step_obs with no log */

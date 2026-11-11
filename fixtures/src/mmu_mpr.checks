@@ -37,13 +37,13 @@ checks=60
 29	psg-reads-iobuf	ASSUMED:LED-CPU-0013	The PSG window (physical $1FE800) has no device yet and reads io_buffer: $C3 after a write of $C3 to the I/O window
 30	psg-window-last-byte	ASSUMED:LED-CPU-0013	The last byte of the 1 KiB PSG window reads io_buffer too (the register is selected by A3-A0)
 31	psg-write-sets-iobuf	ASSUMED:LED-CPU-0013	A write in $0800-$17FF stores its byte in io_buffer: after a write of $3A to the PSG window a PSG read returns $3A
-32	timer-read-bit7-set	ASSUMED:LED-CPU-0013	The timer downcounter read has 7 bits (H8-24): bit 7 comes from io_buffer ($A5) over a counter stub of 0 until plan 03-21, so the read is $80
+32	timer-read-bit7-set	ASSUMED:LED-CPU-0013	The timer downcounter read has 7 bits (H8-24): bit 7 comes from io_buffer ($A5) over the counter of the timer, which the fixture started at reload 0 and stopped at once (held 0): the read is $80 (re-judged in plan 03-21)
 33	timer-read-bit7-clear	ASSUMED:LED-CPU-0013	With bit 7 of io_buffer clear ($25) the same read is $00
 34	timer-read-updates-iobuf	ASSUMED:LED-CPU-0013	A read in $0800-$17FF makes the byte read the new io_buffer: after a timer read of $80 the PSG window reads $80
-35	timer-window-second-address	ASSUMED:LED-CPU-0013	The timer window repeats on A0: a read of the control address returns the same stub, bit 7 from io_buffer ($FF) and the rest 0, so $80
+35	timer-window-second-address	ASSUMED:LED-CPU-0013	Both addresses of the timer window read the counter (D-109): bit 7 from io_buffer ($FF) and the held counter 0, so $80
 36	timer-write-sets-iobuf	ASSUMED:LED-CPU-0013	A write of $7F to the timer reload address stores its byte in io_buffer: the PSG window reads $7F
-37	irq-1402-upper-bits	ASSUMED:LED-CPU-0013	The interrupt disable register $1402 (H8-24) has three bits (stub 0 until plan 03-22): the upper five come from io_buffer, $A5 and $F8 = $A0
-38	irq-1403-upper-bits	ASSUMED:LED-CPU-0013	The interrupt request register $1403 reads the same way: $A0
+37	irq-1402-upper-bits	ASSUMED:LED-CPU-0013	The interrupt disable register $1402 (H8-24) has three bits (0 at reset, held in the instance since plan 03-21): the upper five come from io_buffer, $A5 and $F8 = $A0
+38	irq-1403-upper-bits	ASSUMED:LED-CPU-0013	The interrupt request register $1403 reads the same way, its three bits 0 (no timer interrupt is requested): $A0
 39	irq-window-repeats	ASSUMED:LED-CPU-0013	The interrupt window repeats: offset $3FE has A1 = 1 and A0 = 0 and reads like $1402: $FF and $F8 = $F8
 40	irq-1400-open-bus	ASSUMED:LED-CPU-0013	The interrupt window addresses with A1 = 0 name no register: the read is io_buffer, $A5
 41	irq-write-sets-iobuf	ASSUMED:LED-CPU-0013	A write of $0F to $1402 stores its byte in io_buffer: the PSG window reads $0F

@@ -10,7 +10,7 @@ source = "fixtures/src/mmu_mpr.s"
 recipe = "mmu-mpr-1m: ca65 --cpu huc6280 -D ROMBANKS=128 -I fixtures/lib -o build/gate/fx/mmu-mpr-1m.o fixtures/src/mmu_mpr.s; ld65 -C fixtures/lib/hucard.cfg -D ROMBANKS=128 -o build/gate/fixtures/mmu-mpr-1m.pce build/gate/fx/mmu-mpr-1m.o"
 toolchain = "cc65 V2.19 (ca65 prints V2.18; identity by encoding-matrix bytes, plan 03-08), Homebrew bottle 2.19 locally, hashed by sha256sum or shasum -a 256"
 size = 1048576
-sha256 = "ad4d41b89ec66b1698cc7e8534f7bc07e429c6fed9ff1d7e771073f3b994ab0b"
+sha256 = "5467ad2f89364dd1086065228a885ce1d1fba89f2ad65fa35d2801a50cfcdbf2"
 licence = "0BSD"
 notices = "none: assembled at gate time from the project-owned sources fixtures/src/mmu_mpr.s and fixtures/lib/*.inc and hucard.cfg (0BSD); no HuC, PCEAS or cc65 library or startup code, no emulator code, no game content"
 redistribution = "generated-not-committed"

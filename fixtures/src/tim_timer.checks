@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# tim_timer.checks - one row per CHECK of fixtures/src/tim_timer.s (D-125, plan 03-21). Columns separated by one TAB: check index (1-based, the entry number of the DCK1 table), slug, class tag, meaning.
+# Class tags: MAN:<page> (the literal is a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model> (the expected byte is computed in the guest, the table entry is an XOR mask of $00), ASSUMED:<LED-id>.
+# The tracer rows: a timer started at reload 0 delivers a TIQ interrupt through the TIMER vector, the handler is entered with I set and D clear, the entry pushed the return address and the status byte with B = 0, the request register shows TIQ until a write clears it, and the RTI returns.
+# Evidence (ER-3, ER-4): these rows follow register and interrupt facts of the hardware manual or cells the guest wrote itself; none of them states a timer rate or a CPU speed. A pass is not a support claim.
+id=10
+checks=10
+1	irq-taken	MAN:H8-21	A borrow with I and TIQD clear requests the CPU: the TIMER vector handler ran once (it stops the timer and acknowledges, so there is no second entry)
+2	pushed-status	MAN:H8-12	The entry pushed the status byte with B = 0 and the interrupted flags: D = 1 and I = 0 as the main program had them (mask $1C, B D I)
+3	handler-i-set	MAN:H8-12	I is set inside the handler
+4	handler-d-clear	MAN:H8-12	D is reset inside the handler (the main program ran with D = 1)
+5	req-tiq-set	MAN:H8-15	Bit 2 of the request register ($1403) reads 1 while the timer interrupt is requested
+6	req-tiq-ack	MAN:H8-14	A write to the request register resets TIQ: the register read after the write has bit 2 clear
+7	pushed-pch	GUEST:interrupted-loop	The pushed return address high byte is the page of the wait loop the interrupt came from
+8	pushed-pcl	GUEST:interrupted-loop	The pushed return address low byte lies inside the wait loop (computed in the guest as a flag)
+9	resumes-after-rti	GUEST:marker	The RTI returned to the main program, which then stored its marker $5A
+10	stopped-no-reirq	MAN:H8-20	The handler stopped the timer (control bit 0 = 0) and acknowledged: six prescaler steps later there was no further interrupt
