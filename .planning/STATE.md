@@ -2,17 +2,17 @@
 gsd_state_version: "1.0"
 current_phase: 2
 current_phase_name: Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate
-status: executing
-stopped_at: Completed 02-21-PLAN.md
-last_updated: "2026-11-10T09:46:53.682Z"
+status: verifying
+stopped_at: Completed 02-22-PLAN.md
+last_updated: "2026-11-11T01:37:15.862Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 2 execution started
-state_head: d15a5ecb82b7c95844803079832afc7b4e048d9a
+state_head: 9626cf8de478bb362af72688d37efe9835681d38
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 34
-  completed_plans: 33
+  completed_plans: 34
   percent: 17
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 
 Phase: 2 (Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate) — EXECUTING
 Plan: 22 of 22
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-09 — Phase 2 execution started
 
 Progress: [██░░░░░░░░] 17%
@@ -89,6 +89,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 02 P19 | 25 min | 2 tasks | 15 files |
 | Phase 02 P20 | 70min | 3 tasks | 49 files |
 | Phase 02 P21 | 80 min | 3 tasks | 27 files |
+| Phase 02 P22 | 35 min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -163,6 +164,8 @@ Recent decisions affecting current work:
 - [Phase 02]: 02-20: a secrets expression reports WF_FORBIDDEN_KEY only; wrong-concurrency added as a twelfth workflow control; ci-timings wall = latest job end minus run start
 - [Phase 02]: 02-21: linux-repro parts differ on purpose (default-awk mawk+gcc, mawk+clang, gawk+gcc) so no full gate repeats another; the container run is a local one-off, not CI evidence
 - [Phase 02]: 02-21: ds_runner leak (exclusion file buffer) found only by clang LeakSanitizer on Linux; fixed at the cause. CI-01 un-ticked: criterion 5 unverified-pending-push
+- [Phase 02]: 02-22: checkpoint answer authorised-branch-pr; one branch and one PR pushed, first CI run 42939483070 green (100 s, default awk gawk, second mawk); remote settings stay pending hand-offs
+- [Phase 02]: 02-22: audit-history gained a kind-scoped allowance (TEXT-PATTERN:KIND); the two home-path-mac summary hits are allowlisted by kind with the owner's reason
 
 ### Pending Todos
 
@@ -186,6 +189,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-10T09:46:53.612Z
-Stopped at: Completed 02-21-PLAN.md
+Last session: 2026-11-11T01:37:15.671Z
+Stopped at: Completed 02-22-PLAN.md
 Resume file: None
