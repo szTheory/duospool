@@ -48,7 +48,7 @@ IRQ_ON = 0
         LIT 7, $3C
         LIT 8, $00                      ; GUEST: the table entry is an XOR mask of $00
         LIT 9, $C3
-        LIT 10, $18
+        LIT 10, $D4
         LIT 11, $00
         LIT 12, $00
         LIT 13, $A1
@@ -283,8 +283,8 @@ fixture_main:
         PREP $04
         tdd ARENA+$47, ARENA+$48, 8
         OBS
-        lda a:ARENA+$48
-        CHECK_LIT 10                    ; check 10 MAN:H8-6: the byte at R+7 moved to R+8: the transfer runs downwards
+        lda a:ARENA+$44
+        CHECK_LIT 10                    ; check 10 MAN:H8-6: the byte at R+3 moved to R+4: the shift ran downwards (source and destination are post-decremented), so each byte is read before it is overwritten
         lda a:RP
         and #$C3
         CHECK_LIT 11                    ; check 11 MAN:S8-89: N, V, Z and C stay clear

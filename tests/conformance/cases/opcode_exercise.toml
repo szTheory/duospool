@@ -9,7 +9,7 @@ id = "opcode_exercise"
 kind = "opcode_exercise"
 fixture = "none"
 request = ""
-expect = "mode=require;exclude=0x73,0xC3,0xD3,0xE3,0xF3"
+expect = "mode=require"
 meaning = "The opcodes that the authored guest fixtures execute in one runner pass are collected through the instruction sink: every defined opcode except the five block transfers is executed by at least one fixture, and the unexercised ones are listed in the evidence file"
 required = true
 control = false

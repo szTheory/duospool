@@ -20,7 +20,7 @@ checks=50
 7	tii-y-returned	MAN:H8-6	Y is returned from the stack
 8	tii-s-restored	GUEST:stack-pointer	S after the transfer is S before it: the three stack bytes are used and given back (the expected byte is S read before the transfer)
 9	tii-flags-kept-set	MAN:S8-89	N, V, Z and C are not changed by the transfer: the flag row of the page has only T (set before: all four read back 1)
-10	tdd-runs-downwards	MAN:H8-6	TDD of 8 bytes from R+7 to R+8: the byte at R+7 is moved to R+8, source and destination are post-decremented
+10	tdd-runs-downwards	MAN:H8-6	TDD of 8 bytes from R+7 to R+8 shifts the block up by one: the byte at R+3 has moved to R+4 (source and destination are post-decremented, so each byte is read before it is overwritten)
 11	tdd-flags-kept-clear	MAN:S8-89	N, V, Z and C stay clear (set clear before the transfer)
 12	tdd-registers-returned	MAN:H8-6	A, X, Y and S are given back by TDD (the four differences from the values before are zero)
 13	tii-overlap-spreads	ASSUMED:LED-CPU-0008	TII of 8 bytes from R to R+1: one byte moves per six bus cycles and the source is read again after each write, so the first byte spreads over the whole block (R+8 holds PAT[0])

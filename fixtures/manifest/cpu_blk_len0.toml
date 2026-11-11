@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Fixture manifest entry (FIX-02, FIX-01, D-59 amended, D-123): one authored HuCard image of fixtures/src/cpu_blk.s (the len0 variant: ROMBANKS=32, the switch -D LEN0). The bytes are assembled in the gate by ca65 and ld65 and are
+# never committed. scripts/fixture-check compares size and sha256 below with the bytes scripts/fixture-build wrote, as hashed by the host sha tool, so a changed source, library or
+# toolchain output turns the gate red. The pin was measured on the Homebrew cc65 2.19 bottle (see fixtures/lib/TOOLS.md); it proves the build is repeatable, nothing more.
+id = "cpu_blk_len0"
+kind = "authored"
+source = "fixtures/src/cpu_blk.s"
+recipe = "cpu-blk-len0: ca65 --cpu huc6280 -D ROMBANKS=32 -D LEN0 -I fixtures/lib -o build/gate/fx/cpu-blk-len0.o fixtures/src/cpu_blk.s; ld65 -C fixtures/lib/hucard.cfg -D ROMBANKS=32 -o build/gate/fixtures/cpu-blk-len0.pce build/gate/fx/cpu-blk-len0.o"
+toolchain = "cc65 V2.19 (ca65 prints V2.18; identity by encoding-matrix bytes, plan 03-08), Homebrew bottle 2.19 locally, hashed by sha256sum or shasum -a 256"
+size = 262144
+sha256 = "4f4538c17bd0bbb627a6070893eeac1776a359a24b32a38188713bd0a1ecd929"
+licence = "0BSD"
+notices = "none: assembled at gate time from the project-owned sources fixtures/src/cpu_blk.s and fixtures/lib/*.inc and hucard.cfg (0BSD); no HuC, PCEAS or cc65 library or startup code, no emulator code, no game content"
+redistribution = "generated-not-committed"
+meaning = "The len0 variant of the authored cpu_blk diagnostic HuCard: the same source and the same 50 checks as the plain image, whose long transfer is a TIA with the length operand 0, 65536 bytes ending at the byte at $FFFF (conditional assembly on LEN0). A pass is not a support claim."
+verdict_source = "manual-cite:H8-6+manual-cite:S8-88+manual-cite:S8-89+manual-cite:H8-15+guest-computed+spec-literal:LED-CPU-0008+spec-literal:LED-IRQ-0007"

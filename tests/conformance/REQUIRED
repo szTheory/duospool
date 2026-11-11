@@ -191,4 +191,9 @@ spd_speed_trace
 observer_tim_timer
 record_stimulus_shown
 cpu_blk
+mutate_sweep_cpu_blk
+cpu_blk_len0
+mutate_sweep_cpu_blk_len0
+cpu_blk_irq_pending
+mutate_sweep_cpu_blk_irq
 cpu_blk_stop_resume
