@@ -2,17 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 3
 current_phase_name: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
+current_plan: 3
 status: planning
-stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-11-11T06:11:31.770Z"
-last_activity: 2026-11-10
+stopped_at: Completed 03-02-PLAN.md
+last_updated: "2026-11-11T06:23:56.977Z"
+last_activity: 2026-11-11
 last_activity_desc: Phase 2 complete, transitioned to Phase 3
-state_head: 20d575b00fe39aa64258920d804e54ff551b2e76
+state_head: 77abfbabf7bddcb0adcb89c8e7b94c50a0816ef4
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 72
-  completed_plans: 35
+  completed_plans: 36
   percent: 33
 ---
 
@@ -28,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 3 — HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-Current Plan: 2
+Current Plan: 3
 Total Plans in Phase: 38
 Status: Ready to execute
-Last activity: 2026-11-11 — Completed 03-01 (W1 tracer: ds_proto through fixture-build, ds_run in master clocks, DSV1 judged from guest RAM)
+Last activity: 2026-11-11 — Completed 03-02 (W1: placeholder run API deleted, run_until_abs and run_chunk_sum, spin and interleave kinds and the shared-state toy on ds_run)
 
 Progress: [███░░░░░░░] 33%
 
@@ -93,6 +94,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 02 P21 | 80 min | 3 tasks | 27 files |
 | Phase 02 P22 | 35 min | 2 tasks | 7 files |
 | Phase 03 P01 | 25min | 3 tasks | 15 files |
+| Phase 03 P02 | 35min | 2 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -171,6 +173,8 @@ Recent decisions affecting current work:
 - [Phase 02]: 02-22: audit-history gained a kind-scoped allowance (TEXT-PATTERN:KIND); the two home-path-mac summary hits are allowlisted by kind with the owner's reason
 - [Phase 03]: 03-01: DSV1 outcome mapping reading of D-124: harness-side preconditions give harness_failure, guest-written faults give guest_failure, UNTIL without done gives timeout (a visible guest fault wins over timeout)
 - [Phase 03]: 03-01: ds_cpu_reset is called from ds_boot so a booted instance is always in reset state; ds_cpu_step returns mclk and ds_run adds them in one statement
+- [Phase 03]: 03-02: D-68 and D-75 superseded by D-91; the placeholder stepping API is deleted and every stepping kind runs ds_run to absolute deadlines
+- [Phase 03]: 03-02: ds_run overshoot is 0 for a call that took no step; run_until items assert overshoot = time - until instead of a separate literal
 
 ### Pending Todos
 
@@ -194,6 +198,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-11T06:11:31.635Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-11-11T06:23:56.838Z
+Stopped at: Completed 03-02-PLAN.md
 Resume file: None
