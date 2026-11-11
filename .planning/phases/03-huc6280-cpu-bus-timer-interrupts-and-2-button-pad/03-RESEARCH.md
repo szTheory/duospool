@@ -485,15 +485,15 @@ wla-huc6280 -o t.o t.s && wlalink -r l.lnk t.bin      # l.lnk: [objects] then t.
 | A7 | The file names and the ids of runner cases listed in the Validation section | Validation | Cosmetic; planner owns names |
 | A8 | Keeping pad raw read bytes in DSV1 observed bytes satisfies ROADMAP "a guest pad-read log is recorded" | Validation SC2 | If the owner reads SC2 as a separate log region, a $1E00 region returns (dropped by CONTEXT) |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Guest pad-read log wording (SC2).**
+1. **Guest pad-read log wording (SC2).** (RESOLVED: CONTEXT errata R-7; plans 27 and 29 store raw $1000 reads in the DSV1 observed bytes as well as the runner pad log.)
    - Known: D-118 makes `<id>.padlog.tsv` a runner artifact from the `dev` sink; the $1E00 guest log was dropped.
    - Unclear: ROADMAP says "a guest pad-read log is recorded for all three".
    - Recommendation: have `pad_2btn` also store each raw $1000 read in DSV1 observed bytes (+80..+DF, up to 96 bytes) so a guest-side log literally exists, and cite both in the verification report.
-2. **Number of REQUIRED ids.** CONTEXT says about 50; the enumeration below reaches about 64 with one sweep id per fixture and eight pin cases. Fold sweeps into one id per wave if review cost matters.
-3. **First CI evidence.** D-64 authorisation for a push is still pending; the apt step and the timing review stay "unverified-pending-push" until then.
-4. **ER-1 recording.** This research read the pages; ledger entries still need the verifier, date and fact in source detail when written; W8 should repeat the read for the eight candidates.
+2. **Number of REQUIRED ids.** (RESOLVED: the planned count follows the enumeration; one sweep id per fixture is kept per D-126.) CONTEXT says about 50; the enumeration below reaches about 64 with one sweep id per fixture and eight pin cases. Fold sweeps into one id per wave if review cost matters.
+3. **First CI evidence.** (RESOLVED: D-64 holds; plan 33 records CI as unverified, pending owner push authorisation.) D-64 authorisation for a push is still pending; the apt step and the timing review stay "unverified-pending-push" until then.
+4. **ER-1 recording.** (RESOLVED: CONTEXT errata R-8; each ledger entry records verifier, date and fact; plan 32 re-reads the pages behind the eight E1 candidates.) This research read the pages; ledger entries still need the verifier, date and fact in source detail when written; W8 should repeat the read for the eight candidates.
 
 ## Environment Availability
 
