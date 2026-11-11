@@ -2314,6 +2314,115 @@ selftest() {
     fi
   fi
 
+  # (z6) the at-order rule of input-rules.awk is what turns the at-decreasing control red (T-03-77, plan 03-28; D-117): same shape as (r). The control, run with --expect INP_ORDER, is met on an unmutated copy
+  # (exit 0, EXPECT_OK); with the lines tagged rule-at-order deleted from the copy of the rules the code is no longer reported, so the same run must exit 1: the control flipped to broken.
+  if st_want mutation-input-order; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    fxr="tests/gate/input-check/at-decreasing"
+    if sh "$cp_dir/input-check" --root "$fxr" --expect INP_ORDER > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c 'rule-at-order' "$cp_dir/lib/input-rules.awk" || true)
+    grep -v 'rule-at-order' "$cp_dir/lib/input-rules.awk" > "$cp_dir/lib/input-rules.mutated" || true
+    mv "$cp_dir/lib/input-rules.mutated" "$cp_dir/lib/input-rules.awk"
+    after=$(grep -c 'rule-at-order' "$cp_dir/lib/input-rules.awk" || true)
+    if sh "$cp_dir/input-check" --root "$fxr" --expect INP_ORDER > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+      echo "SELFTEST mutation-input-order PASS"
+    else
+      echo "SELFTEST mutation-input-order FAIL (alive $st_alive, before $before, after $after, exit $r)"; failed=1
+    fi
+  fi
+
+  # (z7) every tagged rule of the input checker is removable and detected (D-131): one line per control, SELFTEST mutation-input-rules CASE PASS|FAIL. Each entry is CASE:TAG:FILE, the mini-root under tests/gate/input-check, the tag of the statement that reports its code and the file that holds it
+  # (relative to scripts/). The control, run with its EXPECT, is met on an unmutated copy; with the tagged lines deleted from the copy the same run must exit 1. A tag that matches no line, or that is still present after the deletion, is a FAIL.
+  if st_want mutation-input-rules; then
+    st_ran=1
+    for ir_e in bad-format:rule-format:lib/input-rules.awk bad-time-unit:rule-time-unit:lib/input-rules.awk events-mismatch:rule-events-count:lib/input-rules.awk bad-table-name:rule-table-name:lib/input-rules.awk \
+      at-not-decimal:rule-at-not-decimal:lib/input-rules.awk at-too-long:rule-at-too-long:lib/input-rules.awk at-leading-zero:rule-at-leading-zero:lib/input-rules.awk at-decreasing:rule-at-order:lib/input-rules.awk \
+      equal-at-port-order:rule-at-order:lib/input-rules.awk port-range:rule-port-range:lib/input-rules.awk port-empty:rule-port-empty:lib/input-rules.awk held-unknown:rule-held-unknown:lib/input-rules.awk \
+      held-order:rule-held-order:lib/input-rules.awk held-opposite:rule-held-opposite:lib/input-rules.awk held-reserved:rule-held-reserved:lib/input-rules.awk too-many-events:rule-too-many:lib/input-rules.awk \
+      key-unknown:rule-key-unknown:lib/input-rules.awk key-missing:rule-key-missing:lib/input-rules.awk too-large:rule-too-large:input-check bad-filename:rule-bad-filename:input-check; do
+      ir_case=${ir_e%%:*}
+      ir_rest=${ir_e#*:}
+      ir_tag=${ir_rest%%:*}
+      ir_file=${ir_rest#*:}
+      rm -rf "$cp_dir"
+      cp -R "$here" "$cp_dir"
+      fxr="tests/gate/input-check/$ir_case"
+      ir_want=$(cat "$fxr/EXPECT")
+      if sh "$cp_dir/input-check" --root "$fxr" --expect "$ir_want" > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+      st_alive=0
+      if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+      before=$(grep -c "$ir_tag" "$cp_dir/$ir_file" || true)
+      grep -v "$ir_tag" "$cp_dir/$ir_file" > "$cp_dir/$ir_file.mutated" || true
+      mv "$cp_dir/$ir_file.mutated" "$cp_dir/$ir_file"
+      after=$(grep -c "$ir_tag" "$cp_dir/$ir_file" || true)
+      if sh "$cp_dir/input-check" --root "$fxr" --expect "$ir_want" > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+      if [ "$st_alive" -eq 1 ] && [ "$before" -ge 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+        echo "SELFTEST mutation-input-rules $ir_case PASS"
+      else
+        echo "SELFTEST mutation-input-rules $ir_case FAIL (alive $st_alive, before $before, after $after, exit $r)"; failed=1
+      fi
+    done
+  fi
+
+  # (z8) CR-01 for input-check: a stage 1 that prints nothing (an emptied scratch copy of toml-subset.awk) and a stage 2 that prints nothing (an emptied copy of input-rules.awk) must each give INP_STAGE_DEAD and exit 2, never a pass and never the exit 1 of a violation. The
+  # unmutated copy must pass on the clean control first, which shows the run is alive. Third, input-rules.awk itself must refuse a stage 1 file without its END row (no RULES row, exit 3): the sentinel is required by stage 2, not only by the shell around it.
+  if st_want mutation-input-check-dead-stage; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    fxr="tests/gate/input-check/ok-scripts"
+    if sh "$cp_dir/input-check" --root "$fxr" > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'STATUS input-check ok n=2' "$tmp/st.out"; then st_alive=1; fi
+    echo 'BEGIN { exit 0 }' > "$cp_dir/lib/toml-subset.awk"
+    if sh "$cp_dir/input-check" --root "$fxr" > "$tmp/st.out" 2>&1; then r1=0; else r1=$?; fi
+    st_s1=0
+    if [ "$r1" -eq 2 ] && grep -q 'INP_STAGE_DEAD' "$tmp/st.out" && ! grep -q '^STATUS input-check ok' "$tmp/st.out"; then st_s1=1; fi
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    echo 'BEGIN { exit 0 }' > "$cp_dir/lib/input-rules.awk"
+    if sh "$cp_dir/input-check" --root "$fxr" > "$tmp/st.out" 2>&1; then r2=0; else r2=$?; fi
+    st_s2=0
+    if [ "$r2" -eq 2 ] && grep -q 'INP_STAGE_DEAD' "$tmp/st.out" && ! grep -q '^STATUS input-check ok' "$tmp/st.out"; then st_s2=1; fi
+    printf 'script\tformat\ti\t1\t1\n' > "$tmp/noend.tsv"
+    if awk -f "$here/lib/input-rules.awk" "$tmp/noend.tsv" > "$tmp/noend.out" 2> "$tmp/noend.err"; then r3=0; else r3=$?; fi
+    st_s3=0
+    if [ "$r3" -ne 0 ] && ! grep -q '^RULES' "$tmp/noend.out"; then st_s3=1; fi
+    if [ "$st_alive" -eq 1 ] && [ "$st_s1" -eq 1 ] && [ "$st_s2" -eq 1 ] && [ "$st_s3" -eq 1 ]; then
+      echo "SELFTEST mutation-input-check-dead-stage PASS"
+    else
+      echo "SELFTEST mutation-input-check-dead-stage FAIL (alive $st_alive, stage 1 $st_s1 exit $r1, stage 2 $st_s2 exit $r2, sentinel $st_s3 exit $r3)"; failed=1
+    fi
+  fi
+
+  # (z9) the flatten mode of conformance-flatten judges with the same rules file (D-117, plan 03-28): the at-decreasing script is refused (exit 1, not one byte on stdout) by an unmutated copy and, with the lines tagged rule-at-order deleted from the rules copy that the flatten copy uses,
+  # accepted (exit 0, rows ending in an END row). A flatten that carried its own copy of the rules, or that did not run them, would not be flipped, so the selftest fails with it.
+  if st_want mutation-input-flatten-refuse; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    fxr="tests/gate/input-check/at-decreasing/tests/conformance/inputs"
+    if sh "$cp_dir/conformance-flatten" --inputs "$fxr" > "$tmp/st.out" 2> "$tmp/st.err"; then r0=0; else r0=$?; fi
+    bytes=$(wc -c < "$tmp/st.out" | tr -d ' ')
+    st_alive=0
+    if [ "$r0" -eq 1 ] && [ "$bytes" -eq 0 ] && grep -q 'INP_ORDER' "$tmp/st.err"; then st_alive=1; fi
+    before=$(grep -c 'rule-at-order' "$cp_dir/lib/input-rules.awk" || true)
+    grep -v 'rule-at-order' "$cp_dir/lib/input-rules.awk" > "$cp_dir/lib/input-rules.mutated" || true
+    mv "$cp_dir/lib/input-rules.mutated" "$cp_dir/lib/input-rules.awk"
+    after=$(grep -c 'rule-at-order' "$cp_dir/lib/input-rules.awk" || true)
+    if sh "$cp_dir/conformance-flatten" --inputs "$fxr" > "$tmp/st.out" 2> "$tmp/st.err"; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 0 ] && [ "$(tail -n 1 "$tmp/st.out" | cut -c 1-3)" = "END" ]; then
+      echo "SELFTEST mutation-input-flatten-refuse PASS"
+    else
+      echo "SELFTEST mutation-input-flatten-refuse FAIL (alive $st_alive, before $before, after $after, exit $r)"; failed=1
+    fi
+  fi
+
   # (z3) the byte comparison of the encoding oracle is what turns the tsv-byte-changed control red (T-03-25, plan 03-08): same shape as (y). The control, run with --expect XASM_MISMATCH, is met on an
   # unmutated copy (exit 0, EXPECT_OK); with the line tagged rule-compare deleted from the copy of the awk program the mismatch is no longer reported, so the same run must exit 1: the control flipped.
   if st_want mutation-xasm-compare; then
@@ -2633,6 +2742,10 @@ selftest() {
       fl_ok="tests/gate/fixture-lint/ok-fixture"
       as_case fixture-lint-stage1 'STATUS fixture-lint ok' "$as_dir" fixture-lint-lex sh "$here/fixture-lint" --root "$fl_ok" --cites fixtures/lib/cites.txt --tsv tests/oracle/huc6280-opcodes.tsv
       as_case fixture-lint-stage2 'STATUS fixture-lint ok' "$as_dir" fixture-lint-rules sh "$here/fixture-lint" --root "$fl_ok" --cites fixtures/lib/cites.txt --tsv tests/oracle/huc6280-opcodes.tsv
+      ic_ok="tests/gate/input-check/ok-scripts"
+      as_case input-check-stage1 'STATUS input-check ok' "$as_dir" toml-subset sh "$here/input-check" --root "$ic_ok"
+      as_case input-check-stage2 'STATUS input-check ok' "$as_dir" input-rules sh "$here/input-check" --root "$ic_ok"
+      as_case input-check-rows 'STATUS input-check ok' "$as_dir" '$1 == "V"' sh "$here/input-check" --root "$ic_ok"
       xa_ok="tests/gate/xasm/ok-tsv"
       as_case xasm-stage1 'STATUS xasm ok' "$as_dir" 'stage=1' sh "$here/xasm-check" --root "$xa_ok"
       as_case xasm-stage2 'STATUS xasm ok' "$as_dir" 'stage=2' sh "$here/xasm-check" --root "$xa_ok"

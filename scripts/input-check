@@ -69,10 +69,10 @@ for f in "$root"/tests/conformance/inputs/*.toml; do
   stem=$(basename "$f" .toml)
   case $stem in
     [a-z]*) ;;
-    *) printf '%s\tBAD_FILENAME\t0\tan input script name is [a-z][a-z0-9_]*\n' "$rel" >> "$viol0"; continue ;;
+    *) printf '%s\tBAD_FILENAME\t0\tan input script name is [a-z][a-z0-9_]*\n' "$rel" >> "$viol0"; continue ;;  # rule-bad-filename
   esac
   case $stem in
-    *[!a-z0-9_]*) printf '%s\tBAD_FILENAME\t0\tan input script name is [a-z][a-z0-9_]*\n' "$rel" >> "$viol0"; continue ;;
+    *[!a-z0-9_]*) printf '%s\tBAD_FILENAME\t0\tan input script name is [a-z][a-z0-9_]*\n' "$rel" >> "$viol0"; continue ;;  # rule-bad-filename
   esac
   size=$(wc -c < "$f" | tr -d ' ')
   if [ "$size" -gt 65536 ]; then
