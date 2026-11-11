@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Chunk invariance of the authored pad_2btn fixture against its correct input script (plan 03-29; D-92, D-93, D-95, D-117, D-118, CORE-04, ER-7): the script of the case (the key input) is pushed to every run before the first step, and the fixture is run in calls to the deadlines of seven schedules (chunks key: 1, 7, 168 and 3072 master clocks, a fixed 357368,
+# 3072k-1 and 3072k+1).
+# Each schedule must end with the machine time, the step count, the verdict RAM (whose observed bytes are the raw pad reads), the digest and the sequence of step boundaries of the uninterrupted run to the same absolute deadline past the guest's done state: the level of a read is a pure function of the declared schedule and its access stamp, so no chunking can
+# move it (the schedule is an immutable copy, no cursor).
+# A snapshot does not exist yet (plan 03-30), so equality is of outputs, machine time, stop sequence and digests. Evidence tier E0: the core compared with itself (repeatability and consistency, ER-7); no pad-accurate, compatibility, cycle-accurate or hardware claim, and the word pass is not a support claim.
+id = "chunk_equiv_pad_2btn_correct"
+kind = "chunk_equiv"
+fixture = "authored:pad-2btn"
+request = ""
+expect = "compare=verdict,machine_time,stops,digest"
+meaning = "The pad_2btn fixture run against its correct input script in calls to the deadlines of seven chunk schedules ends with the machine time, step count, verdict RAM, stop sequence and digest of the uninterrupted run"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 800000
+chunks = "1,7,168,3072,frame,tick-1,tick+1"
+input = "pad_2btn_correct"

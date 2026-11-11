@@ -5,6 +5,7 @@
  * on fresh boots, in calls whose deadlines follow each schedule of the case; every schedule must end with the machine time, the step count, the verdict RAM (the DSV1 block), the digest and the sequence of step boundaries of the uninterrupted run.
  * The schedules are named by the case key chunks (a comma list): 1, 7, 168 and 3072 are fixed sizes in master clocks (deadlines j * size), frame is the fixed size 357368 (a frame-sized chunk, labelled a fixed size because the machine has no frame yet),
  * and tick-1 and tick+1 are the deadlines 3072 * j - 1 and 3072 * j + 1, one master clock either side of a timer prescaler step (3072 master clocks); the schedule 3072 is the deadlines on the steps themselves (3072k), so the three ticks are tick-1, 3072 and tick+1.
+ * The case key input (plan 03-29) names an input script whose events are pushed to every run before its first step, like the irq_stim list.
  * The step boundary sequence is the stop sequence of the kind: a stop callback that never holds is called before the first step and after every step, and folds the machine time, the registers, the bus latch and the block transfer state at each distinct
  * machine time, so a run that loses or repeats part of a transfer at a stop, or reaches the same end by another path, differs even when its last state is equal. The ordered stop reasons are checked too: every call ends on its deadline (UNTIL), and
  * the calls that take a step and end inside a block transfer (stop point block_byte) are counted per schedule: the case items block-stop (at least one per schedule) and pending-stop (at least one with the timer interrupt and IRQ2 both pending at the stop
@@ -131,6 +132,7 @@ static int cs_exec(struct ctx *c, const struct kase *k, const struct cs_prog *pg
     struct ds_run_result res;
     struct cs_seen seen;
     uint32_t refusal = 0u;
+    uint32_t input_refusal = 0u;
     uint64_t j = 0u;
     uint64_t d = 0u;
     const char *err = pg->random ? boot_random(pg->img, k->val[K_REQUEST], &b, &ci) : boot_built_rom(pg->rom, k->val[K_REQUEST], &b, &ci);
@@ -147,6 +149,13 @@ static int cs_exec(struct ctx *c, const struct kase *k, const struct cs_prog *pg
         harness_error(c, err != NULL ? err : "ds_irq_stim_set refused the irq_stim list of the case");
         return -1;
     }
+    err = apply_input(w, k, &input_refusal); /* the declared input script of the case, pushed before the first step of every run and every schedule (plan 03-29; D-117, D-118): the input is part of the machine, so the chunking must not move it */
+    if (err != NULL || input_refusal != 0u) {
+        release_boot(&b);
+        harness_error(c, err != NULL ? err : "ds_input_push refused the input script of the case");
+        return -1;
+    }
+    check(c, input_applied(k, w), "the instance does not hold the events of the declared input script: the runs would be compared without the input");
     memset(&seen, 0, sizeof seen);
     seen.fold = CS_FNV_BASIS;
     while (d < until) {

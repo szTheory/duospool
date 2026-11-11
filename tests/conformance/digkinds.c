@@ -250,6 +250,12 @@ void kind_digest_stream(const struct kase *k, struct ctx *c, char *got, size_t g
             harness_error(c, serr != NULL ? serr : "the irq_stim list of the case was refused by ds_irq_stim_set");
             return;
         }
+        serr = apply_input((struct ds_instance *)(void *)b.mem, k, &refusal); /* the case's declared input script, before the capture (plan 03-29) */
+        if (serr != NULL || refusal != 0u) {
+            release_boot(&b);
+            harness_error(c, serr != NULL ? serr : "the input script of the case was refused by ds_input_push");
+            return;
+        }
     }
     if (poke) {
         struct ds_instance *wr = (struct ds_instance *)(void *)b.mem;

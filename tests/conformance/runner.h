@@ -214,6 +214,7 @@ void kind_interleave(const struct kase *k, struct ctx *c, char *got, size_t gotc
 void kind_interleave_twins(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_interleave_destroy_recreate(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_interleave_aba_order(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_interleave_pad(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 03-29: two pad_2btn instances with different input scripts, interleaved, against solo copies (ilvkinds.c) */
 void kind_interleave_canaries(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_liveness_shared_state_selfcheck(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 
@@ -249,7 +250,9 @@ extern const char *inputs_tsv_path;
 int inputkinds_arg(int argc, char **argv, int *a);
 const char *input_events(const struct kase *k, struct ds_input_event *ev, unsigned cap, unsigned *n, int *declared);
 const char *apply_input(struct ds_instance *inst, const struct kase *k, uint32_t *refusal);
+int input_applied(const struct kase *k, const struct ds_instance *inst); /* 1 when the case declares no input or the instance holds exactly its events: a kind that only compares runs asserts it (plan 03-29) */
 void input_refuse(const struct kase *k, struct ctx *c, const struct guest_expect *ex, const char *rom, uint64_t until, char *got, size_t gotcap);
+void input_edges(const struct kase *k, struct ctx *c, const char *rom, char *got, size_t gotcap); /* the exact-edges expect (plan 03-29) */
 void kind_input_refusal_coverage(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 /* boot build/gate/fixtures/ROM.pce over the request text: NULL and the accepted instance, or why not (a harness fault of the case); release_boot frees it */
 const char *boot_built_rom(const char *rom, const char *request, struct booted *b, const struct ds_instance **inst);
@@ -282,11 +285,13 @@ const char *boot_content(const char *request, size_t len, struct booted *b, cons
  *   exclude=IDX,IDX,...     the checks a mutation sweep skips (strictly ascending), which must equal the observe rows of the fixture (mutate_sweep only)
  *   fail-set=IDX,IDX,...    (plan 03-29, guest only) a control-shaped case: the guest must finish with a consistent block in which exactly the checks listed (strictly ascending, 1 to 255) read $46 and every other check $50; any other set, a result byte that is neither, or a structural fault of the
  *                           block is a failure of the case. The pad negative controls use it (none, wrong, late: the declared set is the fact under test, the verdict of the guest is E0 data)
+ *   exact-edges             (plan 03-29, guest only) the input exactness test at the C level (inputkinds.c, D-117, D-118): the image is booted and the declared script pushed, and for every event of port 1 after time 0 the byte that ds_io_read returns at the stamps at - 1, at and at + 1 is compared with the
+ *                           protocol byte computed in the test from the held masks of the script (the level before the event at - 1, the new level at and at + 1), under both selections of the latch; no guest is run, and observe items are not allowed
  *   padlog                  (plan 03-29, guest only) attach the dev sink to the first run of the case and write the pad-window records as the evidence file ID.padlog.tsv (stamp, phys, value, kind, latch) beside ID.txt; a lost record is harness_failure (D-119, D-118)
  *   pad-order=NAME,NAME     (plan 03-29, guest only, needs padlog) run the same ROM with the two named input scripts first and require, before the case is trusted, that the three verdicts (result and observed bytes) are pairwise different and that each of the three dev logs holds a
  *                           read with SEL = 1 and a read with SEL = 0 (CLR low); a violation is harness_failure (pad-order, pad-log) so a vacuous triple cannot pass (D-118)
  */
-enum guest_mode { MODE_PLAIN, MODE_VERDICT, MODE_POISON, MODE_REFUSED, MODE_REFUSED_INPUT, MODE_FAILSET };
+enum guest_mode { MODE_PLAIN, MODE_VERDICT, MODE_POISON, MODE_REFUSED, MODE_REFUSED_INPUT, MODE_FAILSET, MODE_EDGES };
 #define GE_ITEMS_MAX 32u
 
 struct guest_expect {

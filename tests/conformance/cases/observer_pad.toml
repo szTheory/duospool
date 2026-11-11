@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The observer non-interference matrix on the authored pad_2btn with its correct input script (plan 03-29; D-117, D-119, CORE-06, ER-5): no sink (the reference) and both sinks in five configurations (large, drop4, poison, cap0, cap1), each in three modes: whole (one call to the deadline), chunk:7 (seven calls to equal parts of the deadline) and stop:5000
+# (a stop callback that holds at its 5000th invocation). The script of the case (the key input) is pushed to every run before the first step, so the guest reads the same input in each of them, and the device-register sink logs every read and write of the $1000 window (the pad reads) without any of that changing the machine.
+# Every run must give the reference verdict RAM (the DSV1 block, whose observed bytes are the raw pad reads), machine time, stop sequence and digest: the pad level a read sees is a pure function of the declared schedule and the access stamp, so a sink, a chunking or a stop cannot move it. Evidence tier E0 (repeatability and non-interference: the core is
+# compared with itself, ER-7);
+# no pad-accurate, compatibility or hardware claim, and the word pass is not a support claim.
+id = "observer_pad"
+kind = "observer"
+fixture = "authored:pad-2btn"
+request = ""
+expect = "compare=verdict,machine_time,stops,digest"
+meaning = "Enabling the instruction sink and the device-register sink in any of five configurations, whole or in 7 chunks or stopped by the callback, changes neither the verdict RAM, the machine time, the stop sequence nor the digest of the pad_2btn run against its correct input script"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 800000
+sinks = "large,drop4,poison,cap0,cap1"
+chunks = "whole,chunk:7,stop:5000"
+input = "pad_2btn_correct"

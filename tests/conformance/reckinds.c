@@ -1027,6 +1027,19 @@ void kind_record_run(const struct kase *k, struct ctx *c, char *got, size_t gotc
         return;
     }
     w = (struct ds_instance *)(void *)b.mem;
+    {
+        uint32_t input_refusal = 0u;
+
+        err = apply_input(w, k, &input_refusal); /* the case's declared input script, before the first step: the record names it (plan 03-29; D-117) */
+        if (err == NULL && input_refusal != 0u) {
+            err = "ds_input_push refused the input script of a record_run case";
+        }
+        if (err != NULL) {
+            release_boot(&b);
+            harness_error(c, err);
+            return;
+        }
+    }
     memset(&rq, 0, sizeof rq);
     rq.struct_size = (uint32_t)sizeof rq;
     rq.until_mclk = until;

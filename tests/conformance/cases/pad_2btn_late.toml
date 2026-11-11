@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The late-event negative control of the two-button pad (plan 03-29; D-117, D-118, ER-4, ER-5, R-7): the same authored ROM as pad_2btn_correct runs against tests/conformance/inputs/pad_2btn_late.toml, the correct script with its third event moved from 320000 to 450000 master clocks, after the guest has read phase 3 (the reads of phase 3 sit near 415000).
+# The level a read sees is the level at its own access stamp (D-117), so an event after a read cannot be seen by it: the guest still reads the held set of phase 2 (I and RIGHT) in phase 3 and exactly the checks of phase 3 must fail (9: the buttons read $FE where $FD is expected; 10: the directions read $FD where $F6 is expected), while the other ten pass, the
+# fourth event (510000) being early enough for phase 4.
+# The case passes only when exactly that set fails. The dev sink is attached and the pad-window records are written as pad_2btn_late.padlog.tsv beside the evidence text (an E0 runner artifact, D-118). The literals are ASSUMED LED-IO-0002 to LED-IO-0004 (E2 self-consistency, ER-5); the declared set follows from the script and the fixture literals, not from DuoSpool output.
+id = "pad_2btn_late"
+kind = "guest"
+fixture = "authored:pad-2btn"
+request = ""
+expect = "id=14;fail-set=9,10;padlog"
+meaning = "With the third script event after the guest's read of phase 3, the authored pad_2btn fixture fails exactly the two checks of phase 3 (9 and 10) and passes the other ten, so an event after a read is not seen by it"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 800000
+checks = 12
+input = "pad_2btn_late"

@@ -748,6 +748,7 @@ static int ob_exec(struct ctx *c, const struct ob_src *src, uint64_t until, cons
     uint64_t j;
     uint64_t cont0 = 0u;
     uint32_t refusal = 0u;
+    uint32_t input_refusal = 0u;
     char msg[200];
     const char *err = src->random ? boot_random(src->img, src->k->val[K_REQUEST], &b, &ci) : boot_built_rom(src->rom, src->k->val[K_REQUEST], &b, &ci);
     int rc = 0;
@@ -764,6 +765,13 @@ static int ob_exec(struct ctx *c, const struct ob_src *src, uint64_t until, cons
         harness_error(c, err != NULL ? err : "ds_irq_stim_set refused the irq_stim list of the case");
         return -1;
     }
+    err = apply_input(w, src->k, &input_refusal); /* the declared input script of the case (plan 03-29; D-117, D-119): pushed to every run of the matrix, so a sink configuration or a chunking cannot be what moves the input */
+    if (err != NULL || input_refusal != 0u) {
+        release_boot(&b);
+        harness_error(c, err != NULL ? err : "ds_input_push refused the input script of the case");
+        return -1;
+    }
+    check(c, input_applied(src->k, w), "the instance does not hold the events of the declared input script: the runs would be compared without the input");
     if (ob_mem_make(&m, cf) != 0) {
         release_boot(&b);
         harness_error(c, "out of memory for the observer sinks");

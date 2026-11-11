@@ -1041,6 +1041,7 @@ static const struct {
     {"interleave_twins", kind_interleave_twins, 0},
     {"interleave_destroy_recreate", kind_interleave_destroy_recreate, 0},
     {"interleave_aba_order", kind_interleave_aba_order, 0},
+    {"interleave_pad", kind_interleave_pad, 0},
     {"interleave_canaries", kind_interleave_canaries, 0},
     {"liveness_shared_state_selfcheck", kind_liveness_shared_state_selfcheck, 0},
     {"coverage", kind_coverage, 1},

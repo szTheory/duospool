@@ -215,3 +215,9 @@ input_refusal_coverage
 pad_2btn_none
 pad_2btn_wrong
 mutate_sweep_pad_2btn
+pad_2btn_late
+pad_2btn_glitch
+input_exact_edges
+interleave_pad
+observer_pad
+chunk_equiv_pad_2btn_correct

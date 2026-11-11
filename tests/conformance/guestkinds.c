@@ -16,6 +16,7 @@
  *                   ;refused=stim.NAME       a stimulus refusal control (plan 03-22, D-112): the case's irq_stim list must be refused by ds_irq_stim_set with exactly that code, the instance unchanged; the guest is never run
  *                   ;refused=input.NAME[,NAME...]  an input refusal control (plan 03-27, D-117): synthetic events bypassing every script are pushed to ds_input_push and must be refused with exactly the named codes of src/core/input_refusals.def, the instance unchanged (inputkinds.c)
  *                   ;fail-set=IDX,...        (plan 03-29, D-118) a control-shaped case: exactly the listed checks must read $46 and every other check $50 in a consistent done block (the pad negative controls); any other set is a failure of the case
+ *                   ;exact-edges             (plan 03-29, D-117, D-118) the level of the declared input script is read with ds_io_read at at - 1, at and at + 1 of every event after time 0 and compared with the protocol byte computed in the test; no guest is run (inputkinds.c)
  *                   ;padlog                  (plan 03-29, D-118, R-7) the first run of the case carries the dev sink and the pad-window records are written as the evidence file ID.padlog.tsv; a lost record is harness_failure
  *                   ;pad-order=NAME,NAME     (plan 03-29, D-118) the same ROM is run with the two named input scripts first; the three verdicts must be pairwise different and each dev log must hold a SEL = 1 and a SEL = 0 read, or the case is harness_failure before correct is trusted
  *                   ;poison-t0               the runner writes the DSV1 magic and the done state into work RAM after boot and before the first step; the
@@ -319,6 +320,14 @@ static int parse_item(char *item, struct guest_expect *e, int *seen_mode, int *s
             e->fail[e->nfail++] = idx;
         }
         return e->nfail > 0u ? 0 : -1;
+    }
+    if (strcmp(item, "exact-edges") == 0) {
+        if (*seen_mode) {
+            return -1;
+        }
+        *seen_mode = 1;
+        e->mode = MODE_EDGES;
+        return 0;
     }
     if (strcmp(item, "padlog") == 0) {
         if (e->padlog) {
@@ -1334,6 +1343,14 @@ static void guest_case(const struct kase *k, struct ctx *c, char *got, size_t go
             return;
         }
         input_refuse(k, c, &ex, rom, until, got, gotcap);
+        return;
+    }
+    if (ex.mode == MODE_EDGES) {
+        if (ex.nobs != 0u) {
+            harness_error(c, "an exact-edges case takes no observe= item");
+            return;
+        }
+        input_edges(k, c, rom, got, gotcap);
         return;
     }
     np = policy_list(k, pbuf, sizeof pbuf, plist);

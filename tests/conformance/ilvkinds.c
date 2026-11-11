@@ -22,6 +22,9 @@
  *   interleave_canaries              request A||B; expect lcg=N;steps=N. Three adjacent instances (A, B, A again) separated by canary
  *                                    bytes: no canary changes through boot, step, the discard of the neighbour and its reboot, and the
  *                                    canary check itself is shown to see a changed guard byte and a changed padding byte
+ *   interleave_pad                   (plan 03-29; D-55, D-118, T-03-81) the authored pad_2btn image, expect id=N;a=SCRIPT;b=SCRIPT;chunk=N. A (script a, the correct one) and B (script b, a wrong one) are two instances with different input schedules; their solo copies A0 and B0 are run alone to the
+ *                                    deadline first, then A and B are stepped to it in rounds of CHUNK master clocks, A first and B second in every round. A must end with the digest, the machine time and the verdict block of A0 and B with those of B0, the verdict of A must be a pass,
+ *                                    that of B a guest failure, and the two verdicts must differ: a pad level shared between instances (the toy tests/controls/shared-input) makes B read what A holds and turns the case red
  *   liveness_shared_state_selfcheck  as interleave; the same helper is run with the memory of B aliased to the memory of A and must
  *                                    report a difference, and without the alias must report none
  */
@@ -876,4 +879,145 @@ void kind_interleave_canaries(const struct kase *k, struct ctx *c, char *got, si
     arena_free(&ar);
     input_free(&ia);
     input_free(&ib);
+}
+
+/* ---- interleave_pad (plan 03-29; D-55, D-118, T-03-81) ---- */
+
+/* boot the built authored image of the case over its request and push the events of the input script NAME (a copy of the case with the key input replaced): NULL and the booted instance, or why not */
+static const char *ip_boot(const struct kase *k, const char *rom, const char *script, struct booted *b, struct ds_instance **out)
+{
+    struct kase kx = *k;
+    const struct ds_instance *inst = NULL;
+    uint32_t refusal = 0u;
+    const char *err;
+
+    kx.val[K_INPUT] = script;
+    kx.has[K_INPUT] = 1;
+    err = boot_built_rom(rom, k->val[K_REQUEST], b, &inst);
+    if (err != NULL) {
+        return err;
+    }
+    *out = (struct ds_instance *)(void *)b->mem;
+    err = apply_input(*out, &kx, &refusal);
+    if (err == NULL && refusal != 0u) {
+        err = "the input script of the case was refused by ds_input_push";
+    }
+    if (err != NULL) {
+        release_boot(b);
+        b->mem = NULL;
+    }
+    return err;
+}
+
+/* the expect text id=N;a=SCRIPT;b=SCRIPT;chunk=N: 0 on success */
+static int ip_parse(const char *text, uint64_t *id, char *a, char *b, size_t cap, uint64_t *chunk)
+{
+    char list[PK_LIST_MAX];
+    char *rest = list;
+    char *item;
+    int have = 0;
+
+    if (pk_copy_text(text, list, sizeof list) != 0) {
+        return -1;
+    }
+    a[0] = '\0';
+    b[0] = '\0';
+    while ((item = pk_next_item(&rest, ';')) != NULL) {
+        char *eq = strchr(item, '=');
+
+        if (eq == NULL) {
+            return -1;
+        }
+        *eq = '\0';
+        if (strcmp(item, "id") == 0 && parse_u64(eq + 1, id) == 0 && (have & 1) == 0) {
+            have |= 1;
+        } else if (strcmp(item, "chunk") == 0 && parse_u64(eq + 1, chunk) == 0 && (have & 2) == 0) {
+            have |= 2;
+        } else if ((strcmp(item, "a") == 0 || strcmp(item, "b") == 0) && strlen(eq + 1) > 0u && strlen(eq + 1) < cap && eq[1] >= 'a' && eq[1] <= 'z'
+                   && strspn(eq + 1, "abcdefghijklmnopqrstuvwxyz0123456789_") == strlen(eq + 1)) {
+            char *dst = item[0] == 'a' ? a : b;
+
+            if (dst[0] != '\0') {
+                return -1;
+            }
+            memcpy(dst, eq + 1, strlen(eq + 1) + 1u);
+            have |= item[0] == 'a' ? 4 : 8;
+        } else {
+            return -1;
+        }
+    }
+    return have == 15 && *id <= 255u && *chunk >= 1u && *chunk <= 1000000u && strcmp(a, b) != 0 ? 0 : -1;
+}
+
+void kind_interleave_pad(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    char rom[48];
+    char na[48];
+    char nb[48];
+    uint64_t id = 0u;
+    uint64_t chunk = 0u;
+    uint64_t until = 0u;
+    uint64_t checks = 0u;
+    struct booted bd[4];
+    struct ds_instance *in[4] = {NULL, NULL, NULL, NULL}; /* A, B, A0, B0 */
+    unsigned booted = 0u;
+    const char *err = NULL;
+    uint64_t t;
+    unsigned i;
+    struct ctx ja;
+    struct ctx jb;
+    char seen[96];
+    struct dig da;
+    struct dig db;
+
+    if (authored_name(k->val[K_FIXTURE], rom, sizeof rom) != 0 || !k->has[K_UNTIL_MCLK] || !k->has[K_CHECKS] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || parse_u64(k->val[K_CHECKS], &checks) != 0 || checks < 1u || checks > 96u) {
+        harness_error(c, "an interleave_pad case names its ROM as fixture = authored:NAME and needs the integer keys until_mclk and checks");
+        return;
+    }
+    if (ip_parse(k->val[K_EXPECT], &id, na, nb, sizeof na, &chunk) != 0) {
+        harness_error(c, "an interleave_pad expect is id=N;a=SCRIPT;b=SCRIPT;chunk=N with two different scripts");
+        return;
+    }
+    /* A0 and B0 first (solo), then A and B: the order of the booting does not matter, the order of the runs does */
+    for (i = 0u; i < 4u && err == NULL; i++) {
+        err = ip_boot(k, rom, (i == 0u || i == 2u) ? na : nb, &bd[i], &in[i]);
+        if (err == NULL) {
+            booted++;
+        }
+    }
+    if (err != NULL) {
+        for (i = 0u; i < booted; i++) {
+            release_boot(&bd[i]);
+        }
+        harness_error(c, err);
+        return;
+    }
+    check(c, run_to(in[2], until), "ds_run did not end on the deadline for the solo copy of A");
+    check(c, run_to(in[3], until), "ds_run did not end on the deadline for the solo copy of B");
+    for (t = chunk;; t += chunk) {
+        uint64_t to = t < until ? t : until;
+
+        check(c, run_to(in[0], to), "ds_run did not end on the absolute deadline of the call for A");
+        check(c, run_to(in[1], to), "ds_run did not end on the absolute deadline of the call for B");
+        if (to == until) {
+            break;
+        }
+    }
+    memset(&ja, 0, sizeof ja);
+    memset(&jb, 0, sizeof jb);
+    judge_dsv1(&ja, in[0]->ram8k + V_OFF, (unsigned)id, (unsigned)checks, seen, sizeof seen);
+    judge_dsv1(&jb, in[1]->ram8k + V_OFF, (unsigned)id, (unsigned)checks, seen, sizeof seen);
+    check(c, !ja.harness && !ja.failed && !ja.timeout && ja.n != 0u, "the interleaved instance A with the correct script did not pass its verdict");
+    check(c, !jb.harness && jb.failed && !jb.timeout, "the interleaved instance B with the wrong script did not end in a guest failure");
+    check(c, memcmp(in[0]->ram8k + V_OFF, in[2]->ram8k + V_OFF, V_SIZE) == 0, "the verdict block of the interleaved A differs from that of the solo A");
+    check(c, memcmp(in[1]->ram8k + V_OFF, in[3]->ram8k + V_OFF, V_SIZE) == 0, "the verdict block of the interleaved B differs from that of the solo B");
+    check(c, memcmp(in[0]->ram8k + V_OFF + V_RES, in[1]->ram8k + V_OFF + V_RES, V_MAX_CHECKS) != 0, "the verdicts of A and B are the same: the two scripts do not decide the verdict, so the case could not see a shared level");
+    check(c, in[0]->machine_time == in[2]->machine_time && in[1]->machine_time == in[3]->machine_time, "the machine time of an interleaved instance differs from that of its solo copy");
+    check(c, dig_of(in[0], &da) && dig_of(in[2], &db) && dig_eq(&da, &db), "the digest of the interleaved A differs from that of the solo A");
+    check(c, dig_of(in[1], &da) && dig_of(in[3], &db) && dig_eq(&da, &db), "the digest of the interleaved B differs from that of the solo B");
+    note_run(c, in[0]->machine_time, (uint32_t)DS_RUN_REASON_UNTIL);
+    snprintf(got, gotcap, "rounds=%llu", (unsigned long long)((until + chunk - 1u) / chunk));
+    for (i = 0u; i < 4u; i++) {
+        release_boot(&bd[i]);
+    }
 }

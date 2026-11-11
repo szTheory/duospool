@@ -140,6 +140,19 @@ const char *apply_input(struct ds_instance *inst, const struct kase *k, uint32_t
     return NULL;
 }
 
+/* the post-condition of apply_input that a kind which only compares runs with each other must assert (plan 03-29): a case without the key input has nothing to hold, otherwise the instance holds exactly the events the script declares. A kind that forgot the call would compare runs that all lack the input and pass vacuously. */
+int input_applied(const struct kase *k, const struct ds_instance *inst)
+{
+    struct ds_input_event ev[INPUT_PARSE_MAX];
+    unsigned n = 0u;
+    int declared = 0;
+
+    if (input_events(k, ev, INPUT_PARSE_MAX, &n, &declared) != NULL) {
+        return 0;
+    }
+    return !declared || inst->input_count == (uint32_t)n;
+}
+
 /* ---- the refusal rows ---- */
 
 static unsigned char ir_observed[DS_INPUTREF_SLOTS];
@@ -457,4 +470,85 @@ void kind_input_refusal_coverage(const struct kase *k, struct ctx *c, char *got,
     check(c, members > 0u, "input_refusals.def has no member");
     check(c, (unsigned)DS_INPUT_MAX == 1024u && (unsigned)DS_PORT_COUNT == 5u, "the input limits are not the 1024 events and five ports of D-116 and D-117");
     snprintf(got, gotcap, "members=%u observed=%u", members, seen);
+}
+
+/*
+ * exact-edges (plan 03-29; D-115, D-117, D-118, ER-5): the level of a port at a stamp is the mask of the last event of that port whose time is at or before the stamp, so a level change at stamp at is invisible at at - 1 and visible at at and at + 1 (ties inclusive). The image is booted (no guest is run), the declared script is
+ * pushed, and for every event of port 1 after time 0 the byte that ds_io_read returns at the three stamps is compared with the protocol byte computed HERE from the held masks of the script: 0xF0 | (~nibble & 0xF) with d6 = d7 = 1 (the default binding, so the request is empty), the nibble being the low half of the mask for the
+ * latch SEL 0 (buttons) and the high half for SEL 1 (directions), CLR low. The two bytes before and after an edge must differ for at least one of the two selections, or the edge could not be seen. At least three edges are required. The formula restates D-115 (ASSUMED LED-IO-0002, E2 self-consistency): it is the plan's own protocol text, not DuoSpool output.
+ */
+static unsigned ie_byte(uint32_t mask, unsigned latch)
+{
+    uint32_t nibble = (latch & 1u) != 0u ? (mask >> 4u) & 0x0Fu : mask & 0x0Fu;
+
+    return 0xF0u | (~nibble & 0x0Fu);
+}
+
+void input_edges(const struct kase *k, struct ctx *c, const char *rom, char *got, size_t gotcap)
+{
+    struct booted b;
+    struct ds_instance *wr = NULL;
+    struct ds_input_event ev[INPUT_PARSE_MAX];
+    unsigned n = 0u;
+    int declared = 0;
+    unsigned edges = 0u;
+    unsigned reads = 0u;
+    unsigned i;
+    const char *err;
+    uint32_t refusal = 0u;
+
+    err = input_events(k, ev, INPUT_PARSE_MAX, &n, &declared);
+    if (err == NULL && (!declared || n == 0u)) {
+        err = "an exact-edges case declares an input script with events (the key input)";
+    }
+    if (err != NULL) {
+        harness_error(c, err);
+        return;
+    }
+    err = ir_boot(k, rom, &b, &wr);
+    if (err != NULL) {
+        harness_error(c, err);
+        return;
+    }
+    err = apply_input(wr, k, &refusal);
+    if (err != NULL || refusal != 0u) {
+        release_boot(&b);
+        harness_error(c, err != NULL ? err : "the input script of the case was refused by ds_input_push");
+        return;
+    }
+    for (i = 0u; i < n; i++) {
+        uint32_t prev = 0u;
+        unsigned latch;
+        unsigned j;
+        int differs = 0;
+
+        if (ev[i].port != 1u || ev[i].at == 0u) {
+            continue; /* an event at time 0 has no stamp before it, and only port 1 has a pad */
+        }
+        for (j = 0u; j < i; j++) {
+            if (ev[j].port == 1u) {
+                prev = ev[j].mask; /* the events are in time order and one port has one event per time, so the last earlier one is the level before this edge */
+            }
+        }
+        for (latch = 0u; latch < 2u; latch++) {
+            unsigned before = ie_byte(prev, latch);
+            unsigned after = ie_byte(ev[i].mask, latch);
+            char msg[160];
+
+            ds_io_write(wr, (uint8_t)latch); /* SEL = latch, CLR 0 */
+            snprintf(msg, sizeof msg, "event %u, latch %u: the level one master clock before the event (at - 1) is not the level before it", i + 1u, latch);
+            check(c, (unsigned)ds_io_read(wr, ev[i].at - 1u) == before, msg);
+            snprintf(msg, sizeof msg, "event %u, latch %u: the level at the stamp of the event (at) is not the new level", i + 1u, latch);
+            check(c, (unsigned)ds_io_read(wr, ev[i].at) == after, msg);
+            snprintf(msg, sizeof msg, "event %u, latch %u: the level one master clock after the event (at + 1) is not the new level", i + 1u, latch);
+            check(c, (unsigned)ds_io_read(wr, ev[i].at + 1u) == after, msg);
+            reads += 3u;
+            differs = differs || before != after;
+        }
+        check(c, differs, "an edge of the script changes neither the buttons nor the directions byte, so the test could not see it");
+        edges++;
+    }
+    release_boot(&b);
+    check(c, edges >= 3u, "the script has fewer than three events after time 0, so fewer than three edges were tested");
+    snprintf(got, gotcap, "edges=%u reads=%u", edges, reads);
 }
