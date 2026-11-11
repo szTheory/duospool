@@ -5,11 +5,13 @@
 # runner write timer_origin $0102030405060708, timer_counter $11, timer_reload $22, timer_enabled 1, irq_disable 5 and tiq_latch 1 into the booted instance before the capture (a test hook: a boot leaves them zero). The payloads are then TIMR 08 07 06 05 04 03 02 01 11 22 01, IRQC 05 01 01 and IRQS 16 slots of a u64 time, the line and the level, the unused 13 zero.
 # The literal comes from a throwaway python script outside the repo that rebuilt the version 4 stream of this boot, checked it against the committed literal 5065a6c1... under shasum -a 256, set the version to 5 and appended the three frames written byte by byte from the rules above; the stream file
 # it wrote (8588 bytes) hashes to the literal under shasum -a 256. Evidence tier E0: it pins the encoding and shows repeatability, never that the state is right.
+# Plan 03-25 added the region BLKT (the block transfer in progress: active, opcode, alternation state, remaining count as a u32, source and destination as u16, 11 zero bytes for a boot) and the serial version 6, so the literal changed: a throwaway python script outside the repo took the 8588-byte version 5 stream of this boot with the poked timer, controller and stimulus state
+# from the core's stream writer, checked that its sha256 equals the committed version 5 literal a65a4f8e... under shasum -a 256, set the version to 6 and appended the frame BLKT with 11 zero bytes; the 8607-byte stream it wrote hashes to the new literal. Evidence tier E0 (see above).
 id = "digest_stream_irq"
 kind = "digest_stream"
 fixture = "plain-256k"
 request = "bind.powerup_policy=seeded-prng-v1;seed=42;model.irq_i_sample=post"
-expect = "version=5;frames=PROF:32,CONT:40,POWR:16,TIME:8,RAM8:8192,MPRS:8,CPU0:8,BUS0:3,TIMR:11,IRQC:3,IRQS:160;size=262144;enum=1;poke=timer-irq;digest=a65a4f8ef2e9581329046844d367627eae784e1b9e28aed7cd82b36855213f38"
+expect = "version=6;frames=PROF:32,CONT:40,POWR:16,TIME:8,RAM8:8192,MPRS:8,CPU0:8,BUS0:3,TIMR:11,IRQC:3,IRQS:160,BLKT:11;size=262144;enum=1;poke=timer-irq;digest=fbc284c7b7b14854f48548cb797b787d48deec774451ccd382a0d86b46dc0fae"
 meaning = "With nonzero timer, controller and stimulus state the regions TIMR, IRQC and IRQS carry the documented little-endian bytes, the payloads match the instance, and the SHA-256 of the stream equals the independently derived literal"
 required = true
 control = false

@@ -18,6 +18,9 @@
 # shasum -a 256), set the version to 5 and appended the frames TIMR (11 zero bytes), IRQC (3) and IRQS (160); the 8588-byte stream file hashes to the new value under shasum -a 256. The profile and content hashes did not change.
 # Plan 03-23 changed the layout, format_version 3 to 4: the table [stimulus] (events = 0 for a boot that declares none, then one event_N line per declared event as AT,LINE,LEVEL in decimal) follows the model tables, and the table [constants] gained the four rows timer_hold_on_stop, irq_sample_cycles_before_end,
 # interrupt_entry_cycles and speed_switch_extra_cycles of src/core/constants.def, whose ledger ids LED-IRQ-0003, LED-IRQ-0006, LED-CPU-0009 and LED-CPU-0006 joined [withheld] (22 ids, under the cap of 24). The literals were written by hand from the def, not copied from printer output. The digest line, the profile hash and the content hash did not change (no state was added).
+# Plan 03-25 added the region BLKT (the block transfer in progress: active, opcode, alternation state, remaining count as a u32, source and destination as u16, 11 zero bytes at boot) and the serial version 6, so the digest line changed: it was recomputed with a throwaway python script outside
+# the repo that took the 8588-byte version 5 stream of this boot from the core's stream writer, checked that its sha256 equals the committed version 5 digest above, set the version to 6 and appended the frame BLKT with 11 zero bytes; the 8607-byte stream hashes to the new value under shasum -a 256.
+# The same plan added the constants rows block_prologue_cycles and block_irq_after_epilogue of src/core/constants.def, whose ledger ids LED-CPU-0008 and LED-IRQ-0007 joined [withheld] (24 ids, the cap of the record printer: any further id needs a layout change). The literals were written by hand from the def, not copied from printer output.
 [record]
 format_version = 4
 
@@ -96,7 +99,7 @@ value = "zero"
 bound_by = "run-request"
 
 [withheld]
-ids = ["LED-AUD-0001", "LED-CPU-0003", "LED-CPU-0004", "LED-CPU-0006", "LED-CPU-0009", "LED-CPU-0010", "LED-CPU-0012", "LED-CPU-0015", "LED-CPU-0017", "LED-IO-0001", "LED-IRQ-0001", "LED-IRQ-0003", "LED-IRQ-0005", "LED-IRQ-0006", "LED-LOAD-0001", "LED-LOAD-0002", "LED-LOAD-0003", "LED-LOAD-0005", "LED-PROF-0002", "LED-VID-0001", "LED-VID-0002", "LED-VID-0003"]
+ids = ["LED-AUD-0001", "LED-CPU-0003", "LED-CPU-0004", "LED-CPU-0006", "LED-CPU-0008", "LED-CPU-0009", "LED-CPU-0010", "LED-CPU-0012", "LED-CPU-0015", "LED-CPU-0017", "LED-IO-0001", "LED-IRQ-0001", "LED-IRQ-0003", "LED-IRQ-0005", "LED-IRQ-0006", "LED-IRQ-0007", "LED-LOAD-0001", "LED-LOAD-0002", "LED-LOAD-0003", "LED-LOAD-0005", "LED-PROF-0002", "LED-VID-0001", "LED-VID-0002", "LED-VID-0003"]
 
 [content]
 sha256 = "cb038cda079ab0edec440521c4dc250a8a8c2af6e068470dbda7f05ff07b0287"
@@ -141,6 +144,8 @@ timer_hold_on_stop = "1 LED-IRQ-0003"
 irq_sample_cycles_before_end = "1 LED-IRQ-0006"
 interrupt_entry_cycles = "8 LED-CPU-0009"
 speed_switch_extra_cycles = "0 LED-CPU-0006"
+block_prologue_cycles = "14 LED-CPU-0008"
+block_irq_after_epilogue = "1 LED-IRQ-0007"
 
 [run]
 reason = "none"
@@ -155,4 +160,4 @@ size_cap = 1048576
 time = 0
 time_unit = "master-clocks"
 digest_algorithm = "sha256"
-digest = "caa95c86b35f69ae10e5e29f2197f23673898675f8a25b5db08e484f55fcb9db"
+digest = "2f6b80f666a59cb57336e528f175c9fc3b7edf4a5f6ef12621a04a52f3476e6b"

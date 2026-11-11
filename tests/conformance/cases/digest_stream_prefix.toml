@@ -2,8 +2,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
 # The state digest is SHA-256 of a framed stream, never of struct bytes (D-52). The kind captures the stream with ds_digest_stream and parses it
-# here without calling ds_digest: the prefix duospool-state and a NUL byte, the serializer version 5, then eleven regions each framed as four
-# ASCII tag bytes, a u32 length and the payload, little-endian, in the fixed order PROF CONT POWR TIME RAM8 MPRS CPU0 BUS0 TIMR IRQC IRQS (plan 03-03 and plan 03-16, D-121; PSGN and VDCP left the stream; CPU0 is a x y s p, pc as a u16, speed; BUS0 is io_buffer, mpr_latch and the selection index of the model parameter tma_zero, three bytes, all 0 at boot). Each payload is
+# here without calling ds_digest: the prefix duospool-state and a NUL byte, the serializer version 6, then twelve regions each framed as four
+# ASCII tag bytes, a u32 length and the payload, little-endian, in the fixed order PROF CONT POWR TIME RAM8 MPRS CPU0 BUS0 TIMR IRQC IRQS BLKT (plan 03-03 and plan 03-16, D-121; PSGN and VDCP left the stream; CPU0 is a x y s p, pc as a u16, speed; BUS0 is io_buffer, mpr_latch and the selection index of the model parameter tma_zero, three bytes, all 0 at boot). Each payload is
 # checked against the booted instance, the stream must be consumed exactly, and the SHA-256 of the captured stream must equal ds_digest and the
 # literal below. The literal comes from a throwaway perl script outside the repo (Digest::SHA and Math::BigInt) that wrote the stream of the
 # written rules for a seed-42 boot of plain-256k: the content sha256 is the host shasum of the emitted recipe, the RAM and registers are the
@@ -14,12 +14,14 @@
 # Plan 03-22 added the regions TIMR (the timer origin as a u64 and counter, reload and start bit, 11 bytes), IRQC (disable mask, TIQ latch and the irq_i_sample selection, 3 bytes) and IRQS (the 16 slots of the declared stimulus, 160 bytes) and the serial version 5. Every one is all zero at boot
 # under this request, so the literal was derived by a throwaway python script outside the repo that first rebuilt the version 4 stream from the code, checked that it hashes to the committed version 4 literal 5065a6c1... under shasum -a 256, set the version to 5 and appended the three frames (TIMR 11
 # zero bytes, IRQC 3, IRQS 160); the stream file it wrote (8588 bytes) hashes to the new literal under shasum -a 256. Evidence tier E0: it pins the encoding and shows repeatability, never that the state is right.
+# Plan 03-25 added the region BLKT (the block transfer in progress: active, opcode, alternation state, remaining count as a u32, source and destination as u16, 11 zero bytes for a boot) and the serial version 6, so the literal changed: a throwaway python script outside the repo took the 8588-byte version 5 stream of this boot
+# from the core's stream writer, checked that its sha256 equals the committed version 5 literal b10fea3a... under shasum -a 256, set the version to 6 and appended the frame BLKT with 11 zero bytes; the 8607-byte stream it wrote hashes to the new literal. Evidence tier E0 (see above).
 id = "digest_stream_prefix"
 kind = "digest_stream"
 fixture = "plain-256k"
 request = "bind.powerup_policy=seeded-prng-v1;seed=42"
-expect = "version=5;frames=PROF:32,CONT:40,POWR:16,TIME:8,RAM8:8192,MPRS:8,CPU0:8,BUS0:3,TIMR:11,IRQC:3,IRQS:160;size=262144;enum=1;digest=b10fea3a90a995a15b3de395aefb35c0e71abc3d3641b8dd88a6a4fc5faec26b"
-meaning = "The digest stream is the framed, little-endian stream of eleven regions behind the prefix and version, its payloads match the instance, and ds_digest is the SHA-256 of exactly that stream and of the independently derived literal"
+expect = "version=6;frames=PROF:32,CONT:40,POWR:16,TIME:8,RAM8:8192,MPRS:8,CPU0:8,BUS0:3,TIMR:11,IRQC:3,IRQS:160,BLKT:11;size=262144;enum=1;digest=518d1ebfb84edd8ecf1166d76ca9c91e5457ea3f23218dbbf2f7c215b110fa0d"
+meaning = "The digest stream is the framed, little-endian stream of twelve regions behind the prefix and version, its payloads match the instance, and ds_digest is the SHA-256 of exactly that stream and of the independently derived literal"
 required = true
 control = false
 expect_outcome = "pass"

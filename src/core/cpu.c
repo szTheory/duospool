@@ -527,16 +527,16 @@ static uint32_t interrupt_entry(struct ds_instance *inst, struct ds_obs_log *log
 
 /*
  * The block transfers (plan 03-25; D-92, D-100, LED-CPU-0007, LED-CPU-0008, LED-IRQ-0007; H8-6, S8-88, S8-89): TII, TDD, TIN, TIA and TAI run as three kinds of step on the state blk_* of the instance, so a run can stop between any two of them and resume.
- *   prologue  the instruction itself, BLK_PROLOGUE_CYCLES (14) cycles: the six operand bytes are latched (source, destination and length, 16 bits each, little endian: opcode, SL, SH, DL, DH, LL, LH), the length 0 is turned into 65536, Y, A and X are pushed to the stack
+ *   prologue  the instruction itself, BLK_PROLOGUE_CYCLES (block_prologue_cycles, 14) cycles: the six operand bytes are latched (source, destination and length, 16 bits each, little endian: opcode, SL, SH, DL, DH, LL, LH), the length 0 is turned into 65536, Y, A and X are pushed to the stack
  *             (a push writes at $2100 + S and decrements S, three levels, S8-88), PC moves past the seven bytes and the transfer becomes active. No register, flag (except T, cleared in every fetch) or memory other than the stack changes.
  *   byte      BLK_BYTE_CYCLES (6) cycles: the byte at the source address is read in the fourth cycle and written to the destination address in the sixth, through the bus (the mapping registers, the VDC penalty and the hardware windows apply to both
  *             accesses), then the addresses move as the instruction says (Table 2-1-1: post-increment and post-decrement, a fixed destination for TIN, an alternation of add then subtract for the destination of TIA and the source of TAI, add first)
  *             with 16-bit wrap, and the remaining count goes down by one. A write that lands on the stack area is faithful: the epilogue reads the saved registers back from memory.
  *   epilogue  BLK_EPILOGUE_CYCLES (3) cycles: X, A and Y are pulled from the stack (S goes up three levels), the transfer ends and every blk_* field is 0 again. The interrupt inputs are sampled here for the first time since the prologue and never inside a
- *             transfer (the sample at the end of the epilogue, with the I flag of the sample as for any instruction; block_irq_after_epilogue 1).
+ *             transfer (the sample at the end of the epilogue, with the I flag of the sample as for any instruction; constants.def block_irq_after_epilogue 1).
  * A transfer of x bytes takes 17 + 6x cycles at the speed in force (each step is charged at the speed it starts at, and only an instruction can change the speed). The step has no local state: everything is in the instance (D-92).
  */
-#define BLK_PROLOGUE_CYCLES 14u
+#define BLK_PROLOGUE_CYCLES ((uint32_t)DS_CONST_block_prologue_cycles) /* constants.def (ASSUMED LED-CPU-0008) */
 #define BLK_TABLE_CYCLES 17u /* the manual's fixed part of 17 + 6x, the table row of the five opcodes */
 #define BLK_EPILOGUE_CYCLES (BLK_TABLE_CYCLES - BLK_PROLOGUE_CYCLES)
 #define BLK_BYTE_CYCLES 6u
@@ -546,9 +546,10 @@ static uint32_t interrupt_entry(struct ds_instance *inst, struct ds_obs_log *log
 #define BLK_OPCODE_TIN 0xD3u
 #define BLK_OPCODE_TIA 0xE3u
 #define BLK_OPCODE_TAI 0xF3u
-#define BLK_IRQ_AFTER_EPILOGUE 1u /* plan 03-25 task 3 moves this and the prologue length to constants.def */
+#define BLK_IRQ_AFTER_EPILOGUE ((uint32_t)DS_CONST_block_irq_after_epilogue) /* constants.def (ASSUMED LED-IRQ-0007): 1 samples after the epilogue, 0 leaves the sample to the next instruction */
 #define BLK_LENGTH_MAX 65536u /* the length operand 0 means this many bytes (H8-6) */
-_Static_assert(BLK_EPILOGUE_CYCLES >= 1u, "the epilogue has at least one cycle");
+_Static_assert(BLK_PROLOGUE_CYCLES >= 1u && BLK_PROLOGUE_CYCLES < BLK_TABLE_CYCLES, "block_prologue_cycles is from 1 to 16: the prologue and the epilogue each have a cycle");
+_Static_assert(BLK_IRQ_AFTER_EPILOGUE <= 1u, "block_irq_after_epilogue is 0 or 1");
 _Static_assert(BLK_READ_CYCLE < BLK_BYTE_CYCLES, "the source read comes before the destination write");
 
 static int block_mnemonic(uint32_t mn)

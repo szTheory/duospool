@@ -131,7 +131,7 @@ void ds_profile_hash(const struct ds_profile *profile, uint8_t out[DS_DIGEST_BYT
 
 /* ---- the region table ---- */
 
-enum region_id { R_PROF, R_CONT, R_POWR, R_TIME, R_RAM8, R_MPRS, R_CPU0, R_BUS0, R_TIMR, R_IRQC, R_IRQS, R_COUNT };
+enum region_id { R_PROF, R_CONT, R_POWR, R_TIME, R_RAM8, R_MPRS, R_CPU0, R_BUS0, R_TIMR, R_IRQC, R_IRQS, R_BLKT, R_COUNT };
 
 struct region {
     char tag[5];            /* four ASCII bytes and a NUL, which is not written */
@@ -167,6 +167,12 @@ _Static_assert(offsetof(struct ds_instance, timer_enabled) + 1u - offsetof(struc
 _Static_assert(offsetof(struct ds_instance, irq_i_sample) + 1u - offsetof(struct ds_instance, irq_disable) == 3u, "the controller bytes are not the 3 bytes of the IRQC payload");
 _Static_assert(offsetof(struct ds_instance, irq_stim_level) + DS_IRQ_STIM_MAX - offsetof(struct ds_instance, irq_stim_at) == DS_IRQ_STIM_MAX * (sizeof(uint64_t) + 2u), "the stimulus arrays are not the 160 bytes of the IRQS payload");
 
+/*
+ * The block transfer in progress (plan 03-25; D-92, D-100, D-121): region BLKT is the 11 bytes blk_active, blk_opcode, blk_toggle, blk_remaining (u32), blk_src (u16) and blk_dst (u16), one live span in the order of the declarations of ds_core.h,
+ * whose adjacency struct ds_instance asserts; every field is 0 when no transfer is active. The remaining count is 0 to 65536, so the high byte of its u32 is the 17th bit.
+ */
+_Static_assert(offsetof(struct ds_instance, blk_dst) + sizeof(uint16_t) - offsetof(struct ds_instance, blk_active) == 11u, "the block transfer fields are not the 11 bytes of the BLKT payload");
+
 static const struct region regions[R_COUNT] = {
     [R_PROF] = {"PROF", DS_DIGEST_BYTES, offsetof(struct ds_instance, profile), sizeof(struct ds_profile)},
     [R_CONT] = {"CONT", DS_CONTENT_ID_BYTES + 4u + 4u, offsetof(struct ds_instance, content_id), DS_CONTENT_ID_BYTES},
@@ -180,6 +186,7 @@ static const struct region regions[R_COUNT] = {
     [R_TIMR] = {"TIMR", 11u, offsetof(struct ds_instance, timer_origin), offsetof(struct ds_instance, timer_enabled) + 1u - offsetof(struct ds_instance, timer_origin)},
     [R_IRQC] = {"IRQC", 3u, offsetof(struct ds_instance, irq_disable), offsetof(struct ds_instance, irq_i_sample) + 1u - offsetof(struct ds_instance, irq_disable)},
     [R_IRQS] = {"IRQS", DS_IRQ_STIM_MAX * (8u + 2u), offsetof(struct ds_instance, irq_stim_at), offsetof(struct ds_instance, irq_stim_level) + DS_IRQ_STIM_MAX - offsetof(struct ds_instance, irq_stim_at)},
+    [R_BLKT] = {"BLKT", 11u, offsetof(struct ds_instance, blk_active), offsetof(struct ds_instance, blk_dst) + sizeof(uint16_t) - offsetof(struct ds_instance, blk_active)},
 };
 
 /* the payload of one region: exactly regions[index].payload_len bytes, one explicit field per call, never a struct */
@@ -247,6 +254,14 @@ static void emit_payload(struct writer *w, const struct ds_instance *inst, uint3
         }
         break;
     }
+    case R_BLKT: /* the active flag, the opcode, the alternation state, the remaining count as a u32 and the source and destination addresses as u16 (plan 03-25; D-100, D-121), one explicit field per line */
+        w_u8(w, inst->blk_active);
+        w_u8(w, inst->blk_opcode);
+        w_u8(w, inst->blk_toggle);
+        w_u32(w, inst->blk_remaining);
+        w_u16(w, inst->blk_src);
+        w_u16(w, inst->blk_dst);
+        break;
     default:
         break;
     }

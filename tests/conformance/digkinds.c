@@ -9,13 +9,15 @@
  *                   order, every payload against the instance, the stream length, and then that SHA-256 of the captured stream equals
  *                   ds_digest. expect items, separated by ';': version=N, frames=TAG:LEN,TAG:LEN,..., size=N, enum=N, digest=HEX64, and the optional item poke=timer-irq
  *                   (plan 03-22): before the capture the runner writes the nonzero values timer_origin $0102030405060708, timer_counter $11, timer_reload $22, timer_enabled 1, irq_disable 5 and tiq_latch 1 into the booted instance (a test hook: the boot leaves them zero), so the encoding of the
- *                   regions TIMR and IRQC is pinned with nonzero bytes in a literal derived outside the code. A case key irq_stim is declared to the instance before the capture, so the encoding of IRQS is pinned the same way.
+ *                   regions TIMR and IRQC is pinned with nonzero bytes in a literal derived outside the code. A case key irq_stim is declared to the instance before the capture, so the encoding of IRQS is pinned the same way. The optional item poke=block-mid (plan 03-25)
+ *                   writes a transfer in progress (active, opcode $E3, toggle 1, remaining $00010000, source $1234, destination $ABCD) so that the region BLKT is pinned with nonzero bytes, the 17th bit of the count included.
  *   digest_pair     request is two requests separated by "||"; the first is booted twice, into blocks prefilled with different bytes, and
  *                   the second once; the two boots of the first must agree, and expect is same (the second agrees too) or differ
  *   digest_region   boots the request, and for every region reached through ds_region_info flips one byte of live state, the first and the
  *                   last byte of its live span: each flip must change the digest, and restoring the byte must restore it. One assertion per
  *                   region. expect tags=A,B,...: the region count and order; TAG:first says that only the first byte of the live span is
- *                   text of the stream (the PROF span is the whole profile struct, whose tail is the padding of the last value, not hashed)
+ *                   text of the stream (the PROF span is the whole profile struct, whose tail is the padding of the last value, not hashed); TAG:all (plan 03-25) flips every byte of the live span, one after the other, so a field in the middle of a region
+ *                   (the remaining count of BLKT) is shown to change the digest too
  *   profile_hash    expect fields: each of the 13 fields flipped (value, status, bound_by) changes ds_profile_hash, one assertion per field;
  *                   expect identity;unbound=HEX;resolved=HEX: literals, id and revision flips, bytes after a NUL are not hashed, the sorted
  *                   unresolved ids; the resolved literal is the profile of the request bound as the default request binds
@@ -140,7 +142,7 @@ static const char *block_boot(const char *fixture, const char *request, unsigned
 
 /* ---- kind digest_stream ---- */
 
-#define DS_REGIONS_MAX 12u
+#define DS_REGIONS_MAX 16u
 
 struct frame_want {
     char tag[5];
@@ -184,6 +186,7 @@ void kind_digest_stream(const struct kase *k, struct ctx *c, char *got, size_t g
     int nframes = 0;
     int have_frames = 0;
     int poke = 0;
+    int poke_blk = 0;
     uint32_t want_version = 0u;
     int have_version = 0;
     size_t want_size = 0u;
@@ -224,6 +227,8 @@ void kind_digest_stream(const struct kase *k, struct ctx *c, char *got, size_t g
             memcpy(want_digest, item + 7, 65u);
         } else if (strcmp(item, "poke=timer-irq") == 0) {
             poke = 1;
+        } else if (strcmp(item, "poke=block-mid") == 0) {
+            poke_blk = 1;
         } else {
             release_boot(&b);
             harness_error(c, "a digest_stream expect item is malformed");
@@ -255,6 +260,16 @@ void kind_digest_stream(const struct kase *k, struct ctx *c, char *got, size_t g
         wr->timer_enabled = 1u;
         wr->irq_disable = 5u;
         wr->tiq_latch = 1u;
+    }
+    if (poke_blk) {
+        struct ds_instance *wr = (struct ds_instance *)(void *)b.mem;
+
+        wr->blk_active = 1u; /* a transfer in the middle of a TIA with the whole 65536 bytes still to move (plan 03-25): the u32 count has its 17th bit set */
+        wr->blk_opcode = 0xE3u;
+        wr->blk_toggle = 1u;
+        wr->blk_remaining = 0x00010000u;
+        wr->blk_src = 0x1234u;
+        wr->blk_dst = 0xABCDu;
     }
     memset(&cp, 0, sizeof cp);
     ds_digest_stream(inst, cap_sink, &cp);
@@ -320,6 +335,11 @@ void kind_digest_stream(const struct kase *k, struct ctx *c, char *got, size_t g
                 same = rd64(pl + 10u * slot) == inst->irq_stim_at[slot] && pl[10u * slot + 8u] == inst->irq_stim_line[slot] && pl[10u * slot + 9u] == inst->irq_stim_level[slot];
             }
             check(c, same, msg);
+        } else if (strcmp(fw[i].tag, "BLKT") == 0) {
+            /* the active flag, the opcode, the alternation state, the remaining count as a u32 little-endian, the source and the destination as u16 little-endian (plan 03-25): 11 bytes */
+            check(c, fw[i].len == 11u && pl[0] == inst->blk_active && pl[1] == inst->blk_opcode && pl[2] == inst->blk_toggle && rd32(pl + 3) == inst->blk_remaining &&
+                         (unsigned)(pl[7] | ((unsigned)pl[8] << 8)) == (unsigned)inst->blk_src && (unsigned)(pl[9] | ((unsigned)pl[10] << 8)) == (unsigned)inst->blk_dst,
+                  msg);
         } else {
             harness_error(c, "a digest_stream frame names a tag that the case does not know");
             break;
@@ -472,6 +492,7 @@ void kind_digest_region(const struct kase *k, struct ctx *c, char *got, size_t g
             const char *why = NULL;
             int in_block = 0;
             int first_only = 0;
+            int every_byte = 0;
             char want_tag[5];
             size_t wl;
             unsigned pass;
@@ -485,13 +506,14 @@ void kind_digest_region(const struct kase *k, struct ctx *c, char *got, size_t g
             memset(want_tag, 0, sizeof want_tag);
             memcpy(want_tag, want[index], wl < 4u ? wl : 4u);
             first_only = wl == 10u && strcmp(want[index] + 4, ":first") == 0;
-            if ((wl != 4u && !first_only) || strcmp(tag, want_tag) != 0) {
+            every_byte = wl == 8u && strcmp(want[index] + 4, ":all") == 0;
+            if ((wl != 4u && !first_only && !every_byte) || strcmp(tag, want_tag) != 0) {
                 why = "a region has another tag than the case lists at its place";
             } else if (!in_block) {
                 why = "the live span of a region is empty or outside the instance";
             }
-            for (pass = 0u; why == NULL && pass < (first_only ? 1u : 2u); pass++) {
-                uint8_t *at = pass == 0u ? ptr : ptr + (len - 1u);
+            for (pass = 0u; why == NULL && pass < (first_only ? 1u : every_byte ? (unsigned)len : 2u); pass++) {
+                uint8_t *at = every_byte ? ptr + pass : pass == 0u ? ptr : ptr + (len - 1u);
                 uint8_t saved = *at;
 
                 *at = (uint8_t)(saved ^ 0x01u);
@@ -499,8 +521,9 @@ void kind_digest_region(const struct kase *k, struct ctx *c, char *got, size_t g
                 *at = saved;
                 (void)ds_digest(inst, restored);
                 if (memcmp(flipped, before, DS_DIGEST_BYTES) == 0) {
-                    why = pass == 0u ? "flipping the first byte of the live state of a region did not change the digest"
-                                     : "flipping the last byte of the live state of a region did not change the digest";
+                    why = every_byte ? "flipping a byte of the live state of a region did not change the digest"
+                         : pass == 0u ? "flipping the first byte of the live state of a region did not change the digest"
+                                      : "flipping the last byte of the live state of a region did not change the digest";
                 } else if (memcmp(restored, before, DS_DIGEST_BYTES) != 0) {
                     why = "restoring the flipped byte did not restore the digest";
                 }
