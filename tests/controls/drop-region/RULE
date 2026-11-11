@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Toy control (D-85): a serializer that lists the RAM8 region but does not write its payload, made from the live src/core/serial.c by
+# scripts/control-mutate. The anchor is the one live statement that writes the RAM8 payload into the stream; the replacement is an empty
+# statement. The region table still reports RAM8 and the frame still declares 8192 bytes, so the digest simply no longer depends on work RAM.
+# The case in EXPECT must come out guest_failure on the toy, or the per-region perturbation proves nothing.
+tag=rule-drop-ram8-payload
+file=src/core/serial.c
+anchor=w_bytes(w, inst->ram8k, DS_RAM8K_BYTES);
+replace=;

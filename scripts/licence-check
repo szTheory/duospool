@@ -8,7 +8,10 @@
 #   LICENSE-APACHE must match the pinned apache.org sha256 (LICENSE_HASH_MISMATCH).
 #   LICENSE-MIT and LICENSE-0BSD must carry the holder line (LICENSE_HOLDER_MISSING) and their permission
 #   sentence, matched as a fixed string (LICENSE_TEXT_MISSING).
-#   Every regular file under ROOT/scripts/ must carry both SPDX lines in its first five lines (SPDX_HEADER_MISSING).
+#   Every regular file under ROOT/scripts/ must carry both SPDX lines in its first five lines (SPDX_HEADER_MISSING). So must every
+#   .c, .h and .def file under ROOT/src/ and ROOT/tests/ (D-71), with the same MIT OR Apache-2.0 id; the one exclusion is
+#   ROOT/tests/licence/, which holds deliberately headerless controls (a control must be able to lack a header). Every regular
+#   file under ROOT/fixtures/ must carry the holder line and the id 0BSD (fixture sources are 0BSD, D-01).
 # stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then one line  RECORDS n
 # stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
 # exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error
@@ -26,6 +29,7 @@ holder='Copyright (c) 2026 The DuoSpool Authors'
 mit_sentence='Permission is hereby granted, free of charge, to any person obtaining a copy'
 bsd_sentence='Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted.'
 spdx_id='SPDX-License-Identifier: MIT OR Apache-2.0'
+spdx_fixture_id='SPDX-License-Identifier: 0BSD'
 spdx_holder='SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors'
 
 expect=""
@@ -38,6 +42,12 @@ while [ $# -gt 0 ]; do
     *) usage ;;
   esac
 done
+# an --expect that names no code would make a control assert nothing: with no violations got and want are both empty and the
+# control would pass vacuously (WR-05). Exit 2, never 0.
+if [ "$have_expect" -eq 1 ] && [ -z "$(printf '%s' "$expect" | tr -d ', \t\r\n')" ]; then
+  echo "HARNESS_EMPTY_EXPECT --expect names no code" >&2
+  exit 2
+fi
 if [ ! -d "$root" ]; then
   echo "HARNESS_NO_FILE $root" >&2
   exit 2
@@ -79,18 +89,40 @@ check_permissive() {
 check_permissive LICENSE-MIT "$mit_sentence"
 check_permissive LICENSE-0BSD "$bsd_sentence"
 
-# SPDX header on every regular file under scripts/, both lines within the first five
-if [ -d "$root/scripts" ]; then
-  find "$root/scripts" -type f > "$tmp/scripts.list"
+# spdx_scan LISTFILE ID : every file named in LISTFILE (one path per line) must carry ID and the holder line in its first five lines.
+# The expected id is a parameter, so the one rule serves code (MIT OR Apache-2.0) and fixtures (0BSD).
+spdx_scan() {
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     nrec=$((nrec + 1))
     rel=${f#"$root"/}
     head -n 5 "$f" > "$tmp/head5"
-    if ! grep -Fq -e "$spdx_id" "$tmp/head5" || ! grep -Fq -e "$spdx_holder" "$tmp/head5"; then
+    if ! grep -Fq -e "$2" "$tmp/head5" || ! grep -Fq -e "$spdx_holder" "$tmp/head5"; then
       printf '%s\tSPDX_HEADER_MISSING\t0\t%s\n' "$rel" "$rel" >> "$viol0"
     fi
-  done < "$tmp/scripts.list"
+  done < "$1"
+}
+
+# scripts/: every regular file
+if [ -d "$root/scripts" ]; then
+  find "$root/scripts" -type f > "$tmp/scripts.list"
+  spdx_scan "$tmp/scripts.list" "$spdx_id"
+fi
+
+# src/ and tests/: C sources, headers and .def files (tests/licence/ holds the deliberately headerless controls)
+: > "$tmp/code.list"
+if [ -d "$root/src" ]; then
+  find "$root/src" -type f \( -name '*.c' -o -name '*.h' -o -name '*.def' \) >> "$tmp/code.list"
+fi
+if [ -d "$root/tests" ]; then
+  find "$root/tests" -type f \( -name '*.c' -o -name '*.h' -o -name '*.def' \) ! -path "$root/tests/licence/*" >> "$tmp/code.list"
+fi
+spdx_scan "$tmp/code.list" "$spdx_id"
+
+# fixtures/: every regular file, 0BSD
+if [ -d "$root/fixtures" ]; then
+  find "$root/fixtures" -type f > "$tmp/fixtures.list"
+  spdx_scan "$tmp/fixtures.list" "$spdx_fixture_id"
 fi
 
 sort -u "$viol0" > "$viol"

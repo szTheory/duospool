@@ -91,6 +91,50 @@ expect_pass() {
   echo "SYNTH $1 PASS"
 }
 
+# expect_git_failure CASE REPO TREEPATH: a git read that fails must stop the checker with exit 2, never read as a pass (CR-03).
+# The repository must first violate the ordering (exit 1); then the loose tree object for TREEPATH is deleted, which makes
+# the history walk over that path fail. Fixed expectation: exit 2, HARNESS_GIT_FAILED on stderr, and neither the RECORDS
+# line nor EXPECT_OK on stdout, with and without --expect.
+expect_git_failure() {
+  egf_case=$1
+  egf_repo=$2
+  egf_path=$3
+  if sh "$checker" --repo "$egf_repo" > "$work/out" 2>&1; then r=0; else r=$?; fi
+  if [ "$r" -ne 1 ]; then
+    echo "SYNTH $egf_case FAIL"
+    echo "  precondition: the intact repository exited $r, wanted 1 (a violation)"
+    failed=1
+    return
+  fi
+  egf_h=$(g "$egf_repo" rev-parse "HEAD:$egf_path")
+  egf_rest=${egf_h#??}
+  egf_pre=${egf_h%"$egf_rest"}
+  if [ ! -f "$egf_repo/.git/objects/$egf_pre/$egf_rest" ]; then
+    echo "SYNTH $egf_case FAIL"
+    echo "  precondition: no loose object for $egf_path"
+    failed=1
+    return
+  fi
+  rm -f "$egf_repo/.git/objects/$egf_pre/$egf_rest"
+  if sh "$checker" --repo "$egf_repo" > "$work/out" 2>&1; then r=0; else r=$?; fi
+  if [ "$r" -ne 2 ] || ! grep -q '^HARNESS_GIT_FAILED ' "$work/out" || grep -q '^RECORDS ' "$work/out"; then
+    echo "SYNTH $egf_case FAIL"
+    echo "  without --expect the checker exited $r, wanted 2 with HARNESS_GIT_FAILED and no RECORDS line"
+    sed 's/^/  /' "$work/out"
+    failed=1
+    return
+  fi
+  if sh "$checker" --repo "$egf_repo" --expect PROTOCOL_AFTER_SPIKE > "$work/out" 2>&1; then r=0; else r=$?; fi
+  if [ "$r" -ne 2 ] || grep -q '^EXPECT_OK$' "$work/out"; then
+    echo "SYNTH $egf_case FAIL"
+    echo "  with --expect the checker exited $r, wanted 2 and no EXPECT_OK"
+    sed 's/^/  /' "$work/out"
+    failed=1
+    return
+  fi
+  echo "SYNTH $egf_case PASS"
+}
+
 # ok-order: protocol commit, then a spike commit
 d=$(new ok-order)
 add_scorer "$d"
@@ -198,6 +242,20 @@ d=$(new scorer-missing)
 add_protocol "$d"
 add_spike "$d"
 expect_codes scorer-missing "$d" SCORER_AFTER_SPIKE
+
+# git-failure-spikes: the ordering is violated (spike first), but the history walk over spikes/tool-01 fails
+d=$(new git-failure-spikes)
+add_scorer "$d"
+add_spike "$d"
+add_protocol "$d"
+expect_git_failure git-failure-spikes "$d" spikes
+
+# git-failure-protocol: the history walk over the protocol's directory fails
+d=$(new git-failure-protocol)
+add_scorer "$d"
+add_spike "$d"
+add_protocol "$d"
+expect_git_failure git-failure-protocol "$d" docs
 
 if [ "$failed" -ne 0 ]; then
   exit 1

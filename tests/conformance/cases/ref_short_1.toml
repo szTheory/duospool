@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: a one byte image, otherwise fully declared. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_short_1"
+kind = "refuse"
+fixture = "plain-256k"
+request = "len=1"
+expect = "load.too_short"
+meaning = "A one byte request is refused as load.too_short, shorter than one 8 KiB bank, and no instance is created"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

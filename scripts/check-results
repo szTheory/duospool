@@ -41,6 +41,12 @@ while [ $# -gt 0 ]; do
     *) [ -z "$proto" ] || usage; proto=$1; shift ;;
   esac
 done
+# an --expect that names no code would make a control assert nothing: with no violations got and want are both empty and the
+# control would pass vacuously (WR-05). Exit 2, never 0.
+if [ "$have_expect" -eq 1 ] && [ -z "$(printf '%s' "$expect" | tr -d ', \t\r\n')" ]; then
+  echo "HARNESS_EMPTY_EXPECT --expect names no code" >&2
+  exit 2
+fi
 [ $# -eq 0 ] || usage
 [ -n "$proto" ] && [ -n "$mode" ] || usage
 for f in "$proto" "$resfile"; do

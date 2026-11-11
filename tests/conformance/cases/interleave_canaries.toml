@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Canaries (CORE-01, D-55): three adjacent instances (A, B, A again) sit in one test-allocated arena with 64 canary bytes on each side of every
+# block and in the alignment padding after each. No canary byte changes through the boot of each, 48 interleaved calls, the discard of the middle
+# block and its reboot, and the first instance's digest does not move while its neighbour is discarded. The canary check itself is shown to see a
+# changed guard byte and a changed padding byte. Evidence tier E0.
+id = "interleave_canaries"
+kind = "interleave_canaries"
+fixture = "plain-256k"
+request = "bind.powerup_policy=seeded-prng-v1;seed=1||bind.powerup_policy=seeded-prng-v1;seed=2;len=393216"
+expect = "lcg=1618033;steps=48"
+meaning = "No canary byte next to or between instances changes through boot, step, discard and reboot, and the canary check is itself able to fail"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

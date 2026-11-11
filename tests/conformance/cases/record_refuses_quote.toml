@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Hostile string (D-69): a requested profile id is host input, and a printed string never holds a double quote or a backslash. Three requests
+# built with the @hex: value prefix (6e6f22 is no followed by a double quote, 6e6f5c is no followed by a backslash, 6e6f80 is no followed by a
+# non-ASCII byte) are each refused by the core as load.profile_unknown, and the printer then returns an error status, an empty text and a zero
+# length and writes nothing. A clean id prints first, so the refusals come from the id and from nothing else. No record file is written.
+id = "record_refuses_quote"
+kind = "record_refuses_quote"
+fixture = "plain-256k"
+request = "profile=@hex:6e6f22||profile=@hex:6e6f5c||profile=@hex:6e6f80"
+expect = "load.profile_unknown"
+meaning = "A requested profile id that holds a double quote, a backslash or a non-ASCII byte makes the refusal printer return the string error and emit nothing, never an escaped string, while a clean id prints"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

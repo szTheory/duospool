@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Bank signature row, 384 KiB: every bank 0 to 127 of the window is read through the mapper boundary, first and last byte,
+# against the rows of the independent awk oracle (tests/conformance/mirror-oracle.awk). Evidence tier E0: the mirror
+# rule is an assumption (LED-LOAD-0003): the three emulator sources agree on it and no primary source was reachable, so
+# this shows agreement with the documented rule, not a match with hardware.
+id = "accept_384k_banksig"
+kind = "banksig"
+fixture = "plain-384k"
+request = ""
+expect = "banks=128"
+meaning = "A fully declared 384 KiB synthetic image reads the expected first and last byte of the file bank given by the rule (b and 0x1F for b below 0x40, 0x20 plus (b and 0x0F) for b of 0x40 and above, 48 file banks) for every bank 0 to 127 of the window through the mapper boundary, as given by the independent oracle"
+required = true
+control = false
+expect_outcome = "pass"
+pins = ["LED-LOAD-0003"]

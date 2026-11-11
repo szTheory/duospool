@@ -1,0 +1,153 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# fixture-check - the fixture manifest checker (FIX-02, D-59, D-60, D-85). This check enforces structure and byte identity of generated
+# images, not the meaning of a fixture. Nothing ROM-like is committed: the manifest records each synthetic recipe and the hash of the
+# bytes it generates, and this check compares those records with the bytes the runner actually emitted, as hashed by the host sha tool.
+# usage: fixture-check [--expect CODE[,CODE...]] [--root DIR] [--partial] --used FILE
+#   --root DIR   the repository root that holds fixtures/manifest/ (default: the repository root)
+#   --used FILE  the images the gate emitted, one line each:  NAME SIZE SHA256  (scripts/conformance-run fixtures writes it; SIZE is the
+#                byte count and SHA256 the digest, both measured by host tools over the runner's --emit output, never over a file in
+#                the tree). An empty or missing file is a harness error (exit 2): a check of nothing must never pass.
+#   Manifest: every ROOT/fixtures/manifest/ID.toml, two stages (scripts/lib/toml-subset.awk, then scripts/lib/fixture-rules.awk). The ID
+#   of a recipe NAME is NAME with each hyphen and colon replaced by an underscore (plain-256k is plain_256k, len:513 is len_513).
+#   Codes: FIX_MISSING_FIELD FIX_UNKNOWN_KEY FIX_BAD_ENUM FIX_ID_FILENAME_MISMATCH (per entry, scripts/lib/fixture-rules.awk) and, from the
+#   comparison of the used list with the manifest, FIX_UNLISTED (a used recipe with no entry) FIX_HASH_MISMATCH FIX_SIZE_MISMATCH and
+#   FIX_STALE (an entry that no used line names). Also per entry, FIX_BAD_LICENCE and FIX_BAD_VERDICT_SOURCE (the literal duospool-output
+#   is rejected: the emulator never judges itself, FIX-03).
+#   --partial    the used list holds only some recipes (conformance-run fixtures --only passes it): FIX_STALE is not evaluated. The real
+#                stage never passes it, so a manifest entry that nothing emits is always caught there (D-85).
+# stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then (clean) a line  FIXTURES manifest=N used=M  and  STATUS fixtures ok
+# stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
+# exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error
+set -eu
+LC_ALL=C; export LC_ALL
+here=$(cd "$(dirname "$0")" && pwd)
+
+usage() {
+  echo "usage: fixture-check [--expect CODE[,CODE...]] [--root DIR] [--partial] --used FILE" >&2
+  exit 2
+}
+
+expect=""
+have_expect=0
+used=""
+partial=0
+root=$(cd "$here/.." && pwd)
+while [ $# -gt 0 ]; do
+  case $1 in
+    --expect) [ $# -ge 2 ] || usage; expect=$2; have_expect=1; shift 2 ;;
+    --root) [ $# -ge 2 ] || usage; root=$2; shift 2 ;;
+    --used) [ $# -ge 2 ] || usage; used=$2; shift 2 ;;
+    --partial) partial=1; shift ;;
+    *) usage ;;
+  esac
+done
+# an --expect that names no code would make a control assert nothing (WR-05): exit 2, never 0
+if [ "$have_expect" -eq 1 ] && [ -z "$(printf '%s' "$expect" | tr -d ', \t\r\n')" ]; then
+  echo "HARNESS_EMPTY_EXPECT --expect names no code" >&2
+  exit 2
+fi
+[ -n "$used" ] || usage
+if [ ! -d "$root" ]; then
+  echo "HARNESS_NO_FILE $root" >&2
+  exit 2
+fi
+if [ ! -f "$used" ]; then
+  echo "HARNESS_NO_FILE $used" >&2
+  exit 2
+fi
+root=$(cd "$root" && pwd)
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+tab=$(printf '\t')
+viol0="$tmp/viol0"
+viol="$tmp/viol"
+: > "$viol0"
+
+# the used list: NAME SIZE SHA256 per line (comments and blank lines are not allowed to hide an empty list: an entry-less file is exit 2)
+awk '/^[ \t]*$/ { next } { n++ } END { exit !(n > 0) }' "$used" || {
+  echo "HARNESS_EMPTY_USED $used holds no line: a check of nothing never passes" >&2
+  exit 2
+}
+if ! awk '/^[ \t]*$/ { next }
+    NF != 3 || $1 !~ /^[a-z0-9:-]+$/ || $2 !~ /^[0-9]+$/ || $3 !~ /^[0-9a-f]+$/ || length($3) != 64 { bad = NR }
+    END { exit bad ? 1 : 0 }' "$used"; then
+  echo "HARNESS_BAD_USED $used has a line that is not  NAME SIZE SHA256  (NAME a-z 0-9 : -, SIZE decimal, SHA256 64 lowercase hex)" >&2
+  exit 2
+fi
+
+# ---- manifest: stage 1 (toml-subset.awk, no pipeline: a failing stage 1 must not read as no violations) and stage 2 per file ----
+: > "$tmp/manifest.tsv"
+nman=0
+if [ -d "$root/fixtures/manifest" ]; then
+  for m in "$root"/fixtures/manifest/*.toml; do
+    [ -f "$m" ] || continue
+    nman=$((nman + 1))
+    rel=${m#"$root"/}
+    stem=$(basename "$m" .toml)
+    size=$(wc -c < "$m" | tr -d ' ')
+    if [ "$size" -eq 0 ] || [ "$size" -gt 16384 ]; then
+      printf '%s\tFIX_MISSING_FIELD\t0\tentry is empty or above 16384 bytes\n' "$rel" >> "$viol0"
+      printf '%s\t\t\n' "$stem" >> "$tmp/manifest.tsv"
+      continue
+    fi
+    awk -f "$here/lib/toml-subset.awk" "$m" > "$tmp/stage1" 2> /dev/null || : > "$tmp/stage1"
+    # stage 2 always prints at least the M record; an empty or failed stage 2 is a dead checker, not a pass
+    if fname="$stem" awk -f "$here/lib/fixture-rules.awk" "$tmp/stage1" > "$tmp/stage2" 2> /dev/null && [ -s "$tmp/stage2" ]; then :; else
+      printf '%s\tSTAGE2_DEAD\t0\t\n' "$rel" >> "$viol0"
+      printf '%s\t\t\n' "$stem" >> "$tmp/manifest.tsv"
+      continue
+    fi
+    while IFS="$tab" read -r tag a b c; do
+      case $tag in
+        V) printf '%s\t%s\t%s\t%s\n' "$rel" "$a" "$b" "$c" >> "$viol0" ;;
+        M) printf '%s\t%s\t%s\n' "$a" "$b" "$c" >> "$tmp/manifest.tsv" ;;
+        *) printf '%s\tSTAGE2_DEAD\t0\tunknown record %s\n' "$rel" "$tag" >> "$viol0" ;;
+      esac
+    done < "$tmp/stage2"
+  done
+fi
+
+# ---- the comparison: every used image needs its entry, and the entry's size and hash must be what the host tools measured ----
+# The key of an entry is its file stem; the key of a used NAME is NAME with hyphens and colons turned into underscores. Output: violation lines.
+awk -v mf="$tmp/manifest.tsv" -v usedf="$used" -v partial="$partial" '
+  BEGIN {
+    while ((getline line < mf) > 0) { split(line, f, "\t"); msize[f[1]] = f[2]; msha[f[1]] = f[3]; inman[f[1]] = 1 }
+    while ((getline line < usedf) > 0) {
+      ln++
+      if (line ~ /^[ \t]*$/) continue
+      split(line, f, " ")
+      key = f[1]; gsub(/[-:]/, "_", key)
+      if (!(key in inman)) { printf "%s\tFIX_UNLISTED\t%d\t%s\n", usedf, ln, f[1]; continue }  # rule-unlisted
+      seen[key] = 1
+      if (msha[key] != f[3]) printf "fixtures/manifest/%s.toml\tFIX_HASH_MISMATCH\t0\t%s: emitted %s, listed %s\n", key, f[1], f[3], msha[key]
+      if (msize[key] != f[2]) printf "fixtures/manifest/%s.toml\tFIX_SIZE_MISMATCH\t0\t%s: emitted %s, listed %s\n", key, f[1], f[2], msize[key]
+    }
+    if (partial != 1) for (key in inman) if (!(key in seen)) printf "fixtures/manifest/%s.toml\tFIX_STALE\t0\tno used line names this entry\n", key  # rule-stale
+  }' >> "$viol0" || { echo "HARNESS_AWK failed (comparison)" >&2; exit 2; }
+
+nused=$(awk '/^[ \t]*$/ { next } { n++ } END { print n + 0 }' "$used")
+sort -u "$viol0" > "$viol"
+
+if [ "$have_expect" -eq 1 ]; then
+  got=$(awk -F'\t' '{ print $2 }' "$viol" | sort -u | tr '\n' ',' | sed 's/,$//')
+  want=$(printf '%s\n' "$expect" | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/,$//')
+  if [ "$got" = "$want" ]; then
+    echo "EXPECT_OK"
+    exit 0
+  fi
+  echo "EXPECT_MISMATCH wanted '$want' got '${got:-<none>}'" >&2
+  cat "$viol" >&2
+  exit 1
+fi
+
+cat "$viol"
+if [ -s "$viol" ]; then
+  exit 1
+fi
+echo "FIXTURES manifest=$nman used=$nused"
+echo "STATUS fixtures ok"
+exit 0

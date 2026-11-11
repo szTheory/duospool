@@ -1,0 +1,192 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# linux-repro - reproduce the gate on Linux with a second toolchain and a second awk, in a throwaway container (D-41, D-81, AGENTS.md: reproduce a
+# missing environment and label it). This is a LOCAL ONE-OFF RUN, NOT A CI CLAIM: it runs on one developer machine, under emulation when that
+# machine is not x86-64, and no GitHub Actions run exists. It never writes outside the repository's own build/ directory and a scratch output
+# directory, and it makes no remote write: the only network use is the container image pull and the apt package install inside the container.
+# usage: sh scripts/linux-repro            (LINUX_REPRO_PARTS="NAME ..." runs only the named parts; LINUX_REPRO_IMAGE overrides the image)
+#   The working tree (without build/) is copied to a writable directory inside an ubuntu:24.04 linux/amd64 container, git safe.directory is set,
+#   and git, gcc, clang with its sanitizer runtime (libclang-rt-18-dev: the sanitizers stage links ASan and UBSan, and Ubuntu ships those runtimes
+#   apart from clang itself) and llvm-18 (the symbolizer), cmake, ninja, make, pkg-config, binutils, perl, mawk and gawk are installed. Parts, each printed as
+#   LINUX_REPRO <part> PASS|FAIL , in this order:
+#     default-awk       sh scripts/check and sh scripts/check --selftest with the image's stock awk (mawk, installed before gawk) and cc = gcc
+#     mawk              the same two commands with awk selected as mawk and cc = clang
+#     gawk              the same two commands with awk selected as gawk and cc = gcc
+#     gate-gcc          cmake --preset gate-gcc and the build (-std=c11 -pedantic -Wall -Wextra -Wconversion -Wshadow -Werror)
+#     gate-clang        the same on the preset gate-clang
+#     core-boundary-gcc sh scripts/core-boundary-check --cc gcc, and the stage core-boundary run with cc = gcc
+#   build/ is removed before every part (a cache from another compiler must never be judged). The awk and compiler versions in use are printed
+#   per part. A failing part prints the failing CHECK lines and the tail of its log; the full logs stay in the scratch directory named at the end.
+# stdout: banner, per-part lines, LINUX_REPRO RESULT PASS|FAIL, LINUX_REPRO_DURATION seconds
+# exit  : 0 every part passed | 1 a part failed | 2 docker is unavailable (LINUX_REPRO_UNAVAILABLE) or a harness error. Unavailable is never a pass:
+#         the caller records Linux verification as unverified.
+set -eu
+LC_ALL=C; export LC_ALL
+here=$(cd "$(dirname "$0")" && pwd)
+root=$(cd "$here/.." && pwd)
+
+echo "LINUX_REPRO local container run, not a CI claim"
+
+if ! command -v docker > /dev/null 2>&1; then
+  echo "LINUX_REPRO_UNAVAILABLE docker is not installed; Linux verification stays unverified"
+  exit 2
+fi
+if ! docker info > /dev/null 2>&1; then
+  echo "LINUX_REPRO_UNAVAILABLE the docker daemon does not answer; Linux verification stays unverified"
+  exit 2
+fi
+
+parts=${LINUX_REPRO_PARTS:-"default-awk mawk gawk gate-gcc gate-clang core-boundary-gcc"}
+image=${LINUX_REPRO_IMAGE:-ubuntu:24.04}
+out=$(mktemp -d)
+start=$(date +%s)
+
+# The in-container program: POSIX sh, one function per part. The host copy is mounted read-only; the work copy is writable.
+cat > "$out/inner.sh" <<'INNER'
+set -u
+export DEBIAN_FRONTEND=noninteractive
+PARTS=$1
+fail=0
+git_safe() { git config --global --add safe.directory '*'; }
+
+mkdir -p /work
+( cd /src && tar cf - --exclude=./build . ) | ( cd /work && tar xf - )
+cd /work
+echo "LINUX_REPRO env $(uname -sm) $(. /etc/os-release && echo "$PRETTY_NAME")"
+apt-get update -qq > /out/apt-update.log 2>&1 || { echo "LINUX_REPRO HARNESS apt-get update failed"; tail -5 /out/apt-update.log; exit 2; }
+# stock awk first: gawk is installed later, because its alternatives priority would take over the name awk
+apt-get install -y -qq --no-install-recommends git ca-certificates gcc libc6-dev clang libclang-rt-18-dev llvm-18 cmake ninja-build make pkg-config binutils perl mawk > /out/apt-install.log 2>&1 \
+  || { echo "LINUX_REPRO HARNESS apt-get install failed"; tail -8 /out/apt-install.log; exit 2; }
+git_safe
+# llvm-symbolizer, so that a sanitizer report names functions and lines instead of offsets
+ASAN_SYMBOLIZER_PATH=/usr/lib/llvm-18/bin/llvm-symbolizer; export ASAN_SYMBOLIZER_PATH
+gawk_installed=0
+
+# select_cc gcc|clang: put cc first on PATH as the named compiler
+select_cc() {
+  ln -sf "/usr/bin/$1" /usr/local/bin/cc
+}
+
+# select_awk mawk|gawk|stock: awk by name ("stock" leaves the image's choice)
+select_awk() {
+  case $1 in
+    stock) ;;
+    *) update-alternatives --set awk "/usr/bin/$1" > /dev/null 2>&1 || { echo "LINUX_REPRO HARNESS cannot select awk $1"; return 2; } ;;
+  esac
+}
+
+versions() {
+  echo "  awk  : $(readlink -f "$(command -v awk)") : $( (awk -W version 2>&1 || awk --version 2>&1) | head -1)"
+  echo "  cc   : $(readlink -f "$(command -v cc)") : $(cc --version | head -1)"
+  echo "  cmake: $(cmake --version | head -1)"
+}
+
+# gate_part NAME AWK CC: the full gate, then the selftest, under the named awk and compiler
+gate_part() {
+  name=$1; awkname=$2; ccname=$3
+  rm -rf /work/build
+  if [ "$awkname" = gawk ] && [ "$gawk_installed" -eq 0 ]; then
+    apt-get install -y -qq --no-install-recommends gawk > /out/apt-gawk.log 2>&1 || { echo "LINUX_REPRO HARNESS apt-get install gawk failed"; return 2; }
+    gawk_installed=1
+  fi
+  if [ "$awkname" = mawk ] && [ "$gawk_installed" -eq 1 ]; then select_awk mawk || return 2; fi
+  if [ "$awkname" = mawk ] && [ "$gawk_installed" -eq 0 ]; then select_awk stock; fi
+  if [ "$awkname" = gawk ]; then select_awk gawk || return 2; fi
+  select_cc "$ccname"
+  echo "LINUX_REPRO part $name begins"
+  versions
+  t0=$(date +%s)
+  if sh scripts/check --timing > "/out/$name.gate.log" 2>&1; then g=0; else g=$?; fi
+  t1=$(date +%s)
+  if sh scripts/check --selftest > "/out/$name.selftest.log" 2>&1; then s=0; else s=$?; fi
+  stages=$(grep -c '^CHECK [a-z0-9-]* PASS$' "/out/$name.gate.log" || true)
+  if [ "$g" -eq 0 ] && [ "$s" -eq 0 ] && grep -qx 'CHECK RESULT PASS' "/out/$name.gate.log" && grep -qx 'SELFTEST RESULT PASS' "/out/$name.selftest.log"; then
+    echo "  gate exit $g, $stages stages PASS, $((t1 - t0)) s; selftest exit $s"
+    echo "LINUX_REPRO $name PASS"
+    return 0
+  fi
+  echo "  gate exit $g, selftest exit $s"
+  grep -E '^CHECK [a-z0-9-]* (FAIL|ERROR)' "/out/$name.gate.log" | sed 's/^/  /'
+  grep -E '^SELFTEST .* FAIL' "/out/$name.selftest.log" | sed 's/^/  /'
+  echo "  --- tail of the gate log"
+  tail -40 "/out/$name.gate.log" | sed 's/^/  /'
+  echo "LINUX_REPRO $name FAIL"
+  return 1
+}
+
+preset_part() {
+  name=$1; preset=$2; ccname=$3
+  rm -rf /work/build
+  select_cc "$ccname"
+  echo "LINUX_REPRO part $name begins"
+  versions
+  if cmake --preset "$preset" > "/out/$name.log" 2>&1 && cmake --build --preset "$preset" >> "/out/$name.log" 2>&1; then
+    echo "  compiler: $(grep -m1 'CMAKE_C_COMPILER:' "/work/build/$preset/CMakeCache.txt" 2>/dev/null)"
+    echo "  built with $(grep -m1 -o 'DS_WARNING_FLAGS:[A-Z]*=.*' "/work/build/$preset/CMakeCache.txt" 2>/dev/null)"
+    echo "LINUX_REPRO $name PASS"
+    return 0
+  fi
+  tail -40 "/out/$name.log" | sed 's/^/  /'
+  echo "LINUX_REPRO $name FAIL"
+  return 1
+}
+
+core_part() {
+  name=core-boundary-gcc
+  rm -rf /work/build
+  select_cc gcc
+  echo "LINUX_REPRO part $name begins"
+  versions
+  if sh scripts/core-boundary-check --cc gcc > "/out/$name.log" 2>&1 && grep -qx 'STATUS core-boundary ok' "/out/$name.log" \
+    && sh scripts/check --stage core-boundary >> "/out/$name.log" 2>&1; then
+    grep -E '^(STATUS|CORE)' "/out/$name.log" | head -3 | sed 's/^/  /'
+    echo "LINUX_REPRO $name PASS"
+    return 0
+  fi
+  tail -40 "/out/$name.log" | sed 's/^/  /'
+  echo "LINUX_REPRO $name FAIL"
+  return 1
+}
+
+for p in $PARTS; do
+  case $p in
+    default-awk) gate_part default-awk stock gcc || fail=1 ;;
+    mawk) gate_part mawk mawk clang || fail=1 ;;
+    gawk) gate_part gawk gawk gcc || fail=1 ;;
+    gate-gcc) preset_part gate-gcc gate-gcc gcc || fail=1 ;;
+    gate-clang) preset_part gate-clang gate-clang clang || fail=1 ;;
+    core-boundary-gcc) core_part || fail=1 ;;
+    *) echo "LINUX_REPRO HARNESS unknown part $p"; exit 2 ;;
+  esac
+done
+exit "$fail"
+INNER
+
+for p in $parts; do
+  case $p in
+    default-awk | mawk | gawk | gate-gcc | gate-clang | core-boundary-gcc) ;;
+    *) echo "usage: unknown part $p (parts: default-awk mawk gawk gate-gcc gate-clang core-boundary-gcc)" >&2; rm -rf "$out"; exit 2 ;;
+  esac
+done
+
+if docker run --rm --platform linux/amd64 -v "$root":/src:ro -v "$out":/out "$image" sh /out/inner.sh "$parts" > "$out/run.log" 2>&1; then r=0; else r=$?; fi
+cat "$out/run.log"
+end=$(date +%s)
+npass=$(grep -c '^LINUX_REPRO [a-z-]* PASS$' "$out/run.log" || true)
+nfail=$(grep -c '^LINUX_REPRO [a-z-]* FAIL$' "$out/run.log" || true)
+nparts=$(printf '%s\n' "$parts" | wc -w | tr -d ' ')
+echo "LINUX_REPRO_DURATION $((end - start)) s (linux/amd64, one-off; emulated when the host is not x86-64)"
+echo "LINUX_REPRO scratch logs: $out"
+echo "LINUX_REPRO note: these runs are the only gcc, mawk and gawk evidence of this repository so far; they are local one-offs, not a CI claim, and no CI run exists"
+if [ "$r" -eq 2 ]; then
+  echo "LINUX_REPRO RESULT HARNESS_ERROR"
+  exit 2
+fi
+if [ "$r" -eq 0 ] && [ "$nfail" -eq 0 ] && [ "$npass" -eq "$nparts" ]; then
+  echo "LINUX_REPRO RESULT PASS"
+  exit 0
+fi
+echo "LINUX_REPRO RESULT FAIL"
+exit 1

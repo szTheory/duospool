@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Power-on, zero policy (D-50): the work RAM and the eight mapping registers are zero, psg_noise is 1 (the placeholder generator must not
+# start at 0) and vdc_phase is 0, with no seed recorded. A modelling assumption (LED-PROF-0002), claims nothing about hardware.
+id = "poweron_zero"
+kind = "poweron"
+fixture = "plain-256k"
+request = ""
+expect = "policy=zero;seed=none;ram=zero;mpr=zero;psg_noise=0x1;vdc_phase=0x0;time=0"
+meaning = "Under the zero policy a boot lays down all-zero RAM and mapping registers, psg_noise 1, vdc_phase 0 and machine time 0, and records no seed"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

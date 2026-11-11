@@ -3,7 +3,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
 # audit-history - pre-publication audit of the full git history (D-02, D-33). Heuristic, not proof: it flags, the owner decides.
-# usage: audit-history [--allow FILE] [REPO]       (REPO defaults to .; FILE defaults to audit-history.allow beside this script)
+# usage: audit-history [--allow FILE] [--range BASE..HEAD] [REPO]
+#        (REPO defaults to .; FILE defaults to audit-history.allow beside this script)
 #   Scans every blob reachable from every ref (branches AND tags): `git rev-list --objects --all`, read back with
 #   `git cat-file --batch-check` using %(rest) in the format (without it every path-bearing line reads as "missing" and the
 #   audit passes vacuously). rev-list lists each object once, under one path, so every (blob, path) pair is also
@@ -16,10 +17,18 @@
 #     EXT           ROM, disc, save, archive or key extension
 #     TEXT-PATTERN  private-key header, cloud or token credential shape, or an absolute home-directory path
 #                   (only path:line and the kind are printed, never the matched text)
+# --range BASE..HEAD (D-56): a PR mode. Only what the range adds is read: the commits of `git rev-list BASE..HEAD` and the objects
+#   that `git rev-list --objects BASE..HEAD` lists (so a blob that already exists at BASE is not read again), and the text
+#   patterns are matched against those new blobs rather than against every commit's whole tree. BASE must be present, so a
+#   shallow clone is fine here (depth must reach BASE). The full-history mode below is unchanged and still refuses a shallow
+#   clone. A range that cannot be resolved, or that holds no commit, is a harness failure (exit 2), never "clean".
 # allowlist: lines  path<TAB>CHECK<TAB>reason  ('#' comments). A hit is suppressed only when its path AND its CHECK match.
 #   A ROM-SIZE allowance applies only while the blob has no NUL byte.
+#   A text hit is matched by CHECK  TEXT-PATTERN  (every text-pattern kind in that path) or by the narrower  TEXT-PATTERN:KIND
+#   (only that kind in that path, KIND being the bracketed name printed with the hit, for example the home-path kind of the mac
+#   shape). Prefer the narrow form: the wide form would also hide a credential added to the same path later.
 # stdout: hits as  CHECK <size|line> <path> , then a summary; a clean history ends with the line  audit-history: clean
-# exit  : 0 clean | 1 hits | 2 harness failure (a git read failed, bad usage, empty history). Exit 2 always comes first:
+# exit  : 0 clean | 1 hits | 2 harness failure (a git read failed, bad usage, empty or shallow history). Exit 2 always comes first:
 #         a failed read never reaches the clean/hit decision.
 # Self-match safety: this file is itself in history, so every TEXT-PATTERN below is written so that its own source text
 # cannot match it (each fixed prefix is followed by a bracket expression that the next source character, an opening
@@ -28,20 +37,30 @@
 LC_ALL=C; export LC_ALL
 
 usage() {
-  echo "usage: audit-history [--allow FILE] [REPO]" >&2
+  echo "usage: audit-history [--allow FILE] [--range BASE..HEAD] [REPO]" >&2
   exit 2
 }
 
 here=$(cd "$(dirname "$0")" && pwd)
 allow="$here/audit-history.allow"
 repo=.
+range=
 while [ $# -gt 0 ]; do
   case $1 in
     --allow) [ $# -ge 2 ] || usage; allow=$2; shift 2 ;;
+    --range) [ $# -ge 2 ] || usage; range=$2; shift 2 ;;
     -*) usage ;;
     *) repo=$1; shift ;;
   esac
 done
+# the range is one BASE..HEAD pair: not an option, not the three-dot form (a different set of commits), both ends present
+if [ -n "$range" ]; then
+  case $range in
+    -* | *...* | ..* | *..) usage ;;
+    *..*) ;;
+    *) usage ;;
+  esac
+fi
 if [ ! -f "$allow" ]; then
   echo "audit-history: allowlist not found: $allow" >&2
   exit 2
@@ -59,14 +78,37 @@ readfail() {
   exit 2
 }
 
-# ---- 1. enumerate the history (every status checked right after the command) ----
-git rev-list --all > "$t/commits" 2> "$t/err" || readfail "git rev-list --all"
-ncommits=$(wc -l < "$t/commits" | tr -d ' ')
-if [ "$ncommits" -eq 0 ]; then
-  echo "audit-history: no commits reachable from any ref (nothing to audit)" >&2
+# ---- 0. the audit needs the whole history: a shallow clone (a default CI checkout) holds a cut-off history, and auditing
+# it would print "clean" for commits that were never read (CR-02). Anything but a plain "false" is a harness failure; that
+# also covers git older than 2.15, which does not know the option and echoes it back.
+shallow=$(git rev-parse --is-shallow-repository 2> "$t/err") || shallow=unreadable
+if [ -z "$range" ] && [ "$shallow" != false ]; then
+  echo "audit-history: shallow or unreadable repository ($shallow): the audit needs full history; run git fetch --unshallow first" >&2
+  [ ! -s "$t/err" ] || sed 's/^/  /' "$t/err" >&2
   exit 2
 fi
-git rev-list --objects --missing=print --all > "$t/objs.raw" 2> "$t/err" || readfail "git rev-list --objects --all"
+
+# ---- 1. enumerate the history (every status checked right after the command) ----
+# the commits and the objects to read: every ref in full mode, only what BASE..HEAD adds in range mode
+if [ -n "$range" ]; then
+  git rev-list "$range" > "$t/commits" 2> "$t/err" || readfail "git rev-list $range"
+else
+  git rev-list --all > "$t/commits" 2> "$t/err" || readfail "git rev-list --all"
+fi
+ncommits=$(wc -l < "$t/commits" | tr -d ' ')
+if [ "$ncommits" -eq 0 ]; then
+  if [ -n "$range" ]; then
+    echo "audit-history: the range $range holds no commit (nothing to audit)" >&2
+  else
+    echo "audit-history: no commits reachable from any ref (nothing to audit)" >&2
+  fi
+  exit 2
+fi
+if [ -n "$range" ]; then
+  git rev-list --objects --missing=print "$range" > "$t/objs.raw" 2> "$t/err" || readfail "git rev-list --objects $range"
+else
+  git rev-list --objects --missing=print --all > "$t/objs.raw" 2> "$t/err" || readfail "git rev-list --objects --all"
+fi
 # --missing=print lists an object that is absent as ?<hash> instead of aborting: those are UNREADABLE hits (exit 1), not harness failures
 : > "$t/unread"
 awk -v ufile="$t/unread" '
@@ -146,8 +188,24 @@ rc=$?
 
 # ---- 5. text patterns over every commit, one kind at a time (each prefix is followed by a bracket that the next source char fails) ----
 : > "$t/text.raw"
-# textscan KIND PATTERN
+awk -F'\t' '$3 == 0 { print $1 }' "$t/facts" > "$t/textblobs"
+# textscan KIND PATTERN. Full mode: git grep over every commit's tree. Range mode: grep over each new text blob (no NUL byte) and
+# every path it has, so that text that was already there at BASE is not reported again.
 textscan() {
+  if [ -n "$range" ]; then
+    while read -r h; do
+      git cat-file blob "$h" > "$t/blob" 2> "$t/err" || readfail "git cat-file blob $h"
+      grep -a -n -E -e "$2" "$t/blob" > "$t/gg" 2> "$t/err"
+      grc=$?
+      [ "$grc" -le 1 ] || readfail "grep $1 $h"
+      [ "$grc" -eq 0 ] || continue
+      awk -F'\t' -v kind="$1" -v h="$h" -v ggf="$t/gg" '
+        BEGIN { while ((getline ln < ggf) > 0) { sub(/:.*/, "", ln); n++; lno[n] = ln } }
+        $1 == h { for (i = 1; i <= n; i++) printf "%s\t%s\t%s\n", kind, lno[i], $2 }
+      ' "$t/pairs.s" >> "$t/text.raw" || { echo "audit-history: awk failed (range text hits)" >&2; exit 2; }
+    done < "$t/textblobs"
+    return 0
+  fi
   while read -r c; do
     git grep -I -n -E "$2" "$c" -- . > "$t/gg" 2> "$t/err"
     grc=$?
@@ -166,7 +224,9 @@ textscan slack-token 'xox[abp]-[0-9A-Za-z-]{10,}'
 textscan home-path-mac '/Users/[A-Za-z0-9._-]+/'
 textscan home-path-linux '/home/[A-Za-z0-9._-]+/'
 
-awk -F'\t' -v allowf="$allow" '
+unit="commit(s)"
+[ -z "$range" ] || unit="blob path(s)"
+awk -F'\t' -v allowf="$allow" -v unit="$unit" '
   FILENAME == allowf {
     if ($0 ~ /^#/ || $0 ~ /^[ \t]*$/ || NF < 3) next
     al[$1 SUBSEP $2] = 1
@@ -175,10 +235,11 @@ awk -F'\t' -v allowf="$allow" '
   {
     path = $3
     if ((path SUBSEP "TEXT-PATTERN") in al) next
+    if ((path SUBSEP ("TEXT-PATTERN:" $1)) in al) next
     key = $2 "\t" path "\t" $1
     n[key]++
   }
-  END { for (k in n) { split(k, f, "\t"); printf "TEXT-PATTERN %s %s [%s, %d commit(s)]\n", f[1], f[2], f[3], n[k] } }
+  END { for (k in n) { split(k, f, "\t"); printf "TEXT-PATTERN %s %s [%s, %d %s]\n", f[1], f[2], f[3], n[k], unit } }
 ' "$allow" "$t/text.raw" > "$t/hits.text.raw" || { echo "audit-history: awk failed (text hits)" >&2; exit 2; }
 sort "$t/hits.text.raw" > "$t/hits.text" || exit 2
 
@@ -187,7 +248,11 @@ sort -u "$t/unread" > "$t/hits.unread"
 sort -u "$t/hits.blob" > "$t/hits.blob.s"
 cat "$t/hits.unread" "$t/hits.blob.s" "$t/hits.text" > "$t/hits.all"
 npaths=$(wc -l < "$t/pairs.s" | tr -d ' ')
-echo "audit-history: scanned $ncommits commits, $nblobs blobs, $npaths blob-path pairs"
+if [ -n "$range" ]; then
+  echo "audit-history: range $range: scanned $ncommits commits, $nblobs blobs, $npaths blob-path pairs"
+else
+  echo "audit-history: scanned $ncommits commits, $nblobs blobs, $npaths blob-path pairs"
+fi
 if [ -s "$t/hits.all" ]; then
   cat "$t/hits.all"
   nh=$(wc -l < "$t/hits.all" | tr -d ' ')

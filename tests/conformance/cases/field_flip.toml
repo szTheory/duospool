@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Identity row: every field of the resolved profile is part of the printed identity. Evidence tier E0: it shows that a change is visible in the text, not that the text is right.
+id = "field_flip"
+kind = "field_flip"
+fixture = "none"
+request = ""
+expect = "changed;fields=13"
+meaning = "Changing the value, the status or the binder of any one of the 13 fields in a copy of the resolved profile changes the printed profile identity text, so no field can change without the identity changing; label text is not part of the core at all"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

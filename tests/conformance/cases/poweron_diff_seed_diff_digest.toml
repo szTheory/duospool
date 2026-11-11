@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# A different seed gives a different digest (CORE-01): seed 42 against seed 43 under the seeded policy, same content, same profile. Two boots of
+# the first request in differently filled blocks must still agree with each other. Repeatability only, never correctness (E0).
+id = "poweron_diff_seed_diff_digest"
+kind = "digest_pair"
+fixture = "plain-256k"
+request = "bind.powerup_policy=seeded-prng-v1;seed=42||bind.powerup_policy=seeded-prng-v1;seed=43"
+expect = "differ"
+meaning = "Seed 42 and seed 43 under the seeded policy give different digests, and the seed-42 boot gives one digest in two differently filled blocks"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

@@ -3,8 +3,13 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
 # check - the Phase 1 gate entry point (D-30). Phase 2 extends this script; it does not add a second one.
-# usage: sh scripts/check [--selftest]
-#   --selftest mutates a temp copy of scripts/ and proves that a removed rule or a dead stage 1 turns the gate red
+# usage: sh scripts/check [--selftest [NAME] | --stage NAME] [--timing]
+#   --selftest mutates a temp copy of scripts/ and proves that a removed rule or a dead stage 1 turns the gate red;
+#              with NAME it runs only the mutation printed as SELFTEST NAME (an unknown NAME exits 2)
+#   --stage NAME runs only the stage NAME (an unknown NAME exits 2) and exits with that stage's verdict
+#   --timing     prints TIMING <stage> <seconds> after each CHECK line, and TIMING_WARN <stage> for a stage over 20 s (D-60, D-63);
+#                combinable with --stage, off by default. Time is a record and a warning, never a failure.
+#   every run (not --selftest) truncates and writes build/gate/results.tsv: stage, verdict, seconds, one TAB-separated line each
 # stdout: one line per stage  CHECK <stage> PASS|FAIL|ERROR , then  CHECK RESULT PASS|FAIL
 # exit  : 0 all stages pass | 1 a stage failed (violation or broken control) | 2 harness error in a stage
 set -eu
@@ -34,7 +39,163 @@ checker() {
   return "$r"
 }
 
+# read_expect FILE: load a control's EXPECT into $exp. An EXPECT that names no code (empty, blank, or only commas) makes the
+# control assert nothing: with no violations, got and want are both empty and the control passes vacuously (WR-05). Returns
+# non-zero so the caller can report HARNESS_EMPTY_EXPECT (harness error 2).
+read_expect() {
+  exp=$(cat "$1")
+  [ -n "$(printf '%s' "$exp" | tr -d ', \t\r\n')" ]
+}
+
+# rc_expand WORD: set $rc_out to WORD with the first @DIR@ replaced by the current case directory $d (trailing slash kept).
+rc_expand() {
+  rc_out=$1
+  case $rc_out in
+    *@DIR@*) rc_out="${rc_out%%@DIR@*}$d${rc_out#*@DIR@}" ;;
+  esac
+}
+
+# run_controls [OPTIONS] GLOBDIR NOCTRL_LABEL CHECKER_WORD...
+# The one control loop (D-58): every GLOBDIR/<case>/ is a control run through the checker command. Options, before GLOBDIR:
+#   --ok-prefix         cases named ok-* must pass and run without --expect; every other case needs an EXPECT file
+#   --expect-selects    a case with an EXPECT file must fail on it; one without runs as a must-pass sample when named ok-*,
+#                       and is HARNESS_NO_EXPECT otherwise (the profile stage)
+#   --need LABEL PATH   PATH (may hold @DIR@) must be a file, else LABEL is reported and the case skipped (harness error 2)
+#   --opt-file PATH FLAG  when PATH exists, @OPT@ expands to FLAG PATH, else to nothing
+#   --require-negative  NO_CONTROLS also when no case is a must-fail control
+# CHECKER_WORD words (one per argument, no newline inside): @DIR@ is the case directory, @EXPECT@ expands to the two words
+# --expect TEXT for a must-fail case and to nothing for a must-pass one, @OPT@ is described above. Exit 1 from the checker
+# on a must-fail case means the control is broken; on a must-pass case, the sample was rejected. rc stays a global, exactly
+# as in the loops this replaced.
+run_controls() {
+  rc_okpfx=0
+  rc_exsel=0
+  rc_negreq=0
+  rc_optpath=
+  rc_optflag=
+  : > "$tmp/rc.need"
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --ok-prefix) rc_okpfx=1; shift ;;
+      --expect-selects) rc_exsel=1; shift ;;
+      --require-negative) rc_negreq=1; shift ;;
+      --need) printf '%s\n%s\n' "$2" "$3" >> "$tmp/rc.need"; shift 3 ;;
+      --opt-file) rc_optpath=$2; rc_optflag=$3; shift 3 ;;
+      *) break ;;
+    esac
+  done
+  rc_glob=$1
+  rc_noctl=$2
+  shift 2
+  : > "$tmp/rc.tpl"
+  for rc_w in "$@"; do
+    printf '%s\n' "$rc_w" >> "$tmp/rc.tpl"
+  done
+  rc=0
+  n=0
+  neg=0
+  for d in "$rc_glob"/*/; do
+    [ -d "$d" ] || continue
+    n=$((n + 1))
+    case_name=$(basename "$d")
+    case $case_name in
+      ok-*) rc_isok=1 ;;
+      *) rc_isok=0; neg=$((neg + 1)) ;;
+    esac
+    rc_miss=
+    while IFS= read -r rc_lab && IFS= read -r rc_np; do
+      rc_expand "$rc_np"
+      if [ ! -f "$rc_out" ]; then rc_miss=$rc_lab; break; fi
+    done < "$tmp/rc.need"
+    if [ -n "$rc_miss" ]; then
+      echo "$rc_miss $case_name"
+      rc=2
+      continue
+    fi
+    rc_mustfail=1
+    if [ "$rc_exsel" -eq 1 ]; then
+      if [ ! -f "${d}EXPECT" ]; then
+        if [ "$rc_isok" -eq 1 ]; then
+          rc_mustfail=0
+        else
+          echo "HARNESS_NO_EXPECT $case_name"
+          rc=2
+          continue
+        fi
+      fi
+    elif [ "$rc_okpfx" -eq 1 ] && [ "$rc_isok" -eq 1 ]; then
+      rc_mustfail=0
+    fi
+    if [ "$rc_mustfail" -eq 1 ]; then
+      if [ ! -f "${d}EXPECT" ]; then
+        echo "HARNESS_NO_EXPECT $case_name"
+        rc=2
+        continue
+      fi
+      if ! read_expect "${d}EXPECT"; then
+        echo "HARNESS_EMPTY_EXPECT $case_name"
+        rc=2
+        continue
+      fi
+    fi
+    set --
+    while IFS= read -r rc_w; do
+      case $rc_w in
+        @EXPECT@)
+          if [ "$rc_mustfail" -eq 1 ]; then set -- "$@" --expect "$exp"; fi
+          ;;
+        @OPT@)
+          if [ -n "$rc_optpath" ]; then
+            rc_expand "$rc_optpath"
+            if [ -f "$rc_out" ]; then set -- "$@" "$rc_optflag" "$rc_out"; fi
+          fi
+          ;;
+        *)
+          rc_expand "$rc_w"
+          set -- "$@" "$rc_out"
+          ;;
+      esac
+    done < "$tmp/rc.tpl"
+    if checker "$@" > "$tmp/case.out"; then r=0; else r=$?; fi
+    if [ "$r" -eq 1 ]; then
+      if [ "$rc_mustfail" -eq 1 ]; then echo "CONTROL BROKEN $case_name"; else echo "SAMPLE REJECTED $case_name"; fi
+      sed 's/^/  /' "$tmp/case.out"
+      [ "$rc" -eq 2 ] || rc=1 # rc-broken-status
+    elif [ "$r" -ne 0 ]; then
+      echo "HARNESS_ERROR $case_name"
+      sed 's/^/  /' "$tmp/case.out"
+      rc=2
+    fi
+  done
+  if [ "$n" -eq 0 ] || { [ "$rc_negreq" -eq 1 ] && [ "$neg" -eq 0 ]; }; then
+    echo "NO_CONTROLS $rc_noctl"
+    [ "$rc" -eq 2 ] || rc=1
+  fi
+  return "$rc"
+}
+
 # ---- stages: each is a function that prints details and returns 0 pass, 1 fail, 2 harness error ----
+
+# preflight (D-60): the tools the gate needs are present. A missing tool is a harness error (exit 2 from preflight, ERROR
+# here), never a skipped stage. Then two controls against the checker itself: an impossible tool name must be refused with
+# exit 2 and a PREFLIGHT_MISSING line naming it (T-02-06), and an a|b entry must be satisfied by its second alternative.
+stage_preflight() {
+  checker sh "$here/preflight" || return $?
+  pf_rc=0
+  if sh "$here/preflight" --tools no-such-tool-xyz > "$tmp/pf.out" 2>&1; then r=0; else r=$?; fi
+  if [ "$r" -ne 2 ] || ! grep -qx 'PREFLIGHT_MISSING no-such-tool-xyz' "$tmp/pf.out" || grep -q '^STATUS preflight ok$' "$tmp/pf.out"; then
+    echo "CONTROL BROKEN preflight-missing-tool (exit $r, wanted 2 with PREFLIGHT_MISSING no-such-tool-xyz)"
+    sed 's/^/  /' "$tmp/pf.out"
+    pf_rc=1
+  fi
+  if sh "$here/preflight" --tools 'no-such-tool-xyz|sh' > "$tmp/pf.out" 2>&1; then r=0; else r=$?; fi
+  if [ "$r" -ne 0 ] || ! grep -qx 'PREFLIGHT_OK sh' "$tmp/pf.out"; then
+    echo "CONTROL BROKEN preflight-alternative (exit $r, wanted 0 with PREFLIGHT_OK sh)"
+    sed 's/^/  /' "$tmp/pf.out"
+    pf_rc=1
+  fi
+  return "$pf_rc"
+}
 
 stage_ledger_entries() {
   checker sh "$here/ledger-check" --required ledger/REQUIRED ledger/entries/
@@ -43,38 +204,7 @@ stage_ledger_entries() {
 # every ledger/negative/<case>/ is a control; its EXPECT file holds the exact code set, an optional
 # REQUIRED file is passed through. Exit 1 from the checker means the control is broken.
 stage_ledger_negatives() {
-  rc=0
-  n=0
-  for d in ledger/negative/*/; do
-    [ -d "$d" ] || continue
-    n=$((n + 1))
-    case_name=$(basename "$d")
-    if [ ! -f "$d/EXPECT" ]; then
-      echo "HARNESS_NO_EXPECT $case_name"
-      rc=2
-      continue
-    fi
-    exp=$(cat "$d/EXPECT")
-    if [ -f "$d/REQUIRED" ]; then
-      if checker sh "$here/ledger-check" --expect "$exp" --required "$d/REQUIRED" "$d" > "$tmp/case.out"; then r=0; else r=$?; fi
-    else
-      if checker sh "$here/ledger-check" --expect "$exp" "$d" > "$tmp/case.out"; then r=0; else r=$?; fi
-    fi
-    if [ "$r" -eq 1 ]; then
-      echo "CONTROL BROKEN $case_name"
-      sed 's/^/  /' "$tmp/case.out"
-      [ "$rc" -eq 2 ] || rc=1
-    elif [ "$r" -ne 0 ]; then
-      echo "HARNESS_ERROR $case_name"
-      sed 's/^/  /' "$tmp/case.out"
-      rc=2
-    fi
-  done
-  if [ "$n" -eq 0 ]; then
-    echo "NO_CONTROLS ledger/negative"
-    [ "$rc" -eq 2 ] || rc=1
-  fi
-  return "$rc"
+  run_controls --opt-file @DIR@/REQUIRED --required ledger/negative ledger/negative sh "$here/ledger-check" @EXPECT@ @OPT@ @DIR@
 }
 
 # every ledger/samples/ok-<case>/ is a must-pass control
@@ -109,50 +239,7 @@ stage_decision_records() {
 
 # every tests/decision/<case>/ is a control with an EXPECT file; every tests/decision/ok-<case>/ must pass
 stage_decision_negatives() {
-  rc=0
-  n=0
-  for d in tests/decision/*/; do
-    [ -d "$d" ] || continue
-    n=$((n + 1))
-    case_name=$(basename "$d")
-    case $case_name in
-      ok-*)
-        if checker sh "$here/decision-check" "$d" > "$tmp/case.out"; then r=0; else r=$?; fi
-        if [ "$r" -eq 1 ]; then
-          echo "SAMPLE REJECTED $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          [ "$rc" -eq 2 ] || rc=1
-        elif [ "$r" -ne 0 ]; then
-          echo "HARNESS_ERROR $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          rc=2
-        fi
-        ;;
-      *)
-        if [ ! -f "$d/EXPECT" ]; then
-          echo "HARNESS_NO_EXPECT $case_name"
-          rc=2
-          continue
-        fi
-        exp=$(cat "$d/EXPECT")
-        if checker sh "$here/decision-check" --expect "$exp" "$d" > "$tmp/case.out"; then r=0; else r=$?; fi
-        if [ "$r" -eq 1 ]; then
-          echo "CONTROL BROKEN $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          [ "$rc" -eq 2 ] || rc=1
-        elif [ "$r" -ne 0 ]; then
-          echo "HARNESS_ERROR $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          rc=2
-        fi
-        ;;
-    esac
-  done
-  if [ "$n" -eq 0 ]; then
-    echo "NO_CONTROLS tests/decision"
-    [ "$rc" -eq 2 ] || rc=1
-  fi
-  return "$rc"
+  run_controls --ok-prefix tests/decision tests/decision sh "$here/decision-check" @EXPECT@ @DIR@
 }
 
 # every profiles/<id>/rN.toml must pass; no record at all is a dead gate, not a pass
@@ -172,53 +259,110 @@ stage_profile_records() {
 # every tests/profile/<case>/ with an EXPECT is a must-fail control on <case>/pce-hucard-2btn/r1.toml; every
 # tests/profile/ok-<case>/ without one must pass. Exit 1 from the checker means the control is broken.
 stage_profile_negatives() {
+  run_controls --expect-selects --need HARNESS_NO_RECORD @DIR@pce-hucard-2btn/r1.toml tests/profile tests/profile sh "$here/profile-check" @EXPECT@ @DIR@pce-hucard-2btn/r1.toml
+}
+
+# a TAB or a newline in an input path must be refused as BAD_FILENAME (CR-01): those bytes are the record separators of
+# the ledger and profile checkers' internal stream, so a name carrying one could pick its own record tag and turn garbage
+# into a pass. The names are created at run time under $tmp because git cannot be relied on to carry such a name on every
+# host. The expected code is fixed here: BAD_FILENAME, and without --expect the checker must exit 1.
+# name_control CASE CHECKER PATH
+name_control() {
+  nc_case=$1
+  nc_ck=$2
+  nc_path=$3
+  if checker sh "$here/$nc_ck" --expect BAD_FILENAME "$nc_path" > "$tmp/case.out"; then r=0; else r=$?; fi
+  if [ "$r" -eq 1 ]; then
+    echo "CONTROL BROKEN $nc_case"
+    sed 's/^/  /' "$tmp/case.out"
+    [ "$rc" -eq 2 ] || rc=1
+    return 0
+  elif [ "$r" -ne 0 ]; then
+    echo "HARNESS_ERROR $nc_case"
+    sed 's/^/  /' "$tmp/case.out"
+    rc=2
+    return 0
+  fi
+  if checker sh "$here/$nc_ck" "$nc_path" > "$tmp/case.out"; then r=0; else r=$?; fi
+  if [ "$r" -ne 1 ]; then
+    echo "CONTROL BROKEN $nc_case (exit $r without --expect, wanted 1)"
+    sed 's/^/  /' "$tmp/case.out"
+    [ "$rc" -eq 2 ] || rc=1
+  fi
+  return 0
+}
+
+stage_filename_controls() {
   rc=0
-  n=0
-  for d in tests/profile/*/; do
-    [ -d "$d" ] || continue
-    n=$((n + 1))
-    case_name=$(basename "$d")
-    rec="${d}pce-hucard-2btn/r1.toml"
-    if [ ! -f "$rec" ]; then
-      echo "HARNESS_NO_RECORD $case_name"
-      rc=2
-      continue
-    fi
-    if [ -f "${d}EXPECT" ]; then
-      exp=$(cat "${d}EXPECT")
-      if checker sh "$here/profile-check" --expect "$exp" "$rec" > "$tmp/case.out"; then r=0; else r=$?; fi
-      if [ "$r" -eq 1 ]; then
-        echo "CONTROL BROKEN $case_name"
-        sed 's/^/  /' "$tmp/case.out"
-        [ "$rc" -eq 2 ] || rc=1
-      elif [ "$r" -ne 0 ]; then
-        echo "HARNESS_ERROR $case_name"
-        sed 's/^/  /' "$tmp/case.out"
-        rc=2
-      fi
-    else
-      case $case_name in
-        ok-*)
-          if checker sh "$here/profile-check" "$rec" > "$tmp/case.out"; then r=0; else r=$?; fi
-          if [ "$r" -eq 1 ]; then
-            echo "SAMPLE REJECTED $case_name"
-            sed 's/^/  /' "$tmp/case.out"
-            [ "$rc" -eq 2 ] || rc=1
-          elif [ "$r" -ne 0 ]; then
-            echo "HARNESS_ERROR $case_name"
-            sed 's/^/  /' "$tmp/case.out"
-            rc=2
-          fi
-          ;;
-        *)
-          echo "HARNESS_NO_EXPECT $case_name"
-          rc=2
-          ;;
-      esac
+  tab=$(printf '\t')
+  nl=$(printf '\n.'); nl=${nl%.}
+  w="$tmp/names"
+  rm -rf "$w"
+  # the contents are garbage on purpose: under a plain name every one of these files is rejected for other reasons, so
+  # only the name decides whether the checker reports BAD_FILENAME
+  if mkdir -p "$w/led-tab" "$w/led-nl" "$w/led-dir${tab}x" "$w/prof-tab" "$w/prof-nl" "$w/prof-dir${tab}d" \
+    && printf 'garbage line\n' > "$w/led-tab/x${tab}F${tab}y${tab}z.toml" \
+    && printf 'garbage line\n' > "$w/led-nl/a${nl}b.toml" \
+    && printf 'garbage line\n' > "$w/led-dir${tab}x/ok.toml" \
+    && printf 'garbage\n' > "$w/prof-tab/r1${tab}P${tab}x.toml" \
+    && printf 'garbage\n' > "$w/prof-nl/r1${nl}x.toml" \
+    && printf 'garbage\n' > "$w/prof-dir${tab}d/r1.toml"; then :; else
+    echo "HARNESS_ERROR cannot create the tab and newline named files"
+    return 2
+  fi
+  name_control ledger-tab-in-name ledger-check "$w/led-tab"
+  name_control ledger-newline-in-name ledger-check "$w/led-nl"
+  name_control ledger-tab-in-dir ledger-check "$w/led-dir${tab}x"
+  name_control ledger-tab-in-file-argument ledger-check "$w/led-tab/x${tab}F${tab}y${tab}z.toml"
+  name_control profile-tab-in-name profile-check "$w/prof-tab/r1${tab}P${tab}x.toml"
+  name_control profile-newline-in-name profile-check "$w/prof-nl/r1${nl}x.toml"
+  name_control profile-tab-in-dir profile-check "$w/prof-dir${tab}d/r1.toml"
+  return "$rc"
+}
+
+# an empty --expect, or an EXPECT file that names no code, must be a harness error and never a vacuous pass (WR-05). Fixed
+# expectations: every checker exits 2 on --expect "" (and on a blank or comma-only value), and read_expect refuses an empty,
+# blank or comma-only EXPECT file while accepting a real one.
+# empty_expect_control CASE CHECKER ARGS... : the checker must exit 2 for each degenerate --expect value
+empty_expect_control() {
+  ec_case=$1
+  ec_ck=$2
+  shift 2
+  for ec_val in "" " " "," ", ,"; do
+    if sh "$here/$ec_ck" --expect "$ec_val" "$@" > "$tmp/case.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$r" -ne 2 ] || grep -q '^EXPECT_OK$' "$tmp/case.out"; then
+      echo "CONTROL BROKEN $ec_case (--expect '$ec_val' exited $r, wanted 2)"
+      sed 's/^/  /' "$tmp/case.out"
+      [ "$rc" -eq 2 ] || rc=1
     fi
   done
-  if [ "$n" -eq 0 ]; then
-    echo "NO_CONTROLS tests/profile"
+}
+
+stage_empty_expect_controls() {
+  rc=0
+  empty_expect_control ledger-check ledger-check ledger/entries/
+  empty_expect_control profile-check profile-check profiles/pce-hucard-2btn/r1.toml
+  empty_expect_control decision-check decision-check docs/decisions
+  empty_expect_control provenance-check provenance-check
+  empty_expect_control licence-check licence-check
+  empty_expect_control check-results check-results docs/decisions/0001-language-build.protocol.md --record docs/decisions/0001-language-build.md
+  empty_expect_control protocol-order-check protocol-order-check
+  w="$tmp/expects"
+  rm -rf "$w"
+  mkdir -p "$w" || { echo "HARNESS_ERROR cannot create $w"; return 2; }
+  : > "$w/empty"
+  printf '\n' > "$w/newline"
+  printf '  \n' > "$w/blank"
+  printf ',\n' > "$w/comma"
+  printf 'SOME_CODE\n' > "$w/real"
+  for ec_f in empty newline blank comma; do
+    if read_expect "$w/$ec_f"; then
+      echo "CONTROL BROKEN read_expect accepted the $ec_f EXPECT file"
+      [ "$rc" -eq 2 ] || rc=1
+    fi
+  done
+  if ! read_expect "$w/real"; then
+    echo "CONTROL BROKEN read_expect refused a real EXPECT file"
     [ "$rc" -eq 2 ] || rc=1
   fi
   return "$rc"
@@ -231,50 +375,7 @@ stage_provenance_register() {
 # every tests/provenance/<case>/ with an EXPECT is a must-fail control run under its own --root; every
 # tests/provenance/ok-<case>/ must pass. Exit 1 from the checker means the control is broken.
 stage_provenance_negatives() {
-  rc=0
-  n=0
-  for d in tests/provenance/*/; do
-    [ -d "$d" ] || continue
-    n=$((n + 1))
-    case_name=$(basename "$d")
-    case $case_name in
-      ok-*)
-        if checker sh "$here/provenance-check" --root "$d" > "$tmp/case.out"; then r=0; else r=$?; fi
-        if [ "$r" -eq 1 ]; then
-          echo "SAMPLE REJECTED $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          [ "$rc" -eq 2 ] || rc=1
-        elif [ "$r" -ne 0 ]; then
-          echo "HARNESS_ERROR $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          rc=2
-        fi
-        ;;
-      *)
-        if [ ! -f "$d/EXPECT" ]; then
-          echo "HARNESS_NO_EXPECT $case_name"
-          rc=2
-          continue
-        fi
-        exp=$(cat "$d/EXPECT")
-        if checker sh "$here/provenance-check" --root "$d" --expect "$exp" > "$tmp/case.out"; then r=0; else r=$?; fi
-        if [ "$r" -eq 1 ]; then
-          echo "CONTROL BROKEN $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          [ "$rc" -eq 2 ] || rc=1
-        elif [ "$r" -ne 0 ]; then
-          echo "HARNESS_ERROR $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          rc=2
-        fi
-        ;;
-    esac
-  done
-  if [ "$n" -eq 0 ]; then
-    echo "NO_CONTROLS tests/provenance"
-    [ "$rc" -eq 2 ] || rc=1
-  fi
-  return "$rc"
+  run_controls --ok-prefix tests/provenance tests/provenance sh "$here/provenance-check" --root @DIR@ @EXPECT@
 }
 
 stage_licence_files() {
@@ -284,54 +385,24 @@ stage_licence_files() {
 # every tests/licence/<case>/ with an EXPECT is a must-fail control run under its own --root; every
 # tests/licence/ok-<case>/ must pass. Exit 1 from the checker means the control is broken.
 stage_licence_negatives() {
-  rc=0
-  n=0
-  for d in tests/licence/*/; do
-    [ -d "$d" ] || continue
-    n=$((n + 1))
-    case_name=$(basename "$d")
-    case $case_name in
-      ok-*)
-        if checker sh "$here/licence-check" --root "$d" > "$tmp/case.out"; then r=0; else r=$?; fi
-        if [ "$r" -eq 1 ]; then
-          echo "SAMPLE REJECTED $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          [ "$rc" -eq 2 ] || rc=1
-        elif [ "$r" -ne 0 ]; then
-          echo "HARNESS_ERROR $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          rc=2
-        fi
-        ;;
-      *)
-        if [ ! -f "$d/EXPECT" ]; then
-          echo "HARNESS_NO_EXPECT $case_name"
-          rc=2
-          continue
-        fi
-        exp=$(cat "$d/EXPECT")
-        if checker sh "$here/licence-check" --root "$d" --expect "$exp" > "$tmp/case.out"; then r=0; else r=$?; fi
-        if [ "$r" -eq 1 ]; then
-          echo "CONTROL BROKEN $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          [ "$rc" -eq 2 ] || rc=1
-        elif [ "$r" -ne 0 ]; then
-          echo "HARNESS_ERROR $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          rc=2
-        fi
-        ;;
-    esac
-  done
-  if [ "$n" -eq 0 ]; then
-    echo "NO_CONTROLS tests/licence"
-    [ "$rc" -eq 2 ] || rc=1
-  fi
-  return "$rc"
+  run_controls --ok-prefix tests/licence tests/licence sh "$here/licence-check" --root @DIR@ @EXPECT@
 }
 
 stage_protocol_order() {
   checker sh "$here/protocol-order-check"
+}
+
+# tests/audit/synthetic.sh builds throwaway repositories and prints one AUDITTEST line per case (the full-history cases and the
+# --range cases of scripts/audit-history, D-71); its exit status is the verdict. The marker line keeps a dead script from passing
+# as an empty success.
+stage_audit_synthetic() {
+  if sh tests/audit/synthetic.sh > "$tmp/case.out" 2>&1; then r=0; else r=$?; fi
+  cat "$tmp/case.out"
+  if [ "$r" -eq 0 ] && ! grep -q '^AUDITTEST .* PASS$' "$tmp/case.out"; then
+    echo "NO_CONTROLS tests/audit"
+    return 1
+  fi
+  return "$r"
 }
 
 # synthetic.sh prints one SYNTH line per case; its exit status is the verdict. The marker line keeps a dead script
@@ -358,6 +429,11 @@ stage_score_controls() {
     case_name=$(basename "$d")
     if [ ! -f "${d}scores.txt" ] || [ ! -f "${d}EXPECT" ]; then
       echo "HARNESS_NO_EXPECT $case_name"
+      rc=2
+      continue
+    fi
+    if ! read_expect "${d}EXPECT"; then
+      echo "HARNESS_EMPTY_EXPECT $case_name"
       rc=2
       continue
     fi
@@ -400,109 +476,1245 @@ stage_results() {
 # every tests/results/<case>/ is a control on its own protocol.md and record.md: a case with an EXPECT file is a must-fail
 # control run in --record mode, and every tests/results/ok-<case>/ must pass. Exit 1 from the checker means the control is broken.
 stage_results_negatives() {
-  rc=0
-  n=0
-  neg=0
-  for d in tests/results/*/; do
-    [ -d "$d" ] || continue
-    n=$((n + 1))
-    case_name=$(basename "$d")
-    case $case_name in ok-*) ;; *) neg=$((neg + 1)) ;; esac
-    if [ ! -f "${d}protocol.md" ] || [ ! -f "${d}record.md" ]; then
-      echo "HARNESS_NO_FILE $case_name"
-      rc=2
-      continue
-    fi
-    case $case_name in
-      ok-*)
-        if checker sh "$here/check-results" "${d}protocol.md" --record "${d}record.md" > "$tmp/case.out"; then r=0; else r=$?; fi
-        if [ "$r" -eq 1 ]; then
-          echo "SAMPLE REJECTED $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          [ "$rc" -eq 2 ] || rc=1
-        elif [ "$r" -ne 0 ]; then
-          echo "HARNESS_ERROR $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          rc=2
-        fi
-        ;;
-      *)
-        if [ ! -f "${d}EXPECT" ]; then
-          echo "HARNESS_NO_EXPECT $case_name"
-          rc=2
-          continue
-        fi
-        exp=$(cat "${d}EXPECT")
-        if checker sh "$here/check-results" --expect "$exp" "${d}protocol.md" --record "${d}record.md" > "$tmp/case.out"; then r=0; else r=$?; fi
-        if [ "$r" -eq 1 ]; then
-          echo "CONTROL BROKEN $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          [ "$rc" -eq 2 ] || rc=1
-        elif [ "$r" -ne 0 ]; then
-          echo "HARNESS_ERROR $case_name"
-          sed 's/^/  /' "$tmp/case.out"
-          rc=2
-        fi
-        ;;
-    esac
-  done
-  if [ "$n" -eq 0 ] || [ "$neg" -eq 0 ]; then
-    echo "NO_CONTROLS tests/results"
-    [ "$rc" -eq 2 ] || rc=1
+  run_controls --ok-prefix --require-negative --need HARNESS_NO_FILE @DIR@protocol.md --need HARNESS_NO_FILE @DIR@record.md tests/results tests/results sh "$here/check-results" @EXPECT@ @DIR@protocol.md --record @DIR@record.md
+}
+
+# every tests/gate/ingest/<case>/ is a mini-root: results.txt is a fabricated runner output, tests/conformance/ holds its
+# REQUIRED and cases/, and a case with an EXPECT file must fail on exactly that code set. Every ok-<case> must pass. A control
+# that passes without its EXPECT met means the judge is broken (D-57, D-58, D-79(c)).
+stage_ingest_controls() {
+  run_controls --ok-prefix --require-negative --need HARNESS_NO_FILE @DIR@results.txt tests/gate/ingest tests/gate/ingest sh "$here/conformance-ingest" --root @DIR@ --results @DIR@results.txt @EXPECT@
+}
+
+# every tests/gate/flatten/<case>/ is a directory of input TOML: a case with an EXPECT file must fail on exactly that code set
+# and every ok-<case> must pass. Then three probes that run_controls cannot express, built at run time under $tmp: a directory
+# holding one good and one bad file must print not one byte on stdout (no partial TSV, D-51), the ok case must print its key
+# rows and end with an END row that counts both files, and a TAB in a file name must be refused as BAD_FILENAME.
+stage_flatten_controls() {
+  run_controls --ok-prefix --require-negative tests/gate/flatten tests/gate/flatten sh "$here/conformance-flatten" @EXPECT@ @DIR@
+  fc_rc=$rc
+  tab=$(printf '\t')
+  w="$tmp/flatten"
+  rm -rf "$w"
+  if mkdir -p "$w/mixed" "$w/tabname" \
+    && cp tests/gate/flatten/ok-two-files/a.toml "$w/mixed/a-good.toml" \
+    && cp tests/gate/flatten/bad-syntax/a.toml "$w/mixed/z-bad.toml" \
+    && cp tests/gate/flatten/ok-two-files/a.toml "$w/tabname/a${tab}b.toml"; then :; else
+    echo "HARNESS_ERROR cannot create the flatten probe files"
+    return 2
   fi
-  return "$rc"
+  if sh "$here/conformance-flatten" "$w/mixed" > "$w/mixed.out" 2> "$w/mixed.err"; then r=0; else r=$?; fi
+  bytes=$(wc -c < "$w/mixed.out" | tr -d ' ')
+  if [ "$r" -ne 1 ] || [ "$bytes" -ne 0 ]; then
+    echo "CONTROL BROKEN mixed-good-and-bad (exit $r, $bytes stdout bytes, wanted exit 1 and 0 bytes)"
+    sed 's/^/  /' "$w/mixed.err"
+    [ "$fc_rc" -eq 2 ] || fc_rc=1
+  fi
+  if sh "$here/conformance-flatten" tests/gate/flatten/ok-two-files > "$w/ok.out" 2> "$w/ok.err"; then r=0; else r=$?; fi
+  last=$(tail -n 1 "$w/ok.out")
+  if [ "$r" -ne 0 ] || [ "$last" != "END${tab}2" ] || ! grep -q "^K${tab}" "$w/ok.out"; then
+    echo "CONTROL BROKEN ok-two-files-rows (exit $r, last row '$last')"
+    sed 's/^/  /' "$w/ok.err"
+    [ "$fc_rc" -eq 2 ] || fc_rc=1
+  fi
+  if sh "$here/conformance-flatten" --expect BAD_FILENAME "$w/tabname" > "$w/tab.out" 2>&1; then r=0; else r=$?; fi
+  if [ "$r" -ne 0 ]; then
+    echo "CONTROL BROKEN tab-in-file-name (exit $r, wanted BAD_FILENAME)"
+    sed 's/^/  /' "$w/tab.out"
+    [ "$fc_rc" -eq 2 ] || fc_rc=1
+  fi
+  return "$fc_rc"
+}
+
+# every tests/gate/outcome-sync/<case>/ is a mini-root holding tests/conformance/outcomes.def: a case with an EXPECT file must
+# fail on exactly that code set and ok-<case> must pass. Mini-roots only (D-85): the real-repository assertion with the runner's
+# compiled names needs the build and is a later stage that runs after it.
+stage_outcome_controls() {
+  run_controls --ok-prefix --require-negative --need HARNESS_NO_FILE @DIR@tests/conformance/outcomes.def tests/gate/outcome-sync tests/gate/outcome-sync sh "$here/outcome-sync" --root @DIR@ @EXPECT@
+}
+
+# cancel_reap PIDFILE: the stub records its pid; kill it when it is still the sleeping stub (the process the supervisor was
+# meant to kill), so that no run of the controls, mutated or not, leaves a spinning process behind. The command line is
+# checked first so that a recycled pid is never signalled.
+cancel_reap() {
+  [ -f "$1" ] || return 0
+  cr_pid=$(cat "$1")
+  case $cr_pid in '' | *[!0-9]*) return 0 ;; esac
+  if ps -o command= -p "$cr_pid" 2> /dev/null | grep -q 'sleep 600'; then
+    kill "$cr_pid" 2> /dev/null || true
+  fi
+  return 0
+}
+
+# cancel_sequence RUN WORKDIR: the D-77 controls against the conformance-run script RUN, files under WORKDIR. First a SIGTERM
+# to a supervisor whose stub has finished case a and then spins: the file must end up with the a line unchanged, a cancelled
+# line for b and for c naming the signal, and RUNNER_DONE 3, the supervisor must exit 1 and say CANCELLED, and the judge must
+# call the result non-green with exactly the cancelled class. Then a wall expiry (no signal): exit 2, HARNESS_WALL, and no
+# cancelled line, because the watchdog is a different outcome. Returns 0 pass, 1 broken control, 2 harness error.
+cancel_sequence() {
+  cs_run=$1
+  cs_w=$2
+  cs_c=tests/gate/cancel
+  cs_rc=0
+  rm -rf "$cs_w"
+  mkdir -p "$cs_w" || { echo "HARNESS_ERROR cannot create $cs_w"; return 2; }
+  sh "$cs_run" supervise --ids "$cs_c/ids.txt" --out "$cs_w/out.txt" -- sh "$cs_c/spin.sh" "$cs_w/pid" > "$cs_w/sup.out" 2> "$cs_w/sup.err" &
+  cs_sup=$!
+  cs_i=0
+  while [ "$cs_i" -lt 50 ] && ! grep -q '^RESULT a pass ' "$cs_w/out.txt" 2> /dev/null; do
+    sleep 0.1
+    cs_i=$((cs_i + 1))
+  done
+  if [ "$cs_i" -ge 50 ]; then
+    echo "HARNESS_ERROR the stub never produced its a line within 5 s"
+    kill "$cs_sup" 2> /dev/null || true
+    wait "$cs_sup" 2> /dev/null || true
+    cancel_reap "$cs_w/pid"
+    return 2
+  fi
+  kill -TERM "$cs_sup"
+  if wait "$cs_sup"; then cs_r=0; else cs_r=$?; fi
+  cancel_reap "$cs_w/pid"
+  if [ "$cs_r" -ne 1 ]; then
+    echo "CONTROL BROKEN cancel-exit (supervisor exit $cs_r after SIGTERM, wanted 1)"
+    cs_rc=1
+  fi
+  if ! grep -qx 'CANCELLED signal:TERM n=3' "$cs_w/sup.out"; then
+    echo "CONTROL BROKEN cancel-message (no 'CANCELLED signal:TERM n=3' on stdout)"
+    cs_rc=1
+  fi
+  cs_n=$(wc -l < "$cs_w/out.txt" | tr -d ' ')
+  if [ "$cs_n" -ne 4 ] \
+    || ! sed -n 1p "$cs_w/out.txt" | awk '$1 == "RESULT" && $2 == "a" && $3 == "pass" { f = 1 } END { exit !f }' \
+    || [ "$(sed -n 2p "$cs_w/out.txt")" != 'RESULT b cancelled assertions=0 evidence=signal:TERM' ] \
+    || [ "$(sed -n 3p "$cs_w/out.txt")" != 'RESULT c cancelled assertions=0 evidence=signal:TERM' ] \
+    || [ "$(sed -n 4p "$cs_w/out.txt")" != 'RUNNER_DONE 3' ]; then
+    echo "CONTROL BROKEN cancel-lines (the results file after SIGTERM is not a, b cancelled, c cancelled, RUNNER_DONE 3)"
+    sed 's/^/  /' "$cs_w/out.txt"
+    cs_rc=1
+  fi
+  if sh "$here/conformance-ingest" --root "$cs_c" --results "$cs_w/out.txt" --expect OUTCOME_CANCELLED > "$cs_w/ing.out" 2>&1 && grep -qx 'EXPECT_OK' "$cs_w/ing.out"; then :; else
+    echo "CONTROL BROKEN cancel-judged (the judge did not report exactly OUTCOME_CANCELLED)"
+    sed 's/^/  /' "$cs_w/ing.out"
+    cs_rc=1
+  fi
+  if sh "$here/conformance-ingest" --root "$cs_c" --results "$cs_w/out.txt" > "$cs_w/ing2.out" 2>&1; then cs_r=0; else cs_r=$?; fi
+  if [ "$cs_r" -ne 1 ]; then
+    echo "CONTROL BROKEN cancel-not-green (the judge exited $cs_r on a cancelled result, wanted 1)"
+    cs_rc=1
+  fi
+  if sh "$cs_run" supervise --wall 1 --ids "$cs_c/ids.txt" --out "$cs_w/wall.txt" -- sh "$cs_c/spin.sh" "$cs_w/wpid" > "$cs_w/wall.out" 2> "$cs_w/wall.err"; then cs_r=0; else cs_r=$?; fi
+  cancel_reap "$cs_w/wpid"
+  if [ "$cs_r" -ne 2 ] || ! grep -q '^HARNESS_WALL seconds=1$' "$cs_w/wall.err" || grep -q 'cancelled' "$cs_w/wall.txt" "$cs_w/wall.out"; then
+    echo "CONTROL BROKEN wall-not-cancelled (exit $cs_r, wanted 2 with HARNESS_WALL and no cancelled line)"
+    sed 's/^/  /' "$cs_w/wall.err"
+    cs_rc=1
+  fi
+  return "$cs_rc"
+}
+
+stage_cancel_controls() {
+  cancel_sequence "$here/conformance-run" "$tmp/cancel"
+}
+
+# FIX-05 (D-56, D-76): the real working tree holds no ROM-like, firmware-like, disc-image-like or save-like file, found by content
+# and never by name or .gitignore. Detection only: see the residual-risk note in scripts/rights-check.
+stage_rights_tree() {
+  checker sh "$here/rights-check"
+}
+
+# tests/rights/synthetic.sh plants ROM-like files in throwaway repositories created at run time and prints one RIGHTSTEST line per
+# case; its exit status is the verdict. The marker line keeps a dead script from passing as an empty success.
+stage_rights_negatives() {
+  if sh tests/rights/synthetic.sh > "$tmp/case.out" 2>&1; then r=0; else r=$?; fi
+  cat "$tmp/case.out"
+  if [ "$r" -eq 0 ] && ! grep -q '^RIGHTSTEST .* PASS$' "$tmp/case.out"; then
+    echo "NO_CONTROLS tests/rights"
+    return 1
+  fi
+  return "$r"
+}
+
+# build (D-60, D-41): configure and build the gate preset, warnings as errors. The compiler output is shown only when something
+# fails, and a build that finishes without producing the runner is a harness error (the later conformance stage would judge a
+# stale binary otherwise).
+stage_build() {
+  if cmake --preset gate > "$tmp/build.out" 2>&1 && cmake --build --preset gate >> "$tmp/build.out" 2>&1; then r=0; else r=$?; fi
+  if [ "$r" -ne 0 ]; then
+    cat "$tmp/build.out"
+    return 1
+  fi
+  if [ ! -x build/gate/ds_runner ]; then
+    echo "HARNESS_ERROR build/gate/ds_runner is missing after a clean build"
+    return 2
+  fi
+  return 0
+}
+
+# conformance (D-57, D-60): the whole run mode of conformance-run: flatten the case inventory, build the gate preset incrementally,
+# run every case in one supervised runner process and judge the RESULT lines with conformance-ingest. The build is part of the
+# step, so a stale binary is never judged. The runner decides nothing; the verdict is the ingest's.
+stage_conformance() {
+  checker sh "$here/conformance-run" run
+}
+
+# every tests/gate/excluded/<case>/ is a mini-root for the sanitize mode (D-78): results.txt is the sanitize run, gate-results.txt the
+# gate-mode run, EXCLUDED_IN_MODE the exclusion file, tests/conformance/ holds REQUIRED and the case inventory. A case with an EXPECT
+# file must fail on exactly that code set (an unlisted exclusion, an excluded id that does not pass in the gate run, one that is not
+# REQUIRED, one that ran in the mode it is excluded from); ok-excl must pass. A control that passes without its EXPECT met means the
+# exclusion judge is broken (T-02-50).
+stage_excluded_mode_controls() {
+  run_controls --ok-prefix --require-negative --need HARNESS_NO_FILE @DIR@results.txt --need HARNESS_NO_FILE @DIR@gate-results.txt tests/gate/excluded tests/gate/excluded sh "$here/conformance-ingest" --root @DIR@ --results @DIR@results.txt --mode sanitize --excluded @DIR@EXCLUDED_IN_MODE --gate-results @DIR@gate-results.txt @EXPECT@
+}
+
+# sanitizers (D-41, D-55, D-83): the conformance matrix again under the sanitize preset (ASan and UBSan, no recover, no -fwrapv),
+# after proving with three planted canaries (heap overflow, signed overflow, signed left shift) that the sanitizers report. The
+# stage runs its own build and its own runner; it never judges a results file that an earlier run left behind.
+stage_sanitizers() {
+  checker sh "$here/conformance-run" sanitize
+}
+
+# outcome-sync (D-57, D-60, D-85): the outcome names compiled into the runner are the rows of outcomes.def, which in turn are the
+# seven names of the success criterion. Registered after the build stage and never reading a binary it did not just make: the
+# stage builds the gate preset itself (incremental, a no-op when the build stage just ran), asks the fresh build/gate/ds_runner for
+# its compiled names, and judges them on the real repository. The mini-root controls of tests/gate/outcome-names (an equal list
+# must pass, a list with one renamed outcome must give exactly OUTSYNC_NAME) run last; plan 03's controls stay in outcome-controls.
+stage_outcome_sync() {
+  stage_build || return $?
+  rm -f build/gate/outcome-names.txt
+  if build/gate/ds_runner --outcomes > build/gate/outcome-names.txt 2> "$tmp/on.err"; then r=0; else r=$?; fi
+  if [ "$r" -ne 0 ] || [ ! -s build/gate/outcome-names.txt ]; then
+    echo "HARNESS_ERROR build/gate/ds_runner --outcomes exited $r or printed no name"
+    cat "$tmp/on.err"
+    return 2
+  fi
+  checker sh "$here/outcome-sync" --names build/gate/outcome-names.txt || return $?
+  run_controls --ok-prefix --require-negative --need HARNESS_NO_FILE @DIR@tests/conformance/outcomes.def --need HARNESS_NO_FILE @DIR@names.txt tests/gate/outcome-names tests/gate/outcome-names sh "$here/outcome-sync" --root @DIR@ --names @DIR@names.txt @EXPECT@
+}
+
+# record-lint (D-53, D-55, D-84b, D-86): the records of the run are the files the conformance step wrote into build/gate/records (conformance-run
+# makes the directory empty on every run and passes it to the runner as --records; this stage never reads a directory left by an earlier run
+# without that step, and with no such directory it is a harness error, not a pass). The ids are derived here from the kind column of
+# build/gate/cases.tsv: every case of kind accept, record_lines, record_golden or record_refusal must have exactly one DIR/ID.record.toml, and
+# nothing else may be there, so a record that went missing (or an extra file) fails before any record is read. Then record-lint reads the
+# committed goldens and every record of the run.
+stage_record_lint() {
+  rl_dir=build/gate/records
+  rl_tsv=build/gate/cases.tsv
+  if [ ! -f "$rl_tsv" ] || [ ! -d "$rl_dir" ]; then
+    echo "HARNESS_NO_FILE $rl_tsv or $rl_dir is missing: the conformance stage writes both (sh scripts/check --stage conformance first)"
+    return 2
+  fi
+  awk -F'\t' '$1 == "K" && $4 == "kind" && ($6 == "accept" || $6 == "record_lines" || $6 == "record_golden" || $6 == "record_refusal") { print $2 }' "$rl_tsv" | sort -u > "$tmp/rl.ids"
+  rl_ids=$(sed -n '$=' "$tmp/rl.ids")
+  rl_files=$(ls -A "$rl_dir" | sed -n '$=')
+  rc=0
+  if [ -z "$rl_ids" ]; then
+    echo "NO_RECORD_CASES $rl_tsv holds no case of a record-producing kind"
+    return 1
+  fi
+  if [ -z "$rl_files" ]; then
+    echo "RECORDS_DIR_EMPTY $rl_dir"
+    return 1
+  fi
+  if [ "$rl_files" -ne "$rl_ids" ]; then
+    echo "RECORDS_COUNT_MISMATCH files=$rl_files cases=$rl_ids"
+    rc=1
+  fi
+  while IFS= read -r rl_id; do
+    if [ ! -f "$rl_dir/$rl_id.record.toml" ]; then
+      echo "RECORD_MISSING $rl_id"
+      rc=1
+    fi
+  done < "$tmp/rl.ids"
+  if [ "$rc" -ne 0 ]; then
+    return 1
+  fi
+  checker sh "$here/record-lint" tests/conformance/golden "$rl_dir"
+}
+
+# every tests/gate/record-lint/<case>/ holds record.toml; a case with an EXPECT must fail with exactly that code, ok-<case> must pass
+stage_record_lint_negatives() {
+  run_controls --ok-prefix --require-negative --need HARNESS_NO_FILE @DIR@record.toml tests/gate/record-lint tests/gate/record-lint sh "$here/record-lint" @EXPECT@ @DIR@record.toml
+}
+
+# core-boundary (D-54, D-65): the real core. Each src/core/*.c is compiled standalone at -O0 and inspected; the stage passes only on the STATUS marker.
+# The checker, the allowlist and the rules are shown able to fail by the stage core-boundary-negatives and by the selftest mutations.
+stage_core_boundary() {
+  checker sh "$here/core-boundary-check"
+}
+
+# core-boundary-negatives (D-54, D-65): every tests/gate/core-boundary/<case>/ is a mini-root holding src/core/*.c. A case with an EXPECT must fail
+# with exactly that code set, ok-<case> must pass; the controls are never part of the CMake build, so only this checker reads them.
+stage_core_boundary_negatives() {
+  run_controls --ok-prefix --require-negative tests/gate/core-boundary tests/gate/core-boundary sh "$here/core-boundary-check" --root @DIR@ @EXPECT@
+}
+
+# determinism (D-55, D-86): the fresh-process half of CORE-01. scripts/determinism-run run reads the runner, cases.tsv, r1.tsv and oracle.tsv that the
+# build and conformance stages made earlier in this same gate run (it never builds), runs the runner in two processes, the second under env -i with a
+# different TZ, working directory and TMPDIR and with allocator scribbling, and compares every record file byte for byte after record-lint. E0:
+# repeatability only. Registered after core-boundary, and therefore after build and conformance.
+stage_determinism() {
+  checker sh "$here/determinism-run" run
+}
+
+# determinism-negatives (D-55): tests/gate/determinism/<case>/ holds a.toml and b.toml; ok-<case> must compare equal, a case with an EXPECT must fail with
+# exactly that code. DET_MISSING_FILE is a harness error (exit 2), which run_controls would report as HARNESS_ERROR, so it is asserted directly here:
+# a path that does not exist must give exit 2 and the code, never a pass.
+stage_determinism_negatives() {
+  dn_rc=0
+  run_controls --ok-prefix --require-negative --need HARNESS_NO_FILE @DIR@a.toml --need HARNESS_NO_FILE @DIR@b.toml tests/gate/determinism tests/gate/determinism sh "$here/determinism-run" compare @EXPECT@ @DIR@a.toml @DIR@b.toml || dn_rc=$?
+  dn_ok=tests/gate/determinism/ok-same
+  if sh "$here/determinism-run" compare "$dn_ok/a.toml" "$dn_ok/absent.toml" > "$tmp/dn.out" 2>&1; then dn_r=0; else dn_r=$?; fi
+  if [ "$dn_r" -ne 2 ] || ! grep -q '^DET_MISSING_FILE ' "$tmp/dn.out"; then
+    echo "CONTROL BROKEN missing-file (exit $dn_r, wanted 2 with DET_MISSING_FILE)"
+    sed 's/^/  /' "$tmp/dn.out"
+    [ "$dn_rc" -eq 2 ] || dn_rc=1
+  fi
+  return "$dn_rc"
+}
+
+# fixtures (FIX-02, D-59, D-60, D-85): the real manifest against the bytes the gate emits. The stage makes its own input: it removes any used list
+# left by an earlier run, then runs the whole  sh scripts/conformance-run fixtures  (no --only, so no --partial): that mode flattens the cases,
+# builds the gate preset, hashes and measures ds_runner --emit for every recipe of ds_runner --fixtures with host tools, writes
+# build/gate/fixtures.used and runs fixture-check on it (a used recipe without an entry, a changed hash or size, a stale entry and every field
+# rule are codes there). Then it asserts independently that the used list names every file of fixtures/manifest, by count and by name (the
+# manifest stems against the used names with hyphens and colons turned into underscores): any gap is a harness error, so a manifest entry
+# can never go unchecked because a partial or stale list was judged.
+stage_fixtures() {
+  rm -f build/gate/fixtures.used
+  checker sh "$here/conformance-run" fixtures || return $?
+  if [ ! -s build/gate/fixtures.used ]; then
+    echo "HARNESS_ERROR build/gate/fixtures.used is missing or empty after the fixtures mode"
+    return 2
+  fi
+  ls fixtures/manifest | sed -n 's/\.toml$//p' | sort > "$tmp/fx.man"
+  awk '{ print $1 }' build/gate/fixtures.used | tr ':-' '__' | sort > "$tmp/fx.used"
+  fx_man=$(sed -n '$=' "$tmp/fx.man")
+  fx_used=$(sed -n '$=' "$tmp/fx.used")
+  if [ -z "$fx_man" ] || [ "$fx_man" != "$fx_used" ] || ! cmp -s "$tmp/fx.man" "$tmp/fx.used"; then
+    echo "HARNESS_ERROR the used list does not cover the manifest: manifest files=${fx_man:-0} used lines=${fx_used:-0}"
+    diff "$tmp/fx.man" "$tmp/fx.used" | sed 's/^/  /'
+    return 2
+  fi
+  return 0
+}
+
+# fixture-negatives (FIX-02, D-59): every tests/gate/fixture/<case>/ is a mini-root: fixtures/manifest/*.toml (the entries), used.txt (the used
+# list in the NAME SIZE SHA256 form that conformance-run fixtures writes) and, for a control, an EXPECT. ok-<case> must pass; a case with an
+# EXPECT must fail with exactly that code set. A control that passes without its EXPECT met means the checker is broken (T-02-34, T-02-37).
+stage_fixture_negatives() {
+  run_controls --ok-prefix --require-negative --need HARNESS_NO_FILE @DIR@used.txt tests/gate/fixture tests/gate/fixture sh "$here/fixture-check" --root @DIR@ --used @DIR@used.txt @EXPECT@
+}
+
+# inventory (FIX-04, D-58, D-60): the real repository's required-test inventory. Static, so it is registered before the build: every id of
+# tests/conformance/REQUIRED has a case file, every case that says required = true is listed, and every ledger TEST pin resolves to
+# a required case that pins it back. The ingest already fails a required id that produced no RESULT line; this stage fails the inventory itself
+# when a required test is removed, so a shrunken set cannot go green.
+stage_inventory() {
+  checker sh "$here/inventory-check"
+}
+
+# inventory-negatives (FIX-04, D-58): every tests/gate/inventory/<case>/ is a mini-root (tests/conformance/REQUIRED, the cases, ledger/entries):
+# ok-<case> must pass and a case with an EXPECT must fail with exactly that code set. A control that passes without its EXPECT met means
+# the checker is broken (T-02-35).
+# Then two probes that the one-code-per-directory layout cannot hold, made at run time from ok-consistent: the second direction of the pin check (a case
+# names a ledger id whose pinning_test is not TEST:that-case) and a REQUIRED line that is not an id; each must give exactly its own code.
+stage_inventory_negatives() {
+  in_rc=0
+  run_controls --ok-prefix --require-negative --need HARNESS_NO_FILE @DIR@tests/conformance/REQUIRED tests/gate/inventory tests/gate/inventory sh "$here/inventory-check" --root @DIR@ @EXPECT@ || in_rc=$?
+  in_w="$tmp/inventory"
+  rm -rf "$in_w"
+  if mkdir -p "$in_w" && cp -R tests/gate/inventory/ok-consistent "$in_w/reverse" && cp -R tests/gate/inventory/ok-consistent "$in_w/badline" \
+    && sed 's/^pinning_test = .*/pinning_test = "PENDING:4"/' tests/gate/inventory/ok-consistent/ledger/entries/LED-LOAD-0001.toml > "$in_w/reverse/ledger/entries/LED-LOAD-0001.toml" \
+    && printf 'Not-An-Id\n' >> "$in_w/badline/tests/conformance/REQUIRED"; then :; else
+    echo "HARNESS_ERROR cannot create the inventory probe roots"
+    return 2
+  fi
+  for in_p in reverse:INV_PIN_BACKLINK badline:INV_BAD_LINE; do
+    in_n=${in_p%%:*}
+    in_c=${in_p#*:}
+    if sh "$here/inventory-check" --root "$in_w/$in_n" --expect "$in_c" > "$tmp/in.out" 2>&1 && grep -qx 'EXPECT_OK' "$tmp/in.out"; then :; else
+      echo "CONTROL BROKEN $in_n (wanted exactly $in_c)"
+      sed 's/^/  /' "$tmp/in.out"
+      [ "$in_rc" -eq 2 ] || in_rc=1
+    fi
+  done
+  return "$in_rc"
+}
+
+# workflow (CI-01, D-61, D-62): the real CI definition, judged statically by scripts/workflow-check (permissions, the one pinned action, the
+# forbidden triggers, the checkout and shell settings, the gate step, the pull-request template line and the dependabot file). Static, so it
+# is registered before the build (D-60); it reads no file a build produces. actionlint is a one-off on a workflow change, not a stage.
+stage_workflow() {
+  checker sh "$here/workflow-check"
+}
+
+# workflow-negatives (CI-01, D-62): every tests/workflow/<case>/ is a mini-root (.github/workflows/gate.yml, the template, the dependabot
+# file): ok-<case> must pass and a case with an EXPECT must fail with exactly that code set. The ok-gate mini-root must also be a byte copy of
+# the real workflow, so the controls are mutations of the file that CI runs and cannot drift from it.
+stage_workflow_negatives() {
+  wn_rc=0
+  run_controls --ok-prefix --require-negative --need HARNESS_NO_FILE @DIR@.github/workflows/gate.yml tests/workflow tests/workflow sh "$here/workflow-check" --root @DIR@ @EXPECT@ || wn_rc=$?
+  if cmp -s .github/workflows/gate.yml tests/workflow/ok-gate/.github/workflows/gate.yml; then :; else
+    echo "CONTROL_DRIFT tests/workflow/ok-gate/.github/workflows/gate.yml differs from .github/workflows/gate.yml"
+    [ "$wn_rc" -eq 2 ] || wn_rc=1
+  fi
+  # the unparsable shape fails closed (T-02-41): flow-map syntax is outside the accepted YAML subset, so the checker must exit 2, with no --expect and
+  # with an --expect that names the code (an unreadable file is never a pass and never an expected outcome). The scratch workflow is the ok-gate one
+  # with its permissions block turned into a flow map.
+  wu="$tmp/wf-unparsable"
+  rm -rf "$wu"
+  mkdir -p "$wu"
+  cp -R tests/workflow/ok-gate/.github "$wu/.github"
+  awk '$0 == "  contents: read" { next } $0 == "permissions:" { print "permissions: { contents: read }"; next } { print }' \
+    tests/workflow/ok-gate/.github/workflows/gate.yml > "$wu/.github/workflows/gate.yml"
+  if sh "$here/workflow-check" --root "$wu" > "$tmp/wu1.out" 2>&1; then wu_r1=0; else wu_r1=$?; fi
+  if sh "$here/workflow-check" --root "$wu" --expect WF_UNPARSABLE > "$tmp/wu2.out" 2>&1; then wu_r2=0; else wu_r2=$?; fi
+  if [ "$wu_r1" -eq 2 ] && [ "$wu_r2" -eq 2 ] && grep -q 'WF_UNPARSABLE' "$tmp/wu1.out"; then
+    echo "CONTROL_UNPARSABLE exit 2 without and with --expect, as required"
+  else
+    echo "CONTROL_UNPARSABLE_BROKEN flow-map workflow gave exit $wu_r1 (no expect) and $wu_r2 (expect), wanted 2 and 2 with WF_UNPARSABLE printed"
+    [ "$wn_rc" -eq 2 ] || wn_rc=1
+  fi
+  return "$wn_rc"
+}
+
+# docs-claims (TOOL-02, D-60): the documented gate command is true. scripts/docs-check reads README.md, AGENTS.md and the usage line of this script:
+# the command is stated in both files, the retired Phase 1 status sentence is gone, and every flag of the usage line is documented. Static, so it is
+# registered before the build.
+stage_docs_claims() {
+  checker sh "$here/docs-check"
+}
+
+# docs-claims-negatives (TOOL-02): every tests/docs/<case>/ is a mini-root (README.md, AGENTS.md, a stub scripts/check usage line): ok-<case> must pass and
+# a case with an EXPECT must fail with exactly that code set.
+stage_docs_claims_negatives() {
+  run_controls --ok-prefix --require-negative --need HARNESS_NO_FILE @DIR@scripts/check tests/docs tests/docs sh "$here/docs-check" --root @DIR@ @EXPECT@
+}
+
+# ci-timings-controls (CI-01, D-63, D-64): scripts/ci-timings judged offline against a canned run. Nothing here touches a network: the --tsv mode is run with
+# a stub gh first on PATH that records any call (it must record none), and the RUN_ID mode is run against the same stub, which prints the canned record
+# instead of contacting GitHub, so the exact gh arguments (read-only: run view ID --json ... --jq ...) are asserted too. The row must be the one line of
+# EXPECT, a malformed record and a non-numeric run id must exit 2 and print no row, and the repository tree must be unchanged afterwards.
+# One line per control, CI_TIMINGS_CONTROL NAME OK, or CI_TIMINGS_CONTROL_BROKEN NAME (any broken control fails the stage, exit 1).
+stage_ci_timings_controls() {
+  ct_rc=0
+  ct_dir=tests/gate/ci-timings
+  for ct_f in canned.tsv malformed.tsv EXPECT; do
+    if [ ! -f "$ct_dir/$ct_f" ]; then
+      echo "HARNESS_NO_FILE $ct_dir/$ct_f"
+      ct_rc=2
+    fi
+  done
+  [ "$ct_rc" -eq 0 ] || return 2
+  ct_before=$(git status --porcelain 2> /dev/null || true)
+  ct_bin="$tmp/ct-bin"
+  mkdir -p "$ct_bin"
+  printf '%s\n' '#!/bin/sh' 'printf "%s\n" "$@" > "$CT_ARGV"' 'cat "$CT_CANNED"' > "$ct_bin/gh"
+  chmod +x "$ct_bin/gh"
+  CT_ARGV="$tmp/ct-argv"
+  CT_CANNED="$root/$ct_dir/canned.tsv"
+  export CT_ARGV CT_CANNED
+  rm -f "$CT_ARGV"
+
+  # (1) the canned file gives exactly the stored row, and gh is never run in this mode
+  if PATH="$ct_bin:$PATH" sh "$here/ci-timings" --tsv "$ct_dir/canned.tsv" > "$tmp/ct1" 2>&1; then ct_r=0; else ct_r=$?; fi
+  if [ "$ct_r" -eq 0 ] && [ "$(wc -l < "$tmp/ct1" | tr -d ' ')" = 1 ] && grep -Fxq -f "$ct_dir/EXPECT" "$tmp/ct1" && [ ! -e "$CT_ARGV" ]; then
+    echo "CI_TIMINGS_CONTROL canned-row OK"
+  else
+    echo "CI_TIMINGS_CONTROL_BROKEN canned-row (exit $ct_r, gh called: $([ -e "$CT_ARGV" ] && echo yes || echo no))"
+    ct_rc=1
+  fi
+
+  # (2) a malformed record exits 2 and prints no row
+  if sh "$here/ci-timings" --tsv "$ct_dir/malformed.tsv" > "$tmp/ct2" 2>&1; then ct_r=0; else ct_r=$?; fi
+  if [ "$ct_r" -eq 2 ] && ! grep -q '^| ' "$tmp/ct2"; then
+    echo "CI_TIMINGS_CONTROL malformed-exit-2 OK"
+  else
+    echo "CI_TIMINGS_CONTROL_BROKEN malformed-exit-2 (exit $ct_r, wanted 2 and no row)"
+    ct_rc=1
+  fi
+
+  # (3) the RUN_ID mode against the stub gh: the same row, and the call is  gh run view ID --json ... --jq ...  (a read, never a write)
+  rm -f "$CT_ARGV"
+  if PATH="$ct_bin:$PATH" sh "$here/ci-timings" 1234567890 > "$tmp/ct3" 2>&1; then ct_r=0; else ct_r=$?; fi
+  if [ "$ct_r" -eq 0 ] && grep -Fxq -f "$ct_dir/EXPECT" "$tmp/ct3" && [ -f "$CT_ARGV" ] \
+    && [ "$(sed -n 1p "$CT_ARGV")" = run ] && [ "$(sed -n 2p "$CT_ARGV")" = view ] && [ "$(sed -n 3p "$CT_ARGV")" = 1234567890 ] \
+    && grep -Fxq -e --json "$CT_ARGV" && grep -Fxq -e --jq "$CT_ARGV"; then
+    echo "CI_TIMINGS_CONTROL run-id-call OK"
+  else
+    echo "CI_TIMINGS_CONTROL_BROKEN run-id-call (exit $ct_r)"
+    ct_rc=1
+  fi
+
+  # (4) a run id that is not digits is refused before gh is looked up
+  rm -f "$CT_ARGV"
+  if PATH="$ct_bin:$PATH" sh "$here/ci-timings" '12x;echo' > "$tmp/ct4" 2>&1; then ct_r=0; else ct_r=$?; fi
+  if [ "$ct_r" -eq 2 ] && [ ! -e "$CT_ARGV" ]; then
+    echo "CI_TIMINGS_CONTROL bad-run-id OK"
+  else
+    echo "CI_TIMINGS_CONTROL_BROKEN bad-run-id (exit $ct_r)"
+    ct_rc=1
+  fi
+
+  # (5) the repository tree is unchanged by all of it
+  ct_after=$(git status --porcelain 2> /dev/null || true)
+  if [ "$ct_before" = "$ct_after" ]; then
+    echo "CI_TIMINGS_CONTROL tree-unchanged OK"
+  else
+    echo "CI_TIMINGS_CONTROL_BROKEN tree-unchanged (scripts/ci-timings wrote into the repository)"
+    ct_rc=1
+  fi
+  return "$ct_rc"
+}
+
+# named-controls (FIX-04, RUN-02, FIX-05; D-58, D-77, D-80, D-85): the five named negative controls of the success criterion and the producers of the two
+# outcomes that only a live run can show, each judged by the real checker or by the live runner, never by a re-implementation here. Registered after
+# the build and conformance stages: the live controls run the ds_runner that conformance-run builds incrementally itself, and the stage reads no
+# file that an earlier gate run left (every file it judges is written by the command it runs). One line per control, NAMED_CONTROL NAME RED_OK or
+# NOT_RED (any NOT_RED fails the stage); a missing control file is exit 2, never a skipped control.
+#   removed-required   inventory-check on tests/gate/inventory/removed-required reports INV_REQUIRED_MISSING (and exits 1 without --expect)
+#   missing-field      fixture-check on tests/gate/fixture/fix-missing-field reports FIX_MISSING_FIELD
+#   unlisted-fixture   fixture-check on tests/gate/fixture/fix-unlisted reports FIX_UNLISTED
+#   wrong-literal      the live runner on tests/gate/wrong-literal prints a RESULT line whose id and outcome fields are wrong_literal and
+#                      guest_failure (conformance-run control compares those fields with awk), and the ingest judges that file red
+#   romlike-binary     tests/rights/synthetic.sh passes its planted-pce case (RIGHTSTEST planted-pce PASS), and a ROM-like file made here
+#                      at run time in a temporary repository gives rights-check exactly ROMLIKE_BINARY (no ROM-like byte is ever committed)
+#   timeout-budget     the live runner on tests/gate/timeout-budget ends a case on its machine-time budget: RESULT budget_spin timeout, and
+#                      the ingest of that file reports exactly OUTCOME_TIMEOUT
+#   cancelled-spin     TERM sent to the supervised live runner of tests/gate/cancel-spin (a case that never ends) gives RESULT spin cancelled,
+#                      and the ingest of that file reports exactly OUTCOME_CANCELLED
+# After the last control no runner of these controls may still be running (pgrep, when the tool exists). The lines also go to
+# build/gate/named-controls.txt (a passing stage prints only its CHECK line).
+nc_report() {
+  if [ "$2" -eq 1 ]; then
+    echo "NAMED_CONTROL $1 RED_OK" | tee -a build/gate/named-controls.txt
+  else
+    echo "NAMED_CONTROL $1 NOT_RED" | tee -a build/gate/named-controls.txt
+    sed 's/^/  /' "$3"
+    [ "$nc_rc" -eq 2 ] || nc_rc=1
+  fi
+}
+
+# nc_checker_red NAME CODE CMD...: CMD (a checker command without --expect) is red with exactly CODE: EXPECT_OK with --expect CODE, exit 1 without it,
+# and CODE named in its output
+nc_checker_red() {
+  ncr_name=$1
+  ncr_code=$2
+  shift 2
+  ncr_ok=0
+  : > "$tmp/nc.b"
+  if "$@" --expect "$ncr_code" > "$tmp/nc.a" 2>&1 && grep -qx 'EXPECT_OK' "$tmp/nc.a"; then
+    if "$@" > "$tmp/nc.b" 2>&1; then ncr_b=0; else ncr_b=$?; fi
+    if [ "$ncr_b" -eq 1 ] && grep -q "$ncr_code" "$tmp/nc.b"; then ncr_ok=1; fi
+  fi
+  cat "$tmp/nc.a" "$tmp/nc.b" > "$tmp/nc.d"
+  nc_report "$ncr_name" "$ncr_ok" "$tmp/nc.d"
+}
+
+# nc_live NAME CODE DIR [SIG]: conformance-run control DIR (or control-signal DIR SIG) must exit 0 (its EXPECT pair matched on the id and outcome
+# fields of a RESULT line of the live runner), and the ingest of the results file it wrote must report exactly CODE and, without --expect, exit 1
+nc_live() {
+  ncl_name=$1
+  ncl_code=$2
+  ncl_dir=$3
+  ncl_res=build/gate/control/$(basename "$ncl_dir")/results.txt
+  if [ -n "${4-}" ]; then
+    sh "$here/conformance-run" control-signal "$ncl_dir" "$4" > "$tmp/nc.a" 2>&1 && ncl_r=0 || ncl_r=$?
+  else
+    sh "$here/conformance-run" control "$ncl_dir" > "$tmp/nc.a" 2>&1 && ncl_r=0 || ncl_r=$?
+  fi
+  if [ "$ncl_r" -ge 2 ]; then
+    echo "HARNESS_ERROR $ncl_name: conformance-run exited $ncl_r"
+    sed 's/^/  /' "$tmp/nc.a"
+    nc_rc=2
+    return 0
+  fi
+  ncl_ok=0
+  : > "$tmp/nc.b"
+  if [ "$ncl_r" -eq 0 ] && sh "$here/conformance-ingest" --root "$ncl_dir" --results "$ncl_res" --expect "$ncl_code" > "$tmp/nc.b" 2>&1 && grep -qx 'EXPECT_OK' "$tmp/nc.b"; then
+    if sh "$here/conformance-ingest" --root "$ncl_dir" --results "$ncl_res" > "$tmp/nc.c" 2>&1; then ncl_c=0; else ncl_c=$?; fi
+    [ "$ncl_c" -eq 1 ] && ncl_ok=1
+  fi
+  cat "$tmp/nc.a" "$tmp/nc.b" > "$tmp/nc.d"
+  nc_report "$ncl_name" "$ncl_ok" "$tmp/nc.d"
+}
+
+# nc_romlike: the plan 04 planted-pce case through its own script, then the same fault once more in a repository made here, with the code visible
+nc_romlike() {
+  ncm_ok=0
+  if sh tests/rights/synthetic.sh > "$tmp/nc.a" 2>&1 && grep -qx 'RIGHTSTEST planted-pce PASS' "$tmp/nc.a"; then
+    ncm_d="$tmp/nc-romlike"
+    rm -rf "$ncm_d"
+    mkdir -p "$ncm_d"
+    printf 'not a rom, only a name\n' > "$ncm_d/unlisted.pce"
+    if (GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null; export GIT_CONFIG_NOSYSTEM GIT_CONFIG_GLOBAL; git init -q "$ncm_d") > "$tmp/nc.b" 2>&1; then
+      if sh "$here/rights-check" --root "$ncm_d" --expect ROMLIKE_BINARY > "$tmp/nc.b" 2>&1 && grep -qx 'EXPECT_OK' "$tmp/nc.b"; then
+        if sh "$here/rights-check" --root "$ncm_d" > "$tmp/nc.c" 2>&1; then ncm_c=0; else ncm_c=$?; fi
+        if [ "$ncm_c" -eq 1 ] && grep -q 'ROMLIKE_BINARY' "$tmp/nc.c"; then ncm_ok=1; fi
+      fi
+    fi
+  else
+    : > "$tmp/nc.b"
+  fi
+  cat "$tmp/nc.a" "$tmp/nc.b" > "$tmp/nc.d"
+  nc_report romlike-binary "$ncm_ok" "$tmp/nc.d"
+}
+
+stage_named_controls() {
+  nc_rc=0
+  mkdir -p build/gate && : > build/gate/named-controls.txt || { echo "HARNESS_ERROR cannot write build/gate/named-controls.txt"; return 2; }
+  for nc_f in tests/gate/inventory/removed-required/EXPECT tests/gate/fixture/fix-missing-field/EXPECT tests/gate/fixture/fix-missing-field/used.txt \
+    tests/gate/fixture/fix-unlisted/EXPECT tests/gate/fixture/fix-unlisted/used.txt tests/gate/wrong-literal/EXPECT tests/gate/timeout-budget/EXPECT \
+    tests/gate/cancel-spin/EXPECT tests/rights/synthetic.sh; do
+    if [ ! -f "$nc_f" ]; then
+      echo "HARNESS_NO_FILE $nc_f"
+      nc_rc=2
+    fi
+  done
+  [ "$nc_rc" -eq 0 ] || return 2
+  nc_checker_red removed-required INV_REQUIRED_MISSING sh "$here/inventory-check" --root tests/gate/inventory/removed-required
+  nc_checker_red missing-field FIX_MISSING_FIELD sh "$here/fixture-check" --root tests/gate/fixture/fix-missing-field --used tests/gate/fixture/fix-missing-field/used.txt
+  nc_checker_red unlisted-fixture FIX_UNLISTED sh "$here/fixture-check" --root tests/gate/fixture/fix-unlisted --used tests/gate/fixture/fix-unlisted/used.txt
+  nc_live wrong-literal OUTCOME_GUEST_FAILURE tests/gate/wrong-literal
+  nc_romlike
+  nc_live timeout-budget OUTCOME_TIMEOUT tests/gate/timeout-budget
+  nc_live cancelled-spin OUTCOME_CANCELLED tests/gate/cancel-spin TERM
+  if command -v pgrep > /dev/null 2>&1 && pgrep -f 'ds_runner --cases build/gate/control' > "$tmp/nc.pids" 2> /dev/null; then
+    echo "HARNESS_ERROR a runner of the live controls is still running (pid $(tr '\n' ' ' < "$tmp/nc.pids"))"
+    for nc_p in $(cat "$tmp/nc.pids"); do kill "$nc_p" 2> /dev/null || true; done
+    nc_rc=2
+  fi
+  return "$nc_rc"
 }
 
 # ---- self-test: prove the gate is alive (not vacuous). Mutates a COPY of scripts/ only ----
+
+# st_want NAME: true when no mutation was selected (run them all) or NAME is the selected one
+st_want() {
+  [ -z "$st_sel" ] || [ "$st_sel" = "$1" ]
+}
 
 selftest() {
   cp_dir="$tmp/selftest/scripts"
   mkdir -p "$tmp/selftest"
   failed=0
+  st_ran=0
 
   # (a) delete the rule that emits SUPPORTED_NO_QUALIFYING_EVIDENCE: the e0-e4 control must now be broken (exit 1)
-  rm -rf "$cp_dir"
-  cp -R "$here" "$cp_dir"
-  grep -v 'SUPPORTED_NO_QUALIFYING_EVIDENCE' "$cp_dir/lib/ledger-rules.awk" > "$cp_dir/lib/ledger-rules.mutated"
-  mv "$cp_dir/lib/ledger-rules.mutated" "$cp_dir/lib/ledger-rules.awk"
-  if sh "$cp_dir/ledger-check" --expect SUPPORTED_NO_QUALIFYING_EVIDENCE ledger/negative/e0-e4/ > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
-  if [ "$r" -eq 1 ]; then echo "SELFTEST mutation-supported-rule PASS"; else echo "SELFTEST mutation-supported-rule FAIL"; failed=1; fi
+  if st_want mutation-supported-rule; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    grep -v 'SUPPORTED_NO_QUALIFYING_EVIDENCE' "$cp_dir/lib/ledger-rules.awk" > "$cp_dir/lib/ledger-rules.mutated"
+    mv "$cp_dir/lib/ledger-rules.mutated" "$cp_dir/lib/ledger-rules.awk"
+    if sh "$cp_dir/ledger-check" --expect SUPPORTED_NO_QUALIFYING_EVIDENCE ledger/negative/e0-e4/ > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$r" -eq 1 ]; then echo "SELFTEST mutation-supported-rule PASS"; else echo "SELFTEST mutation-supported-rule FAIL"; failed=1; fi
+  fi
 
   # (b) a stage 1 that prints nothing must give NO_SENTINEL and exit 1, never a pass
-  rm -rf "$cp_dir"
-  cp -R "$here" "$cp_dir"
-  echo 'BEGIN { exit 0 }' > "$cp_dir/lib/toml-subset.awk"
-  if sh "$cp_dir/ledger-check" ledger/entries/ > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
-  if [ "$r" -eq 1 ] && grep -q 'NO_SENTINEL' "$tmp/st.out"; then echo "SELFTEST missing-sentinel PASS"; else echo "SELFTEST missing-sentinel FAIL"; failed=1; fi
+  if st_want missing-sentinel; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    echo 'BEGIN { exit 0 }' > "$cp_dir/lib/toml-subset.awk"
+    if sh "$cp_dir/ledger-check" ledger/entries/ > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$r" -eq 1 ] && grep -q 'NO_SENTINEL' "$tmp/st.out"; then echo "SELFTEST missing-sentinel PASS"; else echo "SELFTEST missing-sentinel FAIL"; failed=1; fi
+  fi
 
   # (c) delete the rule that emits OPEN_HAS_VALUE from profile-rules.awk: the open-with-value control must now be broken (exit 1)
-  rm -rf "$cp_dir"
-  cp -R "$here" "$cp_dir"
-  grep -v 'OPEN_HAS_VALUE' "$cp_dir/lib/profile-rules.awk" > "$cp_dir/lib/profile-rules.mutated"
-  mv "$cp_dir/lib/profile-rules.mutated" "$cp_dir/lib/profile-rules.awk"
-  if sh "$cp_dir/profile-check" --expect OPEN_HAS_VALUE tests/profile/open-with-value/pce-hucard-2btn/r1.toml > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
-  if [ "$r" -eq 1 ]; then echo "SELFTEST mutation-profile-rule PASS"; else echo "SELFTEST mutation-profile-rule FAIL"; failed=1; fi
+  if st_want mutation-profile-rule; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    grep -v 'OPEN_HAS_VALUE' "$cp_dir/lib/profile-rules.awk" > "$cp_dir/lib/profile-rules.mutated"
+    mv "$cp_dir/lib/profile-rules.mutated" "$cp_dir/lib/profile-rules.awk"
+    if sh "$cp_dir/profile-check" --expect OPEN_HAS_VALUE tests/profile/open-with-value/pce-hucard-2btn/r1.toml > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$r" -eq 1 ]; then echo "SELFTEST mutation-profile-rule PASS"; else echo "SELFTEST mutation-profile-rule FAIL"; failed=1; fi
+  fi
 
   # (d) delete the rule that emits PROV_BAD_SPDX: the gpl-spdx control must now be broken (exit 1)
-  rm -rf "$cp_dir"
-  cp -R "$here" "$cp_dir"
-  grep -v 'PROV_BAD_SPDX' "$cp_dir/lib/provenance-register.awk" > "$cp_dir/lib/provenance-register.mutated"
-  mv "$cp_dir/lib/provenance-register.mutated" "$cp_dir/lib/provenance-register.awk"
-  if sh "$cp_dir/provenance-check" --root tests/provenance/gpl-spdx --expect PROV_BAD_SPDX > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
-  if [ "$r" -eq 1 ]; then echo "SELFTEST mutation-provenance-rule PASS"; else echo "SELFTEST mutation-provenance-rule FAIL"; failed=1; fi
+  if st_want mutation-provenance-rule; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    grep -v 'PROV_BAD_SPDX' "$cp_dir/lib/provenance-register.awk" > "$cp_dir/lib/provenance-register.mutated"
+    mv "$cp_dir/lib/provenance-register.mutated" "$cp_dir/lib/provenance-register.awk"
+    if sh "$cp_dir/provenance-check" --root tests/provenance/gpl-spdx --expect PROV_BAD_SPDX > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$r" -eq 1 ]; then echo "SELFTEST mutation-provenance-rule PASS"; else echo "SELFTEST mutation-provenance-rule FAIL"; failed=1; fi
+  fi
 
   # (e) delete the rule that emits margin-below-10 from score.awk: the 9.90-point control must now be broken, because
   # the scorer would pre-authorize or blame the ND rule instead of rejecting a lead under 10.00
-  rm -rf "$cp_dir"
-  cp -R "$here" "$cp_dir"
-  grep -v 'margin-below-10' "$cp_dir/lib/score.awk" > "$cp_dir/lib/score.mutated"
-  mv "$cp_dir/lib/score.mutated" "$cp_dir/lib/score.awk"
-  if awk -f "$cp_dir/lib/score.awk" tests/score/margin-9.90/scores.txt > "$tmp/st.out" 2>&1 && ! grep -qx 'REASON=margin-below-10' "$tmp/st.out"; then
-    echo "SELFTEST mutation-margin-rule PASS"
-  else
-    echo "SELFTEST mutation-margin-rule FAIL"; failed=1
+  if st_want mutation-margin-rule; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    grep -v 'margin-below-10' "$cp_dir/lib/score.awk" > "$cp_dir/lib/score.mutated"
+    mv "$cp_dir/lib/score.mutated" "$cp_dir/lib/score.awk"
+    if awk -f "$cp_dir/lib/score.awk" tests/score/margin-9.90/scores.txt > "$tmp/st.out" 2>&1 && ! grep -qx 'REASON=margin-below-10' "$tmp/st.out"; then
+      echo "SELFTEST mutation-margin-rule PASS"
+    else
+      echo "SELFTEST mutation-margin-rule FAIL"; failed=1
+    fi
   fi
 
+  # (f) run_controls must turn the gate red on a broken control, and only because of the one line that sets the failing
+  # status. A scratch mini-repo holds a copy of scripts/ and one licence control whose EXPECT names a code the checker never
+  # emits, so the control is broken by construction. Unmutated, --stage licence-negatives must exit 1 and name the case;
+  # with the single line carrying the status marker deleted, the same run must exit 0, so the mutation silenced exactly the
+  # rule under test. The marker is assembled here so that this script carries it only once, on the line being removed.
+  if st_want mutation-run-controls; then
+    st_ran=1
+    mini="$tmp/selftest/mini"
+    rm -rf "$mini"
+    mkdir -p "$mini/tests/licence/broken"
+    cp -R "$here" "$mini/scripts"
+    printf 'SELFTEST_CODE_NEVER_EMITTED\n' > "$mini/tests/licence/broken/EXPECT"
+    tok=rc-broken-
+    tok="${tok}status"
+    st_alive=0
+    if sh "$mini/scripts/check" --stage licence-negatives > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$r" -eq 1 ] && grep -qx 'CHECK licence-negatives FAIL' "$tmp/st.out" && grep -q 'CONTROL BROKEN broken' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c "$tok" "$mini/scripts/check" || true)
+    grep -v "$tok" "$mini/scripts/check" > "$mini/scripts/check.mutated" || true
+    mv "$mini/scripts/check.mutated" "$mini/scripts/check"
+    after=$(grep -c "$tok" "$mini/scripts/check" || true)
+    if sh "$mini/scripts/check" --stage licence-negatives > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 0 ] && grep -qx 'CHECK licence-negatives PASS' "$tmp/st.out"; then
+      echo "SELFTEST mutation-run-controls PASS"
+    else
+      echo "SELFTEST mutation-run-controls FAIL"; failed=1
+    fi
+  fi
+
+  # (g) conformance-ingest must be red on a skip, and only because of the rule that flags a non-pass outcome (D-57). A scratch
+  # copy of scripts/ is run on the outcome-skip control with --expect OUTCOME_SKIP: unmutated that expectation is met (exit 0);
+  # with the lines carrying the rule marker deleted the judge no longer reports the skip, so the same run must exit 1. The
+  # marker is assembled here so that this script never carries it, and the ingest script carries it on exactly one line.
+  if st_want mutation-ingest-skip-red; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    tok=rule-non-
+    tok="${tok}pass"
+    sk="tests/gate/ingest/outcome-skip"
+    if sh "$cp_dir/conformance-ingest" --outcomes tests/conformance/outcomes.def --root "$sk" --results "$sk/results.txt" --expect OUTCOME_SKIP > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c "$tok" "$cp_dir/conformance-ingest" || true)
+    grep -v "$tok" "$cp_dir/conformance-ingest" > "$cp_dir/conformance-ingest.mutated" || true
+    mv "$cp_dir/conformance-ingest.mutated" "$cp_dir/conformance-ingest"
+    after=$(grep -c "$tok" "$cp_dir/conformance-ingest" || true)
+    if sh "$cp_dir/conformance-ingest" --outcomes tests/conformance/outcomes.def --root "$sk" --results "$sk/results.txt" --expect OUTCOME_SKIP > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+      echo "SELFTEST mutation-ingest-skip-red PASS"
+    else
+      echo "SELFTEST mutation-ingest-skip-red FAIL"; failed=1
+    fi
+  fi
+
+  # (h) conformance-flatten must refuse to release a TSV when stage 1 is dead (D-51). With a stage 1 that prints nothing, the
+  # ok-two-files input must give exit 1, no byte on stdout and FLAT_NO_SENTINEL; with the real stage 1 the same input must exit
+  # 0 and end in an END row, so the check is not satisfied by a flatten that always fails.
+  if st_want mutation-flatten-sentinel; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    ok2="tests/gate/flatten/ok-two-files"
+    if sh "$cp_dir/conformance-flatten" "$ok2" > "$tmp/st.out" 2> "$tmp/st.err"; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && [ "$(tail -n 1 "$tmp/st.out" | cut -c 1-3)" = "END" ]; then st_alive=1; fi
+    echo 'BEGIN { exit 0 }' > "$cp_dir/lib/toml-subset.awk"
+    if sh "$cp_dir/conformance-flatten" "$ok2" > "$tmp/st.out" 2> "$tmp/st.err"; then r=0; else r=$?; fi
+    bytes=$(wc -c < "$tmp/st.out" | tr -d ' ')
+    if [ "$st_alive" -eq 1 ] && [ "$r" -eq 1 ] && [ "$bytes" -eq 0 ] && grep -q 'FLAT_NO_SENTINEL' "$tmp/st.err"; then
+      echo "SELFTEST mutation-flatten-sentinel PASS"
+    else
+      echo "SELFTEST mutation-flatten-sentinel FAIL"; failed=1
+    fi
+  fi
+
+  # (i) the cancelled outcome has a producer, and the producer is the trap (D-77). The control sequence is run twice against
+  # scratch copies of scripts/: the unmutated copy must pass it; with the lines carrying the trap marker deleted the same
+  # sequence must be broken, because SIGTERM then kills the supervisor before it writes anything. The marker is assembled
+  # here so that this script never carries it, and conformance-run carries it on exactly two lines (the INT and TERM traps).
+  if st_want mutation-cancel-trap; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    tok=rule-cancel-
+    tok="${tok}trap"
+    if cancel_sequence "$cp_dir/conformance-run" "$tmp/st-cancel" > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    before=$(grep -c "$tok" "$cp_dir/conformance-run" || true)
+    grep -v "$tok" "$cp_dir/conformance-run" > "$cp_dir/conformance-run.mutated" || true
+    mv "$cp_dir/conformance-run.mutated" "$cp_dir/conformance-run"
+    after=$(grep -c "$tok" "$cp_dir/conformance-run" || true)
+    if cancel_sequence "$cp_dir/conformance-run" "$tmp/st-cancel" > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$r0" -eq 0 ] && [ "$before" -eq 2 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+      echo "SELFTEST mutation-cancel-trap PASS"
+    else
+      echo "SELFTEST mutation-cancel-trap FAIL"; failed=1
+    fi
+  fi
+
+  # (j) outcome-sync must be red on an extra row, and only because of the rule that counts rows. A scratch copy of scripts/ is
+  # run on the extra-row control with --expect OUTSYNC_ROWS: unmutated that expectation is met (exit 0); with every line that
+  # emits OUTSYNC_ROWS deleted the check reports nothing on the same control, so the expectation is no longer met (exit 1), which
+  # is the extra-row control flipping to broken in the outcome-controls stage. The code name is the marker here, as in (d).
+  if st_want mutation-outcome-sync; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    er="tests/gate/outcome-sync/extra-row"
+    if sh "$cp_dir/outcome-sync" --root "$er" --expect OUTSYNC_ROWS > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+    tok=OUTSYNC_ROWS
+    before=$(grep -c "$tok" "$cp_dir/outcome-sync" || true)
+    grep -v "$tok" "$cp_dir/outcome-sync" > "$cp_dir/outcome-sync.mutated" || true
+    mv "$cp_dir/outcome-sync.mutated" "$cp_dir/outcome-sync"
+    after=$(grep -c "$tok" "$cp_dir/outcome-sync" || true)
+    if sh "$cp_dir/outcome-sync" --root "$er" --expect OUTSYNC_ROWS > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -ge 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ] && grep -q "^EXPECT_MISMATCH wanted 'OUTSYNC_ROWS' got '<none>'" "$tmp/st.out"; then
+      echo "SELFTEST mutation-outcome-sync PASS"
+    else
+      echo "SELFTEST mutation-outcome-sync FAIL"; failed=1
+    fi
+  fi
+
+  # (k2) outcome-sync must be red on a compiled list that differs from outcomes.def, and only because of the rule that compares
+  # the list (D-57). A scratch copy of scripts/ is run on the compiled-list-differs control with --expect OUTSYNC_NAME: unmutated
+  # that expectation is met (exit 0); with every line carrying the comparison marker deleted the check reports nothing on the same
+  # control, so the expectation is no longer met (exit 1), which is the control flipping to broken in the outcome-sync stage.
+  # The marker is assembled here so that this script never carries it, and outcome-sync carries it on exactly two lines.
+  if st_want mutation-outcome-names; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    cd_="tests/gate/outcome-names/compiled-list-differs"
+    tok=rule-compiled-
+    tok="${tok}names"
+    if sh "$cp_dir/outcome-sync" --root "$cd_" --names "$cd_/names.txt" --expect OUTSYNC_NAME > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c "$tok" "$cp_dir/outcome-sync" || true)
+    grep -v "$tok" "$cp_dir/outcome-sync" > "$cp_dir/outcome-sync.mutated" || true
+    mv "$cp_dir/outcome-sync.mutated" "$cp_dir/outcome-sync"
+    after=$(grep -c "$tok" "$cp_dir/outcome-sync" || true)
+    if sh "$cp_dir/outcome-sync" --root "$cd_" --names "$cd_/names.txt" --expect OUTSYNC_NAME > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 2 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ] && grep -q "^EXPECT_MISMATCH wanted 'OUTSYNC_NAME' got '<none>'" "$tmp/st.out"; then
+      echo "SELFTEST mutation-outcome-names PASS"
+    else
+      echo "SELFTEST mutation-outcome-names FAIL"; failed=1
+    fi
+  fi
+
+  # (k) the rights check must flag a ROM-like extension, and only because of the extension rule (D-56, T-02-18). The planted-pce
+  # control holds a printable text file whose only fault is its name. A scratch copy of scripts/ with the one line carrying the
+  # extension-rule marker deleted must no longer flag it: the suite run against that copy (RIGHTS_CHECK) must exit non-zero and
+  # print "RIGHTSTEST planted-pce FAIL". The unmutated copy is first shown alive on a one-file repository (the name alone must be
+  # flagged), so the red result cannot come from a copy that was broken some other way. The marker is assembled here so that this
+  # script never carries it, and rights-check carries it on exactly one line.
+  if st_want mutation-rights-rule; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    tok=rule-exten
+    tok="${tok}sion"
+    mr="$tmp/selftest/rights-repo"
+    rm -rf "$mr"
+    mkdir -p "$mr"
+    printf 'not a rom, only a name\n' > "$mr/x.pce"
+    if ! (cd "$mr" && GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null git init -q . && GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null git add -f x.pce); then
+      echo "SELFTEST mutation-rights-rule FAIL (cannot build the scratch repository)"; failed=1
+    else
+      if sh "$cp_dir/rights-check" --root "$mr" --expect ROMLIKE_BINARY > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+      st_alive=0
+      if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+      before=$(grep -c "$tok" "$cp_dir/rights-check" || true)
+      grep -v "$tok" "$cp_dir/rights-check" > "$cp_dir/rights-check.mutated" || true
+      mv "$cp_dir/rights-check.mutated" "$cp_dir/rights-check"
+      after=$(grep -c "$tok" "$cp_dir/rights-check" || true)
+      if RIGHTS_CHECK="$cp_dir/rights-check" sh tests/rights/synthetic.sh > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+      if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -ne 0 ] && grep -qx 'RIGHTSTEST planted-pce FAIL' "$tmp/st.out"; then
+        echo "SELFTEST mutation-rights-rule PASS"
+      else
+        echo "SELFTEST mutation-rights-rule FAIL"; failed=1
+      fi
+    fi
+  fi
+
+  # (l) a toy control rule whose anchor stops matching exactly once must be a harness error, never a control that mutated
+  # nothing (D-85). For every tests/controls/NAME/RULE: a scratch root holds a copy of the live source the rule names. First the
+  # rule is run on the untouched copy and must succeed (so the later exit 2 cannot come from a missing file or a bad rule). Then
+  # the first character of the anchor is changed in the scratch copy only, and control-mutate must exit 2 with
+  # CONTROL_ANCHOR_COUNT TAG n=0; then the line holding the anchor is duplicated and it must exit 2 with n=2. The live source is
+  # never written. One line per rule: SELFTEST mutation-control-anchor NAME PASS|FAIL. No rule at all is a failure.
+  if st_want mutation-control-anchor; then
+    st_ran=1
+    ca_n=0
+    for ca_rule in tests/controls/*/RULE; do
+      [ -f "$ca_rule" ] || continue
+      ca_n=$((ca_n + 1))
+      ca_name=$(basename "$(dirname "$ca_rule")")
+      ca_root="$tmp/selftest/ctl-root"
+      ca_file=$(sed -n 's/^file=//p' "$ca_rule")
+      ca_anchor=$(sed -n 's/^anchor=//p' "$ca_rule")
+      ca_tag=$(sed -n 's/^tag=//p' "$ca_rule")
+      ca_ok=1
+      rm -rf "$ca_root"
+      mkdir -p "$ca_root/$(dirname "$ca_file")"
+      cp "$ca_file" "$ca_root/$ca_file"
+      if sh "$here/control-mutate" "$ca_rule" "$ca_root/out.c" --root "$ca_root" > "$tmp/st.out" 2>&1; then :; else ca_ok=0; fi
+      # break the anchor: its first character becomes @ (or ~ when it is @), on its one occurrence, in the scratch copy
+      CA_ANCHOR=$ca_anchor awk '
+        BEGIN { a = ENVIRON["CA_ANCHOR"]; c = substr(a, 1, 1); b = (c == "@" ? "~" : "@") substr(a, 2); done = 0 }
+        { if (!done && (i = index($0, a)) > 0) { $0 = substr($0, 1, i - 1) b substr($0, i + length(a)); done = 1 } print }
+      ' "$ca_file" > "$ca_root/$ca_file"
+      if sh "$here/control-mutate" "$ca_rule" "$ca_root/out.c" --root "$ca_root" > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+      if [ "$r" -ne 2 ] || ! grep -qx "CONTROL_ANCHOR_COUNT $ca_tag n=0" "$tmp/st.out"; then ca_ok=0; fi
+      # duplicate the line that holds the anchor
+      CA_ANCHOR=$ca_anchor awk '
+        BEGIN { a = ENVIRON["CA_ANCHOR"]; done = 0 }
+        { print; if (!done && index($0, a) > 0) { print; done = 1 } }
+      ' "$ca_file" > "$ca_root/$ca_file"
+      if sh "$here/control-mutate" "$ca_rule" "$ca_root/out.c" --root "$ca_root" > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+      if [ "$r" -ne 2 ] || ! grep -qx "CONTROL_ANCHOR_COUNT $ca_tag n=2" "$tmp/st.out"; then ca_ok=0; fi
+      if [ "$ca_ok" -eq 1 ]; then
+        echo "SELFTEST mutation-control-anchor $ca_name PASS"
+      else
+        echo "SELFTEST mutation-control-anchor $ca_name FAIL"; failed=1
+      fi
+    done
+    if [ "$ca_n" -eq 0 ]; then
+      echo "SELFTEST mutation-control-anchor FAIL (no rule under tests/controls)"; failed=1
+    fi
+  fi
+
+  # (m) the exclusion judge must be red on an excluded case that does not pass in the gate run, and only because of the one rule that
+  # says so (D-78, T-02-50). The excl-not-pass-in-gate control is run on a scratch copy of scripts/ with --expect EXCL_NOT_PASS_IN_GATE:
+  # unmutated that expectation is met (exit 0, EXPECT_OK); with the lines carrying the rule marker deleted the code is no longer
+  # reported, so the same run must exit 1. The marker is assembled here so that this script never carries it, and the ingest script
+  # carries it on exactly one line.
+  if st_want mutation-excluded-gate-pass; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    tok=rule-excl-
+    tok="${tok}gate-pass"
+    xc="tests/gate/excluded/excl-not-pass-in-gate"
+    if sh "$cp_dir/conformance-ingest" --outcomes tests/conformance/outcomes.def --root "$xc" --results "$xc/results.txt" --mode sanitize --excluded "$xc/EXCLUDED_IN_MODE" --gate-results "$xc/gate-results.txt" --expect EXCL_NOT_PASS_IN_GATE > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c "$tok" "$cp_dir/conformance-ingest" || true)
+    grep -v "$tok" "$cp_dir/conformance-ingest" > "$cp_dir/conformance-ingest.mutated" || true
+    mv "$cp_dir/conformance-ingest.mutated" "$cp_dir/conformance-ingest"
+    after=$(grep -c "$tok" "$cp_dir/conformance-ingest" || true)
+    if sh "$cp_dir/conformance-ingest" --outcomes tests/conformance/outcomes.def --root "$xc" --results "$xc/results.txt" --mode sanitize --excluded "$xc/EXCLUDED_IN_MODE" --gate-results "$xc/gate-results.txt" --expect EXCL_NOT_PASS_IN_GATE > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+      echo "SELFTEST mutation-excluded-gate-pass PASS"
+    else
+      echo "SELFTEST mutation-excluded-gate-pass FAIL"; failed=1
+    fi
+  fi
+
+  # (n) the fixed check order is behaviour, so the precedence table must be red when two rows of boot_order.def are swapped (D-46,
+  # D-79(b)). A scratch tree holds the sources needed to build the runner (CMake files, src, the runner sources and headers; no
+  # controls, so no toy is built). The unmutated copy is built first and ref_precedence_table must pass on it (--only), so the later
+  # red cannot come from a broken build or a harness fault. Then the two adjacent rows mapper and byte_order of the scratch copy of
+  # src/core/boot_order.def are swapped (a list in which they are not adjacent in that order is a failure of the selftest, never a
+  # silent pass), the scratch tree is rebuilt, and the same case against the real cases TSV must give RESULT guest_failure. The live
+  # tree is never written.
+  if st_want mutation-drop-precedence; then
+    st_ran=1
+    dp_root="$tmp/selftest/prec-root"
+    dp_ok=1
+    dp_why=""
+    rm -rf "$dp_root"
+    mkdir -p "$dp_root/tests/conformance" "$dp_root/ev"
+    cp CMakeLists.txt CMakePresets.json "$dp_root/"
+    cp -R src "$dp_root/src"
+    cp tests/conformance/*.c tests/conformance/*.h tests/conformance/*.def "$dp_root/tests/conformance/"
+    if sh "$here/conformance-flatten" tests/conformance/cases > "$dp_root/cases.tsv" 2> "$tmp/st.err"; then :; else dp_ok=0; dp_why="cannot flatten the cases"; fi
+    if [ "$dp_ok" -eq 1 ]; then
+      if (cd "$dp_root" && cmake --preset gate > build.log 2>&1 && cmake --build --preset gate >> build.log 2>&1); then :; else dp_ok=0; dp_why="the unmutated scratch tree does not build"; fi
+    fi
+    if [ "$dp_ok" -eq 1 ]; then
+      "$dp_root/build/gate/ds_runner" --cases "$dp_root/cases.tsv" --evidence-dir "$dp_root/ev" --only ref_precedence_table > "$dp_root/before.txt" 2> /dev/null || true
+      if ! awk '$1 == "RESULT" && $2 == "ref_precedence_table" && $3 == "pass" { f = 1 } END { exit !f }' "$dp_root/before.txt"; then
+        dp_ok=0
+        dp_why="ref_precedence_table does not pass on the unmutated scratch tree"
+      fi
+    fi
+    if [ "$dp_ok" -eq 1 ]; then
+      awk '
+        { line[NR] = $0 }
+        END {
+          for (i = 1; i < NR; i++) if (line[i] == "DS_CHECK(mapper)" && line[i + 1] == "DS_CHECK(byte_order)") { t = line[i]; line[i] = line[i + 1]; line[i + 1] = t; swapped = 1; break }
+          for (i = 1; i <= NR; i++) print line[i]
+          exit swapped ? 0 : 3
+        }
+      ' "$dp_root/src/core/boot_order.def" > "$dp_root/boot_order.mutated" || { dp_ok=0; dp_why="the rows mapper and byte_order are not adjacent in boot_order.def"; }
+    fi
+    if [ "$dp_ok" -eq 1 ]; then
+      mv "$dp_root/boot_order.mutated" "$dp_root/src/core/boot_order.def"
+      if (cd "$dp_root" && cmake --build --preset gate >> build.log 2>&1); then :; else dp_ok=0; dp_why="the mutated scratch tree does not build"; fi
+    fi
+    if [ "$dp_ok" -eq 1 ]; then
+      "$dp_root/build/gate/ds_runner" --cases "$dp_root/cases.tsv" --evidence-dir "$dp_root/ev" --only ref_precedence_table > "$dp_root/after.txt" 2> /dev/null || true
+      if ! awk '$1 == "RESULT" && $2 == "ref_precedence_table" && $3 == "guest_failure" { f = 1 } END { exit !f }' "$dp_root/after.txt"; then
+        dp_ok=0
+        dp_why="ref_precedence_table is not guest_failure with two rows swapped"
+      fi
+    fi
+    if [ "$dp_ok" -eq 1 ]; then
+      echo "SELFTEST mutation-drop-precedence PASS"
+    else
+      echo "SELFTEST mutation-drop-precedence FAIL ($dp_why)"; failed=1
+    fi
+  fi
+
+  # (o) the pointer rule of record-lint must be what turns the pointer control red, and only that rule (T-02-25). The pointer-in-value control
+  # is run on a scratch copy of scripts/ with --expect REC_POINTER: unmutated that expectation is met (exit 0, EXPECT_OK); with the line that carries the
+  # rule marker deleted the code is no longer reported, so the same run must exit 1, which is the control flipping to broken. The marker is assembled
+  # here so that this script never carries it, and the rules file carries it on exactly one line.
+  if st_want mutation-record-lint-pointer; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    tok=rule-
+    tok="${tok}pointer"
+    rp="tests/gate/record-lint/pointer-in-value/record.toml"
+    if sh "$cp_dir/record-lint" --expect REC_POINTER "$rp" > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c "$tok" "$cp_dir/lib/record-rules.awk" || true)
+    grep -v "$tok" "$cp_dir/lib/record-rules.awk" > "$cp_dir/lib/record-rules.mutated" || true
+    mv "$cp_dir/lib/record-rules.mutated" "$cp_dir/lib/record-rules.awk"
+    after=$(grep -c "$tok" "$cp_dir/lib/record-rules.awk" || true)
+    if sh "$cp_dir/record-lint" --expect REC_POINTER "$rp" > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+      echo "SELFTEST mutation-record-lint-pointer PASS"
+    else
+      echo "SELFTEST mutation-record-lint-pointer FAIL"; failed=1
+    fi
+  fi
+
+  # (p) the allowlist of core-boundary-check must be what lets the memory builtins through (T-02-28). The ok-memset-stack control passes on an
+  # unmutated copy of scripts/ (exit 0 with the STATUS marker); with the memset line deleted from the copy of core-boundary.allow the same run
+  # must exit 1 with CB_UNDEF_SYMBOL, because the control's object leaves memset undefined.
+  if st_want mutation-core-boundary-allow; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    cbr="tests/gate/core-boundary/ok-memset-stack"
+    if sh "$cp_dir/core-boundary-check" --root "$cbr" > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'STATUS core-boundary ok' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -cx 'memset' "$cp_dir/core-boundary.allow" || true)
+    grep -vx 'memset' "$cp_dir/core-boundary.allow" > "$cp_dir/core-boundary.mutated" || true
+    mv "$cp_dir/core-boundary.mutated" "$cp_dir/core-boundary.allow"
+    after=$(grep -cx 'memset' "$cp_dir/core-boundary.allow" || true)
+    if sh "$cp_dir/core-boundary-check" --root "$cbr" > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ] && grep -q 'CB_UNDEF_SYMBOL' "$tmp/st.out"; then
+      echo "SELFTEST mutation-core-boundary-allow PASS"
+    else
+      echo "SELFTEST mutation-core-boundary-allow FAIL"; failed=1
+    fi
+  fi
+
+  # (q) the writable-symbol rule of core-boundary-check must be what turns the global-counter control red (T-02-29). The control, run with
+  # --expect CB_WRITABLE, is met on an unmutated copy (exit 0, EXPECT_OK); with the lines tagged rule-writable deleted from the copy of the
+  # checker the code is no longer reported, so the same run must exit 1, which is the control flipping to broken.
+  if st_want mutation-core-boundary-writable; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    cbr="tests/gate/core-boundary/global-counter"
+    if sh "$cp_dir/core-boundary-check" --root "$cbr" --expect CB_WRITABLE > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c 'rule-writable' "$cp_dir/core-boundary-check" || true)
+    grep -v 'rule-writable' "$cp_dir/core-boundary-check" > "$cp_dir/core-boundary.mutated" || true
+    mv "$cp_dir/core-boundary.mutated" "$cp_dir/core-boundary-check"
+    after=$(grep -c 'rule-writable' "$cp_dir/core-boundary-check" || true)
+    if sh "$cp_dir/core-boundary-check" --root "$cbr" --expect CB_WRITABLE > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -ge 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+      echo "SELFTEST mutation-core-boundary-writable PASS"
+    else
+      echo "SELFTEST mutation-core-boundary-writable FAIL"; failed=1
+    fi
+  fi
+
+  # (q) the byte comparison of determinism-run is what makes the differs control fail (T-02-33). The rule line carries a comment token that is
+  # assembled here, so that this script never carries it. On an unmutated copy the differs control is met (EXPECT_OK); with the one token line deleted
+  # from the copy, the same run must exit 1: a comparison that cannot report a difference leaves the control broken.
+  if st_want mutation-determinism-compare; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    tok=rule-
+    tok="${tok}cmp"
+    dr="tests/gate/determinism/differs"
+    if sh "$cp_dir/determinism-run" compare --expect DET_RECORD_DIFF "$dr/a.toml" "$dr/b.toml" > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c "$tok" "$cp_dir/determinism-run" || true)
+    grep -v "$tok" "$cp_dir/determinism-run" > "$cp_dir/determinism-run.mutated" || true
+    mv "$cp_dir/determinism-run.mutated" "$cp_dir/determinism-run"
+    after=$(grep -c "$tok" "$cp_dir/determinism-run" || true)
+    if sh "$cp_dir/determinism-run" compare --expect DET_RECORD_DIFF "$dr/a.toml" "$dr/b.toml" > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+      echo "SELFTEST mutation-determinism-compare PASS"
+    else
+      echo "SELFTEST mutation-determinism-compare FAIL"; failed=1
+    fi
+  fi
+
+  # (r) the missing-field rule of fixture-rules.awk is what turns the fix-missing-field control red (T-02-34). The control, run with
+  # --expect FIX_MISSING_FIELD, is met on an unmutated copy (exit 0, EXPECT_OK); with the lines tagged rule-missing-field deleted from the
+  # copy of the rules the code is no longer reported, so the same run must exit 1: the control flipped to broken.
+  if st_want mutation-fixture-missing-field; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    fxr="tests/gate/fixture/fix-missing-field"
+    if sh "$cp_dir/fixture-check" --root "$fxr" --used "$fxr/used.txt" --expect FIX_MISSING_FIELD > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c 'rule-missing-field' "$cp_dir/lib/fixture-rules.awk" || true)
+    grep -v 'rule-missing-field' "$cp_dir/lib/fixture-rules.awk" > "$cp_dir/lib/fixture-rules.mutated" || true
+    mv "$cp_dir/lib/fixture-rules.mutated" "$cp_dir/lib/fixture-rules.awk"
+    after=$(grep -c 'rule-missing-field' "$cp_dir/lib/fixture-rules.awk" || true)
+    if sh "$cp_dir/fixture-check" --root "$fxr" --used "$fxr/used.txt" --expect FIX_MISSING_FIELD > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -ge 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+      echo "SELFTEST mutation-fixture-missing-field PASS"
+    else
+      echo "SELFTEST mutation-fixture-missing-field FAIL"; failed=1
+    fi
+  fi
+
+  # (s) the unlisted rule of fixture-check is what turns the fix-unlisted control red (T-02-34): same shape as (r), the line tagged
+  # rule-unlisted is deleted from the copy of the checker, and the fix-unlisted control must flip to broken.
+  if st_want mutation-fixture-unlisted; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    fxr="tests/gate/fixture/fix-unlisted"
+    if sh "$cp_dir/fixture-check" --root "$fxr" --used "$fxr/used.txt" --expect FIX_UNLISTED > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c 'rule-unlisted' "$cp_dir/fixture-check" || true)
+    grep -v 'rule-unlisted' "$cp_dir/fixture-check" > "$cp_dir/fixture-check.mutated" || true
+    mv "$cp_dir/fixture-check.mutated" "$cp_dir/fixture-check"
+    after=$(grep -c 'rule-unlisted' "$cp_dir/fixture-check" || true)
+    if sh "$cp_dir/fixture-check" --root "$fxr" --used "$fxr/used.txt" --expect FIX_UNLISTED > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+      echo "SELFTEST mutation-fixture-unlisted PASS"
+    else
+      echo "SELFTEST mutation-fixture-unlisted FAIL"; failed=1
+    fi
+  fi
+
+  # (t) the required-missing rule of inventory-check is what turns the removed-required control red (T-02-35): the control, run with
+  # --expect INV_REQUIRED_MISSING, is met on an unmutated copy (exit 0, EXPECT_OK); with the line tagged rule-required-missing deleted from the
+  # copy of the checker the code is no longer reported, so the same run must exit 1: the control flipped to broken.
+  if st_want mutation-inventory-required-missing; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    ivr="tests/gate/inventory/removed-required"
+    if sh "$cp_dir/inventory-check" --root "$ivr" --expect INV_REQUIRED_MISSING > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c 'rule-required-missing' "$cp_dir/inventory-check" || true)
+    grep -v 'rule-required-missing' "$cp_dir/inventory-check" > "$cp_dir/inventory-check.mutated" || true
+    mv "$cp_dir/inventory-check.mutated" "$cp_dir/inventory-check"
+    after=$(grep -c 'rule-required-missing' "$cp_dir/inventory-check" || true)
+    if sh "$cp_dir/inventory-check" --root "$ivr" --expect INV_REQUIRED_MISSING > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+      echo "SELFTEST mutation-inventory-required-missing PASS"
+    else
+      echo "SELFTEST mutation-inventory-required-missing FAIL"; failed=1
+    fi
+  fi
+
+  # (u) the field-wise comparison of conformance-run control is what makes the wrong-literal control able to fail (T-02-36). A scratch copy of the
+  # wrong-literal mini-root has its EXPECT changed to the deliberately wrong pair  wrong_literal pass  (the live runner says guest_failure). The
+  # unmutated script must exit 1 on it; with the line tagged rule-field-match deleted from the copy of the script the same run must exit 0: the
+  # control can no longer fail, which is what the mutation proves the rule prevents. The copy runs against the real tree (CONFORMANCE_RUN_ROOT).
+  if st_want mutation-wrong-literal-compare; then
+    st_ran=1
+    rm -rf "$cp_dir" "$tmp/selftest/wl_wrong"
+    cp -R "$here" "$cp_dir"
+    cp -R tests/gate/wrong-literal "$tmp/selftest/wl_wrong"
+    printf 'wrong_literal pass\n' > "$tmp/selftest/wl_wrong/EXPECT"
+    if CONFORMANCE_RUN_ROOT="$root" sh "$cp_dir/conformance-run" control "$tmp/selftest/wl_wrong" > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 1 ] && grep -q '^CONTROL_PAIR_MISSING wrong_literal pass got:guest_failure$' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c 'rule-field-match' "$cp_dir/conformance-run" || true)
+    grep -v 'rule-field-match' "$cp_dir/conformance-run" > "$cp_dir/conformance-run.mutated" || true
+    mv "$cp_dir/conformance-run.mutated" "$cp_dir/conformance-run"
+    after=$(grep -c 'rule-field-match' "$cp_dir/conformance-run" || true)
+    if CONFORMANCE_RUN_ROOT="$root" sh "$cp_dir/conformance-run" control "$tmp/selftest/wl_wrong" > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    rm -rf "build/gate/control/wl_wrong"
+    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 0 ]; then
+      echo "SELFTEST mutation-wrong-literal-compare PASS"
+    else
+      echo "SELFTEST mutation-wrong-literal-compare FAIL"; failed=1
+    fi
+  fi
+
+  # (v) the pin rule of workflow-check is what turns the tag-pinned-action control red (T-02-41): the control, run with --expect WF_UNPINNED_ACTION,
+  # is met on an unmutated copy of scripts/ (exit 0, EXPECT_OK); with the one line tagged rule-pin deleted from the copy of the rules the code is no longer
+  # reported, so the same run must exit 1: the control flipped to broken.
+  if st_want mutation-workflow-pin; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    wpr="tests/workflow/tag-pinned-action"
+    if sh "$cp_dir/workflow-check" --root "$wpr" --expect WF_UNPINNED_ACTION > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c 'rule-pin' "$cp_dir/lib/workflow-rules.awk" || true)
+    grep -v 'rule-pin' "$cp_dir/lib/workflow-rules.awk" > "$cp_dir/lib/workflow-rules.mutated" || true
+    mv "$cp_dir/lib/workflow-rules.mutated" "$cp_dir/lib/workflow-rules.awk"
+    after=$(grep -c 'rule-pin' "$cp_dir/lib/workflow-rules.awk" || true)
+    if sh "$cp_dir/workflow-check" --root "$wpr" --expect WF_UNPINNED_ACTION > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+      echo "SELFTEST mutation-workflow-pin PASS"
+    else
+      echo "SELFTEST mutation-workflow-pin FAIL"; failed=1
+    fi
+  fi
+
+  # (w) the stale-status rule of docs-check is what turns the stale-status control red (TOOL-02): the control, run with --expect DOC_STALE_STATUS, is met
+  # on an unmutated copy of scripts/ (exit 0, EXPECT_OK); with the one line tagged rule-stale deleted from the copy of the checker the code is no longer
+  # reported, so the same run must exit 1: the control flipped to broken.
+  if st_want mutation-docs-stale; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    dsr="tests/docs/stale-status"
+    if sh "$cp_dir/docs-check" --root "$dsr" --expect DOC_STALE_STATUS > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+    st_alive=0
+    if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+    before=$(grep -c 'rule-stale' "$cp_dir/docs-check" || true)
+    grep -v 'rule-stale' "$cp_dir/docs-check" > "$cp_dir/docs-check.mutated" || true
+    mv "$cp_dir/docs-check.mutated" "$cp_dir/docs-check"
+    after=$(grep -c 'rule-stale' "$cp_dir/docs-check" || true)
+    if sh "$cp_dir/docs-check" --root "$dsr" --expect DOC_STALE_STATUS > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+      echo "SELFTEST mutation-docs-stale PASS"
+    else
+      echo "SELFTEST mutation-docs-stale FAIL"; failed=1
+    fi
+  fi
+
+  # a selected NAME that matched no mutation is a usage error, never a vacuous pass
+  if [ -n "$st_sel" ] && [ "$st_ran" -eq 0 ]; then usage; fi
   if [ "$failed" -eq 0 ]; then echo "SELFTEST RESULT PASS"; return 0; fi
   echo "SELFTEST RESULT FAIL"
   return 1
@@ -510,30 +1722,74 @@ selftest() {
 
 # ---- runner ----
 
-# run_stage NAME FUNCTION : prints the verdict line, then any detail output indented
+# run_stage NAME FUNCTION : prints the verdict line, then any detail output indented. With --stage NAME every other stage is
+# skipped and the one match is remembered, so an unknown NAME can be refused after the list instead of passing vacuously.
 run_stage() {
   name=$1
   fn=$2
+  if [ -n "$only_stage" ] && [ "$only_stage" != "$name" ]; then
+    return 0
+  fi
+  stage_ran=1
+  t0=$(date +%s)
   if "$fn" > "$tmp/out" 2>&1; then rc=0; else rc=$?; fi
+  secs=$(( $(date +%s) - t0 ))
   case $rc in
     0) verdict=PASS ;;
     1) verdict=FAIL; fails=$((fails + 1)) ;;
     *) verdict=ERROR; errs=$((errs + 1)) ;;
   esac
   echo "CHECK $name $verdict"
+  printf '%s\t%s\t%s\n' "$name" "$verdict" "$secs" >> "$results_tsv"
+  if [ "$timing" -eq 1 ]; then
+    echo "TIMING $name $secs"
+    if [ "$secs" -gt 20 ]; then echo "TIMING_WARN $name"; fi
+  fi
   if [ "$rc" -ne 0 ]; then
     sed 's/^/    /' "$tmp/out"
   fi
 }
 
-if [ $# -gt 0 ]; then
-  if [ "$1" = "--selftest" ] && [ $# -eq 1 ]; then
-    if selftest; then exit 0; else exit 1; fi
-  fi
-  echo "usage: sh scripts/check [--selftest]" >&2
+usage() {
+  echo "usage: sh scripts/check [--selftest [NAME] | --stage NAME] [--timing]" >&2
   exit 2
+}
+
+only_stage=""
+stage_ran=0
+st_sel=""
+# --timing may stand anywhere: take it out of the argument list, keeping the order of the rest
+timing=0
+n_args=$#
+while [ "$n_args" -gt 0 ]; do
+  a=$1
+  shift
+  n_args=$((n_args - 1))
+  if [ "$a" = "--timing" ]; then timing=1; else set -- "$@" "$a"; fi
+done
+if [ $# -gt 0 ]; then
+  case $1 in
+    --selftest)
+      [ "$timing" -eq 0 ] || usage
+      [ $# -le 2 ] || usage
+      st_sel=${2-}
+      if [ $# -eq 2 ] && [ -z "$st_sel" ]; then usage; fi
+      if selftest; then exit 0; else exit 1; fi
+      ;;
+    --stage)
+      [ $# -eq 2 ] && [ -n "$2" ] || usage
+      only_stage=$2
+      ;;
+    *) usage ;;
+  esac
 fi
 
+# every run records its stages (build/ is gitignored): truncated here, one line per stage that runs
+results_tsv="$root/build/gate/results.tsv"
+mkdir -p "$root/build/gate" || { echo "HARNESS_ERROR cannot create build/gate" >&2; exit 2; }
+: > "$results_tsv"
+
+run_stage preflight stage_preflight
 run_stage ledger-entries stage_ledger_entries
 run_stage ledger-negatives stage_ledger_negatives
 run_stage ledger-samples stage_ledger_samples
@@ -541,6 +1797,8 @@ run_stage decision-records stage_decision_records
 run_stage decision-negatives stage_decision_negatives
 run_stage profile-records stage_profile_records
 run_stage profile-negatives stage_profile_negatives
+run_stage filename-controls stage_filename_controls
+run_stage empty-expect-controls stage_empty_expect_controls
 run_stage provenance stage_provenance_register
 run_stage provenance-negatives stage_provenance_negatives
 run_stage licences stage_licence_files
@@ -550,7 +1808,42 @@ run_stage protocol-negatives stage_protocol_negatives
 run_stage score-controls stage_score_controls
 run_stage results stage_results
 run_stage results-negatives stage_results_negatives
+run_stage ingest-controls stage_ingest_controls
+run_stage flatten-controls stage_flatten_controls
+run_stage cancel-controls stage_cancel_controls
+run_stage outcome-controls stage_outcome_controls
+run_stage rights-tree stage_rights_tree
+run_stage rights-negatives stage_rights_negatives
+run_stage audit-synthetic stage_audit_synthetic
+run_stage inventory stage_inventory
+run_stage inventory-negatives stage_inventory_negatives
+run_stage workflow stage_workflow
+run_stage workflow-negatives stage_workflow_negatives
+run_stage docs-claims stage_docs_claims
+run_stage docs-claims-negatives stage_docs_claims_negatives
+run_stage ci-timings-controls stage_ci_timings_controls
+run_stage build stage_build
+run_stage outcome-sync stage_outcome_sync
+run_stage conformance stage_conformance
+run_stage sanitizers stage_sanitizers
+run_stage excluded-mode-controls stage_excluded_mode_controls
+run_stage record-lint stage_record_lint
+run_stage record-lint-negatives stage_record_lint_negatives
+run_stage core-boundary stage_core_boundary
+run_stage core-boundary-negatives stage_core_boundary_negatives
+run_stage determinism stage_determinism
+run_stage determinism-negatives stage_determinism_negatives
+run_stage fixtures stage_fixtures
+run_stage fixture-negatives stage_fixture_negatives
+run_stage named-controls stage_named_controls
 
+if [ -n "$only_stage" ]; then
+  # one stage: its own CHECK line is the whole output; the exit status is that stage's verdict
+  [ "$stage_ran" -eq 1 ] || usage
+  if [ "$errs" -gt 0 ]; then exit 2; fi
+  if [ "$fails" -gt 0 ]; then exit 1; fi
+  exit 0
+fi
 if [ "$errs" -gt 0 ]; then
   echo "CHECK RESULT FAIL"
   exit 2

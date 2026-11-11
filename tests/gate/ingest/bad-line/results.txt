@@ -1,0 +1,3 @@
+RESULT alpha pass assertions=2 evidence=out/alpha.txt
+this line is not in the grammar
+RUNNER_DONE 1

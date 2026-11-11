@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Same inputs and same seed, same digest (CORE-01): the request is booted three times into blocks that were filled with 0xAA, 0x55 and 0x00
+# first, so a digest that read bytes the boot did not set would differ. Repeatability only, never correctness (E0).
+id = "poweron_same_seed_same_digest"
+kind = "digest_pair"
+fixture = "plain-256k"
+request = "bind.powerup_policy=seeded-prng-v1;seed=42||bind.powerup_policy=seeded-prng-v1;seed=42"
+expect = "same"
+meaning = "A seed-42 boot gives one digest in every block, and a second request with the same seed gives the same digest again"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

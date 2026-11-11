@@ -21,8 +21,8 @@ E4 = differential vs another emulator (finds disagreements, decides nothing).
 ### Profile, Scope & Evidence
 
 - [x] **PROF-01**: The owner-selected first machine profile is recorded as a named, versioned profile record (console model/region, `$1000` bit-6 value, CPU/PSG revision, line count/frame timing, controller type, expansion-port presence, content format). Research's proposed default is Japanese PC Engine / HuC6280 / 2-button pad. It is a proposal until the owner selects it.
-- [ ] **PROF-02**: Loading content or running with an unsupported or mismatched profile is refused with a typed reason. It never falls back silently.
-- [ ] **PROF-03**: Any setting that changes guest-visible behavior is part of profile identity and appears in every run's recorded configuration.
+- [x] **PROF-02**: Loading content or running with an unsupported or mismatched profile is refused with a typed reason. It never falls back silently.
+- [x] **PROF-03**: Any setting that changes guest-visible behavior is part of profile identity and appears in every run's recorded configuration.
 - [x] **PROF-04**: A claim ledger lists each supported behavior with its profile, evidence tier (E0–E4), source citation, and fixture/test link. Behaviors with only E0/E4 evidence are not labeled "supported".
 - [x] **PROF-05**: Conflicting or unresolved hardware facts the slice depends on (e.g. PSG clock, 262 vs 263 lines, VBlank IRQ position, VCE dot-clock encoding) are recorded as open in the ledger with the chosen modelling assumption, not asserted as fact.
 
@@ -59,36 +59,36 @@ E4 = differential vs another emulator (finds disagreements, decides nothing).
 
 ### Content Loading & Security
 
-- [ ] **CONT-01**: The HuCard loader accepts plain HuCard images of explicitly supported sizes with documented mirroring rules, and refuses all other sizes, special mappers, and unknown layouts with a typed reason.
-- [ ] **CONT-02**: Copier-header handling and data byte order (PC Engine vs TG-16 order) are explicit, declared inputs or refusals. The loader never guesses by heuristic, CRC, or title string.
-- [ ] **CONT-03**: Malformed, truncated, zero-length, and oversized content is refused without panicking, without unbounded allocation, and without mutating an existing machine instance.
-- [ ] **CONT-04**: The core never reads files itself. The host supplies content bytes, and the content's identity (hash, size, declared format) is recorded with each run.
+- [x] **CONT-01**: The HuCard loader accepts plain HuCard images of explicitly supported sizes with documented mirroring rules, and refuses all other sizes, special mappers, and unknown layouts with a typed reason.
+- [x] **CONT-02**: Copier-header handling and data byte order (PC Engine vs TG-16 order) are explicit, declared inputs or refusals. The loader never guesses by heuristic, CRC, or title string.
+- [x] **CONT-03**: Malformed, truncated, zero-length, and oversized content is refused without panicking, without unbounded allocation, and without mutating an existing machine instance.
+- [x] **CONT-04**: The core never reads files itself. The host supplies content bytes, and the content's identity (hash, size, declared format) is recorded with each run.
 
 ### Determinism, Core Boundary & Runner
 
-- [ ] **CORE-01**: Machine state is explicit and per instance. Two instances in one process do not share mutable state, verified by a multi-instance test.
-- [ ] **CORE-02**: The core has no dependency on host clocks, filesystems, device discovery, threads, UI, or audio/video devices, enforced by a build- or test-time check.
-- [ ] **CORE-03**: Power-on state is defined by a documented, seeded policy (RAM, MPRs, PSG noise, VDC phase), so a fresh run is reproducible and the policy is recorded with each run.
+- [x] **CORE-01**: Machine state is explicit and per instance. Two instances in one process do not share mutable state, verified by a multi-instance test.
+- [x] **CORE-02**: The core has no dependency on host clocks, filesystems, device discovery, threads, UI, or audio/video devices, enforced by a build- or test-time check.
+- [x] **CORE-03**: Power-on state is defined by a documented, seeded policy (RAM, MPRs, PSG noise, VDC phase), so a fresh run is reproducible and the policy is recorded with each run.
 - [ ] **CORE-04**: Execution is bounded in master-clock time with an explicit stop reason and overshoot. A bounded run may stop mid-frame or mid-instruction-sequence and resume with results identical to an uninterrupted run.
 - [ ] **CORE-05**: A snapshot taken at any stop point, restored into a fresh instance and continued, produces outputs identical to continuing the original (state-completeness check, E0).
 - [ ] **CORE-06**: A CPU instruction trace and a device-register write log can be enabled without changing machine behavior.
 - [ ] **RUN-01**: A headless runner loads content plus a profile and an input script, runs for a bounded machine time, and emits guest-progress markers, machine time, raw video, raw audio, and trace as separate artifacts.
-- [ ] **RUN-02**: The runner and harness report distinct outcomes: pass, guest failure, timeout, harness failure, skip, cancelled, and missing artifact. No outcome other than pass counts as passing.
+- [x] **RUN-02**: The runner and harness report distinct outcomes: pass, guest failure, timeout, harness failure, skip, cancelled, and missing artifact. No outcome other than pass counts as passing.
 
 ### Fixtures & Verification
 
 - [ ] **FIX-01**: Diagnostic fixtures are original, authored HuC6280 assembly sources with project-owned startup code. Their recorded build recipe uses an external, license-checked assembler, with a cross-assembler byte-identity check where practical.
-- [ ] **FIX-02**: Every fixture has a manifest entry (source, build recipe, toolchain version, byte hash, license, notices, redistribution terms, test meaning, expected verdict source). A manifest check fails closed on any missing field or unlisted fixture.
+- [x] **FIX-02**: Every fixture has a manifest entry (source, build recipe, toolchain version, byte hash, license, notices, redistribution terms, test meaning, expected verdict source). A manifest check fails closed on any missing field or unlisted fixture.
 - [ ] **FIX-03**: Fixture verdicts come from documented behavior or an independent verdict computed in the guest, never from DuoSpool's own recorded output.
-- [ ] **FIX-04**: The required-test inventory fails closed: a missing, skipped, or evidence-free required check fails the gate, calibrated by a named negative control that is shown to fail.
-- [ ] **FIX-05**: No commercial ROMs, firmware/system cards, disc images, or private saves are committed, used in CI, or written to CI logs/artifacts, enforced by a repository check.
+- [x] **FIX-04**: The required-test inventory fails closed: a missing, skipped, or evidence-free required check fails the gate, calibrated by a named negative control that is shown to fail.
+- [x] **FIX-05**: No commercial ROMs, firmware/system cards, disc images, or private saves are committed, used in CI, or written to CI logs/artifacts, enforced by a repository check.
 
 ### Tooling, Packaging & CI
 
 - [x] **TOOL-01**: A language/build-system decision record compares the research-proposed options (Rust/Cargo vs C11/CMake) using a measured spike (build time, installed-consumer proof, fuzz harness, portability target), and the owner-confirmed choice is recorded.
-- [ ] **TOOL-02**: One documented local command runs the same checks as the fast PR gate.
+- [x] **TOOL-02**: One documented local command runs the same checks as the fast PR gate.
 - [ ] **PKG-01**: An independent consumer builds against the installed core artifact, with source and build trees unavailable, and reproduces a fixture verdict through the public boundary.
-- [ ] **CI-01**: CI runs the fast gate on each change, with each job tied to a distinct recurring failure class and its critical-path time recorded.
+- [x] **CI-01**: CI runs the fast gate on each change, with each job tied to a distinct recurring failure class and its critical-path time recorded.
 - [ ] **CI-02**: Fuzzing of the content loader and input-script parser runs as a staged job outside the fast PR path, with crashing inputs replayable in the fast gate as regression cases.
 - [ ] **PERF-01**: At least one named workload has a benchmark recording workload identity, build, input, warm-up, measurements, and uncertainty, with output correctness asserted in the same run.
 
@@ -156,8 +156,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | PROF-01 | Phase 1 | Complete |
-| PROF-02 | Phase 2 | Pending |
-| PROF-03 | Phase 2 | Pending |
+| PROF-02 | Phase 2 | Complete |
+| PROF-03 | Phase 2 | Complete |
 | PROF-04 | Phase 1 | Complete |
 | PROF-05 | Phase 1 | Complete |
 | CPU-01 | Phase 3 | Pending |
@@ -179,27 +179,27 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INP-02 | Phase 3 | Pending |
 | INP-03 | Phase 3 | Pending |
 | INP-04 | Phase 3 | Pending |
-| CONT-01 | Phase 2 | Pending |
-| CONT-02 | Phase 2 | Pending |
-| CONT-03 | Phase 2 | Pending |
-| CONT-04 | Phase 2 | Pending |
-| CORE-01 | Phase 2 | Pending |
-| CORE-02 | Phase 2 | Pending |
-| CORE-03 | Phase 2 | Pending |
+| CONT-01 | Phase 2 | Complete |
+| CONT-02 | Phase 2 | Complete |
+| CONT-03 | Phase 2 | Complete |
+| CONT-04 | Phase 2 | Complete |
+| CORE-01 | Phase 2 | Complete |
+| CORE-02 | Phase 2 | Complete |
+| CORE-03 | Phase 2 | Complete |
 | CORE-04 | Phase 3 | Pending |
 | CORE-05 | Phase 3 | Pending |
 | CORE-06 | Phase 3 | Pending |
 | RUN-01 | Phase 6 | Pending |
-| RUN-02 | Phase 2 | Pending |
+| RUN-02 | Phase 2 | Complete |
 | FIX-01 | Phase 3 | Pending |
-| FIX-02 | Phase 2 | Pending |
+| FIX-02 | Phase 2 | Complete |
 | FIX-03 | Phase 3 | Pending |
-| FIX-04 | Phase 2 | Pending |
-| FIX-05 | Phase 2 | Pending |
+| FIX-04 | Phase 2 | Complete |
+| FIX-05 | Phase 2 | Complete |
 | TOOL-01 | Phase 1 | Complete |
-| TOOL-02 | Phase 2 | Pending |
+| TOOL-02 | Phase 2 | Complete |
 | PKG-01 | Phase 6 | Pending |
-| CI-01 | Phase 2 | Pending |
+| CI-01 | Phase 2 | Complete |
 | CI-02 | Phase 6 | Pending |
 | PERF-01 | Phase 6 | Pending |
 | INTG-01 | Phase 6 | Pending |

@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# splitmix64 vectors (D-50, D-75): the first three outputs of the generator started from state 0. The literals are the published test
+# vector for seed 0 and were re-derived while authoring with a throwaway perl script outside the repo (Math::BigInt, unsigned 64-bit
+# masks, the constants of the plan artifact). Evidence tier E0: the in-house generator agrees with the written algorithm, claims nothing about hardware.
+id = "splitmix_seed0"
+kind = "splitmix"
+fixture = "none"
+request = "seed=0"
+expect = "0xE220A8397B1DCDAF,0x6E789E6AA1B965F4,0x06C45D188009454F"
+meaning = "The in-house splitmix64 started from state 0 returns 0xE220A8397B1DCDAF, 0x6E789E6AA1B965F4 and 0x06C45D188009454F, the vectors re-derived independently with perl"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

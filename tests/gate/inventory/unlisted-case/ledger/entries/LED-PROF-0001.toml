@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+id = "LED-PROF-0001"
+pinning_test = "PENDING:4"

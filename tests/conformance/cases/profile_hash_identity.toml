@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The canonical profile stream (D-27): prefix duospool-profile and a NUL byte, the version, the id and revision, 13 fields as name, status,
+# value, bound_by, then the sorted unresolved behaviour ids; a string is a u32 length and its bytes. The two literals come from a throwaway
+# perl script outside the repo (Digest::SHA) that wrote this stream from the written rules: the unbound r1 constant, and the profile resolved
+# by the default request (policy zero, every open field bound by the run request). The id and the revision are covered, bytes after the NUL of
+# a string are not, and the unresolved ids are strictly increasing. Evidence tier E0.
+id = "profile_hash_identity"
+kind = "profile_hash"
+fixture = "none"
+request = ""
+expect = "identity;unbound=14db892b75d075f47e983c9bb7154243cbb538758804649b0999c4109e0a0357;resolved=da2b433d08c7494048d6744976de2c5b0f5c2de269ef38bb6018eecc223a1bf0"
+meaning = "The profile hash of the unbound constant and of the default-bound profile equal the independently derived literals, id and revision change it, bytes after a NUL do not, and the unresolved ids are sorted"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

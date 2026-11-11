@@ -1,0 +1,101 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# docs-check - static assertions about the documented gate command (TOOL-02, D-60). A documented command that CI mirrors is only true
+# while the documentation cannot drift from it; this checker reads three files and never runs the gate.
+# usage: docs-check [--expect CODE[,CODE...]] [--root DIR]      (--root defaults to the repository root)
+#   Codes (one rule each):
+#     DOC_NO_GATE_README       ROOT/README.md lacks the whole line  sh scripts/check  (the code block of the Local gate section)
+#     DOC_NO_GATE_AGENTS       ROOT/AGENTS.md does not contain the string  sh scripts/check
+#     DOC_STALE_STATUS         ROOT/README.md still says there is no emulator code yet (the retired Phase 1 status sentence)
+#     DOC_FLAG_UNDOCUMENTED    a --flag named in the usage line of ROOT/scripts/check does not appear in ROOT/README.md
+# stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then (clean) the line  STATUS docs ok
+# stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
+# exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error
+set -eu
+LC_ALL=C; export LC_ALL
+here=$(cd "$(dirname "$0")" && pwd)
+
+usage() {
+  echo "usage: docs-check [--expect CODE[,CODE...]] [--root DIR]" >&2
+  exit 2
+}
+
+expect=""
+have_expect=0
+root=$(cd "$here/.." && pwd)
+while [ $# -gt 0 ]; do
+  case $1 in
+    --expect) [ $# -ge 2 ] || usage; expect=$2; have_expect=1; shift 2 ;;
+    --root) [ $# -ge 2 ] || usage; root=$2; shift 2 ;;
+    *) usage ;;
+  esac
+done
+# an --expect that names no code would make a control assert nothing (WR-05): exit 2, never 0
+if [ "$have_expect" -eq 1 ] && [ -z "$(printf '%s' "$expect" | tr -d ', \t\r\n')" ]; then
+  echo "HARNESS_EMPTY_EXPECT --expect names no code" >&2
+  exit 2
+fi
+if [ ! -d "$root" ]; then
+  echo "HARNESS_NO_FILE $root" >&2
+  exit 2
+fi
+root=$(cd "$root" && pwd)
+for f in README.md AGENTS.md scripts/check; do
+  [ -f "$root/$f" ] || { echo "HARNESS_NO_FILE $f" >&2; exit 2; }
+done
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+viol0="$tmp/viol0"
+viol="$tmp/viol"
+: > "$viol0"
+
+addv() { printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" >> "$viol0"; }
+
+readme="$root/README.md"
+agents="$root/AGENTS.md"
+gatesh="$root/scripts/check"
+
+# the gate command, as a whole line, in the README code block
+grep -qxF 'sh scripts/check' "$readme" || addv README.md DOC_NO_GATE_README 0 "the line 'sh scripts/check' is missing"
+grep -qF 'sh scripts/check' "$agents" || addv AGENTS.md DOC_NO_GATE_AGENTS 0 "the string 'sh scripts/check' is missing"
+# the retired Phase 1 status sentence
+grep -qF 'no emulator code yet' "$readme" && addv README.md DOC_STALE_STATUS 0 "the retired status sentence 'no emulator code yet' is still present" # rule-stale
+
+# every flag of the usage line: the first line of scripts/check that starts with  # usage:  (a continuation line is not read)
+ul=$(grep -m 1 '^# usage:' "$gatesh" || true)
+if [ -z "$ul" ]; then
+  echo "HARNESS_NO_USAGE scripts/check has no '# usage:' line" >&2
+  exit 2
+fi
+flags=$(printf '%s\n' "$ul" | tr -c 'A-Za-z0-9\n-' ' ' | tr ' ' '\n' | grep -E '^--[A-Za-z][A-Za-z0-9-]*$' | sort -u || true)
+if [ -z "$flags" ]; then
+  echo "HARNESS_NO_FLAGS the usage line of scripts/check names no --flag" >&2
+  exit 2
+fi
+for fl in $flags; do
+  grep -qF -e "$fl" "$readme" || addv README.md DOC_FLAG_UNDOCUMENTED 0 "usage flag $fl is not in README.md"
+done
+
+sort -u "$viol0" > "$viol"
+
+if [ "$have_expect" -eq 1 ]; then
+  got=$(awk -F'\t' '{ print $2 }' "$viol" | sort -u | tr '\n' ',' | sed 's/,$//')
+  want=$(printf '%s\n' "$expect" | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/,$//')
+  if [ "$got" = "$want" ]; then
+    echo "EXPECT_OK"
+    exit 0
+  fi
+  echo "EXPECT_MISMATCH wanted '$want' got '${got:-<none>}'" >&2
+  cat "$viol" >&2
+  exit 1
+fi
+
+cat "$viol"
+if [ -s "$viol" ]; then
+  exit 1
+fi
+echo "STATUS docs ok"
+exit 0

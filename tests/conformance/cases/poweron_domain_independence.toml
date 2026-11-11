@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Domain independence (D-50, D-75): each power-on domain has its own stream, so how many values psg_noise and vdc_phase draw cannot change a byte
+# of ram8k (the streams are interleaved with 1 and then 1000 extra draws), the three domains' first 16 bytes differ from each other, the stream
+# does not start at the bare seed XOR constant, and a boot with the seed lays down exactly these streams. Checked against streams the kind builds
+# with the public stream functions; the byte values themselves are pinned by poweron_draw_order with perl-derived literals. Evidence tier E0, a
+# modelling assumption and not a hardware claim (LED-PROF-0002).
+id = "poweron_domain_independence"
+kind = "poweron_domain"
+fixture = "none"
+request = "seed=42"
+expect = "extra=1,1000"
+meaning = "For seed 42 the ram8k bytes are unchanged when other domains draw 1 or 1000 extra values, the domains' bytes differ from each other, and a boot reproduces the streams"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

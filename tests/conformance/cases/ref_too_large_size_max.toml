@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: the hardest length. A request of SIZE_MAX bytes over a non-NULL dummy pointer that the core must never dereference,
+# otherwise fully declared. The cap is compared as a size_t before any read or arithmetic on the pointer, so the row is refused
+# too_large; under the sanitizer preset any read or pointer arithmetic on the dummy is a report. Evidence tier E0 (repeatability
+# and a literal), claims nothing about hardware.
+id = "ref_too_large_size_max"
+kind = "refuse"
+fixture = "plain-256k"
+request = "ptr=dummy;len=size_max"
+expect = "load.too_large"
+meaning = "A fully declared request whose length is the largest size_t over a dummy content pointer that is never dereferenced is refused as load.too_large with no instance created and caller memory untouched"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: 256 KiB minus one byte, otherwise fully declared. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_not_bank_256k_minus1"
+kind = "refuse"
+fixture = "plain-256k"
+request = "len=262143"
+expect = "load.size_not_bank_multiple"
+meaning = "A request one byte under 256 KiB is refused as load.size_not_bank_multiple and no instance is created"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

@@ -1,0 +1,221 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# determinism-run - the fresh-process half of CORE-01 (D-55, D-86): the same inputs in a new process give byte-identical run records, even when the
+# second process runs in a hostile host environment. This is a REPEATABILITY check at evidence tier E0: equal bytes show that the records do not
+# depend on the process, the time zone, the working directory, the temporary directory or the allocator state; they say nothing about whether the
+# machine behaviour is right.
+# usage: determinism-run run
+#        determinism-run compare [--expect CODE[,CODE...]] A B
+#   compare  A and B are two record files or two record directories. Each is linted with scripts/record-lint first (a record that is not a clean
+#            record is not compared), then the file-name sets must be equal and every pair of files byte-equal (cmp). Codes:
+#              DET_RECORD_DIFF   a pair of files differs, or the two name sets differ
+#              DET_RECORD_LINT   record-lint reported a violation in A or in B
+#              DET_MISSING_FILE  A or B does not exist (exit 2, a harness error: nothing could be compared)
+#   run      reads build/gate/ds_runner, build/gate/cases.tsv, build/gate/r1.tsv, build/gate/oracle.tsv (the stage inputs of D-86), plus the
+#            rules-fields.txt and ids.txt that the same conformance step leaves next to them, all produced by the build and conformance stages
+#            earlier in the same gate run; a missing one is a harness error (exit 2) naming the path, and nothing is built here. It runs the
+#            built runner twice with the same absolute arguments and --records: first in the current environment, then through env -i with a
+#            different TZ, working directory and TMPDIR and with the allocator scribbling on (MallocScribble and MallocPreScribble on Darwin,
+#            MALLOC_PERTURB_ elsewhere). Each record directory must hold exactly one ID.record.toml per case of kind accept, record_lines,
+#            record_golden or record_refusal in cases.tsv (counted with awk over the kind column), the two name sets must be equal, and then
+#            every file is compared through compare. The two runs also use different marker seeds: a record must not depend on that either.
+# stdout: violations  CODE<TAB>DETAIL , then on a clean run the marker line  STATUS determinism ok n=N  (N files compared)
+# stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
+# exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error
+set -eu
+LC_ALL=C; export LC_ALL
+here=$(cd "$(dirname "$0")" && pwd)
+root=$(cd "$here/.." && pwd)
+
+usage() {
+  echo "usage: determinism-run run | compare [--expect CODE[,CODE...]] A B" >&2
+  exit 2
+}
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+viol="$tmp/viol"
+: > "$viol"
+n_cmp=0
+
+# cmp_pair A B NAME: one pair of files is compared byte for byte; a difference is one DET_RECORD_DIFF line
+cmp_pair() {
+  n_cmp=$((n_cmp + 1))
+  cmp -s "$1" "$2" || printf 'DET_RECORD_DIFF\t%s\n' "$3" >> "$viol" # rule-cmp
+}
+
+# lint_one PATH: record-lint over a file or a directory; a violation is DET_RECORD_LINT, a harness error of the lint stops the run
+lint_one() {
+  if sh "$here/record-lint" "$1" > "$tmp/lint.out" 2>&1; then lr=0; else lr=$?; fi
+  if [ "$lr" -eq 2 ]; then
+    cat "$tmp/lint.out"
+    echo "HARNESS_ERROR record-lint could not read $1" >&2
+    exit 2
+  fi
+  if [ "$lr" -ne 0 ]; then
+    printf 'DET_RECORD_LINT\t%s\n' "$(basename "$1")" >> "$viol"
+    sed 's/^/  lint: /' "$tmp/lint.out" >> "$tmp/lint.detail"
+  fi
+}
+
+# compare_paths A B: fill $viol and n_cmp; a missing path is exit 2 at once
+compare_paths() {
+  ca=$1
+  cb=$2
+  for p in "$ca" "$cb"; do
+    if [ ! -e "$p" ]; then
+      echo "DET_MISSING_FILE $p"
+      exit 2
+    fi
+  done
+  : > "$tmp/lint.detail"
+  lint_one "$ca"
+  lint_one "$cb"
+  if [ -d "$ca" ] && [ -d "$cb" ]; then
+    (cd "$ca" && ls -A) | sort > "$tmp/names.a"
+    (cd "$cb" && ls -A) | sort > "$tmp/names.b"
+    if ! cmp -s "$tmp/names.a" "$tmp/names.b"; then
+      printf 'DET_RECORD_DIFF\t%s\n' "the two directories hold different file names" >> "$viol"
+    fi
+    while IFS= read -r nm; do
+      [ -n "$nm" ] || continue
+      if [ -f "$ca/$nm" ] && [ -f "$cb/$nm" ]; then
+        cmp_pair "$ca/$nm" "$cb/$nm" "$nm"
+      fi
+    done < "$tmp/names.a"
+  elif [ -f "$ca" ] && [ -f "$cb" ]; then
+    cmp_pair "$ca" "$cb" "$(basename "$ca")"
+  else
+    echo "HARNESS_ERROR $ca and $cb are not both files or both directories" >&2
+    exit 2
+  fi
+  if [ "$n_cmp" -eq 0 ]; then
+    echo "HARNESS_ERROR nothing was compared: a determinism check over no file is a dead check" >&2
+    exit 2
+  fi
+}
+
+# finish [EXPECT]: print the verdict of $viol; the exit status follows the header
+finish() {
+  fexpect=${1-}
+  have_expect=${2-0}
+  sort -u "$viol" > "$tmp/viol.sorted"
+  if [ "$have_expect" -eq 1 ]; then
+    got=$(awk -F'\t' '{ print $1 }' "$tmp/viol.sorted" | sort -u | tr '\n' ',' | sed 's/,$//')
+    want=$(printf '%s\n' "$fexpect" | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/,$//')
+    if [ "$got" = "$want" ]; then
+      echo "EXPECT_OK"
+      exit 0
+    fi
+    echo "EXPECT_MISMATCH wanted '$want' got '${got:-<none>}'" >&2
+    cat "$tmp/viol.sorted" >&2
+    exit 1
+  fi
+  cat "$tmp/viol.sorted"
+  if [ -s "$tmp/viol.sorted" ]; then
+    cat "$tmp/lint.detail" 2> /dev/null || true
+    exit 1
+  fi
+  echo "STATUS determinism ok n=$n_cmp"
+  exit 0
+}
+
+compare_mode() {
+  expect=""
+  have_expect=0
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --expect) [ $# -ge 2 ] || usage; expect=$2; have_expect=1; shift 2 ;;
+      --) shift; break ;;
+      -*) usage ;;
+      *) break ;;
+    esac
+  done
+  # an --expect that names no code would make a control assert nothing (WR-05): exit 2, never 0
+  if [ "$have_expect" -eq 1 ] && [ -z "$(printf '%s' "$expect" | tr -d ', \t\r\n')" ]; then
+    echo "HARNESS_EMPTY_EXPECT --expect names no code" >&2
+    exit 2
+  fi
+  [ $# -eq 2 ] || usage
+  compare_paths "$1" "$2"
+  finish "$expect" "$have_expect"
+}
+
+# the stage inputs of D-86: produced by the build and conformance stages, never built here
+need_inputs() {
+  bd=$root/build/gate
+  for f in ds_runner cases.tsv r1.tsv oracle.tsv rules-fields.txt ids.txt; do
+    if [ ! -e "$bd/$f" ]; then
+      echo "HARNESS_NO_FILE build/gate/$f is missing: the build and conformance stages make it (sh scripts/check --stage build, then --stage conformance); this script never builds"
+      exit 2
+    fi
+  done
+  if [ ! -x "$bd/ds_runner" ]; then
+    echo "HARNESS_NO_FILE build/gate/ds_runner is not executable"
+    exit 2
+  fi
+}
+
+# run_once N MARKER_SEED PREFIX...: the runner into $dd/recN with PREFIX words in front of it (empty for the plain run); the status is returned
+run_once() {
+  ro_n=$1
+  ro_seed=$2
+  shift 2
+  mkdir -p "$dd/rec$ro_n" "$dd/ev$ro_n"
+  if sh "$here/conformance-run" supervise --ids "$bd/ids.txt" --out "$dd/out$ro_n.txt" --wall 300 -- "$@" "$bd/ds_runner" --cases "$bd/cases.tsv" --evidence-dir "$dd/ev$ro_n" --profile-tsv "$bd/r1.tsv" --rules-fields "$bd/rules-fields.txt" --oracle "$bd/oracle.tsv" --marker-seed "$ro_seed" --records "$dd/rec$ro_n" --golden-dir "$root/tests/conformance/golden"; then ro_r=0; else ro_r=$?; fi
+  return "$ro_r"
+}
+
+run_mode() {
+  need_inputs
+  dd=$bd/determinism
+  rm -rf "$dd"
+  mkdir -p "$dd/cwd2" "$dd/tmp2"
+  # the record-producing cases, derived from the kind column and never from a literal count (D-86)
+  awk -F'\t' '$1 == "K" && $4 == "kind" && ($6 == "accept" || $6 == "record_lines" || $6 == "record_golden" || $6 == "record_refusal") { print $2 ".record.toml" }' "$bd/cases.tsv" | sort -u > "$dd/want.names"
+  n_rec=$(sed -n '$=' "$dd/want.names")
+  if [ -z "$n_rec" ]; then
+    echo "HARNESS_ERROR build/gate/cases.tsv holds no case of a record-producing kind: a determinism run over no record is a dead check" >&2
+    exit 2
+  fi
+  case $(uname -s) in
+    Darwin) scribble="MallocScribble=1 MallocPreScribble=1" ;;
+    *) scribble="MALLOC_PERTURB_=165" ;;
+  esac
+  # first process: the environment as it is
+  if run_once 1 1; then s1=0; else s1=$?; fi
+  # second process: an empty environment but for a different time zone, temporary directory and allocator scribbling, started in a different
+  # working directory; every argument is absolute, so the working directory cannot matter to it
+  # shellcheck disable=SC2086
+  if run_once 2 2 env -i TZ=Pacific/Kiritimati TMPDIR="$dd/tmp2" $scribble /bin/sh -c 'cd "$0" && exec "$@"' "$dd/cwd2"; then s2=0; else s2=$?; fi
+  if [ "$s1" -ge 2 ] || [ "$s2" -ge 2 ]; then
+    echo "HARNESS_ERROR the runner could not be supervised (statuses $s1 and $s2)" >&2
+    exit 2
+  fi
+  if [ "$s1" -ne 0 ] || [ "$s2" -ne 0 ]; then
+    printf 'DET_RUN_FAILED\trunner status %s in the first process and %s in the second\n' "$s1" "$s2" >> "$viol"
+    grep -hE '^RESULT [^ ]+ [^ ]+' "$dd/out1.txt" "$dd/out2.txt" | awk '$3 != "pass"' | sed 's/^/  /' >> "$tmp/lint.detail" 2> /dev/null || true
+    finish "" 0
+  fi
+  for k in 1 2; do
+    (cd "$dd/rec$k" && ls -A) | sort > "$dd/have$k.names"
+    if ! cmp -s "$dd/have$k.names" "$dd/want.names"; then
+      printf 'DET_RECORD_DIFF\t%s\n' "the record files of process $k are not exactly one ID.record.toml per record-producing case ($(sed -n '$=' "$dd/have$k.names" || true) files, $n_rec cases)" >> "$viol"
+    fi
+  done
+  if [ -s "$viol" ]; then
+    finish "" 0
+  fi
+  echo "DETERMINISM_RECORDS cases=$n_rec process1=$(sed -n '$=' "$dd/have1.names") process2=$(sed -n '$=' "$dd/have2.names")"
+  compare_paths "$dd/rec1" "$dd/rec2"
+  finish "" 0
+}
+
+[ $# -ge 1 ] || usage
+case $1 in
+  run) shift; [ $# -eq 0 ] || usage; run_mode ;;
+  compare) shift; compare_mode "$@" ;;
+  *) usage ;;
+esac

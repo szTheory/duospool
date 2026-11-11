@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Power-on, seed 0 supplied (D-50, D-79(b)): a seed of 0 is a seed, not the absence of one. Policy seeded-prng-v1 with an explicit seed 0 is
+# accepted and its streams are the derivation of poweron_draw_order for state 0 XOR constant. Literals derived with the same throwaway perl
+# script as poweron_draw_order. Evidence tier E0, a modelling assumption and not a hardware claim.
+id = "poweron_seed_zero_supplied"
+kind = "poweron"
+fixture = "plain-256k"
+request = "bind.powerup_policy=seeded-prng-v1;seed=0"
+expect = "policy=seeded-prng-v1;seed=0;ram@0=a99d9cfdeec812088b4cbbff993d278b;ram@8184=0e0f026063a42e1e;psg_noise=0xA02AE4DC;vdc_phase=0x9FF6C787"
+meaning = "An explicit seed of 0 under seeded-prng-v1 is accepted as a seed and lays down the perl-derived streams, so a zero seed is not confused with no seed"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

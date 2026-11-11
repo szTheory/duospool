@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: the request declares no byte order. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_order_undeclared"
+kind = "refuse"
+fixture = "plain-256k"
+request = "order=-"
+expect = "load.byte_order_undeclared"
+meaning = "A request that declares no byte order is refused as load.byte_order_undeclared and the order is never detected from the image, so no bit reversal heuristic exists"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

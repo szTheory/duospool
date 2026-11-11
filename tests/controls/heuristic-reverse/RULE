@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Toy control (D-85): a library with a content heuristic, made from the live src/core/boot.c by scripts/control-mutate. The anchor is
+# the one live line that copies the content into the instance. The replacement is one line: it copies as before and then, when the
+# copied byte at offset 0x1FFF is below 0xE0 (the threshold one emulator uses to decide that an image is in the other bit order),
+# reverses the bits of every copied byte. The case in EXPECT must come out guest_failure on the toy, or the no-heuristic rows prove nothing.
+tag=rule-heuristic-reverse
+file=src/core/boot.c
+anchor=__builtin_memcpy(inst->rom, request->content, request->len);
+replace={ size_t hr_i; __builtin_memcpy(inst->rom, request->content, request->len); if (inst->rom[0x1FFFu] < 0xE0u) { for (hr_i = 0u; hr_i < request->len; hr_i++) { uint8_t hr_b = inst->rom[hr_i]; hr_b = (uint8_t)(((hr_b & 0xF0u) >> 4) | ((hr_b & 0x0Fu) << 4)); hr_b = (uint8_t)(((hr_b & 0xCCu) >> 2) | ((hr_b & 0x33u) << 2)); inst->rom[hr_i] = (uint8_t)(((hr_b & 0xAAu) >> 1) | ((hr_b & 0x55u) << 1)); } } }

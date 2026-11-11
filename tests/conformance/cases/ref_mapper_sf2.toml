@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: a 2.5 MiB image declared sf2. The mapper is checked before the 1 MiB cap, so this row is a mapper refusal and not a size refusal; ref_too_large_2_5m_plain is the same length declared plain. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_mapper_sf2"
+kind = "refuse"
+fixture = "plain-256k"
+request = "mapper=sf2;len=2621440"
+expect = "load.mapper_unsupported"
+meaning = "A 2.5 MiB request declared sf2 is refused as a mapper_unsupported refusal and not as too_large, because the mapper check runs before the cap and the image is never inspected"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Budgeted run (D-57, D-68): ds_run steps in chunks of at most step cycles until the stop function holds or the budget is consumed; the
+# budget never overshoots (a budget of 2500 in steps of 1000 ends at exactly 2500), a budget exactly consumed is not exceeded, a step of 0 or
+# above 1048576 is refused with no change, and a stop function that never fires gives the budget outcome (what the runner reports as timeout).
+# The literals are hand-derived arithmetic (budget, step, result, time). Evidence tier E0, placeholder
+# stepping that makes no hardware claim (LED-PROF-0002).
+id = "run_budget"
+kind = "run_budget"
+fixture = "plain-256k"
+request = "bind.powerup_policy=seeded-prng-v1;seed=42"
+expect = "budget=5000,step=1000,result=budget,time=5000|budget=2500,step=1000,result=budget,time=2500|budget=100,step=1000,result=budget,time=100|budget=100,step=0,result=refused,time=0|budget=100,step=1048577,result=refused,time=0|budget=4194304,step=1048576,result=budget,time=4194304"
+meaning = "A run whose stop function never fires ends with the budget outcome at exactly the budget, in whole or partial steps, and a step of 0 or above the per-call maximum is refused without moving machine time"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

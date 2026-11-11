@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: the request declares tg16 byte order and binds content_byte_order to tg16, so resolve succeeds and boot refuses. Pins LED-LOAD-0001: whether a given image is in tg16 order is never claimed. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_order_tg16"
+kind = "refuse"
+fixture = "plain-256k"
+request = "order=tg16;bind.content_byte_order=tg16"
+expect = "load.byte_order_unsupported"
+meaning = "A request that declares and binds tg16 byte order is refused as load.byte_order_unsupported, the bytes are never reversed and no claim is made about the order of any image"
+required = true
+control = false
+expect_outcome = "pass"
+pins = ["LED-LOAD-0001"]

@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: the memory block is one byte smaller than ds_instance_size, otherwise a fully declared request. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_mem_short"
+kind = "refuse"
+fixture = "plain-256k"
+request = "cap=short"
+expect = "load.memory_invalid"
+meaning = "A fully declared request over a block one byte smaller than the instance is refused as load.memory_invalid, no instance is created and caller memory stays byte-identical"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

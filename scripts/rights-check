@@ -1,0 +1,284 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# rights-check - default-deny scan of the working tree for ROM-like, firmware-like, disc-image-like and save-like content
+# (FIX-05, D-56, D-76). The scan reads content, never trusts a file name, and never uses .gitignore as the gate: it lists
+# `git ls-files -co --exclude-standard` (tracked, plus untracked and not ignored), so a tracked file that is also ignored is scanned.
+# usage: rights-check [--expect CODE[,CODE...]] [--root DIR]      (--root defaults to the repository root; DIR must be a git work tree)
+#   ROMLIKE_BINARY  a file hits one or more rules; the detail names the rule. Every rule below applies to every file, except SHAPE:
+#     NUL      the file has a NUL byte                 CTRL     a control byte below 32 other than LF, TAB, CR
+#     UTF8     a byte sequence invalid in UTF-8        NONASCII 20 percent or more bytes at or above 0x80, at 1 KiB or more
+#     EXT      a ROM, disc, save or archive extension  MAGIC    PK (zip), 7z, Rar!, gzip or bzip2 file header
+#     BLOB     a run of 1024 or more base64 or hex characters inside a line
+#     LINELEN  a line longer than 4096 bytes
+#     SHAPE    size at least 4096 and a multiple of 8192, or 8192 plus 512 (copier header); applies ONLY to a file that is not
+#              valid text (a NUL, a control byte, or invalid UTF-8): shape is a binary-image heuristic (D-76)
+#   A file that is valid text is exempt from the SHAPE rule and from nothing else. BLOB, LINELEN and the bzip2 header are in
+#   lib/rights-rules.awk. No entropy rule. Reads use tr, wc, od, iconv, awk and perl: file content is never put in a shell variable.
+#   BAD_FILENAME    a path holding a TAB or a newline (those are the record separators here)
+#   Allowlist: only fixtures/manifest/*.toml (a missing directory is an empty allowlist). An entry with redistribution = committed
+#   excuses the ROMLIKE_BINARY hits of its source path, and only while all of these hold, else the entry is itself a violation:
+#     RIGHTS_MISSING_ARTIFACT  the source path is not a file          RIGHTS_HASH_MISMATCH  its sha256 differs from the entry
+#     RIGHTS_BAD_ALLOW         kind is not authored, licence is not an SPDX id, the source path is unsafe, or the entry cannot be parsed
+#   An excuse never applies to a file that holds a NUL byte.
+# Residual risk (D-56, D-76): this is detection, not prevention. A ROM re-encoded into printable text with short lines evades the
+#   shape rule; the strict non-text default makes that costly. An add-then-delete commit still publishes the blob through
+#   refs/pull/N/head; scripts/audit-history --range BASE..HEAD and the full-history audit are the pre-release checks for that.
+# stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then one line  RECORDS n  (files scanned)
+# stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
+# exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error
+set -eu
+LC_ALL=C; export LC_ALL
+here=$(cd "$(dirname "$0")" && pwd)
+
+usage() {
+  echo "usage: rights-check [--expect CODE[,CODE...]] [--root DIR]" >&2
+  exit 2
+}
+
+expect=""
+have_expect=0
+root=$(cd "$here/.." && pwd)
+while [ $# -gt 0 ]; do
+  case $1 in
+    --expect) [ $# -ge 2 ] || usage; expect=$2; have_expect=1; shift 2 ;;
+    --root) [ $# -ge 2 ] || usage; root=$2; shift 2 ;;
+    *) usage ;;
+  esac
+done
+# an --expect that names no code would make a control assert nothing: with no violations got and want are both empty and the
+# control would pass vacuously (WR-05). Exit 2, never 0.
+if [ "$have_expect" -eq 1 ] && [ -z "$(printf '%s' "$expect" | tr -d ', \t\r\n')" ]; then
+  echo "HARNESS_EMPTY_EXPECT --expect names no code" >&2
+  exit 2
+fi
+if [ ! -d "$root" ]; then
+  echo "HARNESS_NO_FILE $root" >&2
+  exit 2
+fi
+root=$(cd "$root" && pwd)
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+viol0="$tmp/viol0"
+viol="$tmp/viol"
+: > "$viol0"
+tab=$(printf '\t')
+
+# the host's git configuration must not decide what is scanned (a global excludes file hides untracked files)
+GIT_CONFIG_NOSYSTEM=1; export GIT_CONFIG_NOSYSTEM
+GIT_CONFIG_GLOBAL=/dev/null; export GIT_CONFIG_GLOBAL
+
+cd "$root"
+if ! git rev-parse --is-inside-work-tree > "$tmp/gitout" 2> "$tmp/giterr" || [ "$(cat "$tmp/gitout")" != true ]; then
+  echo "HARNESS_NOT_GIT_WORKTREE $root" >&2
+  exit 2
+fi
+
+# hit FILE REASON : one ROMLIKE_BINARY violation
+hit() {
+  printf '%s\tROMLIKE_BINARY\t0\t%s\n' "$1" "$2" >> "$viol0"
+}
+
+# ---- enumerate: NUL-separated from git, then one name per line. A newline inside a name would split it into two bogus names that
+# do not exist on disk, so the entry count is compared with the line count and a mismatch is a violation, never a silent skip.
+if ! git ls-files -co --exclude-standard -z > "$tmp/list.z" 2> "$tmp/giterr"; then
+  echo "HARNESS_GIT_LS_FILES failed" >&2
+  sed 's/^/  /' "$tmp/giterr" >&2
+  exit 2
+fi
+nz=$(tr -cd '\000' < "$tmp/list.z" | wc -c | tr -d ' ')
+tr '\000' '\n' < "$tmp/list.z" > "$tmp/list.nl"
+nl=$(wc -l < "$tmp/list.nl" | tr -d ' ')
+if [ "$nz" -ne "$nl" ]; then
+  printf '(newline in a path)\tBAD_FILENAME\t0\t%s paths, %s lines\n' "$nz" "$nl" >> "$viol0"
+fi
+
+# keep the entries that exist on disk: a regular file is scanned; a symlink only has its name checked (never followed); a tracked
+# file deleted from the work tree, a directory (submodule) or anything else is not content to scan
+: > "$tmp/names"
+: > "$tmp/files"
+nrec=0
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  case $f in
+    *"$tab"*) printf '%s\tBAD_FILENAME\t0\ttab in name\n' "(tab in a path)" >> "$viol0"; continue ;;
+  esac
+  if [ -L "$f" ]; then
+    printf '%s\n' "$f" >> "$tmp/names"
+    nrec=$((nrec + 1))
+  elif [ -f "$f" ]; then
+    printf '%s\n' "$f" >> "$tmp/names"
+    printf '%s\n' "$f" >> "$tmp/files"
+    nrec=$((nrec + 1))
+  fi
+done < "$tmp/list.nl"
+
+# ---- name-based rule, over every scanned name
+awk '
+  { n = tolower($0) }
+  n ~ /\.(pce|sgx|bin|rom|iso|cue|chd|sav|srm|zip|7z)$/ { printf "%s\tROMLIKE_BINARY\t0\tEXT\n", $0 }   # rule-extension
+' "$tmp/names" >> "$viol0" || { echo "HARNESS_AWK failed (extension rule)" >&2; exit 2; }
+
+# ---- content rules. Fast path: a file whose every byte is printable ASCII, TAB, LF or CR is valid text. One perl process per batch
+# names the files that are not (perl reads bytes, NUL included; grep cannot be used here because BSD grep ends a line at a NUL and
+# so reports a file with a NUL as clean). Only the named files take the per-file path below (a NUL, a control byte, a high
+# byte or DEL anywhere). perl is already a declared gate tool (scripts/preflight).
+sort -u "$tmp/files" > "$tmp/files.s"
+: > "$tmp/nonpure"
+if [ -s "$tmp/files.s" ]; then
+  tr '\n' '\000' < "$tmp/files.s" > "$tmp/files.z"
+  if ! xargs -0 perl -e '
+    foreach my $f (@ARGV) {
+      open(my $fh, "<", $f) or do { print STDERR "cannot open $f\n"; exit 2 };
+      binmode($fh);
+      my $buf;
+      while (read($fh, $buf, 65536)) {
+        if ($buf =~ /[^\x20-\x7e\x09\x0a\x0d]/) { print "$f\n"; last }
+      }
+      close($fh);
+    }
+  ' -- < "$tmp/files.z" > "$tmp/nonpure.raw" 2> "$tmp/giterr"; then
+    echo "HARNESS_PERL failed (text classification)" >&2
+    sed 's/^/  /' "$tmp/giterr" >&2
+    exit 2
+  fi
+  sort -u "$tmp/nonpure.raw" > "$tmp/nonpure"
+fi
+
+# sha256_of FILE : the hash, with the tool chosen once (D-60: sha256sum if present, else shasum -a 256)
+if command -v sha256sum > /dev/null 2>&1; then sha_cmd="sha256sum"; else sha_cmd="shasum -a 256"; fi
+sha256_of() {
+  # shellcheck disable=SC2086
+  $sha_cmd "$1" | awk '{ print $1 }'
+}
+
+# the line rules, over the plain-text files in bulk (names go in prefixed with ./ so that none can be taken for an option or an
+# assignment) and over the others one at a time below
+comm -23 "$tmp/files.s" "$tmp/nonpure" > "$tmp/pure"
+if [ -s "$tmp/pure" ]; then
+  sed 's|^|./|' "$tmp/pure" | tr '\n' '\000' > "$tmp/pure.z"
+  xargs -0 awk -f "$here/lib/rights-rules.awk" < "$tmp/pure.z" >> "$viol0" || { echo "HARNESS_AWK failed (line rules)" >&2; exit 2; }
+fi
+
+: > "$tmp/nulfiles"
+
+# inspect FILE : the per-file path for a file that is not plain printable text
+inspect() {
+  f=$1
+  size=$(wc -c < "$f" | tr -d ' ')
+  n_nonul=$(tr -d '\000' < "$f" | wc -c | tr -d ' ')
+  n_noctl=$(tr -d '\000-\010\013\014\016-\037' < "$f" | wc -c | tr -d ' ')
+  n_ascii=$(tr -d '\200-\377' < "$f" | wc -c | tr -d ' ')
+  text=1
+  if [ "$size" -ne "$n_nonul" ]; then hit "$f" NUL; text=0; printf '%s\n' "$f" >> "$tmp/nulfiles"; fi
+  if [ "$n_nonul" -ne "$n_noctl" ]; then hit "$f" CTRL; text=0; fi
+  if ! iconv -f UTF-8 -t UTF-8 < "$f" > /dev/null 2>&1; then hit "$f" UTF8; text=0; fi
+  if [ "$size" -ge 1024 ] && [ $(( (size - n_ascii) * 5 )) -ge "$size" ]; then hit "$f" "NONASCII $((size - n_ascii)) of $size"; fi
+  if [ "$text" -eq 0 ] && [ "$size" -ge 4096 ]; then
+    rem=$((size % 8192))
+    if [ "$rem" -eq 0 ] || [ "$rem" -eq 512 ]; then hit "$f" "SHAPE size $size"; fi
+  fi
+  # file header magic: PK (zip), 7z, Rar!, gzip, bzip2
+  magic=$(head -c 8 "$f" | od -An -tx1 | tr -d ' \n')
+  case $magic in
+    504b0304* | 504b0506* | 504b0708*) hit "$f" "MAGIC zip" ;;
+    377abcaf271c*) hit "$f" "MAGIC 7z" ;;
+    526172211a07*) hit "$f" "MAGIC rar" ;;
+    1f8b*) hit "$f" "MAGIC gzip" ;;
+    425a683[1-9]*) hit "$f" "MAGIC bzip2" ;;
+  esac
+  if [ "$size" -eq "$n_nonul" ]; then
+    awk -f "$here/lib/rights-rules.awk" "./$f" >> "$viol0" || { echo "HARNESS_AWK failed (line rules, $f)" >&2; exit 2; }
+  else
+    tr -d '\000' < "$f" | awk -v NAME="$f" -f "$here/lib/rights-rules.awk" >> "$viol0" || { echo "HARNESS_AWK failed (line rules, $f)" >&2; exit 2; }
+  fi
+}
+
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  inspect "$f"
+done < "$tmp/nonpure"
+
+# ---- allowlist: fixtures/manifest/*.toml, parsed by the same strict TOML-subset reader as the other records (stage 1, no pipeline)
+: > "$tmp/allow"
+# bad MANIFEST CODE DETAIL
+bad() {
+  printf '%s\t%s\t0\t%s\n' "$1" "$2" "$3" >> "$viol0"
+}
+# mval KEY : the string value of a root key of the manifest being read
+mval() {
+  awk -F'\t' -v k="$1" '$1 == "" && $2 == k && $3 == "s" { print $4; exit }' "$tmp/m.flat"
+}
+manifest_entry() {
+  m=$1
+  if ! awk -f "$here/lib/toml-subset.awk" "$m" > "$tmp/m.flat" 2> "$tmp/m.err"; then
+    bad "$m" RIGHTS_BAD_ALLOW "manifest entry unreadable"
+    return 0
+  fi
+  if [ "$(tail -n 1 "$tmp/m.flat" | cut -c 1-3)" != END ] || grep -q '^ERR' "$tmp/m.flat"; then
+    bad "$m" RIGHTS_BAD_ALLOW "manifest entry does not parse"
+    return 0
+  fi
+  [ "$(mval redistribution)" = committed ] || return 0
+  src=$(mval source)
+  case $src in
+    '' | /* | .. | ../* | */.. | */../*) bad "$m" RIGHTS_BAD_ALLOW "unsafe source path"; return 0 ;;
+  esac
+  if [ ! -f "$src" ] || [ -L "$src" ]; then
+    bad "$m" RIGHTS_MISSING_ARTIFACT "$src"
+    return 0
+  fi
+  want=$(mval sha256)
+  got=$(sha256_of "$src")
+  if [ "$got" != "$want" ]; then
+    bad "$m" RIGHTS_HASH_MISMATCH "$src"
+    return 0
+  fi
+  lic=$(mval licence)
+  if [ "$(mval kind)" != authored ]; then
+    bad "$m" RIGHTS_BAD_ALLOW "kind is not authored: $src"
+    return 0
+  fi
+  if ! printf '%s\n' "$lic" | grep -Eq '^[A-Za-z0-9.+-]+( (AND|OR|WITH) [A-Za-z0-9.+-]+)*$' || [ "$lic" = NONE ] || [ "$lic" = NOASSERTION ]; then
+    bad "$m" RIGHTS_BAD_ALLOW "licence is not an SPDX id: $src"
+    return 0
+  fi
+  printf '%s\n' "$src" >> "$tmp/allow"
+}
+if [ -d fixtures/manifest ]; then
+  for m in fixtures/manifest/*.toml; do
+    [ -f "$m" ] || continue
+    manifest_entry "$m"
+  done
+fi
+
+# an allowed path loses its ROMLIKE_BINARY hits, unless the file holds a NUL byte
+awk -F'\t' -v allowf="$tmp/allow" -v nulf="$tmp/nulfiles" '
+  FILENAME == allowf { ok[$0] = 1; next }
+  FILENAME == nulf { nul[$0] = 1; next }
+  { if ($2 == "ROMLIKE_BINARY" && ($1 in ok) && !($1 in nul)) next; print }
+' "$tmp/allow" "$tmp/nulfiles" "$viol0" > "$tmp/viol1" || { echo "HARNESS_AWK failed (allowlist)" >&2; exit 2; }
+mv "$tmp/viol1" "$viol0"
+
+sort -u "$viol0" > "$viol"
+
+if [ "$have_expect" -eq 1 ]; then
+  got=$(awk -F'\t' '{ print $2 }' "$viol" | sort -u | tr '\n' ',' | sed 's/,$//')
+  want=$(printf '%s\n' "$expect" | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/,$//')
+  if [ "$got" = "$want" ]; then
+    echo "EXPECT_OK"
+    exit 0
+  fi
+  echo "EXPECT_MISMATCH wanted '$want' got '${got:-<none>}'" >&2
+  cat "$viol" >&2
+  exit 1
+fi
+
+cat "$viol"
+echo "RECORDS $nrec"
+if [ -s "$viol" ]; then
+  exit 1
+fi
+exit 0

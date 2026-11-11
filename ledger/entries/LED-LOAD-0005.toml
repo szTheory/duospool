@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# HuCard window and the unmapped boundary (D-44). A modelling assumption, not an established hardware fact.
+id = "LED-LOAD-0005"
+statement = "DuoSpool models the HuCard window as banks $00-$7F, and banks 0x80 and above are not ROM: the mapper reports such a bank as unmapped and specifies no value for a read of it."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["REPORT|PCEdev wiki|banks $00-$7F are the HuCard window on the community wiki", "UNKNOWN|pcetech.txt|primary source unreachable during research, not read"]
+evidence = []
+disagreement = "none"
+pinning_test = "TEST:accept_unmapped_banks"
+updated = "2026-11-10"
+assumption = "The window and the unmapped boundary are modelling assumptions taken from a community wiki; what a read of an unmapped bank returns is left to Phase 3."
+revisit_phase = 3
+withheld = ["any claim about the value read from an unmapped bank"]
+origin = "02-CONTEXT D-44"

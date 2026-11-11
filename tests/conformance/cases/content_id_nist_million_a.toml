@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# NIST FIPS 180-4 example value, a spec literal re-derived with printf and shasum -a 256 while authoring: one million
+# repetitions of the letter a. The input is built inside the runner and fed to the in-house SHA-256 in uneven chunks of
+# 1 to 7 bytes and in one call. Evidence tier E0: it shows the hash function agrees with the published value, not that
+# any content is genuine.
+id = "content_id_nist_million_a"
+kind = "hash_literal"
+fixture = "none"
+request = "million-a"
+expect = "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0"
+meaning = "The in-house SHA-256 of one million letters a, fed in uneven chunks of 1 to 7 bytes, equals the FIPS 180-4 example value"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

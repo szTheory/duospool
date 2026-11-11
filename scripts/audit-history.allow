@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 # Format: path<TAB>CHECK<TAB>reason. A hit is suppressed only when both path and CHECK match; ROM-SIZE allowances also need zero NUL bytes.
+# A text hit takes CHECK TEXT-PATTERN (any kind in the path) or the narrower TEXT-PATTERN:KIND (one kind in the path); prefer the narrow form.
 ledger/samples/ok-boundary-16384/LED-CPU-0001.toml	ROM-SIZE-8K	16384-byte ASCII size-boundary control (plans 01-01/01-02); NUL-free
 tests/profile/ok-boundary-16384/pce-hucard-2btn/r1.toml	ROM-SIZE-8K	16384-byte ASCII size-boundary control (plans 01-01/01-02); NUL-free
+.planning/phases/02-deterministic-machine-shell-hucard-boundary-and-fail-closed/02-01-SUMMARY.md	TEXT-PATTERN:home-path-mac	Local home-directory path in an executor summary, no credential. Rewriting the unpublished history was rejected because these summaries record commit hashes. Owner-approved 2026-11-10 (plan 02-22). Narrow form: only the home-path-mac kind in this path.
+.planning/phases/02-deterministic-machine-shell-hucard-boundary-and-fail-closed/02-02-SUMMARY.md	TEXT-PATTERN:home-path-mac	Local home-directory path in an executor summary, no credential. Rewriting the unpublished history was rejected because these summaries record commit hashes. Owner-approved 2026-11-10 (plan 02-22). Narrow form: only the home-path-mac kind in this path.

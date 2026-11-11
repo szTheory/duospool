@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The profile identity hash covers every field (D-27, PROF-03): for each of the 13 fields of the r1 constant the value, the status and the
+# bound_by are flipped in turn and each must change ds_profile_hash. One assertion per field. A label is not representable in the core, so a
+# label change cannot reach the hash. Evidence tier E0.
+id = "profile_hash_fields"
+kind = "profile_hash"
+fixture = "none"
+request = ""
+expect = "fields"
+meaning = "Flipping the value, the status or the binder of any one of the 13 profile fields changes the profile identity hash"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

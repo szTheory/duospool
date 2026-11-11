@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Power-on, seeded-prng-v1 with seed 42 (D-50, D-75): pins LED-PROF-0002. The literals were derived independently of the C code with a
+# throwaway perl script outside the repo (Math::BigInt, unsigned 64-bit masks): sub = one splitmix64 step started from (seed XOR DOMAIN_CONST),
+# the domain stream starts at sub, each draw is written as little-endian bytes. ram@0 is the first two draws, ram@8184 the 1024th draw (8192
+# bytes), psg_noise and vdc_phase the low 32 bits of the first draw of their domains. A stream that starts at the bare XOR with no splitmix
+# step gives other bytes. Evidence tier E0, a modelling assumption and not a hardware claim.
+id = "poweron_draw_order"
+kind = "poweron"
+fixture = "plain-256k"
+request = "bind.powerup_policy=seeded-prng-v1;seed=42"
+expect = "policy=seeded-prng-v1;seed=42;ram@0=37db8e2ea18a90d91bed048d161cb5d2;ram@8184=86e36fa23afcda5d;psg_noise=0x97809872;vdc_phase=0xA228BF93;mpr=zero;time=0"
+meaning = "A seed-42 boot fills RAM, psg_noise and vdc_phase from the per-domain streams exactly as the perl-derived literals say, with the split derivation, little-endian draws and 1024 RAM draws"
+required = true
+control = false
+expect_outcome = "pass"
+pins = ["LED-PROF-0002"]

@@ -1,0 +1,3 @@
+RESULT alpha pass assertions=2 evidence=out/alpha.txt
+RESULT alpha pass assertions=2 evidence=out/alpha-again.txt
+RUNNER_DONE 2

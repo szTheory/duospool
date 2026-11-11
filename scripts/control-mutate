@@ -1,0 +1,151 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# control-mutate - make the source of one toy control library from the live source and one rule (D-85, D-55). A toy control is a
+# deliberately wrong variant of the core that the same conformance case must show red. It is never a committed copy: it is the live
+# file with one literal substring replaced, generated into build/ each time, so an edit of the live file can neither leave a stale
+# snapshot nor an uncompilable one behind.
+# usage: control-mutate RULE OUT [--root DIR]
+#   RULE  a file of  key=value  lines after # comment lines; four keys, each exactly once:
+#           tag      the identity of the rule (rule-NAME-...), printed in every message about it
+#           file     repository-relative path of the one live source (no leading /, no ..)
+#           anchor   a literal substring of the live file (a fixed string, never a regex), written to the end of its line
+#           replace  the text that takes the place of the anchor
+#         The value is everything after the first = of the line, kept byte for byte (also leading and trailing blanks).
+#   OUT   where the whole mutated file is written (its directory is created); left untouched when the file would not change
+#   --root DIR  the repository root that FILE is read from (default: the root of this script); the selftest points it at a scratch
+#         root holding a deliberately broken copy
+#   The anchor must occur exactly once in the live file. Zero or more than one occurrence is a harness error: a rule that matched
+#   nothing would otherwise pass as a control that mutated nothing.
+# stdout: CONTROL_ANCHOR_COUNT TAG n=N on a count other than one; on success the line  MUTATED TAG FILE
+# exit  : 0 written | 2 harness error (a count other than one, a bad rule, a missing file, a usage error)
+set -eu
+LC_ALL=C; export LC_ALL
+here=$(cd "$(dirname "$0")" && pwd)
+
+usage() {
+  echo "usage: control-mutate RULE OUT [--root DIR]" >&2
+  exit 2
+}
+
+rule=""
+out=""
+root=$(cd "$here/.." && pwd)
+while [ $# -gt 0 ]; do
+  case $1 in
+    --root) [ $# -ge 2 ] || usage; root=$2; shift 2 ;;
+    -*) usage ;;
+    *)
+      if [ -z "$rule" ]; then rule=$1; elif [ -z "$out" ]; then out=$1; else usage; fi
+      shift
+      ;;
+  esac
+done
+[ -n "$rule" ] && [ -n "$out" ] || usage
+if [ ! -f "$rule" ]; then
+  echo "HARNESS_NO_FILE $rule" >&2
+  exit 2
+fi
+if [ ! -d "$root" ]; then
+  echo "HARNESS_NO_FILE $root" >&2
+  exit 2
+fi
+
+# read the four keys: a repeated key, an unknown key or a line that is neither comment, blank nor key=value is refused
+tag=""
+file=""
+anchor=""
+replace=""
+seen=""
+while IFS= read -r line || [ -n "$line" ]; do
+  case $line in
+    '' | '#'*) continue ;;
+    *=*) ;;
+    *) echo "HARNESS_ERROR $rule: a line that is neither a comment nor key=value" >&2; exit 2 ;;
+  esac
+  k=${line%%=*}
+  v=${line#*=}
+  case $k in
+    tag | file | anchor | replace) ;;
+    *) echo "HARNESS_ERROR $rule: unknown key '$k'" >&2; exit 2 ;;
+  esac
+  case $seen in
+    *" $k "*) echo "HARNESS_ERROR $rule: key '$k' given twice" >&2; exit 2 ;;
+  esac
+  seen="$seen $k "
+  case $k in
+    tag) tag=$v ;;
+    file) file=$v ;;
+    anchor) anchor=$v ;;
+    replace) replace=$v ;;
+  esac
+done < "$rule"
+for need in tag file anchor replace; do
+  case $seen in
+    *" $need "*) ;;
+    *) echo "HARNESS_ERROR $rule: key '$need' is missing" >&2; exit 2 ;;
+  esac
+done
+case $tag in
+  rule-?*) ;;
+  *) echo "HARNESS_ERROR $rule: tag must start with rule-" >&2; exit 2 ;;
+esac
+case $tag in
+  *[!A-Za-z0-9_-]*) echo "HARNESS_ERROR $rule: tag holds a character outside A-Z a-z 0-9 _ -" >&2; exit 2 ;;
+esac
+if [ -z "$anchor" ]; then
+  echo "HARNESS_ERROR $tag: the anchor is empty" >&2
+  exit 2
+fi
+# the file is read from under the root only: no absolute path, no .. component, no empty component
+case $file in
+  '' | /* | ../* | */../* | */.. | .. | */ | *//*) echo "HARNESS_ERROR $tag: file must be a repository-relative path without .. or empty parts" >&2; exit 2 ;;
+esac
+src="$root/$file"
+if [ ! -f "$src" ]; then
+  echo "HARNESS_NO_FILE $src" >&2
+  exit 2
+fi
+
+# count the occurrences of the anchor as a fixed string (index, never a regex; the text goes in through the environment so
+# that awk does not process backslash escapes in it)
+n=$(CM_ANCHOR=$anchor awk '
+  BEGIN { a = ENVIRON["CM_ANCHOR"]; la = length(a); n = 0 }
+  {
+    s = $0
+    while ((i = index(s, a)) > 0) { n++; s = substr(s, i + la) }
+  }
+  END { print n }
+' "$src") || { echo "HARNESS_ERROR $tag: awk failed counting the anchor" >&2; exit 2; }
+if [ "$n" -ne 1 ]; then
+  echo "CONTROL_ANCHOR_COUNT $tag n=$n"
+  exit 2
+fi
+
+outdir=$(dirname "$out")
+mkdir -p "$outdir" || { echo "HARNESS_ERROR $tag: cannot create $outdir" >&2; exit 2; }
+tmpf="$out.tmp.$$"
+trap 'rm -f "$tmpf"' EXIT
+if CM_ANCHOR=$anchor CM_REPLACE=$replace awk '
+  BEGIN { a = ENVIRON["CM_ANCHOR"]; r = ENVIRON["CM_REPLACE"]; la = length(a); done = 0 }
+  {
+    if (!done && (i = index($0, a)) > 0) {
+      $0 = substr($0, 1, i - 1) r substr($0, i + la)
+      done = 1
+    }
+    print
+  }
+  END { if (!done) exit 3 }
+' "$src" > "$tmpf"; then :; else
+  echo "HARNESS_ERROR $tag: the replacement did not run" >&2
+  exit 2
+fi
+# an unchanged output is left alone, so the build does not redo work when nothing moved
+if [ -f "$out" ] && cmp -s "$tmpf" "$out"; then
+  rm -f "$tmpf"
+else
+  mv "$tmpf" "$out"
+fi
+echo "MUTATED $tag $file"
+exit 0

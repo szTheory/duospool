@@ -1,0 +1,272 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# core-boundary-check - CORE-02 as a build-time fact (D-54, D-65): the core uses no host clock, file, thread, environment, device, UI or
+# allocator. This check enforces the boundary of the sources it can see; a clean run is not evidence that the machine behaves correctly.
+# usage: core-boundary-check [--expect CODE[,CODE...]] [--root DIR] [--cc CMD]      (--root defaults to the repository root, --cc to cc)
+#   Scans ROOT/src/core/*.c (and the .h and .def files beside them for the include rule). Layers, in order:
+#   1. include rule: only <stddef.h> <stdint.h> <stdbool.h>, quoted ds_*.h and quoted *.def may be included (CB_INCLUDE). The freestanding
+#      compile cannot do this alone: with -nostdinc -isystem the compiler's own directory also exposes float.h, stdarg.h and others, and
+#      limits.h on clang. A file that fails this rule is not compiled, so each control yields one deterministic code set on every compiler.
+#   2. freestanding compile of each remaining .c file standalone at -O0 (CB_COMPILE, with the first compiler message). Plain objects only;
+#      a sanitizer build is never scanned.
+#   3. undefined symbols of each object (nm -P -u, a leading underscore stripped on Darwin) must be a subset of scripts/core-boundary.allow
+#      plus the external symbols that the core objects themselves define (CB_UNDEF_SYMBOL); and no object may hold a writable symbol (CB_WRITABLE): Darwin reads nm -m sections __DATA data, bss, common and
+#      thread, Linux reads nm -P types B b C D d G g V v u. The exception list is empty, so a global, a function-local static and an
+#      initialised table all fail, and a static const table does not.
+#   4. a float or double token in comment-stripped, literal-stripped source (CB_FLOAT).
+#   Codes: CB_INCLUDE CB_COMPILE CB_UNDEF_SYMBOL CB_WRITABLE CB_FLOAT, plus the harness errors (exit 2) CB_NO_SOURCES (no .c file under
+#   ROOT/src/core) and CB_NO_SYMBOLS (a compiled object with no symbol at all).
+# stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then on a clean run the marker line  STATUS core-boundary ok
+# stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
+# exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error
+set -eu
+LC_ALL=C; export LC_ALL
+here=$(cd "$(dirname "$0")" && pwd)
+
+usage() {
+  echo "usage: core-boundary-check [--expect CODE[,CODE...]] [--root DIR] [--cc CMD]" >&2
+  exit 2
+}
+
+harness() {
+  echo "$1" >&2
+  exit 2
+}
+
+expect=""
+have_expect=0
+root=$(cd "$here/.." && pwd)
+cc=cc
+while [ $# -gt 0 ]; do
+  case $1 in
+    --expect) [ $# -ge 2 ] || usage; expect=$2; have_expect=1; shift 2 ;;
+    --root) [ $# -ge 2 ] || usage; root=$2; shift 2 ;;
+    --cc) [ $# -ge 2 ] || usage; cc=$2; shift 2 ;;
+    *) usage ;;
+  esac
+done
+# an --expect that names no code would make a control assert nothing: with no violations got and want are both empty and the
+# control would pass vacuously (WR-05). Exit 2, never 0.
+if [ "$have_expect" -eq 1 ] && [ -z "$(printf '%s' "$expect" | tr -d ', \t\r\n')" ]; then
+  harness "HARNESS_EMPTY_EXPECT --expect names no code"
+fi
+[ -d "$root" ] || harness "HARNESS_NO_FILE $root"
+root=$(cd "$root" && pwd)
+src="$root/src/core"
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+viol0="$tmp/viol0"
+viol="$tmp/viol"
+: > "$viol0"
+os=$(uname -s)
+
+# the sources: every .c file directly under ROOT/src/core. None at all is a harness error, never a pass (T-02-30).
+find "$src" -type f -name '*.c' 2>/dev/null | sort > "$tmp/c.list" || true
+nsrc=$(wc -l < "$tmp/c.list" | tr -d ' ')
+if [ "$nsrc" -eq 0 ]; then
+  harness "CB_NO_SOURCES no .c file under $src"
+fi
+
+# the scanner: one awk program, two modes. It first removes comments (block and line) and, in mode flt, the contents of string and
+# character literals, keeping the line count, so prose such as the words double quote in a comment cannot trigger a rule.
+#   mode inc : print LINE<TAB>OPERAND for every include directive that the include rule does not allow
+#   mode flt : print LINE<TAB>TOKEN for every float or double token
+cat > "$tmp/scan.awk" <<'AWK_END'
+function strip(line, blank,    out, n, i, c, d, instr) {
+  out = ""
+  n = length(line)
+  i = 1
+  instr = ""
+  while (i <= n) {
+    c = substr(line, i, 1)
+    d = substr(line, i, 2)
+    if (inblock) {
+      if (d == "*/") { inblock = 0; i += 2; out = out " " } else { i++ }
+      continue
+    }
+    if (instr != "") {
+      if (c == "\\") { if (!blank) out = out d; i += 2; continue }
+      if (c == instr) { instr = ""; out = out c; i++; continue }
+      if (!blank) out = out c
+      i++
+      continue
+    }
+    if (d == "/*") { inblock = 1; i += 2; continue }
+    if (d == "//") break
+    if (c == "\"" || c == "'") { instr = c; out = out c; i++; continue }
+    out = out c
+    i++
+  }
+  return out
+}
+function inc_bad(s,    t, w, rest, c, cq, k, name) {
+  if (!match(s, /^[ \t]*#[ \t]*[A-Za-z_][A-Za-z0-9_]*/)) return ""
+  t = substr(s, 1, RLENGTH)
+  rest = substr(s, RLENGTH + 1)
+  sub(/^[ \t]*#[ \t]*/, "", t)
+  w = t
+  if (w != "include" && w != "include_next" && w != "import") return ""
+  if (w != "include") return "#" w
+  sub(/^[ \t]+/, "", rest)
+  c = substr(rest, 1, 1)
+  if (c == "<") cq = ">"
+  else if (c == "\"") cq = "\""
+  else { if (rest == "") rest = "(empty)"; return rest }
+  rest = substr(rest, 2)
+  k = index(rest, cq)
+  if (k == 0) return c rest
+  name = substr(rest, 1, k - 1)
+  if (c == "<") {
+    if (name == "stddef.h" || name == "stdint.h" || name == "stdbool.h") return ""
+    return "<" name ">"
+  }
+  if (name ~ /^ds_[A-Za-z0-9_]+\.h$/ || name ~ /^[A-Za-z0-9_]+\.def$/) return ""
+  return "\"" name "\""
+}
+BEGIN { inblock = 0 }
+{
+  out = strip($0, mode == "flt")
+  if (mode == "inc") {
+    d = inc_bad(out)
+    if (d != "") { gsub(/\t/, " ", d); printf "%d\t%s\n", NR, d }
+  } else if (mode == "flt") {
+    if (match(out, /(^|[^A-Za-z0-9_])(float|double)([^A-Za-z0-9_]|$)/)) {
+      t = substr(out, RSTART, RLENGTH)
+      gsub(/[^a-z]/, "", t)
+      printf "%d\t%s\n", NR, t
+    }
+  }
+}
+AWK_END
+
+# ---- layer 1: the include rule, over every .c, .h and .def file of the core ----
+find "$src" -type f \( -name '*.c' -o -name '*.h' -o -name '*.def' \) | sort > "$tmp/all.list"
+: > "$tmp/badinc"
+while IFS= read -r f; do
+  rel=${f#"$root"/}
+  awk -v mode=inc -f "$tmp/scan.awk" "$f" > "$tmp/inc.out"
+  if [ -s "$tmp/inc.out" ]; then
+    printf '%s\n' "$f" >> "$tmp/badinc"
+    while IFS="$(printf '\t')" read -r ln op; do
+      printf '%s\tCB_INCLUDE\t%s\t%s\n' "$rel" "$ln" "$op" >> "$viol0"
+    done < "$tmp/inc.out"
+  fi
+done < "$tmp/all.list"
+
+# ---- layer 2: the freestanding compile ----
+command -v "$cc" > /dev/null 2>&1 || harness "HARNESS_NO_TOOL $cc"
+cc_inc=""
+rd=$("$cc" -print-resource-dir 2>/dev/null) || rd=""
+if [ -n "$rd" ] && [ -f "$rd/include/stddef.h" ]; then
+  cc_inc="$rd/include"
+else
+  fn=$("$cc" -print-file-name=include 2>/dev/null) || fn=""
+  if [ -n "$fn" ] && [ -f "$fn/stddef.h" ]; then cc_inc=$fn; fi
+fi
+[ -n "$cc_inc" ] || harness "HARNESS_NO_FILE the compiler include directory of $cc (stddef.h not found)"
+fortify=""
+if [ "$os" = "Darwin" ]; then fortify="-D_FORTIFY_SOURCE=0"; fi
+
+# compile SRC OBJ : the exact flag set of D-54; -Werror=date-time makes the compile-time stamp macros an error
+compile() {
+  # shellcheck disable=SC2086
+  "$cc" -std=c11 -O0 -ffreestanding -nostdinc -isystem "$cc_inc" -I "$src" -fno-common -fno-stack-protector -fno-pie \
+    -Werror=date-time -Wall -Wextra $fortify -c "$1" -o "$2"
+}
+
+: > "$tmp/objs"
+nobj=0
+while IFS= read -r f; do
+  rel=${f#"$root"/}
+  if grep -Fxq -e "$f" "$tmp/badinc"; then continue; fi
+  nobj=$((nobj + 1))
+  o="$tmp/o$nobj.o"
+  if compile "$f" "$o" 2> "$tmp/cc.err"; then
+    printf '%s\t%s\n' "$rel" "$o" >> "$tmp/objs"
+  else
+    det=$(grep -i 'error' "$tmp/cc.err" | sed -n '1p')
+    if [ -z "$det" ]; then det=$(sed -n '1p' "$tmp/cc.err"); fi
+    det=$(printf '%s' "$det" | tr '\t' ' ' | awk -v r="$root/" '{ while ((k = index($0, r)) > 0) $0 = substr($0, 1, k - 1) substr($0, k + length(r)); print }')
+    printf '%s\tCB_COMPILE\t0\t%s\n' "$rel" "$det" >> "$viol0"
+  fi
+done < "$tmp/c.list"
+
+# ---- layer 3: undefined symbols (L2) and writable symbols (L3) of every compiled object ----
+# the allowlist: comment lines are skipped, the first TAB-separated field is the name, a second field limits the entry to that platform
+[ -f "$here/core-boundary.allow" ] || harness "HARNESS_NO_FILE $here/core-boundary.allow"
+awk -F'\t' -v os="$os" '/^[ \t]*#/ { next } $1 ~ /^[ \t\r]*$/ { next } { if (NF >= 2 && $2 != "" && $2 != os) next; print $1 }' "$here/core-boundary.allow" | sort -u > "$tmp/allow"
+command -v nm > /dev/null 2>&1 || harness "HARNESS_NO_TOOL nm"
+# the core is one unit that is compiled one source at a time: a symbol that one core object leaves undefined and another core object defines is an
+# internal reference, not a host call, so the external symbols defined by the objects are added to the allowed set. This never widens the allowlist
+# file, and a name such as clock or malloc that no core object defines is still reported.
+: > "$tmp/defined.raw"
+while IFS="$(printf '\t')" read -r rel o; do
+  nm -P -g "$o" 2> /dev/null | awk -v os="$os" '$2 != "U" { s = $1; if (os == "Darwin" && substr(s, 1, 1) == "_") s = substr(s, 2); print s }' >> "$tmp/defined.raw" || harness "HARNESS_ERROR nm -P -g failed on the object of $rel"
+done < "$tmp/objs"
+cat "$tmp/allow" "$tmp/defined.raw" | sort -u > "$tmp/allowed"
+nscan=0
+while IFS="$(printf '\t')" read -r rel o; do
+  nscan=$((nscan + 1))
+  # undefined symbols: field 1 of nm -P -u, a leading underscore stripped on Darwin, sorted in the C locale
+  nm -P -u "$o" > "$tmp/nm.u" 2> /dev/null || harness "HARNESS_ERROR nm -P -u failed on the object of $rel"
+  awk -v os="$os" '{ s = $1; if (os == "Darwin" && substr(s, 1, 1) == "_") s = substr(s, 2); print s }' "$tmp/nm.u" | sort -u > "$tmp/undef"
+  comm -23 "$tmp/undef" "$tmp/allowed" > "$tmp/undef.bad"
+  while IFS= read -r un; do
+    [ -n "$un" ] || continue
+    printf '%s\tCB_UNDEF_SYMBOL\t0\t%s\n' "$rel" "$un" >> "$viol0"
+  done < "$tmp/undef.bad"
+  # writable symbols, with an empty exception list. Darwin types const data as S or s under nm -P, so it is read with nm -m by section;
+  # Linux reads the nm -P type letters B b C D d G g V v u (S and s are not the const class there).
+  if [ "$os" = "Darwin" ]; then
+    nm -m "$o" > "$tmp/nm.all" 2> /dev/null || harness "HARNESS_ERROR nm -m failed on the object of $rel"
+  else
+    nm -P "$o" > "$tmp/nm.all" 2> /dev/null || harness "HARNESS_ERROR nm -P failed on the object of $rel"
+  fi
+  # an object with no symbols at all gives no evidence about anything: a harness error, never a pass
+  if [ -z "$(tr -d ' \t\r\n' < "$tmp/nm.all")" ]; then
+    harness "CB_NO_SYMBOLS the object of $rel has no symbols"
+  fi
+  if [ "$os" = "Darwin" ]; then
+    wr=$(awk '$2 ~ /^\(__DATA,__(data|bss|common)\)$/ || $2 ~ /^\(__DATA,__thread/ || $0 ~ /\(common\)/ { s = $NF; if (substr(s, 1, 1) == "_") s = substr(s, 2); print s }' "$tmp/nm.all" | sort -u)
+  else
+    wr=$(awk '$2 ~ /^[BbCDdGgVvu]$/ { print $1 }' "$tmp/nm.all" | sort -u)
+  fi
+  if [ -n "$wr" ]; then # rule-writable
+    printf '%s\n' "$wr" | awk -v r="$rel" '{ printf "%s\tCB_WRITABLE\t0\t%s\n", r, $0 }' >> "$viol0" # rule-writable
+  fi # rule-writable
+done < "$tmp/objs"
+
+# ---- layer 4: no floating point in the machine behaviour (comment-stripped, literal-stripped source) ----
+while IFS= read -r f; do
+  rel=${f#"$root"/}
+  awk -v mode=flt -f "$tmp/scan.awk" "$f" > "$tmp/flt.out"
+  while IFS="$(printf '\t')" read -r ln tk; do
+    [ -n "$ln" ] || continue
+    printf '%s\tCB_FLOAT\t%s\t%s\n' "$rel" "$ln" "$tk" >> "$viol0"
+  done < "$tmp/flt.out"
+done < "$tmp/all.list"
+
+sort -u "$viol0" > "$viol"
+
+if [ "$have_expect" -eq 1 ]; then
+  got=$(awk -F'\t' '{ print $2 }' "$viol" | sort -u | tr '\n' ',' | sed 's/,$//')
+  want=$(printf '%s\n' "$expect" | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/,$//')
+  if [ "$got" = "$want" ]; then
+    echo "EXPECT_OK"
+    exit 0
+  fi
+  echo "EXPECT_MISMATCH wanted '$want' got '${got:-<none>}'" >&2
+  cat "$viol" >&2
+  exit 1
+fi
+
+cat "$viol"
+if [ -s "$viol" ]; then
+  exit 1
+fi
+echo "SCANNED sources=$nsrc objects=$nscan"
+echo "STATUS core-boundary ok"
+exit 0

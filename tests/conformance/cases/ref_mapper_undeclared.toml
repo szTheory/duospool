@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: the request declares no mapper. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_mapper_undeclared"
+kind = "refuse"
+fixture = "plain-256k"
+request = "mapper=-"
+expect = "load.mapper_undeclared"
+meaning = "A request that declares no mapper is refused as load.mapper_undeclared, the mapper is never inferred from the image, and no instance is created"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

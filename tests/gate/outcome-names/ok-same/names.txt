@@ -1,0 +1,7 @@
+pass
+guest_failure
+timeout
+harness_failure
+skip
+cancelled
+missing_artifact

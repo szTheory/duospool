@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Record golden, E0 repeatability (D-53): a 384 KiB synthetic image booted under the seeded-prng-v1 power-on policy with seed 42. The record
+# printed into a buffer must equal golden/accept_384k_seeded.record.toml byte for byte after its leading comment block. A matching record shows
+# that the same inputs give the same bytes; it does not show that the machine behaviour is right. The profile sha256, the content sha256 and the
+# state digest of the golden were each recomputed with the host sha tool over a stream rebuilt without the C code (method in the plan 14 summary).
+id = "record_golden_384k_seeded"
+kind = "record_golden"
+fixture = "plain-384k"
+request = "bind.powerup_policy=seeded-prng-v1;seed=42"
+expect = "accept_384k_seeded"
+meaning = "The full record of a seed-42 boot of the 384 KiB synthetic image, printed to a buffer, equals the committed golden byte for byte, so the identity tables, the withheld ids, the power-on policy and seed, the machine time labelled placeholder-cycles and the state digest are all pinned"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
