@@ -15,6 +15,7 @@
  *   --profile-tsv FILE   the flattened profiles/pce-hucard-2btn/r1.toml (scripts/conformance-flatten), read by the r1 kinds
  *   --rules-fields FILE  the 13 field names of scripts/lib/profile-rules.awk, one per line, read by the names kind
  *   --oracle FILE        the bank-signature rows of tests/conformance/mirror-oracle.awk (SIZE BANK FILEBANK FIRST LAST), read by banksig
+ *   --opcode-tsv FILE    the manual opcode table tests/oracle/huc6280-opcodes.tsv, read by the opcode_table kind (cpukinds.c)
  *   --marker-seed N      the seed of the run-time unique markers of the redaction kinds (D-56); scripts/conformance-run passes the host
  *                        clock and pid. The runner never calls a clock and no marker is a constant in any source
  *   --records DIR        every case of kind accept, record_lines, record_golden or record_refusal writes DIR/ID.record.toml (record text only);
@@ -990,6 +991,7 @@ static const struct {
     {"guest", kind_guest, 0},
     {"mutate_sweep", kind_mutate_sweep, 0},
     {"insn_sink_shapes", kind_insn_sink_shapes, 0},
+    {"opcode_table", kind_opcode_table, 0},
     {"opcode_exercise", kind_opcode_exercise, 1},
     {"poweron_domain", kind_poweron_domain, 0},
     {"digest_stream", kind_digest_stream, 0},
@@ -1174,6 +1176,8 @@ int main(int argc, char **argv)
             rules_fields_path = argv[++a];
         } else if (strcmp(argv[a], "--oracle") == 0 && a + 1 < argc) {
             oracle_path = argv[++a];
+        } else if (cpukinds_arg(argc, argv, &a)) {
+            continue;
         } else {
             cases_path = NULL;
             break;
@@ -1181,7 +1185,7 @@ int main(int argc, char **argv)
     }
     if (cases_path == NULL || (evdir == NULL && !list_fx)) {
         emit_err("usage: ds_runner --cases FILE --evidence-dir DIR [--profile-tsv FILE] [--rules-fields FILE]\n"
-                        "                 [--oracle FILE] [--exclude-ids FILE] [--only ID] [--marker-seed N] [--records DIR] [--golden-dir DIR]\n"
+                        "                 [--oracle FILE] [--opcode-tsv FILE] [--exclude-ids FILE] [--only ID] [--marker-seed N] [--records DIR] [--golden-dir DIR]\n"
                         "       ds_runner --sweep-lengths | --spec | --emit RECIPE | --hash RECIPE\n");
         return 2;
     }

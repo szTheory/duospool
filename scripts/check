@@ -2245,6 +2245,46 @@ selftest() {
     fi
   fi
 
+  # (z7) the runner-side comparison of the compiled opcode table with the manual transcription is alive (plan 03-15; D-97, T-03-41). A scratch directory holds the case opcode_table_manual and two copies of the TSV: the unmutated copy,
+  # passed to the live runner as --opcode-tsv, must give RESULT opcode_table_manual pass (the run is alive); in the second copy the cycle count of one defined row (opcode 69, ADC immediate, 2 cycles) is changed to 3 with awk, and the same
+  # runner on that copy must give guest_failure. The real TSV is never edited and nothing is written under tests/ or build/gate/.
+  if st_want mutation-opcode-table-tsv; then
+    st_ran=1
+    ot="$tmp/selftest/opcode-table-tsv"
+    ot_ok=1
+    ot_why=""
+    rm -rf "$ot"
+    mkdir -p "$ot/cases" "$ot/ev"
+    cp tests/conformance/cases/opcode_table_manual.toml "$ot/cases/"
+    cp tests/oracle/huc6280-opcodes.tsv "$ot/ok.tsv"
+    awk -F '\t' 'BEGIN { OFS = "\t" } $1 == "69" && $2 == "ADC" && $3 == "IMM" && $5 == "2" { $5 = "3"; n++ } { print } END { if (n != 1) exit 3 }' tests/oracle/huc6280-opcodes.tsv > "$ot/mut.tsv" || { echo "HARNESS_ERROR mutation-opcode-table-tsv: the row of opcode 69 (ADC IMM, 2 cycles) was not found exactly once in the TSV"; exit 2; }
+    if cmake --preset gate > "$tmp/ot.build" 2>&1 && cmake --build --preset gate >> "$tmp/ot.build" 2>&1; then :; else
+      cat "$tmp/ot.build"
+      echo "HARNESS_ERROR mutation-opcode-table-tsv: the gate preset does not build"
+      exit 2
+    fi
+    if sh "$here/conformance-flatten" "$ot/cases" > "$ot/cases.tsv" 2> "$tmp/st.err"; then :; else ot_ok=0; ot_why="cannot flatten the scratch case"; fi
+    if [ "$ot_ok" -eq 1 ]; then
+      "$root/build/gate/ds_runner" --cases "$ot/cases.tsv" --evidence-dir "$ot/ev" --opcode-tsv "$ot/ok.tsv" > "$ot/before.txt" 2> "$ot/before.err" || true
+      if ! awk '$1 == "RESULT" && $2 == "opcode_table_manual" && $3 == "pass" { f = 1 } END { exit !f }' "$ot/before.txt"; then
+        ot_ok=0
+        ot_why="opcode_table_manual does not pass on the unmutated copy of the TSV"
+      fi
+    fi
+    if [ "$ot_ok" -eq 1 ]; then
+      "$root/build/gate/ds_runner" --cases "$ot/cases.tsv" --evidence-dir "$ot/ev" --opcode-tsv "$ot/mut.tsv" > "$ot/after.txt" 2> "$ot/after.err" || true
+      if ! awk '$1 == "RESULT" && $2 == "opcode_table_manual" && $3 == "guest_failure" { f = 1 } END { exit !f }' "$ot/after.txt"; then
+        ot_ok=0
+        ot_why="opcode_table_manual is not guest_failure on a TSV with one changed cycle count"
+      fi
+    fi
+    if [ "$ot_ok" -eq 1 ]; then
+      echo "SELFTEST mutation-opcode-table-tsv PASS"
+    else
+      echo "SELFTEST mutation-opcode-table-tsv FAIL ($ot_why)"; failed=1
+    fi
+  fi
+
   # (x) CR-01: a gate script that pipes awk (or the hash tool) into another command reads the status of the last stage, so a program that dies
   # looks like "no violations". For every site that used to be the left side of a pipe, the script is run twice with a shim first on PATH. The
   # shim is the real awk except that it exits 2 when any argument contains the marker text of that one program, so exactly one awk call dies. The

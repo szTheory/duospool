@@ -206,7 +206,8 @@ run_mode() {
   # removed above), so the record-lint stage never reads a directory left by an earlier run; the runner writes DIR/ID.record.toml for every case of
   # kind accept, record_lines, record_golden or record_refusal and creates nothing else. The goldens are read from tests/conformance/golden.
   mkdir -p "$bd/records" || { echo "HARNESS_ERROR cannot create $bd/records" >&2; exit 2; }
-  if sh "$here/conformance-run" supervise --ids "$bd/ids.txt" --out "$bd/results.txt" --wall "$wall_secs" -- "$bd/ds_runner" --cases "$bd/cases.tsv" --evidence-dir "$bd/evidence" --profile-tsv "$bd/r1.tsv" --rules-fields "$bd/rules-fields.txt" --oracle "$bd/oracle.tsv" --marker-seed "$marker_seed" --records "$bd/records" --golden-dir tests/conformance/golden $ex_args; then sup=0; else sup=$?; fi
+  if sh "$here/conformance-run" supervise --ids "$bd/ids.txt" --out "$bd/results.txt" --wall "$wall_secs" -- "$bd/ds_runner" --cases "$bd/cases.tsv" --evidence-dir "$bd/evidence" --profile-tsv "$bd/r1.tsv" --rules-fields "$bd/rules-fields.txt" --oracle "$bd/oracle.tsv" \
+    --opcode-tsv tests/oracle/huc6280-opcodes.tsv --marker-seed "$marker_seed" --records "$bd/records" --golden-dir tests/conformance/golden $ex_args; then sup=0; else sup=$?; fi
   if [ "$sup" -eq 2 ]; then
     exit 2
   fi
@@ -381,7 +382,8 @@ controls_mode() {
     mkdir -p "$cm_bd/controls/$cm_name/evidence" || { echo "HARNESS_ERROR cannot create the evidence directory of $cm_name" >&2; exit 2; }
     cm_out="$cm_bd/controls/$cm_name/results.txt"
     # the toy fails cases on purpose, so a runner status of 1 is expected here; only a harness status (2) stops the run
-    if sh "$here/conformance-run" supervise --ids "$cm_bd/ids.txt" --out "$cm_out" -- "$cm_bd/ds_toy_$cm_name" --cases "$cm_bd/cases.tsv" --evidence-dir "$cm_bd/controls/$cm_name/evidence" --profile-tsv "$cm_bd/r1.tsv" --rules-fields "$cm_bd/rules-fields.txt" --oracle "$cm_bd/oracle.tsv" --marker-seed "$marker_seed" --golden-dir tests/conformance/golden > /dev/null 2> "$cm_bd/controls/$cm_name/stderr.txt"; then cm_sup=0; else cm_sup=$?; fi
+    if sh "$here/conformance-run" supervise --ids "$cm_bd/ids.txt" --out "$cm_out" -- "$cm_bd/ds_toy_$cm_name" --cases "$cm_bd/cases.tsv" --evidence-dir "$cm_bd/controls/$cm_name/evidence" --profile-tsv "$cm_bd/r1.tsv" --rules-fields "$cm_bd/rules-fields.txt" --oracle "$cm_bd/oracle.tsv" \
+    --opcode-tsv tests/oracle/huc6280-opcodes.tsv --marker-seed "$marker_seed" --golden-dir tests/conformance/golden > /dev/null 2> "$cm_bd/controls/$cm_name/stderr.txt"; then cm_sup=0; else cm_sup=$?; fi
     if [ "$cm_sup" -ge 2 ]; then
       cat "$cm_bd/controls/$cm_name/stderr.txt" >&2
       echo "HARNESS_ERROR the toy runner of $cm_name ended with a harness status ($cm_sup)" >&2

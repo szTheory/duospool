@@ -138,6 +138,19 @@ int ds_cpu_op_defined(uint32_t opcode)
     return ops[opcode & 0xFFu].mn != (uint32_t)MN_UNDEF;
 }
 
+/* the table's byte count and base cycle count of one opcode, read back for the manual comparison (plan 03-15; D-97): a private accessor, no machine state; opcode is masked to 8 bits, a NULL out-pointer is skipped */
+void ds_op_meta(uint32_t opcode, uint32_t *bytes, uint32_t *cycles)
+{
+    const struct ds_op *op = &ops[opcode & 0xFFu];
+
+    if (bytes != NULL) {
+        *bytes = (uint32_t)op->bytes;
+    }
+    if (cycles != NULL) {
+        *cycles = (uint32_t)op->cycles;
+    }
+}
+
 static uint32_t translate(const struct ds_instance *inst, uint16_t addr)
 {
     return ((uint32_t)inst->mpr[(uint32_t)addr >> 13u] << 13u) | ((uint32_t)addr & 0x1FFFu);

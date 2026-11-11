@@ -280,6 +280,11 @@ void kind_mutate_sweep(const struct kase *k, struct ctx *c, char *got, size_t go
 int authored_name(const char *fixture, char *out, size_t cap);
 void note_run(struct ctx *c, uint64_t machine_time, uint32_t reason);
 
+/* the CPU table kinds (cpukinds.c, plan 03-15) and their input: opcode_table reads the manual TSV named by --opcode-tsv; cpukinds_arg parses that option for main (1 when it consumed argv[*a] and its value) */
+extern const char *opcode_tsv_path;
+int cpukinds_arg(int argc, char **argv, int *a);
+void kind_opcode_table(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+
 /* the --fixtures list (fixlist.c, plan 17): NAME SIZE for every recipe a case materialises and every sweep length; 0, or 2 on a fault */
 int list_fixtures(const size_t *sweep, size_t nsweep);
 
