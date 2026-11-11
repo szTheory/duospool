@@ -9,12 +9,13 @@
 ; The stimulus the cases declare (windows in master clocks, the line is high from the first time to the second): window A IRQ1 from 1200000 to 1500000; B IRQ2 from 2200000 to 2500000; C IRQ1 and IRQ2 from 3200000 to 3500000; D IRQ1 from 4200000 to 4500000.
 ; Windows B, C and D (checks 16 to 30) come after A: B IRQ2 and BRK (IRQ2D masks, BRK and IRQ2 reach the same handler through $FFF6 and are told apart by the pushed B bit), C all three sources (the request register reads 7, a write clears TIQ only, the three are taken in the order timer, IRQ1,
 ; IRQ2 whatever the latency parameter), D the latency probe (an IRQ1 that is pending when CLI executes: the A register the handler sees at its entry tells whether the entry came right after CLI or after the next instruction, the observe row 30 of the parameter irq_i_sample, ASSUMED LED-IRQ-0005).
+; Window E (checks 31 to 33) needs no stimulus: it starts the timer at reload 0 with I clear and puts a write to $1403, and then a sample, at exactly the stamp of the first borrow (counted instructions, CYC_STEP, E2 self-consistency, ER-3): ties are inclusive and a write in the sample cycle takes effect before the sample (D-111, ASSUMED LED-IRQ-0006).
 ; Window A (checks 5 to 15): the IRQ1 level reads in bit 1, I and IRQ1D each mask the delivery, the unmasking write is taken at once, the entry goes through $FFF8, pushes B = 0 and the interrupted D and I, the handler sees I set and D clear and bit 1 of $1403 set,
 ; a write to $1403 does not clear a level, the level ends with its window. Checks 1 to 4 read the register state before any event. Every cell the checks read is written by the fixture first (D-127). No HuC, PCEAS, emulator or cc65 library code.
         .setcpu "huc6280"
 
 DSV_ID = 11
-DSV_CHECKS = 30
+DSV_CHECKS = 33
 
         .include "startup.inc"
         .include "verdict.inc"
@@ -51,6 +52,9 @@ DSV_CHECKS = 30
         LIT 28, $02
         LIT 29, $01
         LIT 30, $00                     ; an observe row (the table entry is $00 as for every check): the case judges the byte, which is the A register at the entry of the handler
+        LIT 31, $00
+        LIT 32, $00
+        LIT 33, $00                     ; GUEST: the table entry is an XOR mask of $00
 
 SL3 = $08                       ; the TAM operand of MPR3 (logical $6000-$7FFF)
 TIM_RELOAD = $6C00              ; the timer window with MPR3 = $FF: the reload register (write) and the counter (read)
@@ -69,6 +73,9 @@ H_REQ1 = $2416                  ; $1403 at the start of the IRQ1 handler
 H_A = $2417                     ; A at the entry of the IRQ1 handler
 LOG = $2418                     ; the order log: one byte per handler run (4 bytes)
 PBLOG = $241C                   ; the status bytes pushed by the IRQ2 and BRK entries, in order (2 bytes)
+T_PCL = $241E                   ; the return address low byte the timer entry pushed
+
+CYC_STEP = 256                  ; CPU cycles per prescaler step at the low speed: 3072 master clocks over the community-reported 12 master clocks per cycle (ER-3): the rows of window E that use it are E2 self-consistency
 
 ; DELAY k: a counted delay of 6 * k CPU cycles (LDY # is 2, each DEY is 2 and each taken BNE is 4, the last BNE 2): k from 1 to 255
         .macro DELAY k
@@ -248,6 +255,49 @@ fixture_main:
         lda a:H1_COUNT
         CHECK_LIT 29                    ; check 29 MAN:H8-13: the pending IRQ1 is taken after CLI under both values of the parameter, once
         CHECK_OBSERVE 30, a:H_A         ; check 30 ASSUMED:LED-IRQ-0005: the A register at the entry, observe-only: $77 under pre, $00 under post (the case supplies it)
+        WAIT_CLEAR $03
+
+; ---- window E: the sample cycle and the cycle of a write to $1403 (ties are inclusive, D-111; E2, ER-3, LED-CPU-0004 and LED-IRQ-0006 assumed) ----
+; The timer is started at reload 0 with I clear: its first borrow is due 3072 master clocks after the start access, which is CYC_STEP = 256 CPU cycles later. A single data access is in the last cycle of its instruction, and so is the sample, so STA abs (5 cycles)
+; has its access and its sample at the same stamp. The instructions between the start access and the next instruction are counted: DELAY k is 6 * k cycles, LDA abs 5, NOP 2; the instruction that follows the start STA begins one cycle after the start access.
+; Scenario 1: the acknowledge write is at exactly the stamp of the borrow (1 + 251 cycles after the start access, then 4 cycles into STA abs: 256). The borrow counts at the tie and the write clears it before the sample, so no entry is taken.
+        jsr reset_scen
+        lda #$00
+        sta a:TIM_RELOAD                ; reload 0
+        cli                             ; I = 0
+        lda #$01
+        sta a:TIM_CTRL                  ; start: the access stamp T0
+        DELAY 41                        ; 246 cycles
+        lda a:SCRATCH                   ; 5 cycles: 251 after the end of the start STA, so the STA below starts 252 cycles after T0 and its access is 256 cycles after T0
+        sta a:IRQ_REQ                   ; the acknowledge at the stamp of the borrow
+        lda #$00
+        sta a:TIM_CTRL                  ; stop (7 cycles later, well inside the next step)
+        DELAY 10
+        sei
+        lda a:HT_COUNT
+        CHECK_LIT 31                    ; check 31 ASSUMED:LED-IRQ-0006: a write to $1403 in the cycle of the borrow takes effect before the sample: the borrow is absorbed and the handler did not run
+        lda a:IRQ_REQ
+        and #$04
+        CHECK_LIT 32                    ; check 32 ASSUMED:LED-IRQ-0006: TIQ reads 0 after that write (the borrow was cleared, not delayed)
+; Scenario 2: the borrow is due at exactly the sample stamp of a NOP (the second of two: it starts 255 cycles after T0, its sample is at 256). Ties are inclusive, so the entry is taken right after that NOP and pushes the address of the label after it.
+        jsr reset_scen
+        lda #$00
+        sta a:TIM_RELOAD
+        cli
+        lda #$01
+        sta a:TIM_CTRL                  ; start: the access stamp T0
+        DELAY 42                        ; 252 cycles
+        nop                             ; 2 cycles: the next NOP starts 255 cycles after T0
+        nop                             ; its sample (the start of its last cycle) is 256 cycles after T0, the borrow stamp
+tie_after:
+        nop
+        nop
+        DELAY 10
+        sei
+        lda #<tie_after
+        sta a:GEXP
+        lda a:T_PCL
+        CHECK_GUEST 33                  ; check 33 GUEST:tie-address (ASSUMED:LED-IRQ-0006): the entry came right after the NOP whose sample stamp equals the borrow stamp: the pushed return address is the label after it (a sample that excluded the tie pushes the next one)
         rts
 
 ; reset_scen: a known state before a scenario: I set, D clear, the timer stopped, the disable register and TIQ clear, every counter and logged cell zero
@@ -265,6 +315,7 @@ reset_scen:
         stz a:H_NOW1
         stz a:H_REQ1
         stz a:H_A
+        stz a:T_PCL
         ldx #$05
 rs_log: stz a:LOG,x
         dex
@@ -344,10 +395,13 @@ irq2_h:
         pla
         rti
 
-; the TIMER vector handler: save A and X, stop the timer, acknowledge with a write to $1403, log and count, RTI
+; the TIMER vector handler: save A and X, copy the return address low byte the entry pushed, stop the timer, acknowledge with a write to $1403, log and count, RTI
 timer_h:
         pha
         phx
+        tsx                             ; the entry pushed PCH, PCL and P, then A and X: PCL is at $2100 + S + 4
+        lda a:$2104,x
+        sta a:T_PCL
         lda #$00
         sta a:TIM_CTRL
         sta a:IRQ_REQ

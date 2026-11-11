@@ -5,10 +5,10 @@
 # Class tags: MAN:<page> (the literal is a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model> (the expected byte is computed in the guest, the table entry is an XOR mask of $00), ASSUMED:<LED-id>.
 # The interrupt registers are $1402 (disable, bit 0 IRQ2D, bit 1 IRQ1D, bit 2 TIQD) and $1403 (request, bit 0 IRQ2, bit 1 IRQ1, bit 2 TIQ). IRQ1 and IRQ2 are driven by a TEST stimulus that the case declares with the key irq_stim (events AT,LINE,LEVEL in master clocks, a pure function of time);
 # it is not evidence about the VDC or any other hardware source (ER-5, D-112): rows that depend on the shape of the declared stimulus are ASSUMED:LED-IRQ-0008, and the rows that follow a manual page state the controller facts of H8-12 to H8-16 and H8-18. LED-IRQ-0004, -0005, -0006 and -0008 are written by plan 03-34.
-# Window A is checks 5 to 15, B (IRQ2 and BRK) 16 to 21, C (all three sources) 22 to 28 and D (the latency probe) 29 and 30. Row 30 is observe-only (the fifth column, plan 03-10): the expected value legitimately differs by the model parameter irq_i_sample, so each case supplies it (observe=30:VALUE).
+# Window A is checks 5 to 15, B (IRQ2 and BRK) 16 to 21, C (all three sources) 22 to 28, D (the latency probe) 29 and 30 and E (the sample cycle and a write to $1403 in it, E2: it depends on the community-reported CPU cycle length and the access stamp rule, LED-CPU-0004) 31 to 33. Row 30 is observe-only (the fifth column, plan 03-10): the expected value legitimately differs by the model parameter irq_i_sample, so each case supplies it (observe=30:VALUE).
 # A pass is not a support claim (ER-4).
 id=11
-checks=30
+checks=33
 1	stim-low-before-first-event	ASSUMED:LED-IRQ-0008	No line is asserted before the first event of the declared stimulus: bits 0 and 1 of the request register read 0
 2	disable-reset-zero	MAN:H8-16	The disable register is 0 after the reset: bits 2 to 0 of $1402 read 0
 3	disable-rw-5	MAN:H8-16	The disable register reads back what was written: $05 gives IRQ2D and TIQD set, IRQ1D clear
@@ -39,3 +39,6 @@ checks=30
 28	priority-irq2-last	MAN:H8-13	IRQ2 (log code $02) is taken last
 29	pending-irq1-taken-after-cli	MAN:H8-13	An IRQ1 that is pending when CLI executes is taken, once, under both values of irq_i_sample
 30	cli-latency-observe	ASSUMED:LED-IRQ-0005	The A register at the handler entry after CLI; $77 under irq_i_sample = pre (the entry follows the instruction after CLI), $00 under post (the entry follows CLI); each case supplies it (observe=30:VALUE)	observe
+31	ack-in-sample-cycle	ASSUMED:LED-IRQ-0006	E2: a write to $1403 in the cycle of the borrow (ties inclusive) takes effect before the sample: the borrow is absorbed and the timer handler did not run
+32	ack-in-sample-cycle-clears	ASSUMED:LED-IRQ-0006	E2: TIQ reads 0 after that write: the borrow was cleared, not delayed
+33	tie-inclusive-address	GUEST:tie-address	E2: the borrow is due at exactly the sample stamp of a NOP; the entry came right after that NOP and pushed the address of the label after it (ASSUMED:LED-IRQ-0006: a sample that excluded the tie would push the next address)

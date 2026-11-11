@@ -13,11 +13,11 @@ kind = "guest"
 fixture = "authored:irq-ctl"
 request = ""
 expect = "id=11;observe=30:119"
-meaning = "The authored irq_ctl fixture takes the declared IRQ1 and IRQ2 test stimulus and the timer interrupt through their three vectors (BRK shares $FFF6), checking masking by I and the disable bits, the pushed B, D and I, the request register and the priority timer, IRQ1, IRQ2; 30 passing checks; observe row 30 (A at the entry after CLI) is $77 under the default irq_i_sample = pre"
+meaning = "The authored irq_ctl fixture takes the declared IRQ1 and IRQ2 test stimulus and the timer interrupt through their three vectors (BRK shares $FFF6), checking masking by I and the disable bits, the pushed B, D and I, the request register and the priority timer, IRQ1, IRQ2; 33 passing checks; observe row 30 (A at the entry after CLI) is $77 under the default irq_i_sample = pre"
 required = true
 control = false
 expect_outcome = "pass"
 pins = []
 until_mclk = 6000000
-checks = 30
+checks = 33
 irq_stim = ["1200000,1,1", "1500000,1,0", "2200000,2,1", "2500000,2,0", "3200000,1,1", "3200000,2,1", "3500000,1,0", "3500000,2,0", "4200000,1,1", "4500000,1,0"]

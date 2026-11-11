@@ -10,11 +10,11 @@ kind = "mutate_sweep"
 fixture = "authored:irq-ctl"
 request = ""
 expect = "id=11;exclude=30"
-meaning = "Changing the expected literal of any one of the 29 compared irq_ctl checks flips exactly that check to fail and no other (check 30 is the observe-only latency row and is skipped), so none of them is vacuous"
+meaning = "Changing the expected literal of any one of the 32 compared irq_ctl checks flips exactly that check to fail and no other (check 30 is the observe-only latency row and is skipped), so none of them is vacuous"
 required = true
 control = false
 expect_outcome = "pass"
 pins = []
 until_mclk = 6000000
-checks = 30
+checks = 33
 irq_stim = ["1200000,1,1", "1500000,1,0", "2200000,2,1", "2500000,2,0", "3200000,1,1", "3200000,2,1", "3500000,1,0", "3500000,2,0", "4200000,1,1", "4500000,1,0"]
