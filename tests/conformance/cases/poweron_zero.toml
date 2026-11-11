@@ -6,7 +6,7 @@ id = "poweron_zero"
 kind = "poweron"
 fixture = "plain-256k"
 request = ""
-expect = "policy=zero;seed=none;ram=zero;mpr=zero;time=0"
+expect = "policy=zero;seed=none;ram=zero;mpr=zero;cpu=zero;tmr=zero;time=0"
 meaning = "Under the zero policy a boot lays down all-zero RAM and mapping registers and machine time 0, and records no seed"
 required = true
 control = false

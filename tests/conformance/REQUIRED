@@ -94,6 +94,8 @@ digest_stream_prefix
 poweron_same_seed_same_digest
 poweron_diff_seed_diff_digest
 poweron_v2_smoke
+poweron_v2_draw_order
+poweron_v2_domain_independence
 record_power_on_v2
 profile_hash_fields
 profile_hash_identity

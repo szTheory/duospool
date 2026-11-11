@@ -10,7 +10,7 @@ id = "poweron_draw_order"
 kind = "poweron"
 fixture = "plain-256k"
 request = "bind.powerup_policy=seeded-prng-v1;seed=42"
-expect = "policy=seeded-prng-v1;seed=42;ram@0=37db8e2ea18a90d91bed048d161cb5d2;ram@8184=86e36fa23afcda5d;mpr=zero;time=0"
+expect = "policy=seeded-prng-v1;seed=42;ram@0=37db8e2ea18a90d91bed048d161cb5d2;ram@8184=86e36fa23afcda5d;mpr=zero;cpu=zero;tmr=zero;time=0"
 meaning = "A seed-42 boot fills RAM from the ram8k domain stream exactly as the perl-derived literals say, with the split derivation, little-endian draws and 1024 RAM draws"
 required = true
 control = false
