@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The timer as a pure function of machine time (plan 03-21; D-109, ER-3, assumption A1; H8-20, H8-21, H8-22): kind timer_pure drives the closed-form timer of the core through the private entry points of ds_timer.h on a booted instance (the instance of the authored ds-proto image, which is only a
+# vehicle: no instruction runs) and compares it with a naive per-clock reference model written in tests/conformance/cpukinds.c only. The literals asserted are the manual's: the prescaler step is 3 * 1024 = 3072 master clocks (H8-20, H8-21: OSC1 / 3 / 1024; 21.48 MHz over 3072 is the 6.992 kHz
+# printed on H8-21) and the interval between borrows is (reload + 1) steps, which is a DERIVATION from the 143 usec to 18.3 msec range of H8-21 (reload 0 is one step, reload 127 is 128 steps), not a printed sentence (A1): both ends of the range are re-computed in integers by the kind.
+# For every reload 0 to 127 and for the start stamps phase 0, 1 and 3071 (modulo 3072) the counter, the borrow count and the TIQ request are sampled before, at and after every step boundary over three periods and must equal the model, and the first and second borrow must fall exactly (reload + 1) and
+# 2 * (reload + 1) steps after the start. The edges follow for reloads 0, 1, 127 and every eighth: a reload write while running changes only the next reload, a stop holds the counter, a write that repeats the state changes nothing, a stop then start restarts the prescaler phase, an acknowledge clears the request
+# and a later borrow sets it again, and the answers after a settle at every sample equal the pure ones (the raw fields change only inside guest accesses, D-109).
+# Evidence tier: this is the ONE E1-capable timer claim (ER-3): it says that the step and the period of the core equal the manual's numbers and a naive model. It says nothing about the CPU cycle length or any in-guest rate: the in-guest timer checks of tim_timer are E2 self-consistency. No timer-accuracy or CPU-speed claim, and the word pass is not a support claim.
+id = "timer_pure_function"
+kind = "timer_pure"
+fixture = "none"
+request = ""
+expect = "rom=ds-proto"
+meaning = "The closed-form timer equals a naive per-clock model for every reload 0 to 127 and three start phases, with the step 3072 master clocks and the period (reload + 1) steps asserted as literals, and its edges (reload write while running, stop holds, no-op rewrites, restart phase, acknowledge, settle invariance) agree with the model"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

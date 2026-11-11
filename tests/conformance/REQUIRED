@@ -166,3 +166,4 @@ bankclass_oracle
 st_bypass
 mutate_sweep_st_bypass
 tim_timer
+timer_pure_function

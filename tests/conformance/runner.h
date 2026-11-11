@@ -310,6 +310,7 @@ extern const char *opcode_tsv_path;
 int cpukinds_arg(int argc, char **argv, int *a);
 void kind_opcode_table(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_cycle_probe(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_timer_pure(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 03-21: the closed-form timer against a naive per-clock model (ds_timer.h entry points, E1 for the step and the period only, ER-3) */
 
 /* the --fixtures list (fixlist.c, plan 17): NAME SIZE for every recipe a case materialises and every sweep length; 0, or 2 on a fault */
 int list_fixtures(const size_t *sweep, size_t nsweep);

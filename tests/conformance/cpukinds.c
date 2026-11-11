@@ -26,6 +26,7 @@
 
 #include "ds_core.h"
 #include "ds_obs.h"
+#include "ds_timer.h"
 #include "runner.h"
 
 const char *opcode_tsv_path;
@@ -413,4 +414,303 @@ void kind_cycle_probe(const struct kase *k, struct ctx *c, char *got, size_t got
     free(records);
     note_run(c, res.machine_time, res.reason);
     snprintf(got, gotcap, "items=%u matched=%u", nitems, matched);
+}
+
+/* ---- timer_pure (plan 03-21; D-109, ER-3, A1) ---- */
+
+#define TP_STEP (3u * 1024u)       /* master clocks per prescaler step: OSC1 / 3 / 1024 (H8-20, H8-21), written here as the manual's factors, not read from the core */
+#define TP_PERIODS 3u              /* periods sampled after a start */
+#define TP_FREQ_HZ 21480000u       /* the 21.48 MHz of H8-21 */
+
+/* the naive reference model: it counts master clocks one at a time and shares no formula with timer.c */
+struct tp_model {
+    unsigned enabled;
+    unsigned counter;
+    unsigned reload;
+    unsigned prescale; /* clocks since the last step */
+    unsigned tiq;      /* the sticky request bit: set by any borrow, cleared by an acknowledge */
+    uint64_t borrows;  /* borrows since the start */
+    uint64_t now;
+};
+
+/* the model moves to stamp t one master clock at a time; the working copies are locals so that the loop is cheap in a debug build (the clock loop is what the case spends its time in) */
+static void tp_to(struct tp_model *m, uint64_t t)
+{
+    uint64_t now = m->now;
+    unsigned prescale = m->prescale;
+    unsigned counter = m->counter;
+    unsigned tiq = m->tiq;
+    uint64_t borrows = m->borrows;
+
+    if (m->enabled == 0u) { /* a stopped timer does nothing per clock: only the time moves */
+        if (now < t) {
+            m->now = t;
+        }
+        return;
+    }
+    while (now < t) {
+        now++;
+        prescale++;
+        if (prescale == TP_STEP) {
+            prescale = 0u;
+            if (counter == 0u) { /* a step with the counter at 0 borrows and reloads */
+                borrows++;
+                tiq = 1u;
+                counter = m->reload;
+            } else {
+                counter--;
+            }
+        }
+    }
+    m->now = now;
+    m->prescale = prescale;
+    m->counter = counter;
+    m->tiq = tiq;
+    m->borrows = borrows;
+}
+
+struct tp_stat {
+    unsigned long compared;
+    unsigned long bad;
+    char first[160];
+};
+
+static void tp_bad(struct tp_stat *st, const char *what, unsigned reload, uint64_t t)
+{
+    if (st->bad == 0u) {
+        snprintf(st->first, sizeof st->first, "%s (reload %u, stamp %llu)", what, reload, (unsigned long long)t);
+    }
+    st->bad++;
+}
+
+/* compare the core with the model at stamp t: the counter by both read addresses, the request bit through the controller, and with with_borrows the borrows since the stored origin */
+static void tp_cmp(struct ds_instance *inst, struct tp_model *m, uint64_t t, int with_borrows, int settle, struct tp_stat *st, const char *what)
+{
+    uint8_t cv = 0u;
+    uint64_t bv = 0u;
+
+    tp_to(m, t);
+    if (settle != 0) {
+        ds_timer_settle(inst, t);
+    }
+    ds_timer_query(inst, t, &cv, &bv);
+    st->compared++;
+    if ((unsigned)cv != m->counter || (unsigned)ds_timer_read(inst, 0u, t) != m->counter || (unsigned)ds_timer_read(inst, 1u, t) != m->counter) {
+        tp_bad(st, what, m->reload, t);
+    }
+    if (ds_timer_tiq(inst, t) != m->tiq || ds_irq_read(inst, 3u, t) != (m->tiq != 0u ? 4u : 0u)) {
+        tp_bad(st, "the request bit differs", m->reload, t);
+    }
+    if (with_borrows != 0 && bv != m->borrows) {
+        tp_bad(st, "the borrow count differs", m->reload, t);
+    }
+}
+
+static void tp_start(struct ds_instance *inst, struct tp_model *m, uint64_t t, unsigned reload)
+{
+    ds_timer_write(inst, 1u, 0u, t); /* stop (a no-op when stopped), set the reload, clear a request left by the previous sequence, start */
+    tp_to(m, t);
+    m->enabled = 0u;
+    ds_timer_write(inst, 0u, (uint8_t)reload, t);
+    m->reload = reload;
+    ds_irq_write(inst, 3u, 0u, t);
+    m->tiq = 0u;
+    ds_timer_write(inst, 1u, 1u, t);
+    m->enabled = 1u;
+    m->counter = reload;
+    m->prescale = 0u;
+    m->borrows = 0u;
+}
+
+/* one start and three periods of samples (before, at and after every step boundary, and mid-step); returns the stamp of the last sample */
+static uint64_t tp_pure(struct ds_instance *inst, struct tp_model *m, uint64_t t0, unsigned reload, int settle, struct tp_stat *st)
+{
+    uint64_t steps = (uint64_t)TP_PERIODS * (uint64_t)(reload + 1u) + 2u;
+    uint64_t b;
+    uint64_t last = t0;
+
+    int wb = settle == 0; /* after a settle the borrows are folded into the request bit and the origin moves, so the count since the origin is compared only for the pure queries */
+
+    tp_start(inst, m, t0, reload);
+    tp_cmp(inst, m, t0, wb, settle, st, "the counter differs right after the start");
+    for (b = 1u; b <= steps; b++) {
+        uint64_t edge = t0 + b * (uint64_t)TP_STEP;
+
+        tp_cmp(inst, m, edge - (uint64_t)TP_STEP / 2u, wb, settle, st, "the counter differs in mid-step");
+        tp_cmp(inst, m, edge - 1u, wb, settle, st, "the counter differs one clock before a step");
+        tp_cmp(inst, m, edge, wb, settle, st, "the counter differs at a step");
+        tp_cmp(inst, m, edge + 1u, wb, settle, st, "the counter differs one clock after a step");
+        last = edge + 1u;
+    }
+    return last;
+}
+
+/* the first and second borrow fall (reload + 1) and 2 * (reload + 1) steps after the start: literals written here from the period of H8-21 (A1), compared with the core's borrow count directly */
+static void tp_period(struct ds_instance *inst, uint64_t t0, unsigned reload, struct tp_stat *st)
+{
+    uint64_t period = ((uint64_t)reload + 1u) * (uint64_t)TP_STEP;
+    uint8_t cv = 0u;
+    uint64_t bv = 0u;
+    uint64_t t[4];
+    uint64_t want[4];
+    unsigned i;
+
+    ds_timer_write(inst, 1u, 0u, t0);
+    ds_timer_write(inst, 0u, (uint8_t)reload, t0);
+    ds_timer_write(inst, 1u, 1u, t0);
+    t[0] = t0 + period - 1u;
+    want[0] = 0u;
+    t[1] = t0 + period;
+    want[1] = 1u;
+    t[2] = t0 + 2u * period - 1u;
+    want[2] = 1u;
+    t[3] = t0 + 2u * period;
+    want[3] = 2u;
+    for (i = 0u; i < 4u; i++) {
+        ds_timer_query(inst, t[i], &cv, &bv);
+        st->compared++;
+        if (bv != want[i]) {
+            tp_bad(st, "a borrow does not fall (reload + 1) steps after the previous one", reload, t[i]);
+        }
+    }
+    ds_timer_query(inst, t0 + period, &cv, NULL);
+    st->compared++;
+    if ((unsigned)cv != reload) { /* the counter holds the reload value right after a borrow */
+        tp_bad(st, "the counter is not the reload value right after a borrow", reload, t0 + period);
+    }
+    ds_timer_write(inst, 1u, 0u, t0 + 2u * period + 1u); /* leave the timer stopped for the next sequence (the borrows folded into the latch are cleared by tp_start) */
+}
+
+/* the edges: a reload write while running, a stop that holds, no-op rewrites, a restart that resets the prescaler phase and an acknowledge; times are chosen off the step grid */
+static void tp_edges(struct ds_instance *inst, struct tp_model *m, uint64_t t0, unsigned reload, struct tp_stat *st)
+{
+    uint64_t t = tp_pure(inst, m, t0, reload, 0, st);
+    unsigned r2 = (reload * 7u + 3u) & 0x7Fu;
+    uint64_t tm = t + 7u;
+    uint64_t ts;
+    uint64_t tr;
+    uint64_t tn;
+    unsigned k;
+
+    tp_to(m, tm);
+    ds_timer_write(inst, 0u, (uint8_t)r2, tm); /* reload write while running: only the next reload changes */
+    m->reload = r2;
+    tp_cmp(inst, m, tm, 0, 0, st, "a reload write while running changed the counter");
+    for (k = 1u; k <= 2u * (r2 + 1u) + 2u; k++) {
+        tp_cmp(inst, m, tm + (uint64_t)k * (uint64_t)TP_STEP - 1u, 0, 0, st, "after a reload write the counter differs one clock before a step");
+        tp_cmp(inst, m, tm + (uint64_t)k * (uint64_t)TP_STEP, 0, 0, st, "after a reload write the counter differs at a step");
+    }
+    tm = tm + (uint64_t)(2u * (r2 + 1u) + 2u) * (uint64_t)TP_STEP;
+    ts = tm + 3u * (uint64_t)TP_STEP / 2u + 3u; /* a stop in mid-step */
+    tp_to(m, ts);
+    ds_timer_write(inst, 1u, 0u, ts);
+    m->enabled = 0u;
+    tp_cmp(inst, m, ts, 0, 0, st, "the counter differs at the stop");
+    tp_cmp(inst, m, ts + 1u, 0, 0, st, "a stopped timer does not hold its counter");
+    tp_cmp(inst, m, ts + 123457u, 0, 0, st, "a stopped timer does not hold its counter after a long time");
+    ds_timer_write(inst, 1u, 0u, ts + 200000u); /* a write that repeats the stopped state changes nothing */
+    tp_cmp(inst, m, ts + 200001u, 0, 0, st, "a write of 0 to a stopped timer changed the counter");
+    ds_timer_write(inst, 0u, (uint8_t)reload, ts + 250000u); /* a reload write while stopped leaves the counter */
+    m->reload = reload;
+    tp_cmp(inst, m, ts + 250001u, 0, 0, st, "a reload write while stopped changed the counter");
+    tr = ts + 300000u + 1111u; /* restart off the grid: the counter is loaded and the prescaler phase restarts at tr */
+    tp_to(m, tr);
+    ds_timer_write(inst, 1u, 1u, tr);
+    m->enabled = 1u;
+    m->counter = m->reload;
+    m->prescale = 0u;
+    tp_cmp(inst, m, tr, 0, 0, st, "a start did not load the reload value");
+    for (k = 1u; k <= (reload + 1u) + 2u; k++) {
+        tp_cmp(inst, m, tr + (uint64_t)k * (uint64_t)TP_STEP - 1u, 0, 0, st, "after a restart the counter differs one clock before a step");
+        tp_cmp(inst, m, tr + (uint64_t)k * (uint64_t)TP_STEP, 0, 0, st, "after a restart the counter differs at a step");
+    }
+    tn = tr + (uint64_t)((reload + 1u) + 2u) * (uint64_t)TP_STEP + 10u;
+    tp_to(m, tn);
+    ds_timer_write(inst, 1u, 1u, tn); /* a write that repeats the running state changes nothing */
+    tp_cmp(inst, m, tn + 1u, 0, 0, st, "a write of 1 to a running timer changed the counter");
+    t = tn + 5u;
+    tp_to(m, t);
+    ds_irq_write(inst, 3u, 0u, t); /* an acknowledge clears the request ... */
+    m->tiq = 0u;
+    tp_cmp(inst, m, t, 0, 0, st, "an acknowledge did not clear the request");
+    tp_cmp(inst, m, t + 1u, 0, 0, st, "the request came back by itself after an acknowledge");
+    for (k = 1u; k <= 2u * (reload + 1u) + 1u; k++) { /* ... and a later borrow sets it again */
+        tp_cmp(inst, m, t + (uint64_t)k * (uint64_t)TP_STEP, 0, 0, st, "after an acknowledge the counter or the request differs at a step");
+    }
+    ds_timer_write(inst, 1u, 0u, t + (uint64_t)(2u * (reload + 1u) + 2u) * (uint64_t)TP_STEP);
+    m->enabled = 0u;
+}
+
+void kind_timer_pure(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    static const uint64_t phase[3] = {0u, 1u, 3071u};
+    char rom[48];
+    struct booted b;
+    const struct ds_instance *ci = NULL;
+    struct ds_instance *inst;
+    struct tp_model m;
+    struct tp_stat st_pure;
+    struct tp_stat st_period;
+    struct tp_stat st_edges;
+    struct tp_stat st_settle;
+    uint64_t cursor = 8u * (uint64_t)TP_STEP;
+    unsigned reload;
+    unsigned ph;
+    const char *err;
+
+    if (strncmp(k->val[K_EXPECT], "rom=", 4u) != 0 || strlen(k->val[K_EXPECT] + 4) < 1u || strlen(k->val[K_EXPECT] + 4) >= sizeof rom ||
+        strspn(k->val[K_EXPECT] + 4, "abcdefghijklmnopqrstuvwxyz0123456789-") != strlen(k->val[K_EXPECT] + 4)) {
+        harness_error(c, "a timer_pure case needs an expect rom=NAME");
+        return;
+    }
+    memcpy(rom, k->val[K_EXPECT] + 4, strlen(k->val[K_EXPECT] + 4) + 1u);
+    err = boot_built_rom(rom, k->has[K_REQUEST] ? k->val[K_REQUEST] : "", &b, &ci);
+    if (err != NULL) {
+        harness_error(c, err);
+        return;
+    }
+    inst = (struct ds_instance *)(void *)b.mem;
+    memset(&m, 0, sizeof m);
+    memset(&st_pure, 0, sizeof st_pure);
+    memset(&st_period, 0, sizeof st_period);
+    memset(&st_edges, 0, sizeof st_edges);
+    memset(&st_settle, 0, sizeof st_settle);
+    /* the numbers of H8-21 in integers: 21.48 MHz / 3 / 1024 is 6.992 kHz, one step of the shortest interval (reload 0) is 143 usec and the longest (reload 127, 128 steps) is 18.3 msec */
+    check(c, (uint64_t)TP_STEP == (uint64_t)DS_TIMER_STEP_MCLK, "the prescaler step of the core is not 3 * 1024 master clocks (OSC1 / 3 / 1024, H8-20, H8-21)");
+    check(c, (uint64_t)TP_FREQ_HZ / TP_STEP == 6992u, "21.48 MHz over the step is not the 6.992 kHz of H8-21");
+    check(c, (uint64_t)TP_STEP * 1000000u / TP_FREQ_HZ == 143u, "the shortest interval (reload 0, one step) is not the 143 usec of H8-21");
+    check(c, 128u * (uint64_t)TP_STEP * 10000u / TP_FREQ_HZ == 183u, "the longest interval (reload 127, 128 steps) is not the 18.3 msec of H8-21");
+    for (reload = 0u; reload <= 127u && !c->harness; reload++) {
+        for (ph = 0u; ph < 3u; ph++) {
+            uint64_t t0 = ((cursor + (uint64_t)TP_STEP - 1u) / (uint64_t)TP_STEP) * (uint64_t)TP_STEP + phase[ph];
+
+            tp_period(inst, t0, reload, &st_period);
+            t0 = t0 + 2u * ((uint64_t)reload + 1u) * (uint64_t)TP_STEP + (uint64_t)TP_STEP;
+            cursor = tp_pure(inst, &m, t0, reload, 0, &st_pure);
+            tp_to(&m, cursor);
+            ds_timer_write(inst, 1u, 0u, cursor);
+            m.enabled = 0u;
+            cursor = cursor + (uint64_t)TP_STEP;
+        }
+        if (reload == 0u || reload == 1u || reload == 127u || reload % 8u == 3u) {
+            uint64_t t0 = ((cursor + (uint64_t)TP_STEP - 1u) / (uint64_t)TP_STEP) * (uint64_t)TP_STEP + 17u;
+
+            tp_edges(inst, &m, t0, reload, &st_edges);
+            cursor = m.now + 2u * (uint64_t)TP_STEP + 2000000u;
+            tp_to(&m, cursor);
+            t0 = ((cursor + (uint64_t)TP_STEP - 1u) / (uint64_t)TP_STEP) * (uint64_t)TP_STEP + 3071u;
+            cursor = tp_pure(inst, &m, t0, reload, 1, &st_settle); /* the same samples after a settle at each of them: the folded state answers every later query alike */
+            ds_timer_write(inst, 1u, 0u, cursor);
+            tp_to(&m, cursor);
+            m.enabled = 0u;
+            cursor = cursor + (uint64_t)TP_STEP;
+        }
+    }
+    release_boot(&b);
+    check(c, st_pure.compared > 100000u && st_period.compared > 1000u && st_edges.compared > 1000u && st_settle.compared > 1000u, "a timer_pure sequence compared too few samples to count as a test");
+    check(c, st_pure.bad == 0u, st_pure.first);
+    check(c, st_period.bad == 0u, st_period.first);
+    check(c, st_edges.bad == 0u, st_edges.first);
+    check(c, st_settle.bad == 0u, st_settle.first);
+    snprintf(got, gotcap, "reloads=128 phases=3 compared=%lu", st_pure.compared + st_period.compared + st_edges.compared + st_settle.compared);
 }
