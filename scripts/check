@@ -1939,6 +1939,72 @@ selftest() {
     fi
   fi
 
+  # (policies) a guest that reads power-on state must turn its case red (plan 03-11; D-127, T-03-33). A scratch mini-root holds a copy of fixture-build, of ds_proto.s and its .checks, of the linker config, of the four fixture library
+  # files and of the case ds_proto (no policies key, so the guest kind runs its default list: zero and seeded-prng-v1 seed 42). The unmutated copy is built and run first and must give RESULT ds_proto pass. Then the single line that invokes a
+  # CHECK macro with the argument 2 (exit 2 unless exactly one line matches) is preceded by a load of work RAM that the guest never wrote ($2500) stored as the expected byte, so the check still passes under every policy but its observed byte
+  # is the power-on byte. The copy is rebuilt into the scratch directory and the same runner must give guest_failure and say that the seeded policy differs from the zero policy at check 2. Nothing is written under fixtures/ or build/gate/fixtures/.
+  if st_want mutation-policies-uninit; then
+    st_ran=1
+    pu="$tmp/selftest/policies-uninit"
+    pu_ok=1
+    pu_why=""
+    rm -rf "$pu"
+    mkdir -p "$pu/scripts" "$pu/fixtures/src" "$pu/fixtures/lib" "$pu/cases" "$pu/ev"
+    cp "$here/fixture-build" "$pu/scripts/"
+    cp fixtures/src/ds_proto.s fixtures/src/ds_proto.checks "$pu/fixtures/src/"
+    cp fixtures/lib/hucard.cfg fixtures/lib/startup.inc fixtures/lib/verdict.inc fixtures/lib/check.inc "$pu/fixtures/lib/"
+    cp tests/conformance/cases/ds_proto.toml "$pu/cases/"
+    pu_n=$(grep -cE '^[[:space:]]+CHECK_(LIT|GUEST)[[:space:]]+2([[:space:]]|;|$)' "$pu/fixtures/src/ds_proto.s" || true)
+    if [ "$pu_n" -ne 1 ]; then
+      echo "HARNESS_ERROR mutation-policies-uninit: ds_proto.s must carry exactly one line that invokes a CHECK macro with the argument 2 (found $pu_n)"
+      exit 2
+    fi
+    if cmake --preset gate > "$tmp/pu.build" 2>&1 && cmake --build --preset gate >> "$tmp/pu.build" 2>&1; then :; else
+      cat "$tmp/pu.build"
+      echo "HARNESS_ERROR mutation-policies-uninit: the gate preset does not build"
+      exit 2
+    fi
+    if sh "$here/conformance-flatten" "$pu/cases" > "$pu/cases.tsv" 2> "$tmp/st.err"; then :; else pu_ok=0; pu_why="cannot flatten the scratch case"; fi
+    if [ "$pu_ok" -eq 1 ]; then
+      if (cd "$pu" && sh scripts/fixture-build > fb0.out 2>&1); then :; else
+        if grep -q '^PREFLIGHT_MISSING' "$pu/fb0.out"; then cat "$pu/fb0.out"; echo "HARNESS_ERROR mutation-policies-uninit: ca65 or ld65 is missing"; exit 2; fi
+        pu_ok=0
+        pu_why="the unmutated scratch fixture does not build"
+      fi
+    fi
+    if [ "$pu_ok" -eq 1 ]; then
+      (cd "$pu" && "$root/build/gate/ds_runner" --cases cases.tsv --evidence-dir ev > before.txt 2> before.err) || true
+      if ! awk '$1 == "RESULT" && $2 == "ds_proto" && $3 == "pass" { f = 1 } END { exit !f }' "$pu/before.txt"; then
+        pu_ok=0
+        pu_why="ds_proto does not pass on the unmutated scratch copy"
+      fi
+    fi
+    if [ "$pu_ok" -eq 1 ]; then
+      awk '/^[ \t]+CHECK_(LIT|GUEST)[ \t]+2([ \t]|;|$)/ { print "        lda a:$2500                     ; work RAM that this fixture never wrote: its value is the power-on byte"; print "        sta a:GEXP" } { print }' "$pu/fixtures/src/ds_proto.s" > "$pu/ds_proto.mutated"
+      if cmp -s "$pu/ds_proto.mutated" "$pu/fixtures/src/ds_proto.s"; then
+        echo "HARNESS_ERROR mutation-policies-uninit: the edit of the check 2 line changed nothing"
+        exit 2
+      fi
+      mv "$pu/ds_proto.mutated" "$pu/fixtures/src/ds_proto.s"
+      if (cd "$pu" && sh scripts/fixture-build > fb1.out 2>&1); then :; else pu_ok=0; pu_why="the mutated scratch fixture does not build"; fi
+    fi
+    if [ "$pu_ok" -eq 1 ]; then
+      (cd "$pu" && "$root/build/gate/ds_runner" --cases cases.tsv --evidence-dir ev > after.txt 2> after.err) || true
+      if ! awk '$1 == "RESULT" && $2 == "ds_proto" && $3 == "guest_failure" { f = 1 } END { exit !f }' "$pu/after.txt"; then
+        pu_ok=0
+        pu_why="ds_proto is not guest_failure with a check that reads power-on state"
+      elif ! grep -Fq 'differs from policy zero at check 2' "$pu/after.err"; then
+        pu_ok=0
+        pu_why="the report does not name check 2 as differing between the policies"
+      fi
+    fi
+    if [ "$pu_ok" -eq 1 ]; then
+      echo "SELFTEST mutation-policies-uninit PASS"
+    else
+      echo "SELFTEST mutation-policies-uninit FAIL ($pu_why)"; failed=1
+    fi
+  fi
+
   # (v) the pin rule of workflow-check is what turns the tag-pinned-action control red (T-02-41): the control, run with --expect WF_UNPINNED_ACTION,
   # is met on an unmutated copy of scripts/ (exit 0, EXPECT_OK); with the one line tagged rule-pin deleted from the copy of the rules the code is no longer
   # reported, so the same run must exit 1: the control flipped to broken.

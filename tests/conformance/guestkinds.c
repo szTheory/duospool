@@ -18,6 +18,8 @@
  *                 Observe rows (plan 03-10): the optional fifth column of NAME.checks, the word observe, marks a check whose expected value legitimately differs by case; scripts/fixture-build lists
  *                 such indexes in build/gate/fixtures/NAME.observe, the guest writes its observed byte and result $50, and the case judges the byte through one item observe=IDX:VALUE per index
  *                 (id=1;observe=3:0x16). An index without an item is harness_failure (observe-missing), an item for a check that is not an observe row too (observe-unlisted).
+ *                 Power-on policies (plan 03-11; D-127): the ROM is booted and run once per policy of the list (the optional key policies, request fragments separated by ||, or the built-in default of zero and
+ *                 seeded-prng-v1 seed 42), and the DSV1 result bytes +10..+6F and observed bytes +80..+DF of every run must equal those of the first run; the first difference is a guest_failure naming the check.
  *                 The RESULT line of a guest case ends machine_time=N stop=REASON (D-95, F11).
  *                 Outcome mapping, one reading of D-124 (the judge below and ds_proto.s carry the same layout):
  *                   harness_failure  a harness-side precondition fails: the ROM is unreadable, a key or the expect is malformed, a DSV1 block is
@@ -521,20 +523,172 @@ static int read_int_keys(const struct kase *k, uint64_t *until, uint64_t *checks
     return k->has[K_UNTIL_MCLK] && k->has[K_CHECKS] && parse_u64(k->val[K_UNTIL_MCLK], until) == 0 && parse_u64(k->val[K_CHECKS], checks) == 0 && *checks <= 255u ? 0 : -1;
 }
 
+/*
+ * The power-on policy list of a guest case (plan 03-11; D-127, T-03-33). A guest ROM must initialise everything it reads, so the same ROM is booted and run once per policy of the list and the DSV1 result bytes (+10..+6F) and observed
+ * bytes (+80..+DF) of every run must equal those of the first run: a check that read power-on state differs between a zero and a seeded power-on, and the case is guest_failure naming the check. The list is the optional case key
+ * policies (request fragments separated by ||, an empty fragment is the default zero policy) or, when the key is absent, the built-in default below. Plan 03-24 switches the default to zero plus two seeded-prng-v2 seeds, so cases never
+ * repeat the list. Each fragment is appended to the case's own request with a semicolon. The poison-t0 control does not run the guest, so it uses the first policy only.
+ */
+static const char *const default_policies[] = {"", "bind.powerup_policy=seeded-prng-v1;seed=42"};
+#define GP_DEFAULT_COUNT 2u
+#define GP_MAX 8u
+
+/* the policy fragments of a case into list (NULL entries never occur); returns the count, 0 when the key text is malformed */
+static unsigned policy_list(const struct kase *k, char *buf, size_t cap, const char **list)
+{
+    unsigned n = 0u;
+    char *p;
+
+    if (!k->has[K_POLICIES]) {
+        for (n = 0u; n < GP_DEFAULT_COUNT; n++) {
+            list[n] = default_policies[n];
+        }
+        return n;
+    }
+    if (strlen(k->val[K_POLICIES]) >= cap) {
+        return 0u;
+    }
+    memcpy(buf, k->val[K_POLICIES], strlen(k->val[K_POLICIES]) + 1u);
+    p = buf;
+    for (;;) {
+        char *sep = strstr(p, "||");
+
+        if (n >= GP_MAX) {
+            return 0u;
+        }
+        list[n++] = p;
+        if (sep == NULL) {
+            break;
+        }
+        *sep = '\0';
+        p = sep + 2;
+    }
+    return n;
+}
+
+static const char *policy_name(const char *fragment)
+{
+    return fragment[0] == '\0' ? "zero" : fragment;
+}
+
+/* the case's request with the policy fragment appended; 0 on success, -1 when it does not fit the request text of a spec */
+static int compose_request(const char *base, const char *fragment, char *out, size_t cap)
+{
+    int n;
+
+    if (base[0] == '\0') {
+        n = snprintf(out, cap, "%s", fragment);
+    } else if (fragment[0] == '\0') {
+        n = snprintf(out, cap, "%s", base);
+    } else {
+        n = snprintf(out, cap, "%s;%s", base, fragment);
+    }
+    return n >= 0 && (size_t)n < cap ? 0 : -1;
+}
+
+struct gstate {
+    const char *rom;
+    const char *request;
+    uint64_t until;
+    uint64_t checks;
+    const struct guest_expect *ex;
+    const struct obs_list *ol;
+};
+
+/*
+ * One boot and run of the guest over request, judged as the case says. c collects harness faults and the machine-time note; in the plain mode the verdict is judged into c itself (judged == c), in the verdict mode into the scratch
+ * context judged, which expect_verdict then compares with the declaration. blk receives the 256 bytes of the block after the run. Returns 1 when the machine ran to the deadline and the block was judged, 0 otherwise.
+ */
+static int guest_once(const struct gstate *g, struct ctx *c, struct ctx *judged, uint8_t *blk, char *got, size_t gotcap)
+{
+    struct booted b;
+    struct ds_run_request run;
+    struct ds_run_result out;
+    const struct ds_instance *inst = NULL;
+    const char *err;
+    uint32_t reason;
+    const struct guest_expect *ex = g->ex;
+
+    err = boot_built_rom(g->rom, g->request, &b, &inst);
+    if (err != NULL) {
+        harness_error(c, err);
+        return 0;
+    }
+    if (ex->mode == MODE_POISON) {
+        /* the runner-side control of the t=0 precondition (D-124): plant the magic and the done state, as a stale or hostile block would be */
+        uint8_t *ram = ((struct ds_instance *)(void *)b.mem)->ram8k;
+
+        ram[V_OFF + 0u] = 0x44u;
+        ram[V_OFF + 1u] = 0x53u;
+        ram[V_OFF + 2u] = 0x56u;
+        ram[V_OFF + 3u] = 0x31u;
+        ram[V_OFF + 4u] = 0xA5u;
+        ram[V_OFF + 5u] = 0x5Au;
+    }
+    /* the precondition of D-124: no verdict block is present before the first step */
+    if (block_present(inst->ram8k + V_OFF)) {
+        harness_error(ex->mode == MODE_POISON ? judged : c, "a DSV1 block is present in work RAM before the first step");
+        if (ex->mode == MODE_POISON) {
+            expect_verdict(c, judged, ex, got, gotcap);
+        }
+        release_boot(&b);
+        return 0;
+    }
+    if (ex->mode == MODE_POISON) {
+        check(c, 0, "the t=0 precondition did not see the planted DSV1 block");
+        release_boot(&b);
+        return 0;
+    }
+    memset(&run, 0, sizeof run);
+    memset(&out, 0, sizeof out);
+    run.struct_size = (uint32_t)sizeof run;
+    run.until_mclk = g->until;
+    reason = ds_run((struct ds_instance *)(void *)b.mem, &run, &out);
+    note_run(c, inst->machine_time, reason);
+    if (reason != (uint32_t)DS_RUN_REASON_UNTIL) {
+        harness_error(c, "ds_run refused the request or stopped for another reason than the deadline");
+        release_boot(&b);
+        return 0;
+    }
+    judge_dsv1(judged, inst->ram8k + V_OFF, (unsigned)ex->id, (unsigned)g->checks, got, gotcap);
+    if (!judged->harness && !judged->failed && !judged->timeout) {
+        observe_judge(judged, inst->ram8k + V_OFF, ex, g->ol);
+    }
+    memcpy(blk, inst->ram8k + V_OFF, V_SIZE);
+    release_boot(&b);
+    return 1;
+}
+
+/* the first check whose result or observed byte differs between two blocks (1-based), 0 when none */
+static unsigned first_block_difference(const uint8_t *a, const uint8_t *b)
+{
+    unsigned i;
+
+    for (i = 0u; i < V_MAX_CHECKS; i++) {
+        if (a[V_RES + i] != b[V_RES + i] || a[V_OBS + i] != b[V_OBS + i]) {
+            return i + 1u;
+        }
+    }
+    return 0u;
+}
+
 void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
 {
     char rom[48];
     struct guest_expect ex;
     uint64_t checks = 0u;
     uint64_t until = 0u;
-    struct booted b;
-    struct ds_run_request run;
-    struct ds_run_result out;
     struct ctx judged;
     struct obs_list ol;
-    const struct ds_instance *inst = NULL;
+    struct gstate g;
+    char pbuf[PK_LIST_MAX];
+    const char *plist[GP_MAX];
+    unsigned np;
+    unsigned i;
+    uint8_t blk0[V_SIZE];
     const char *err;
-    uint32_t reason;
+    const char *outcome0 = NULL;
+    char seen[96];
 
     if (authored_name(k->val[K_FIXTURE], rom, sizeof rom) != 0) {
         harness_error(c, "a guest case names its ROM as fixture = authored:NAME");
@@ -551,6 +705,14 @@ void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
     if (ex.nex != 0u) {
         harness_error(c, "a guest expect takes no exclude= item (that is a mutate_sweep item)");
         return;
+    }
+    np = policy_list(k, pbuf, sizeof pbuf, plist);
+    if (np == 0u) {
+        harness_error(c, "the policies key of a guest case is request fragments separated by || (at most 8)");
+        return;
+    }
+    if (ex.mode == MODE_POISON) {
+        np = 1u; /* the planted-block control never runs the guest */
     }
     memset(&judged, 0, sizeof judged);
     err = read_observe(rom, &ol);
@@ -569,60 +731,54 @@ void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
             return;
         }
     }
-    err = boot_built_rom(rom, k->val[K_REQUEST], &b, &inst);
-    if (err != NULL) {
-        harness_error(c, err);
-        return;
-    }
-    if (ex.mode == MODE_POISON) {
-        /* the runner-side control of the t=0 precondition (D-124): plant the magic and the done state, as a stale or hostile block would be */
-        uint8_t *ram = ((struct ds_instance *)(void *)b.mem)->ram8k;
+    g.rom = rom;
+    g.until = until;
+    g.checks = checks;
+    g.ex = &ex;
+    g.ol = &ol;
+    for (i = 0u; i < np; i++) {
+        char req[512];
+        struct ctx sc;
+        struct ctx sj;
+        uint8_t blk[V_SIZE];
+        unsigned diff;
+        char msg[200];
+        int ran;
 
-        ram[V_OFF + 0u] = 0x44u;
-        ram[V_OFF + 1u] = 0x53u;
-        ram[V_OFF + 2u] = 0x56u;
-        ram[V_OFF + 3u] = 0x31u;
-        ram[V_OFF + 4u] = 0xA5u;
-        ram[V_OFF + 5u] = 0x5Au;
-    }
-    /* the precondition of D-124: no verdict block is present before the first step */
-    if (block_present(inst->ram8k + V_OFF)) {
-        harness_error(ex.mode == MODE_POISON ? &judged : c, "a DSV1 block is present in work RAM before the first step");
-        if (ex.mode == MODE_POISON) {
-            expect_verdict(c, &judged, &ex, got, gotcap);
+        if (compose_request(k->val[K_REQUEST], plist[i], req, sizeof req) != 0) {
+            harness_error(c, "the request of the case with the policy fragment does not fit the request text");
+            return;
         }
-        release_boot(&b);
-        return;
-    }
-    if (ex.mode == MODE_POISON) {
-        check(c, 0, "the t=0 precondition did not see the planted DSV1 block");
-        release_boot(&b);
-        return;
-    }
-    memset(&run, 0, sizeof run);
-    memset(&out, 0, sizeof out);
-    run.struct_size = (uint32_t)sizeof run;
-    run.until_mclk = until;
-    reason = ds_run((struct ds_instance *)(void *)b.mem, &run, &out);
-    note_run(c, inst->machine_time, reason);
-    if (reason != (uint32_t)DS_RUN_REASON_UNTIL) {
-        harness_error(c, "ds_run refused the request or stopped for another reason than the deadline");
-        release_boot(&b);
-        return;
-    }
-    if (ex.mode == MODE_VERDICT) {
-        char seen[64];
-
-        judge_dsv1(&judged, inst->ram8k + V_OFF, (unsigned)ex.id, (unsigned)checks, seen, sizeof seen);
-        if (!judged.harness && !judged.failed && !judged.timeout) {
-            observe_judge(&judged, inst->ram8k + V_OFF, &ex, &ol);
+        g.request = req;
+        if (i == 0u) {
+            ran = guest_once(&g, c, ex.mode == MODE_PLAIN ? c : &judged, blk0, got, gotcap);
+            if (!ran) {
+                return; /* a harness fault, or the poison control: its outcome is already set */
+            }
+            outcome0 = ctx_outcome(ex.mode == MODE_VERDICT ? &judged : c);
+            if (ex.mode == MODE_VERDICT) {
+                expect_verdict(c, &judged, &ex, got, gotcap);
+            }
+            continue;
         }
-        expect_verdict(c, &judged, &ex, got, gotcap);
-    } else {
-        judge_dsv1(c, inst->ram8k + V_OFF, (unsigned)ex.id, (unsigned)checks, got, gotcap);
-        if (!c->harness && !c->failed && !c->timeout) {
-            observe_judge(c, inst->ram8k + V_OFF, &ex, &ol);
+        memset(&sc, 0, sizeof sc);
+        memset(&sj, 0, sizeof sj);
+        ran = guest_once(&g, &sc, ex.mode == MODE_VERDICT ? &sj : &sc, blk, seen, sizeof seen);
+        if (!ran) {
+            snprintf(msg, sizeof msg, "policy %s: the guest did not run to the deadline (%s)", policy_name(plist[i]), sc.why);
+            check(c, 0, msg);
+            continue;
+        }
+        if (strcmp(ctx_outcome(ex.mode == MODE_VERDICT ? &sj : &sc), outcome0) != 0) {
+            snprintf(msg, sizeof msg, "policy %s gave the outcome %s, policy %s gave %s: the guest depends on the power-on state", policy_name(plist[i]),
+                     ctx_outcome(ex.mode == MODE_VERDICT ? &sj : &sc), policy_name(plist[0]), outcome0);
+            check(c, 0, msg);
+            continue;
+        }
+        diff = first_block_difference(blk0, blk);
+        if (diff != 0u) {
+            snprintf(msg, sizeof msg, "policy %s differs from policy %s at check %u (result or observed byte): the guest reads power-on state", policy_name(plist[i]), policy_name(plist[0]), diff);
+            check(c, 0, msg);
         }
     }
-    release_boot(&b);
 }
