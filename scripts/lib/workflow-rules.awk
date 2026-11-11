@@ -104,10 +104,11 @@ function check_uses(v, ln,   n, nm, ref) {
   if (nm != "actions/checkout") viol("WF_UNEXPECTED_ACTION", ln, nm " is not on the action allowlist")  # rule-allowlist
 }
 
-# cc65_line: 1 when one run text line is an apt-get install command that names the package cc65 (a shell comment is not one)
-function cc65_line(s) {
-  if (substr(trim(s), 1, 1) == "#") return 0
-  return (index(s, "apt-get install") > 0 && s ~ /(^|[ ])cc65([ ]|$)/)
+# cc65_line: 1 when one run text line is an apt-get install command that names the package cc65: the trimmed line begins with apt-get install or sudo apt-get install (a shell comment, or echo apt-get install cc65, is not one: IN-03)
+function cc65_line(s,   t) {
+  t = trim(s)
+  if (substr(t, 1, 1) == "#") return 0
+  return (t ~ /^(sudo )?apt-get install[ ]/ && s ~ /(^|[ ])cc65([ ]|$)/)
 }
 
 # step_end: the per-step rules, evaluated when the step closes
