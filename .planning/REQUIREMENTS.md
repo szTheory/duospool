@@ -70,7 +70,7 @@ E4 = differential vs another emulator (finds disagreements, decides nothing).
 - [x] **CORE-02**: The core has no dependency on host clocks, filesystems, device discovery, threads, UI, or audio/video devices, enforced by a build- or test-time check.
 - [x] **CORE-03**: Power-on state is defined by a documented, seeded policy (RAM, MPRs, PSG noise, VDC phase), so a fresh run is reproducible and the policy is recorded with each run.
 - [x] **CORE-04**: Execution is bounded in master-clock time with an explicit stop reason and overshoot. A bounded run may stop mid-frame or mid-instruction-sequence and resume with results identical to an uninterrupted run.
-- [ ] **CORE-05**: A snapshot taken at any stop point, restored into a fresh instance and continued, produces outputs identical to continuing the original (state-completeness check, E0).
+- [x] **CORE-05**: A snapshot taken at any stop point, restored into a fresh instance and continued, produces outputs identical to continuing the original (state-completeness check, E0).
 - [x] **CORE-06**: A CPU instruction trace and a device-register write log can be enabled without changing machine behavior.
 - [ ] **RUN-01**: A headless runner loads content plus a profile and an input script, runs for a bounded machine time, and emits guest-progress markers, machine time, raw video, raw audio, and trace as separate artifacts.
 - [x] **RUN-02**: The runner and harness report distinct outcomes: pass, guest failure, timeout, harness failure, skip, cancelled, and missing artifact. No outcome other than pass counts as passing.
@@ -187,7 +187,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CORE-02 | Phase 2 | Complete |
 | CORE-03 | Phase 2 | Complete |
 | CORE-04 | Phase 3 | Complete |
-| CORE-05 | Phase 3 | Pending |
+| CORE-05 | Phase 3 | Complete |
 | CORE-06 | Phase 3 | Complete |
 | RUN-01 | Phase 6 | Pending |
 | RUN-02 | Phase 2 | Complete |

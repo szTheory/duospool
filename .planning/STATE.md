@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 3
 current_phase_name: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-current_plan: 36
+current_plan: 37
 status: planning
-stopped_at: Completed 03-30-PLAN.md
-last_updated: "2026-11-11T19:42:41.718Z"
+stopped_at: Completed 03-31-PLAN.md
+last_updated: "2026-11-11T20:04:38.281Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 2 complete, transitioned to Phase 3
-state_head: b1984de80e0e4caaa03db8f15d86421d208c12e8
+state_head: 0a1d91ddd6ee0c703c2bd5189f72d67e0d2f0b46
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 72
-  completed_plans: 69
+  completed_plans: 70
   percent: 33
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 3 — HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-Current Plan: 36
+Current Plan: 37
 Total Plans in Phase: 38
 Status: Ready to execute
 Last activity: 2026-11-11 — Completed 03-04 (W1: optional case keys, guestkinds.c, authored fixture key, machine_time and stop on RESULT)
@@ -128,6 +128,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 03 P28 | 70min | 3 tasks | 77 files |
 | Phase 3 P29 | 55min | 3 tasks | 73 files |
 | Phase 03 P30 | 110min | 3 tasks | 27 files |
+| Phase 03 P31 | 75min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -261,6 +262,7 @@ Recent decisions affecting current work:
 - [Phase 3]: 03-29: the digest gains IOPT (6 bytes) and SCHD (16392 bytes), serial version 7; literals recomputed by a throwaway program that first reproduced the committed version 6 hashes, plus digest_stream_input pinning SCHD with nonzero bytes
 - [Phase 3]: 03-29: the shared-input toy leaks the last nonzero level into an empty level through a function-local static; red by construction when A is stepped before B in interleave_pad
 - [Phase 03]: 03-30: snapshot is the canonical digest stream; ds_restore is validate-then-commit with one decoder per region; refusal set snapshot.* (14 codes); remaining 0 while a block transfer is active is legal (plan row replaced by nonzero while inactive); tail_pad[6] added so the hand-written tiling list sums to sizeof
+- [Phase 03]: 03-31: hostile snapshot corpus of 529 inputs is generated in memory from one mid-block snapshot with the hand-kept layout (refused with target byte-identical or accepted and re-serialised, then run bounded); chunk_equiv restore=N restores at drawn stops of the 32 random programs; toys snapshot-drop-t and snapshot-drop-blkt anchor on the restore lines of snapshot.c, skip-a-field is the selftest mutation-restore-skip-field
 
 ### Pending Todos
 
@@ -284,6 +286,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-11T19:42:41.530Z
-Stopped at: Completed 03-30-PLAN.md
+Last session: 2026-11-11T20:04:37.996Z
+Stopped at: Completed 03-31-PLAN.md
 Resume file: None
