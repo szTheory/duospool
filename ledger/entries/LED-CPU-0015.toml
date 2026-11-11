@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# TAM and TMA edges (D-105; CPU-02, CPU-06). Modelling choices where the manual defines only the one-hot operand: not a hardware measurement. Checks 49 to 60 of the mmu_mpr fixture name this entry.
+id = "LED-CPU-0015"
+statement = "DuoSpool models the TAM and TMA operands the manual leaves open as: TAM with several bits writes every selected MPR, TAM #0 changes nothing, TMA with several bits returns the highest selected index, TMA #0 follows the parameter tma_zero (bus_latch, the default, returns the one-byte latch set by the last TAM or TMA with a nonzero operand; a_unchanged leaves A). Modelling choices."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|S8-90 S8-101|only the one-hot operand 2^i is defined (MPRi <- A, A <- MPRi, codes 53 and 43, i = 0 to 7); no page states a zero or multi-bit operand; read by the plan 03-17 executor 2026-11-11", "REPORT|PITFALLS.md C5|pcetech: TAM #0 writes nothing, TMA #0 unknown", "UNKNOWN|multi-bit, TMA #0, latch|no page; the project own choice (D-105)"]
+evidence = ["E0|tests/conformance/cases/mmu_mpr_tma_zero_latch.toml: under bus_latch the guest sees the latch byte after TMA #0; repeatability only", "E0|tests/conformance/cases/mmu_mpr_tma_zero_keep.toml: under a_unchanged the same ROM sees its own A", "E0|tests/conformance/cases/mmu_mpr_256k.toml: multi-bit TAM and TMA rows, checks 50 to 58"]
+disagreement = "ER-8 records that four emulators handle TMA with a multi-bit or zero operand in three ways. Their names and readings are not recorded in this repository and were not re-read by the plan that wrote this entry, so none is named here as a report; the choices above are not a vote among them. A later plan that reads those sources with provenance fills this column."
+pinning_test = "TEST:mmu_mpr_tma_zero_latch"
+updated = "2026-11-11"
+assumption = "Each edge is one constant chosen so that the authored fixture can run: tam_zero_noop and tma_multibit_highest in src/core/constants.def, tma_zero in src/core/model_params.def. The pin shows the guest sees the latch byte under the default and the keep case shows A under the other value; neither shows what hardware does."
+revisit_phase = 3
+withheld = ["any claim of hardware cycle accuracy", "any claim of interrupt latency in cycles", "any claim of game compatibility", "any TG-16 or region claim", "any claim that a multi-bit or zero TAM or TMA operand behaves on hardware as modelled"]
+origin = "03-CONTEXT D-105"

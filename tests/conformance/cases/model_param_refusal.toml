@@ -13,4 +13,4 @@ meaning = "Every model refusal code of model_refusals.def is returned by at leas
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-PROF-0004"]

@@ -14,6 +14,6 @@ meaning = "With the model parameter tma_zero set to bus_latch, TMA with the oper
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-CPU-0015"]
 until_mclk = 4000000
 checks = 60

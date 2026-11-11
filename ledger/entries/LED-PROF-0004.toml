@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# Model parameters (D-113; CPU-06). A process claim and a modelling assumption of this project, not a hardware fact: which behaviours are parameters, their allowed values and their defaults are named choices.
+id = "LED-PROF-0004"
+statement = "DuoSpool models each behaviour that no manual page settles and that it implements in two ways as a named model parameter: a row of src/core/model_params.def with allowed values, a default, a ledger id and a status, set only by the run-request key model.NAME before the first step and printed in every run record with ledger id, status and binding. This is a modelling choice."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["UNKNOWN|which edge behaviours are parameters|no source decides which behaviour is open enough to be a parameter; the rule that a row needs two implemented values and a fixture that tells them apart is the project own (D-113)", "UNKNOWN|the defaults|no source names a default for an edge the manual leaves open; each default is the project own choice, named in its row"]
+evidence = ["E0|tests/conformance/cases/model_param_refusal.toml: every refusal code of ds_model_set is returned by a row and every row of model_params.def has two allowed values, its default first, a ledger id and a status; repeatability of the mechanism only", "E0|tests/conformance/cases/record_model_bound.toml: the record prints the value, ledger id, status and run-request binding of a row"]
+disagreement = "none: no source was consulted for the choice of parameters, so there is nothing to disagree with"
+pinning_test = "TEST:model_param_refusal"
+updated = "2026-11-11"
+assumption = "The parameter table (tma_zero now, irq_i_sample in a later plan of this phase) and the first allowed value of each row as its default are chosen so that every open edge is visible and selectable in the evidence of a run. A changed default bumps DS_BEHAVIOUR_EPOCH. The pin shows the refusal and shape rules, not that a default matches hardware."
+revisit_phase = 3
+withheld = ["any claim of hardware cycle accuracy", "any claim of interrupt latency in cycles", "any claim of game compatibility", "any TG-16 or region claim", "any claim that a parameter default is the behaviour of the hardware"]
+origin = "03-CONTEXT D-113"
