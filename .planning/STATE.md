@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 3
 current_phase_name: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-current_plan: 35
+current_plan: 36
 status: planning
-stopped_at: Completed 03-29-PLAN.md
-last_updated: "2026-11-11T19:06:04.564Z"
+stopped_at: Completed 03-30-PLAN.md
+last_updated: "2026-11-11T19:42:41.718Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 2 complete, transitioned to Phase 3
-state_head: b49104555ead00f7b80c5bb61e33512e1935ce8b
+state_head: b1984de80e0e4caaa03db8f15d86421d208c12e8
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 72
-  completed_plans: 68
+  completed_plans: 69
   percent: 33
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 3 — HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-Current Plan: 35
+Current Plan: 36
 Total Plans in Phase: 38
 Status: Ready to execute
 Last activity: 2026-11-11 — Completed 03-04 (W1: optional case keys, guestkinds.c, authored fixture key, machine_time and stop on RESULT)
@@ -127,6 +127,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 03 P27 | 30min | 3 tasks | 40 files |
 | Phase 03 P28 | 70min | 3 tasks | 77 files |
 | Phase 3 P29 | 55min | 3 tasks | 73 files |
+| Phase 03 P30 | 110min | 3 tasks | 27 files |
 
 ## Accumulated Context
 
@@ -259,6 +260,7 @@ Recent decisions affecting current work:
 - [Phase 3]: 03-29: the pad negative controls are judged by the exact fail set of a consistent done block, the correct case runs the none and wrong scripts first and requires pairwise different verdicts and a SEL high and a SEL low read per dev log; the compare statement is tagged for a deletion selftest
 - [Phase 3]: 03-29: the digest gains IOPT (6 bytes) and SCHD (16392 bytes), serial version 7; literals recomputed by a throwaway program that first reproduced the committed version 6 hashes, plus digest_stream_input pinning SCHD with nonzero bytes
 - [Phase 3]: 03-29: the shared-input toy leaks the last nonzero level into an empty level through a function-local static; red by construction when A is stepped before B in interleave_pad
+- [Phase 03]: 03-30: snapshot is the canonical digest stream; ds_restore is validate-then-commit with one decoder per region; refusal set snapshot.* (14 codes); remaining 0 while a block transfer is active is legal (plan row replaced by nonzero while inactive); tail_pad[6] added so the hand-written tiling list sums to sizeof
 
 ### Pending Todos
 
@@ -282,6 +284,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-11T19:06:04.372Z
-Stopped at: Completed 03-29-PLAN.md
+Last session: 2026-11-11T19:42:41.530Z
+Stopped at: Completed 03-30-PLAN.md
 Resume file: None
