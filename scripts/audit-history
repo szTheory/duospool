@@ -159,6 +159,24 @@ while read -r h; do
   printf '%s\t%s\t%s\n' "$h" "$n1" "$nul" >> "$t/facts"
 done < "$t/hashes"
 
+# ---- 3b. nothing may have been skipped silently (WR-04). In full mode `rev-list --objects --all` names every blob that any commit's tree lists, so
+# every blob hash that `ls-tree -r` printed must now be either read (in facts) or reported unreadable (in unread). One that is neither means the
+# classification dropped blobs (a changed cat-file format, a changed type name): step 4 would skip it (`if (!(h in sz)) next`) and the audit
+# would print "clean" after reading less than it says. In range mode only the new blobs are read on purpose, so the check does not apply there.
+if [ -z "$range" ]; then
+  awk -F'\t' -v factsf="$t/facts" -v unreadf="$t/unread" '
+    FILENAME == factsf { have[$1] = 1; next }
+    FILENAME == unreadf { split($0, u, " "); have[u[3]] = 1; next }
+    !($1 in have) { miss++ }
+    END { printf "%d\n", miss + 0 }
+  ' "$t/facts" "$t/unread" "$t/pairs.s" > "$t/unseen" || { echo "audit-history: awk failed (coverage check)" >&2; exit 2; }
+  nunseen=$(cat "$t/unseen")
+  if [ "$nunseen" -ne 0 ]; then
+    echo "audit-history: $nunseen blob path(s) listed by the trees were never read ($nblobs blobs read from $ncommits commits): the object classification is wrong" >&2
+    exit 2
+  fi
+fi
+
 # ---- 4. path and content checks, with the allowlist ----
 awk -F'\t' -v allowf="$allow" -v factsf="$t/facts" '
   FILENAME == allowf {
@@ -213,8 +231,13 @@ textscan() {
     git grep -I -n -E "$2" "$c" -- . > "$t/gg" 2> "$t/err"
     grc=$?
     [ "$grc" -le 1 ] || readfail "git grep $1 $c"
-    awk -v kind="$1" '{
-      s = substr($0, 42)
+    # git grep prints  COMMIT:PATH:LINE:TEXT . The prefix is the commit name this loop passed in, whose length depends on the object format
+    # (40 hex digits for sha1, 64 for sha256): it is removed by that length, and a line that does not start with it stops the audit (exit 2)
+    # rather than being dropped.
+    awk -v kind="$1" -v c="$c" '{
+      pre = c ":"
+      if (substr($0, 1, length(pre)) != pre) { printf "audit-history: unexpected git grep line: %s\n", "(prefix is not the commit)" > "/dev/stderr"; exit 3 }
+      s = substr($0, length(pre) + 1)
       if (match(s, /:[0-9]+:/)) printf "%s\t%s\t%s\n", kind, substr(s, RSTART + 1, RLENGTH - 2), substr(s, 1, RSTART - 1)
     }' "$t/gg" >> "$t/text.raw" || { echo "audit-history: awk failed (git grep output)" >&2; exit 2; }
   done < "$t/commits"

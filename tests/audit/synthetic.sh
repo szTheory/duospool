@@ -243,5 +243,46 @@ ok=0
 if [ "$rc" -eq 1 ] && has 'home-path-linux' && ! has 'home-path-mac'; then ok=1; fi
 verdict text-allow-kind-other-kind "$ok"
 
+# ---- WR-04 sha256-home-path: a SHA-256 object-format repository. The full-history text scan used to cut the commit prefix at a fixed
+# 41 characters (a 40-digit sha1 name and a colon), so with 64-digit names the path of every text match was mangled (an allowlist entry then no longer matched it) or the match was dropped. The home path
+# is assembled at run time. A git that cannot create a sha256 repository fails the case (closed), it does not skip it.
+d="$work/sha256-home-path"
+mkdir -p "$d"
+ok=0
+if g "$d" init -q --object-format=sha256 > /dev/null 2>&1; then
+  printf 'see %s%s%s for notes\n' "/Us" "ers/" "someone/projects/x" > "$d/notes.txt"
+  commit "$d" notes
+  audit "$d" "$empty_allow"
+  # the path must come out exactly as notes.txt: a prefix cut at the wrong offset leaves part of the commit name in front of it
+  if [ "$rc" -eq 1 ] && has 'TEXT-PATTERN 1 notes.txt [home-path-mac'; then ok=1; fi
+else
+  out="this git cannot create a sha256 repository"; rc=2
+fi
+verdict sha256-home-path "$ok"
+
+# ---- WR-04 classification-dropped: a git whose cat-file --batch-check reports every blob as another type (a changed format). The coverage check
+# must stop the audit (exit 2) instead of printing "clean" after reading no blob. The shim is a git first on PATH; everything but the batch-check
+# is the real git. The planted file is a ROM-shaped blob, so a genuine read would be a hit and "clean" can only come from reading nothing.
+real_git=$(command -v git)
+shim="$work/git-shim"
+mkdir -p "$shim"
+cat > "$shim/git" <<'SHIM_END'
+#!/bin/sh
+if [ "$1" = cat-file ]; then
+  case $2 in
+    --batch-check*) "$AUDIT_REAL_GIT" "$@" | sed 's/^blob /tag /'; exit 0 ;;
+  esac
+fi
+exec "$AUDIT_REAL_GIT" "$@"
+SHIM_END
+chmod +x "$shim/git"
+d=$(new classification-dropped)
+dd if=/dev/zero of="$d/x.pce" bs=8192 count=1 2> /dev/null
+commit "$d" rom
+if out=$(AUDIT_REAL_GIT="$real_git" PATH="$shim:$PATH" sh "$audit" --allow "$empty_allow" "$d" 2>&1); then rc=0; else rc=$?; fi
+ok=0
+if [ "$rc" -eq 2 ] && has 'never read' && ! has 'audit-history: clean'; then ok=1; fi
+verdict classification-dropped "$ok"
+
 [ "$failed" -eq 0 ] || exit 1
 exit 0
