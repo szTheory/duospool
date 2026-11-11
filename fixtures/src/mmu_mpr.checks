@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# mmu_mpr.checks - one row per CHECK of fixtures/src/mmu_mpr.s (D-125, plan 03-16). Columns separated by one TAB: check index (1-based, the entry number of the DCK1 table), slug, class tag, meaning.
+# Class tags: MAN:<page> (the literal is a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model> (the expected byte is computed in the guest, the table entry is an XOR mask of $00), ASSUMED:<LED-id>.
+# The HuCard bytes the checks read are written by the fixture itself (segment BANKS: byte 0 of file bank k is k, the last byte is k xor $A5); the work RAM cells are written by the checks. A pass is not a support claim (ER-4).
+id=8
+checks=21
+1	bank80-reads-ff	ASSUMED:LED-CPU-0012	Bank $80 is not mapped (the run $80-$F7): a read through it returns the constant $FF
+2	bankf7-reads-ff	ASSUMED:LED-CPU-0012	Bank $F7, the last of the unmapped run, reads $FF
+3	bankfc-reads-ff	ASSUMED:LED-CPU-0012	Bank $FC, the first bank after the four work RAM banks, is not mapped and reads $FF
+4	bankfe-reads-ff	ASSUMED:LED-CPU-0012	Bank $FE, the last bank before the hardware page, is not mapped and reads $FF
+5	unmapped-write-ignored	ASSUMED:LED-CPU-0012	A byte stored through unmapped bank $80 is not kept: the next read is still $FF
+6	ram-mirror-f9	ASSUMED:LED-CPU-0011	The 8 KiB work RAM is mirrored in banks $F8 to $FB (H8-24 gives $1F0000-$1F7FFF behind one chip enable): a byte written through $F8 reads back through $F9
+7	ram-mirror-fa	ASSUMED:LED-CPU-0011	The same byte read through bank $FA
+8	ram-mirror-fb	ASSUMED:LED-CPU-0011	The same byte read through bank $FB
+9	ram-write-fb-read-f8	ASSUMED:LED-CPU-0011	A byte written through bank $FB reads back through bank $F8, so the mirrors share one storage
+10	ram-byte-not-aliased	ASSUMED:LED-CPU-0011	The cell after the written one is a different byte: it still holds the $00 written before
+11	ram-offset-bit12	ASSUMED:LED-CPU-0011	RAM offset $1234 (bit 12 set) written through bank $FB reads back through bank $F8
+12	hucard-bank1-first	MAN:H8-7	The MPR byte supplies physical address bits A13 to A20 (H8-7): bank $01 holds its tag byte $01 at offset 0
+13	hucard-bank1-last	MAN:H8-7	The 13 low logical address bits are the offset in the bank: the last byte of bank $01 is $01 xor $A5 = $A4
+14	hucard-bank31-first	MAN:H8-7	Bank $1F, the last bank of the 256 KiB image, holds $1F at offset 0
+15	mpr-change-immediate	MAN:H8-7	A TAM takes effect for the next access: after MPR3 changes from $01 to $02 the same logical address shows bank $02
+16	two-slots-at-once	MAN:H8-7	MPR4 = $03 maps bank $03 at logical $8000 while MPR3 maps another bank at $6000
+17	bank0-two-views	GUEST:bank0-two-views	Bank 0 read through MPR3 at offset 0 is the byte that MPR7 (mapped to bank 0 by the reset) shows at $E000; the model is the byte read through MPR7 and kept in GEXP
+18	bank20-mirror	ASSUMED:LED-LOAD-0003	In a 256 KiB image bank $20 is a mirror of bank 0: its first byte is the $78 (SEI) of the reset code
+19	bank3f-mirror	ASSUMED:LED-LOAD-0003	In a 256 KiB image bank $3F is a mirror of bank $1F: its first byte is $1F
+20	rom-write-ignored	ASSUMED:LED-CPU-0012	A byte stored through HuCard bank $01 is not kept: the tag byte $01 is still there
+21	tma-returns-stored	MAN:S8-101	TMA reads the mapping register that TAM wrote (S8-90, S8-101): $80, a bank number that maps nothing, is stored and read back unchanged

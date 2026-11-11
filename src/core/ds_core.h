@@ -244,11 +244,19 @@ int ds_cpu_op_defined(uint32_t opcode); /* 1 when the opcode row of the table is
 uint32_t ds_cpu_op_max_cycles(uint32_t opcode); /* the longest one opcode can take in CPU cycles: its table count plus every adder that can apply (opcode is masked to 8 bits) */
 void ds_op_meta(uint32_t opcode, uint32_t *bytes, uint32_t *cycles); /* the table's instruction length and base cycle count of one opcode (a block transfer holds its 17; an undefined row holds its assumed 1 and 2, LED-CPU-0010), for the manual comparison of the opcode_table kind (plan 03-15); opcode is masked to 8 bits */
 
-/* the bus choke point (cpu.c until plan 03-16 moves it into bus.c): every CPU access translates through the MPRs (D-102) */
-uint8_t ds_bus_read(const struct ds_instance *inst, uint16_t addr);
-void ds_bus_write(struct ds_instance *inst, uint16_t addr, uint8_t value);
+/*
+ * The bus choke point (bus.c, plan 03-16; D-102 to D-108): every CPU access translates through the MPRs per access, phys = (mpr[a >> 13] << 13) | (a & $1FFF), and dispatches through a const bank_class[256]
+ * table. One struct ds_bus lives in a local of the step and carries what one instruction's accesses add to it (the VDC and VCE penalty cycles, plan 03-16 task 3); a NULL bus is accepted (the reset reads, a test).
+ * Reads change state (io_buffer, D-104), so the instance is not const here, and no observer ever reads through the bus (D-108).
+ */
+struct ds_bus {
+    uint32_t penalty; /* CPU cycles added by accesses to physical $1FE000-$1FE7FF during this step (D-107); 0 until the penalty lands */
+};
+
+uint8_t ds_bus_read(struct ds_instance *inst, struct ds_bus *bus, uint16_t addr);
+void ds_bus_write(struct ds_instance *inst, struct ds_bus *bus, uint16_t addr, uint8_t value);
 void ds_mpr_write(struct ds_instance *inst, uint32_t index, uint8_t value); /* the only writer of mpr[] */
-void ds_bus_write_phys(struct ds_instance *inst, uint32_t phys, uint8_t value); /* the physical write of ST0 to ST2 (cpu.c, plan 03-14; D-106): $1FE000 | n for n in 0, 2, 3, the MPRs are never consulted; any other address is dropped, and no device sits behind it until plan 03-16 */
+void ds_bus_write_phys(struct ds_instance *inst, struct ds_bus *bus, uint32_t phys, uint8_t value); /* the physical write of ST0 to ST2 (D-106): $1FE000 | n for n in 0, 2, 3, the MPRs are never consulted; any other address is dropped */
 
 /* NUL-terminated string equality without string.h; both arguments must be non-NULL */
 static inline int ds_streq(const char *a, const char *b)

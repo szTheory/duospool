@@ -144,7 +144,7 @@ static const char *step_through(const char *rom, const char *request, uint64_t u
 
             p->stamp = w->machine_time;
             p->pc = w->pc;
-            p->opcode = ds_bus_read(w, w->pc);
+            p->opcode = ds_bus_read(w, NULL, w->pc); /* the pc of these images is in ROM or work RAM, where a read changes nothing (a hardware-page read would update io_buffer, D-104) */
             p->a = w->a;
             p->x = w->x;
             p->y = w->y;

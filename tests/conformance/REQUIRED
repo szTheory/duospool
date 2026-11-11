@@ -137,3 +137,4 @@ opcode_table_manual
 cyc_probe
 mutate_sweep_cyc_probe
 cycle_adders_manual
+mmu_mpr_256k

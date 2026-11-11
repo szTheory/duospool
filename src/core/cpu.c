@@ -1,13 +1,12 @@
 /* SPDX-License-Identifier: MIT OR Apache-2.0 */
 /* SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors */
 /*
- * cpu.c - the HuC6280 core of the tracer slice (plan 03-01; D-90, D-92, D-96, D-102..D-104, D-114) and, until plan 03-16 moves it into bus.c, the single bus choke point.
+ * cpu.c - the HuC6280 core of the tracer slice (plan 03-01; D-90, D-92, D-96, D-114); the bus choke point moved to bus.c in plan 03-16.
  * Plan 03-09 replaced the hand-written subset by the 256-row table of cpu_ops.def (opcode, mnemonic, mode, bytes, cycles, access class, cite) expanded into static const metadata and a
  * mnemonic switch. A mnemonic whose semantics land in a later plan (the block transfers, plan 03-25) advances PC by the table length and charges the table cycles with no other effect until then (the case labels name the plan).
  * One step is one whole instruction: all state lives in the instance, no local survives a step (D-92). The step returns the master clocks it took; ds_run adds them to the machine time.
  * A cycle is 12 master clocks at low speed and 3 at high speed (D-90). The 22 undefined opcodes are one byte, two cycles, T cleared (the length is an assumption of this project, LED-CPU-0010).
- * Bus: every CPU access translates through the eight mapping registers, phys = (mpr[a >> 13] << 13) | (a & $1FFF) (D-102). Banks below $80 read the HuCard through ds_mapper_read and
- * ignore writes; banks $F8-$FB are the 8 KiB work RAM mirrored four times; everything else reads $FF and ignores writes until the hardware page lands in plan 03-16 (D-103, D-104).
+ * Bus: every CPU access goes through ds_bus_read and ds_bus_write of bus.c (D-102 to D-104): the translate, the bank classes and the hardware page live there, not here.
  * Nothing here peeks: observers never read through the bus (D-108). All 8 and 16 bit machine arithmetic is explicit unsigned masking: the sanitize preset has no -fwrapv (D-83, Pitfall 14).
  * The table's bytes and cycles are checked against an independent transcription of the manual by scripts/opcode-check (stage opcode-oracle); no expected value anywhere is derived from this core.
  */
@@ -28,8 +27,6 @@
 #define P_C 0x01u
 
 
-/* the 8 KiB work RAM is mirrored four times in banks $F8-$FB with & $1FFF (D-103): the mask is only right for this size */
-_Static_assert(DS_RAM8K_BYTES == 0x2000u, "the work RAM mirror mask assumes 8 KiB");
 _Static_assert(DS_MPR_COUNT == 8u, "the translate assumes eight mapping registers");
 
 /*
@@ -131,7 +128,7 @@ uint32_t ds_cpu_op_max_cycles(uint32_t opcode)
     return (uint32_t)op->cycles + taken_adder(op->mn) + flag_adders(op->mn);
 }
 
-/* ---- the bus (D-102, D-103, D-104) ---- */
+/* ---- the opcode table accessors ---- */
 
 int ds_cpu_op_defined(uint32_t opcode)
 {
@@ -151,58 +148,6 @@ void ds_op_meta(uint32_t opcode, uint32_t *bytes, uint32_t *cycles)
     }
 }
 
-static uint32_t translate(const struct ds_instance *inst, uint16_t addr)
-{
-    return ((uint32_t)inst->mpr[(uint32_t)addr >> 13u] << 13u) | ((uint32_t)addr & 0x1FFFu);
-}
-
-uint8_t ds_bus_read(const struct ds_instance *inst, uint16_t addr)
-{
-    uint32_t phys = translate(inst, addr);
-    uint32_t bank = phys >> 13u;
-    uint32_t offset = phys & 0x1FFFu;
-    uint8_t value = 0u;
-
-    if (bank < DS_BANK_LIMIT) {
-        return ds_mapper_read(inst, bank, offset, &value) == (uint32_t)DS_MAP_OK ? value : (uint8_t)DS_UNMAPPED_READ;
-    }
-    if (bank >= 0xF8u && bank <= 0xFBu) {
-        return inst->ram8k[offset];
-    }
-    return (uint8_t)DS_UNMAPPED_READ;
-}
-
-void ds_bus_write(struct ds_instance *inst, uint16_t addr, uint8_t value)
-{
-    uint32_t phys = translate(inst, addr);
-    uint32_t bank = phys >> 13u;
-
-    if (bank >= 0xF8u && bank <= 0xFBu) {
-        inst->ram8k[phys & 0x1FFFu] = value;
-    }
-    /* ROM and every unmapped bank ignore a write (D-103, D-104) */
-}
-
-/*
- * The physical write path of ST0, ST1 and ST2 (plan 03-14; D-106, H8-8 Table 2-2-3, S8-80 to S8-82): the address is physical $1FE000 | n with n in {0, 2, 3} and the mapping registers are never consulted.
- * Its only caller is the ST group of ds_cpu_step_obs, and a target outside the three is dropped (T-03-40). No device exists yet: the VDC stub and the access penalty are added behind this entry by plan 03-16, so the write is accepted and has no effect here.
- */
-void ds_bus_write_phys(struct ds_instance *inst, uint32_t phys, uint8_t value)
-{
-    (void)inst;
-    (void)value;
-    if (phys == 0x1FE000u || phys == 0x1FE002u || phys == 0x1FE003u) {
-        /* the hardware page lands in plan 03-16 */
-    }
-}
-
-void ds_mpr_write(struct ds_instance *inst, uint32_t index, uint8_t value)
-{
-    if (index < (uint32_t)DS_MPR_COUNT) {
-        inst->mpr[index] = value;
-    }
-}
-
 /* ---- reset ---- */
 
 void ds_cpu_reset(struct ds_instance *inst)
@@ -218,8 +163,8 @@ void ds_cpu_reset(struct ds_instance *inst)
     inst->p = (uint8_t)P_I;
     inst->speed = 0u;
     ds_mpr_write(inst, 7u, 0u);
-    lo = ds_bus_read(inst, 0xFFFEu);
-    hi = ds_bus_read(inst, 0xFFFFu);
+    lo = ds_bus_read(inst, NULL, 0xFFFEu); /* the reset costs no time (D-92): no bus accounting */
+    hi = ds_bus_read(inst, NULL, 0xFFFFu);
     inst->pc = (uint16_t)(lo | (hi << 8u));
 }
 
@@ -253,16 +198,16 @@ static void compare(struct ds_instance *inst, uint32_t reg, uint32_t m)
 }
 
 /* the stack is logical $2100 + S through the normal bus (S8-11: it wraps inside $21xx); a push writes then decrements, a pull increments then reads */
-static void push(struct ds_instance *inst, uint32_t value)
+static void push(struct ds_instance *inst, struct ds_bus *bus, uint32_t value)
 {
-    ds_bus_write(inst, (uint16_t)(0x2100u | (uint32_t)inst->s), (uint8_t)value);
+    ds_bus_write(inst, bus, (uint16_t)(0x2100u | (uint32_t)inst->s), (uint8_t)value);
     inst->s = (uint8_t)(((uint32_t)inst->s - 1u) & 0xFFu);
 }
 
-static uint32_t pull(struct ds_instance *inst)
+static uint32_t pull(struct ds_instance *inst, struct ds_bus *bus)
 {
     inst->s = (uint8_t)(((uint32_t)inst->s + 1u) & 0xFFu);
-    return ds_bus_read(inst, (uint16_t)(0x2100u | (uint32_t)inst->s));
+    return ds_bus_read(inst, bus, (uint16_t)(0x2100u | (uint32_t)inst->s));
 }
 
 /* the branch target: the address after the instruction plus the signed offset, with the sign extension done on unsigned values */
@@ -288,15 +233,15 @@ static uint16_t zp_addr(uint32_t zz)
     return (uint16_t)(0x2000u | (zz & 0xFFu));
 }
 
-static uint16_t zp_pointer(const struct ds_instance *inst, uint32_t zz)
+static uint16_t zp_pointer(struct ds_instance *inst, struct ds_bus *bus, uint32_t zz)
 {
-    uint32_t lo = ds_bus_read(inst, zp_addr(zz));
-    uint32_t hi = ds_bus_read(inst, zp_addr(zz + 1u));
+    uint32_t lo = ds_bus_read(inst, bus, zp_addr(zz));
+    uint32_t hi = ds_bus_read(inst, bus, zp_addr(zz + 1u));
 
     return (uint16_t)(lo | (hi << 8u));
 }
 
-static uint16_t eff_addr(const struct ds_instance *inst, uint32_t mode, uint32_t op1, uint32_t abs_addr)
+static uint16_t eff_addr(struct ds_instance *inst, struct ds_bus *bus, uint32_t mode, uint32_t op1, uint32_t abs_addr)
 {
     switch ((enum ds_mode)mode) {
     case AM_ZPX:
@@ -304,11 +249,11 @@ static uint16_t eff_addr(const struct ds_instance *inst, uint32_t mode, uint32_t
     case AM_ZPY:
         return zp_addr(op1 + (uint32_t)inst->y);
     case AM_IND:
-        return zp_pointer(inst, op1);
+        return zp_pointer(inst, bus, op1);
     case AM_INDX:
-        return zp_pointer(inst, (op1 + (uint32_t)inst->x) & 0xFFu);
+        return zp_pointer(inst, bus, (op1 + (uint32_t)inst->x) & 0xFFu);
     case AM_INDY:
-        return (uint16_t)((uint32_t)zp_pointer(inst, op1) + (uint32_t)inst->y);
+        return (uint16_t)((uint32_t)zp_pointer(inst, bus, op1) + (uint32_t)inst->y);
     case AM_ABSX:
         return (uint16_t)(abs_addr + (uint32_t)inst->x);
     case AM_ABSY:
@@ -321,9 +266,9 @@ static uint16_t eff_addr(const struct ds_instance *inst, uint32_t mode, uint32_t
 }
 
 /* BBR0-7 and BBS0-7 (S8-20, S8-21): the branch is taken when bit i of the zero-page cell ($2000 | zz) is 0 (BBR) or 1 (BBS); the enum keeps BBR0 to BBR7 and BBS0 to BBS7 in this order */
-static int bit_branch(const struct ds_instance *inst, uint32_t mn, uint32_t zz)
+static int bit_branch(struct ds_instance *inst, struct ds_bus *bus, uint32_t mn, uint32_t zz)
 {
-    uint32_t cell = ds_bus_read(inst, zp_addr(zz));
+    uint32_t cell = ds_bus_read(inst, bus, zp_addr(zz));
     uint32_t bit = mn >= (uint32_t)MN_BBS0 ? mn - (uint32_t)MN_BBS0 : mn - (uint32_t)MN_BBR0;
     uint32_t set = (cell >> bit) & 1u;
 
@@ -331,24 +276,24 @@ static int bit_branch(const struct ds_instance *inst, uint32_t mn, uint32_t zz)
 }
 
 /* the value of an operand: immediate, or a read of the effective address; 0 for a mode that holds no operand (those land with their group, plans 03-12 to 03-14, and have no effect until then) */
-static int operand_value(const struct ds_instance *inst, uint32_t mode, uint32_t op1, uint32_t abs_addr, uint32_t *value)
+static int operand_value(struct ds_instance *inst, struct ds_bus *bus, uint32_t mode, uint32_t op1, uint32_t abs_addr, uint32_t *value)
 {
     if (mode == (uint32_t)AM_IMM) {
         *value = op1;
         return 1;
     }
     if (has_ea(mode)) {
-        *value = ds_bus_read(inst, eff_addr(inst, mode, op1, abs_addr));
+        *value = ds_bus_read(inst, bus, eff_addr(inst, bus, mode, op1, abs_addr));
         return 1;
     }
     return 0;
 }
 
 /* a store: one write at the effective address (flags are never touched by a store, S8-83 to S8-86) */
-static void store_operand(struct ds_instance *inst, uint32_t mode, uint32_t op1, uint32_t abs_addr, uint32_t value)
+static void store_operand(struct ds_instance *inst, struct ds_bus *bus, uint32_t mode, uint32_t op1, uint32_t abs_addr, uint32_t value)
 {
     if (has_ea(mode)) {
-        ds_bus_write(inst, eff_addr(inst, mode, op1, abs_addr), (uint8_t)value);
+        ds_bus_write(inst, bus, eff_addr(inst, bus, mode, op1, abs_addr), (uint8_t)value);
     }
 }
 
@@ -361,24 +306,24 @@ static uint16_t t_cell(const struct ds_instance *inst)
     return zp_addr((uint32_t)inst->x);
 }
 
-static uint32_t acc_in(const struct ds_instance *inst, int t_mode)
+static uint32_t acc_in(struct ds_instance *inst, struct ds_bus *bus, int t_mode)
 {
-    return t_mode != 0 ? (uint32_t)ds_bus_read(inst, t_cell(inst)) : (uint32_t)inst->a;
+    return t_mode != 0 ? (uint32_t)ds_bus_read(inst, bus, t_cell(inst)) : (uint32_t)inst->a;
 }
 
-static void acc_out(struct ds_instance *inst, int t_mode, uint32_t value)
+static void acc_out(struct ds_instance *inst, struct ds_bus *bus, int t_mode, uint32_t value)
 {
     if (t_mode != 0) {
-        ds_bus_write(inst, t_cell(inst), (uint8_t)value);
+        ds_bus_write(inst, bus, t_cell(inst), (uint8_t)value);
     } else {
         inst->a = (uint8_t)value;
     }
 }
 
 /* AND, ORA, EOR: N and Z from the result, no other flag (S8-18, S8-47, S8-58) */
-static void logic_op(struct ds_instance *inst, uint32_t mn, int t_mode, uint32_t m)
+static void logic_op(struct ds_instance *inst, struct ds_bus *bus, uint32_t mn, int t_mode, uint32_t m)
 {
-    uint32_t acc = acc_in(inst, t_mode);
+    uint32_t acc = acc_in(inst, bus, t_mode);
     uint32_t res;
 
     switch ((enum ds_mn)mn) {
@@ -392,7 +337,7 @@ static void logic_op(struct ds_instance *inst, uint32_t mn, int t_mode, uint32_t
         res = acc ^ m;
         break;
     }
-    acc_out(inst, t_mode, res);
+    acc_out(inst, bus, t_mode, res);
     set_nz(inst, res);
 }
 
@@ -463,12 +408,12 @@ static uint32_t sub_decimal(struct ds_instance *inst, uint32_t a, uint32_t m)
 }
 
 /* ADC: the T-mode cell or A is the first addend; D selects the decimal add (T mode with D is the project's reading of a combination no page states, LED-CPU-0010) */
-static void adc_op(struct ds_instance *inst, int t_mode, uint32_t m)
+static void adc_op(struct ds_instance *inst, struct ds_bus *bus, int t_mode, uint32_t m)
 {
-    uint32_t acc = acc_in(inst, t_mode);
+    uint32_t acc = acc_in(inst, bus, t_mode);
     uint32_t res = ((uint32_t)inst->p & P_D) != 0u ? add_decimal(inst, acc, m) : add_binary(inst, acc, m);
 
-    acc_out(inst, t_mode, res);
+    acc_out(inst, bus, t_mode, res);
 }
 
 /* SBC (S8-74): A - M - not C; binary mode adds the complement of M, so the same adder serves; there is no T-mode form */
@@ -556,15 +501,17 @@ static uint16_t tst_addr(const struct ds_instance *inst, uint32_t mode, uint32_t
 /* one instruction; log is the instruction sink writer of the running ds_run call or NULL (plan 03-10): the hook is called once per executed instruction with the state before it runs (D-119) */
 uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
 {
+    struct ds_bus bus_state = {0u}; /* what this instruction's bus accesses add to it: a local of the step, nothing survives it (D-92) */
+    struct ds_bus *bus = &bus_state;
     uint32_t pc = inst->pc;
-    uint8_t opcode = ds_bus_read(inst, inst->pc);
+    uint8_t opcode = ds_bus_read(inst, bus, inst->pc);
     const struct ds_op *op = &ops[opcode];
     uint32_t mn = op->mn;
     uint32_t mode = op->mode;
     uint32_t bytes = op->bytes; /* the 22 undefined rows hold one byte and two cycles: the D-96 assumption (LED-CPU-0010) lives in the def */
     uint32_t cycles = op->cycles;
-    uint32_t op1 = bytes >= 2u ? ds_bus_read(inst, (uint16_t)(pc + 1u)) : 0u;
-    uint32_t op2 = bytes >= 3u ? ds_bus_read(inst, (uint16_t)(pc + 2u)) : 0u;
+    uint32_t op1 = bytes >= 2u ? ds_bus_read(inst, bus, (uint16_t)(pc + 1u)) : 0u;
+    uint32_t op2 = bytes >= 3u ? ds_bus_read(inst, bus, (uint16_t)(pc + 2u)) : 0u;
     uint32_t next = (pc + bytes) & 0xFFFFu;
     uint32_t abs_addr = op1 | (op2 << 8u);
     uint32_t v = 0u;
@@ -601,34 +548,34 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
         inst->p = (uint8_t)((uint32_t)inst->p | P_T);
         break;
     case MN_LDA:
-        if (operand_value(inst, mode, op1, abs_addr, &v) != 0) {
+        if (operand_value(inst, bus, mode, op1, abs_addr, &v) != 0) {
             inst->a = (uint8_t)v;
             set_nz(inst, v);
         }
         break;
     case MN_LDX:
-        if (operand_value(inst, mode, op1, abs_addr, &v) != 0) {
+        if (operand_value(inst, bus, mode, op1, abs_addr, &v) != 0) {
             inst->x = (uint8_t)v;
             set_nz(inst, v);
         }
         break;
     case MN_LDY:
-        if (operand_value(inst, mode, op1, abs_addr, &v) != 0) {
+        if (operand_value(inst, bus, mode, op1, abs_addr, &v) != 0) {
             inst->y = (uint8_t)v;
             set_nz(inst, v);
         }
         break;
     case MN_STA: /* stores take no flags (S8-83 to S8-86) */
-        store_operand(inst, mode, op1, abs_addr, inst->a);
+        store_operand(inst, bus, mode, op1, abs_addr, inst->a);
         break;
     case MN_STX:
-        store_operand(inst, mode, op1, abs_addr, inst->x);
+        store_operand(inst, bus, mode, op1, abs_addr, inst->x);
         break;
     case MN_STY:
-        store_operand(inst, mode, op1, abs_addr, inst->y);
+        store_operand(inst, bus, mode, op1, abs_addr, inst->y);
         break;
     case MN_STZ:
-        store_operand(inst, mode, op1, abs_addr, 0u);
+        store_operand(inst, bus, mode, op1, abs_addr, 0u);
         break;
     case MN_TAX: /* N and Z from the moved value (S8-91) */
         inst->x = inst->a;
@@ -679,11 +626,11 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
         break;
     case MN_RMB0: case MN_RMB1: case MN_RMB2: case MN_RMB3: case MN_RMB4: case MN_RMB5: case MN_RMB6: case MN_RMB7: /* the specified bit of a zero-page cell is cleared, no flag changes (S8-67): one read, one write (LED-CPU-0010) */
         ea = zp_addr(op1);
-        ds_bus_write(inst, ea, (uint8_t)((uint32_t)ds_bus_read(inst, ea) & ~(1u << (mn - (uint32_t)MN_RMB0))));
+        ds_bus_write(inst, bus, ea, (uint8_t)((uint32_t)ds_bus_read(inst, bus, ea) & ~(1u << (mn - (uint32_t)MN_RMB0))));
         break;
     case MN_SMB0: case MN_SMB1: case MN_SMB2: case MN_SMB3: case MN_SMB4: case MN_SMB5: case MN_SMB6: case MN_SMB7: /* the specified bit is set (S8-79) */
         ea = zp_addr(op1);
-        ds_bus_write(inst, ea, (uint8_t)((uint32_t)ds_bus_read(inst, ea) | (1u << (mn - (uint32_t)MN_SMB0))));
+        ds_bus_write(inst, bus, ea, (uint8_t)((uint32_t)ds_bus_read(inst, bus, ea) | (1u << (mn - (uint32_t)MN_SMB0))));
         break;
     case MN_TMA: /* A <- the selected MPR, no flag changes (S8-101): the one-hot operand is the documented use; a multi-bit operand returns the highest selected index (D-105); operand 0 leaves A alone until plan 03-17 adds tma_zero */
         for (i = 0u; i < (uint32_t)DS_MPR_COUNT; i++) {
@@ -693,13 +640,13 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
         }
         break;
     case MN_ST0: /* the immediate goes to physical $1FE000, $1FE002 or $1FE003 whatever the MPRs hold (H8-8 Table 2-2-3, S8-80 to S8-82, D-106); no flag changes */
-        ds_bus_write_phys(inst, 0x1FE000u, (uint8_t)op1);
+        ds_bus_write_phys(inst, bus, 0x1FE000u, (uint8_t)op1);
         break;
     case MN_ST1:
-        ds_bus_write_phys(inst, 0x1FE002u, (uint8_t)op1);
+        ds_bus_write_phys(inst, bus, 0x1FE002u, (uint8_t)op1);
         break;
     case MN_ST2:
-        ds_bus_write_phys(inst, 0x1FE003u, (uint8_t)op1);
+        ds_bus_write_phys(inst, bus, 0x1FE003u, (uint8_t)op1);
         break;
     case MN_CSL: /* the speed bit is state (D-101): CSL selects low and CSH high, 1 byte and 3 cycles in the H8-25 map, no software-manual page; the cycles of this instruction are charged at the old speed below */
         inst->speed = 0u;
@@ -708,17 +655,17 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
         inst->speed = 1u;
         break;
     case MN_PHX:
-        push(inst, inst->x);
+        push(inst, bus, inst->x);
         break;
     case MN_PHY:
-        push(inst, inst->y);
+        push(inst, bus, inst->y);
         break;
     case MN_PLX: /* N and Z */
-        inst->x = (uint8_t)pull(inst);
+        inst->x = (uint8_t)pull(inst, bus);
         set_nz(inst, inst->x);
         break;
     case MN_PLY:
-        inst->y = (uint8_t)pull(inst);
+        inst->y = (uint8_t)pull(inst, bus);
         set_nz(inst, inst->y);
         break;
     case MN_INX:
@@ -738,71 +685,71 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
         set_nz(inst, inst->y);
         break;
     case MN_SBC:
-        if (operand_value(inst, mode, op1, abs_addr, &v) != 0) {
+        if (operand_value(inst, bus, mode, op1, abs_addr, &v) != 0) {
             sbc_op(inst, v);
         }
         break;
     case MN_ADC: /* binary or decimal by D, memory-to-memory by T */
-        if (operand_value(inst, mode, op1, abs_addr, &v) != 0) {
-            adc_op(inst, t_active, v);
+        if (operand_value(inst, bus, mode, op1, abs_addr, &v) != 0) {
+            adc_op(inst, bus, t_active, v);
         }
         break;
     case MN_AND: case MN_ORA:
-        if (operand_value(inst, mode, op1, abs_addr, &v) != 0) {
-            logic_op(inst, mn, t_active, v);
+        if (operand_value(inst, bus, mode, op1, abs_addr, &v) != 0) {
+            logic_op(inst, bus, mn, t_active, v);
         }
         break;
     case MN_CMP:
-        if (operand_value(inst, mode, op1, abs_addr, &v) != 0) {
+        if (operand_value(inst, bus, mode, op1, abs_addr, &v) != 0) {
             compare(inst, inst->a, v);
         }
         break;
     case MN_CPX:
-        if (operand_value(inst, mode, op1, abs_addr, &v) != 0) {
+        if (operand_value(inst, bus, mode, op1, abs_addr, &v) != 0) {
             compare(inst, inst->x, v);
         }
         break;
     case MN_CPY:
-        if (operand_value(inst, mode, op1, abs_addr, &v) != 0) {
+        if (operand_value(inst, bus, mode, op1, abs_addr, &v) != 0) {
             compare(inst, inst->y, v);
         }
         break;
     case MN_BIT: /* N and V from the operand, Z from A AND the operand; BIT immediate follows the page's flag row too */
-        if (operand_value(inst, mode, op1, abs_addr, &v) != 0) {
+        if (operand_value(inst, bus, mode, op1, abs_addr, &v) != 0) {
             bit_test(inst, inst->a, v);
         }
         break;
     case MN_TSB: /* M <- A OR M (S8-103) */
         if (has_ea(mode)) {
-            ea = eff_addr(inst, mode, op1, abs_addr);
-            v = ds_bus_read(inst, ea);
+            ea = eff_addr(inst, bus, mode, op1, abs_addr);
+            v = ds_bus_read(inst, bus, ea);
             bit_test(inst, inst->a, v);
-            ds_bus_write(inst, ea, (uint8_t)(v | (uint32_t)inst->a));
+            ds_bus_write(inst, bus, ea, (uint8_t)(v | (uint32_t)inst->a));
         }
         break;
     case MN_TRB: /* M <- not A AND M (the formula of S8-102; the prose of that page says the result is not stored: the stored reading is the project's, LED-CPU-0010) */
         if (has_ea(mode)) {
-            ea = eff_addr(inst, mode, op1, abs_addr);
-            v = ds_bus_read(inst, ea);
+            ea = eff_addr(inst, bus, mode, op1, abs_addr);
+            v = ds_bus_read(inst, bus, ea);
             bit_test(inst, inst->a, v);
-            ds_bus_write(inst, ea, (uint8_t)(v & ~(uint32_t)inst->a));
+            ds_bus_write(inst, bus, ea, (uint8_t)(v & ~(uint32_t)inst->a));
         }
         break;
     case MN_TST: /* immediate AND memory: Z from the two, N and V from the memory byte; nothing is stored */
-        v = ds_bus_read(inst, tst_addr(inst, mode, op2, ds_bus_read(inst, (uint16_t)(pc + 3u))));
+        v = ds_bus_read(inst, bus, tst_addr(inst, mode, op2, bytes >= 4u ? (uint32_t)ds_bus_read(inst, bus, (uint16_t)(pc + 3u)) : 0u)); /* the fourth byte is read only by the two absolute forms: a read of the byte after a 3-byte form would be an access that is not part of the instruction */
         bit_test(inst, op1, v);
         break;
     case MN_ASL: case MN_LSR: case MN_ROL: case MN_ROR: case MN_INC: case MN_DEC: /* the accumulator and the memory forms: one read then one write, N and Z from the result */
         if (mode == (uint32_t)AM_ACC) {
             inst->a = (uint8_t)rmw_value(inst, mn, inst->a);
         } else if (has_ea(mode)) {
-            ea = eff_addr(inst, mode, op1, abs_addr);
-            ds_bus_write(inst, ea, (uint8_t)rmw_value(inst, mn, ds_bus_read(inst, ea)));
+            ea = eff_addr(inst, bus, mode, op1, abs_addr);
+            ds_bus_write(inst, bus, ea, (uint8_t)rmw_value(inst, mn, ds_bus_read(inst, bus, ea)));
         }
         break;
     case MN_EOR: /* N and Z */
-        if (operand_value(inst, mode, op1, abs_addr, &v) != 0) {
-            logic_op(inst, mn, t_active, v);
+        if (operand_value(inst, bus, mode, op1, abs_addr, &v) != 0) {
+            logic_op(inst, bus, mn, t_active, v);
         }
         break;
     case MN_BNE: /* the eight conditional branches (S8-22 to S8-28, S8-32, S8-33): taken when the flag is in the named state; no flag changes */
@@ -840,37 +787,37 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
         }
         break;
     case MN_JSR: /* pushes the address of the last byte of the instruction, high byte first */
-        push(inst, ((pc + 2u) >> 8u) & 0xFFu);
-        push(inst, (pc + 2u) & 0xFFu);
+        push(inst, bus, ((pc + 2u) >> 8u) & 0xFFu);
+        push(inst, bus, (pc + 2u) & 0xFFu);
         next = abs_addr;
         break;
     case MN_RTS: /* pulls the low byte then the high byte and adds one */
-        lo = pull(inst);
-        hi = pull(inst);
+        lo = pull(inst, bus);
+        hi = pull(inst, bus);
         next = ((hi << 8u) | lo) + 1u;
         next &= 0xFFFFu;
         break;
     case MN_PHA:
-        push(inst, inst->a);
+        push(inst, bus, inst->a);
         break;
     case MN_PLA: /* N and Z */
-        inst->a = (uint8_t)pull(inst);
+        inst->a = (uint8_t)pull(inst, bus);
         set_nz(inst, inst->a);
         break;
     case MN_PHP: /* B reads 1 and T reads 0 on the stack (H8-5) */
-        push(inst, ((uint32_t)inst->p & ~P_T) | 0x10u);
+        push(inst, bus, ((uint32_t)inst->p & ~P_T) | 0x10u);
         break;
     case MN_PLP: /* every flag is loaded except B, which has no stored bit (LED-CPU-0009: PLP loads T) */
-        inst->p = (uint8_t)(pull(inst) & ~0x10u);
+        inst->p = (uint8_t)(pull(inst, bus) & ~0x10u);
         break;
     case MN_JMP: /* S8-51: abs sets PC; (abs) reads PCL at hhll and PCH at hhll+1 (no 6502 page wrap: the page prints hhll+1); (abs,X) adds X to the pointer address first; 16-bit wrap by masks */
         if (mode == (uint32_t)AM_ABSIND) {
-            lo = ds_bus_read(inst, (uint16_t)abs_addr);
-            hi = ds_bus_read(inst, (uint16_t)(abs_addr + 1u));
+            lo = ds_bus_read(inst, bus, (uint16_t)abs_addr);
+            hi = ds_bus_read(inst, bus, (uint16_t)(abs_addr + 1u));
             next = (hi << 8u) | lo;
         } else if (mode == (uint32_t)AM_ABSINDX) {
-            lo = ds_bus_read(inst, (uint16_t)(abs_addr + (uint32_t)inst->x));
-            hi = ds_bus_read(inst, (uint16_t)(abs_addr + (uint32_t)inst->x + 1u));
+            lo = ds_bus_read(inst, bus, (uint16_t)(abs_addr + (uint32_t)inst->x));
+            hi = ds_bus_read(inst, bus, (uint16_t)(abs_addr + (uint32_t)inst->x + 1u));
             next = (hi << 8u) | lo;
         } else {
             next = abs_addr;
@@ -878,26 +825,26 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
         break;
     case MN_BBR0: case MN_BBR1: case MN_BBR2: case MN_BBR3: case MN_BBR4: case MN_BBR5: case MN_BBR6: case MN_BBR7:
     case MN_BBS0: case MN_BBS1: case MN_BBS2: case MN_BBS3: case MN_BBS4: case MN_BBS5: case MN_BBS6: case MN_BBS7:
-        taken = bit_branch(inst, mn, op1); /* three bytes: the target is PC+3+rr, with rr the third byte (S8-20, S8-21) */
+        taken = bit_branch(inst, bus, mn, op1); /* three bytes: the target is PC+3+rr, with rr the third byte (S8-20, S8-21) */
         break;
     case MN_BSR: /* pushes the address of the last byte of the BSR (pc+1), PCH first, then branches to PC+2+rr (S8-31); the count is the table's 8, with no taken adder */
-        push(inst, ((pc + 1u) >> 8u) & 0xFFu);
-        push(inst, (pc + 1u) & 0xFFu);
+        push(inst, bus, ((pc + 1u) >> 8u) & 0xFFu);
+        push(inst, bus, (pc + 1u) & 0xFFu);
         taken = 1;
         break;
     case MN_BRK: /* S8-30, H8-17: pushes BRK+2 (PCH, PCL) and P with B = 1 and T = 0, sets I, clears D, then loads PC from $FFF6/$FFF7 through the bus (the IRQ2 vector); T already reads 0 here (fetch-time clear, H8-5); a pushed T of 0 is the project's reading (LED-CPU-0009) */
-        push(inst, ((pc + 2u) >> 8u) & 0xFFu);
-        push(inst, (pc + 2u) & 0xFFu);
-        push(inst, ((uint32_t)inst->p & ~P_T) | 0x10u);
+        push(inst, bus, ((pc + 2u) >> 8u) & 0xFFu);
+        push(inst, bus, (pc + 2u) & 0xFFu);
+        push(inst, bus, ((uint32_t)inst->p & ~P_T) | 0x10u);
         inst->p = (uint8_t)(((uint32_t)inst->p | P_I) & ~P_D);
-        lo = ds_bus_read(inst, 0xFFF6u);
-        hi = ds_bus_read(inst, 0xFFF7u);
+        lo = ds_bus_read(inst, bus, 0xFFF6u);
+        hi = ds_bus_read(inst, bus, 0xFFF7u);
         next = (hi << 8u) | lo;
         break;
     case MN_RTI: /* S8-70: P is pulled first, then PCL, then PCH; every flag including T is loaded from the pulled byte (D-99), and B has no stored bit */
-        inst->p = (uint8_t)(pull(inst) & ~0x10u);
-        lo = pull(inst);
-        hi = pull(inst);
+        inst->p = (uint8_t)(pull(inst, bus) & ~0x10u);
+        lo = pull(inst, bus);
+        hi = pull(inst, bus);
         next = (hi << 8u) | lo;
         break;
     case MN_CLI: /* I <- 0 (S8-37) */
