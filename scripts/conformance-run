@@ -11,6 +11,7 @@
 #        conformance-run control DIR
 #        conformance-run control-signal DIR SIG
 #        conformance-run filter-cases CASES_TSV IDS_FILE OUT_TSV
+#        conformance-run snapshot-host-hash EVIDENCE_DIR
 #        conformance-run supervise --ids FILE --out FILE [--wall N] -- CMD ARGS...
 # run mode (D-60, D-85): everything lives under build/NAME (default gate, the build directory of the preset NAME). The steps are
 #   (the runner also gets --records DIR/records, made empty on every run, and --golden-dir tests/conformance/golden: see plan 14, D-84b, D-86; and --inputs DIR/inputs.tsv, plan 03-27)
@@ -26,6 +27,7 @@
 #   is a deliberately wrong core, generated from the live source by scripts/control-mutate, that the named cases must show red;
 #   CONTROL NAME RED_OK, or CONTROL NAME NOT_RED and status 1), and print the RESULT lines then  STATUS conformance ok n=COUNT .
 #   Violations are printed instead of the STATUS line.
+#   After the hash sweep both modes run the snapshot host hash step (plan 03-30; D-121): snapshot-host-hash below on BD/evidence.
 #   exit 0 judged green | 1 judged red, a malformed case file or a failed build | 2 harness error (also wall expiry)
 # sanitize mode (D-41, D-55, D-83): the same steps as run mode on the preset sanitize (ASan and UBSan, no recover, no -fwrapv; build/sanitize),
 #   with these differences. The compiler is /usr/bin/clang on Darwin (Homebrew LLVM hangs and is never used) and cc elsewhere, passed to cmake
@@ -76,7 +78,7 @@ LC_ALL=C; export LC_ALL
 here=$(cd "$(dirname "$0")" && pwd)
 
 usage() {
-  echo "usage: conformance-run run [--preset NAME] | sanitize | fixtures [--only NAME] | control DIR | control-signal DIR SIG | filter-cases CASES_TSV IDS_FILE OUT_TSV | supervise --ids FILE --out FILE [--wall N] -- CMD ARGS..." >&2
+  echo "usage: conformance-run run [--preset NAME] | sanitize | fixtures [--only NAME] | control DIR | control-signal DIR SIG | filter-cases CASES_TSV IDS_FILE OUT_TSV | snapshot-host-hash EVIDENCE_DIR | supervise --ids FILE --out FILE [--wall N] -- CMD ARGS..." >&2
   exit 2
 }
 
@@ -302,6 +304,7 @@ run_mode() {
     exit 1
   fi
   hash_sweep "$bd/ds_runner"
+  snapshot_host_hash "$bd/evidence" # rule-snapshot-host-hash-wired
   n=$(grep -c '^RESULT ' "$bd/results.txt" || true)
   if [ "$mode" = sanitize ]; then
     echo "STATUS sanitize ok n=$n"
@@ -781,6 +784,44 @@ hash_sweep() {
   echo "STATUS hash-sweep ok lengths=$hs_n"
 }
 
+# snapshot_host_hash EVIDENCE_DIR (plan 03-30; D-121, W5 of the plan check): the independent half of the snapshot hash check. The case snapshot_equals_digest wrote the snapshot bytes (ID.snapshot) and the digest that the core computed (the line digest=HEX of ID.txt) into its evidence directory; the SHA-256 of
+# the file is taken here with the host tool (sha256sum if present, else shasum -a 256, chosen once; it shares no code, language or author with the core) and must equal that digest line. A difference prints SNAPSHOT_HOST_HASH_MISMATCH with both values and ends the stage with status 1; a missing file, a missing
+# or repeated digest line or an unusable answer of the tool is a harness error (exit 2), never a pass. The mode is also the entry that the gate selftest mutation-snapshot-host-hash drives on a scratch copy of the evidence with one snapshot byte flipped.
+snapshot_host_hash() {
+  sh_ev=$1
+  sh_id=snapshot_equals_digest
+  sh_txt="$sh_ev/$sh_id.txt"
+  sh_bin="$sh_ev/$sh_id.snapshot"
+  if [ ! -f "$sh_txt" ] || [ ! -f "$sh_bin" ]; then
+    echo "HARNESS_ERROR the evidence of $sh_id is missing in $sh_ev (the evidence text and the snapshot file)" >&2
+    exit 2
+  fi
+  if [ "$(grep -c '^digest=' "$sh_txt" || true)" -ne 1 ]; then
+    echo "HARNESS_ERROR the evidence text of $sh_id has not exactly one digest= line" >&2
+    exit 2
+  fi
+  sh_core=$(sed -n 's/^digest=\([0-9a-f]\{64\}\)$/\1/p' "$sh_txt")
+  if [ "${#sh_core}" -ne 64 ]; then
+    echo "HARNESS_ERROR the digest= line of $sh_id is not 64 lower-case hex digits" >&2
+    exit 2
+  fi
+  pick_sha_tool
+  sh_host=$($sha_tool "$sh_bin" | awk '{ print $1 }')
+  case $sh_host in
+    '' | *[!0-9a-f]*) echo "HARNESS_ERROR the host sha tool gave no digest for the snapshot of $sh_id" >&2; exit 2 ;;
+  esac
+  if [ "${#sh_host}" -ne 64 ]; then
+    echo "HARNESS_ERROR the host sha tool gave a digest of the wrong length for the snapshot of $sh_id" >&2
+    exit 2
+  fi
+  sh_bytes=$(wc -c < "$sh_bin" | tr -d ' ')
+  if [ "$sh_host" != "$sh_core" ]; then # rule-snapshot-host-hash
+    echo "SNAPSHOT_HOST_HASH_MISMATCH core=$sh_core host=$sh_host bytes=$sh_bytes"
+    exit 1
+  fi
+  echo "STATUS snapshot-host-hash ok bytes=$sh_bytes"
+}
+
 [ $# -ge 1 ] || usage
 case $1 in
   run) shift; run_mode "$@" ;;
@@ -789,6 +830,7 @@ case $1 in
   control) shift; [ $# -eq 1 ] || usage; control_mode "$1" ;;
   control-signal) shift; [ $# -eq 2 ] || usage; control_mode "$1" "$2" ;;
   filter-cases) shift; [ $# -eq 3 ] || usage; filter_cases "$1" "$2" "$3"; exit 0 ;;
+  snapshot-host-hash) shift; [ $# -eq 1 ] || usage; snapshot_host_hash "$1"; exit 0 ;;
   supervise) shift ;;
   *) usage ;;
 esac

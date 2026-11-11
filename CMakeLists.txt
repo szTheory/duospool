@@ -59,14 +59,14 @@ endif()
 
 # The runner sources: runner.c (reader, boot kinds, main) and one file per family of case kinds; synth.c holds the image recipes.
 # Plan 11 added mapkinds.c (moved out of runner.c) and refkinds.c, plan 13 digkinds.c, plan 14 reckinds.c, plan 16 ilvkinds.c, plan 17 fixlist.c, plan 03-03 hashkinds.c (the content identity kinds, moved out of runner.c), plan 03-10 sweepkinds.c (the mutation sweep) and obskinds.c (the observer kinds), plan 03-20 buskinds.c (the bus kinds).
-# Plan 03-26 added chunkkinds.c (the chunk_equiv kind) and randprog.c (the in-process random programs), plan 03-27 inputkinds.c (the input schedule of a case and the input refusal rows); the toy runners below use the same list.
+# Plan 03-26 added chunkkinds.c (the chunk_equiv kind) and randprog.c (the in-process random programs), plan 03-27 inputkinds.c (the input schedule of a case and the input refusal rows), plan 03-30 snapkinds.c (the snapshot and restore kinds); the toy runners below use the same list.
 set(DS_RUNNER_SOURCES
   tests/conformance/runner.c tests/conformance/profkinds.c tests/conformance/allockinds.c tests/conformance/mapkinds.c
   tests/conformance/refkinds.c tests/conformance/redkinds.c tests/conformance/powkinds.c tests/conformance/stepkinds.c
   tests/conformance/digkinds.c tests/conformance/reckinds.c tests/conformance/ilvkinds.c tests/conformance/fixlist.c
   tests/conformance/spinkinds.c tests/conformance/synth.c tests/conformance/hashkinds.c tests/conformance/guestkinds.c
   tests/conformance/sweepkinds.c tests/conformance/obskinds.c tests/conformance/cpukinds.c tests/conformance/buskinds.c
-  tests/conformance/chunkkinds.c tests/conformance/randprog.c tests/conformance/inputkinds.c)
+  tests/conformance/chunkkinds.c tests/conformance/randprog.c tests/conformance/inputkinds.c tests/conformance/snapkinds.c)
 add_executable(ds_runner ${DS_RUNNER_SOURCES} ${DS_SHIM_SOURCES})
 target_link_libraries(ds_runner PRIVATE ds_text ds_core)
 target_compile_definitions(ds_runner PRIVATE ${DS_SHIM_DEFINITION})

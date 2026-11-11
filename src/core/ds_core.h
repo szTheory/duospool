@@ -183,6 +183,8 @@ struct ds_instance {
     uint8_t o_latch;
     uint8_t slot_type[DS_PORT_COUNT];
     uint8_t rom[DS_ROM_CAP];
+    /* explicit tail padding (plan 03-30; D-122): the struct is 8-byte aligned and the ROM array ends 6 bytes short of the next multiple of 8, so the padding is a member of its own and the tiling list below can name every byte of the instance. Zero from the zeroing of ds_boot, in no region of the stream */
+    uint8_t tail_pad[6];
 };
 
 /* the stimulus arrays, the timer block, the controller bytes, the CPU block, the bus block and the block transfer state have no padding and sit in the order of the declarations (the digest regions IRQS, TIMR, IRQC, CPU0, BUS0 and BLKT are each one live span, serial.c): the stimulus times follow the power-up seed, and the ROM array follows the block transfer state */
@@ -212,6 +214,22 @@ _Static_assert(offsetof(struct ds_instance, blk_dst) == offsetof(struct ds_insta
 _Static_assert(offsetof(struct ds_instance, o_latch) == offsetof(struct ds_instance, blk_dst) + sizeof(uint16_t), "padding between the block transfer state and the I/O port bytes");
 _Static_assert(offsetof(struct ds_instance, slot_type) == offsetof(struct ds_instance, o_latch) + 1u, "padding between o_latch and slot_type");
 _Static_assert(offsetof(struct ds_instance, rom) == offsetof(struct ds_instance, slot_type) + DS_PORT_COUNT, "padding between the I/O port bytes and the ROM");
+
+/*
+ * The tiling list (plan 03-30; D-122, Pattern 8): EVERY member of struct ds_instance, in declaration order, written by hand and independent of the serializer's region table (serial.c). The sum of the member sizes must equal sizeof(struct ds_instance), so a member
+ * added to the struct without an entry here (or an entry that outlives its member) breaks the build, and implicit padding cannot hide a byte (the one gap, the tail, is the explicit member tail_pad). The restore evidence of the runner (snapkinds.c) walks this list to
+ * poison every restorable member, to compare the whole instance except the ROM and to check that the members follow one another without a gap. Adding a member means adding it here AND giving it a region in serial.c (or deciding that it is derived at boot, like mapper).
+ */
+#define DS_INSTANCE_TILING(X) \
+    X(machine_time) X(profile) X(content_id) X(mapper) X(size_class) X(byte_order) X(header) X(ram8k) X(mpr) \
+    X(powerup_policy) X(has_seed) X(powerup_seed) X(irq_stim_at) X(irq_stim_line) X(irq_stim_level) \
+    X(input_ev) X(input_count) X(input_reserved) X(timer_origin) X(timer_counter) X(timer_reload) X(timer_enabled) \
+    X(irq_disable) X(tiq_latch) X(irq_i_sample) X(pc) X(a) X(x) X(y) X(s) X(p) X(speed) \
+    X(io_buffer) X(mpr_latch) X(tma_zero) X(blk_active) X(blk_opcode) X(blk_toggle) X(blk_remaining) X(blk_src) X(blk_dst) \
+    X(o_latch) X(slot_type) X(rom) X(tail_pad)
+#define DS_TILING_SIZE(m) +sizeof(((struct ds_instance *)0)->m)
+_Static_assert(0u DS_INSTANCE_TILING(DS_TILING_SIZE) == sizeof(struct ds_instance), "the tiling list does not account for every byte of struct ds_instance: a member without an entry, an entry without a member, or implicit padding");
+_Static_assert(offsetof(struct ds_instance, tail_pad) == offsetof(struct ds_instance, rom) + DS_ROM_CAP, "padding between the ROM and the tail padding");
 
 struct ds_boot_request {
     uint32_t struct_size; /* sizeof(struct ds_boot_request) */

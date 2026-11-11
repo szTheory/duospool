@@ -1027,6 +1027,9 @@ static const struct {
     {"opcode_table", kind_opcode_table, 0},
     {"cycle_probe", kind_cycle_probe, 0},
     {"timer_pure", kind_timer_pure, 0},
+    {"snapshot_hash", kind_snapshot_hash, 0},
+    {"snapshot_restore", kind_snapshot_restore, 0},
+    {"snapshot_refuse", kind_snapshot_refuse, 0},
     {"opcode_exercise", kind_opcode_exercise, 1},
     {"poweron_domain", kind_poweron_domain, 0},
     {"digest_stream", kind_digest_stream, 0},
@@ -1049,6 +1052,7 @@ static const struct {
     {"model_refusal_coverage", kind_model_refusal_coverage, 1},
     {"stim_refusal_coverage", kind_stim_refusal_coverage, 1},
     {"input_refusal_coverage", kind_input_refusal_coverage, 1},
+    {"snapshot_refusal_coverage", kind_snapshot_refusal_coverage, 1},
 };
 
 static const char *outcome_of(const struct ctx *c, enum outcome *oc)

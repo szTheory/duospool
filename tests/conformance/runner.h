@@ -368,6 +368,13 @@ void kind_opcode_table(const struct kase *k, struct ctx *c, char *got, size_t go
 void kind_cycle_probe(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_timer_pure(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 03-21: the closed-form timer against a naive per-clock model (ds_timer.h entry points, E1 for the step and the period only, ER-3) */
 
+/* the snapshot and restore kinds (snapkinds.c, plan 03-30; CORE-05, D-121, D-122): snapshot_hash (the snapshot is the digest stream, with the file for the host hash tool), snapshot_restore (restore into a poisoned fresh instance at sampled stops and at every boundary, raw compare, lockstep, perturbation),
+ * snapshot_refuse (hostile edits refused with the instance byte-identical) and the deferred snapshot_refusal_coverage */
+void kind_snapshot_hash(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_snapshot_restore(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_snapshot_refuse(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_snapshot_refusal_coverage(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+
 /* the --fixtures list (fixlist.c, plan 17): NAME SIZE for every recipe a case materialises and every sweep length; 0, or 2 on a fault */
 int list_fixtures(const size_t *sweep, size_t nsweep);
 

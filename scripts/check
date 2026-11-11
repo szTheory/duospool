@@ -2520,6 +2520,54 @@ selftest() {
     fi
   fi
 
+  # (z9) the host hash step of the snapshot case is what turns a snapshot that differs from its digest red (plan 03-30; D-121, W5 and W12 of the plan check): the runner writes the snapshot bytes of the case snapshot_equals_digest and the digest it computed into an evidence directory, and conformance-run snapshot-host-hash hashes the file with the host tool and compares.
+  # A scratch evidence directory is made by the live runner for that one case. The unmutated step must pass it (exit 0, STATUS snapshot-host-hash ok), so that the failure below cannot come from a broken step; in a scratch copy of the evidence one snapshot byte is flipped (a byte of
+  # the work RAM payload) and the step must exit 1 and print SNAPSHOT_HOST_HASH_MISMATCH with the unchanged core digest. The wiring is checked too:
+  # the run mode must call the step exactly once (the line tagged rule-snapshot-host-hash-wired) and the comparison must be the one tagged line (rule-snapshot-host-hash). The live tree is never written beyond the build.
+  if st_want mutation-snapshot-host-hash; then
+    st_ran=1
+    sh_d="$tmp/selftest/snap-host"
+    sh_ok=1
+    sh_why=""
+    rm -rf "$sh_d"
+    mkdir -p "$sh_d/ev" "$sh_d/ev-mutated"
+    if [ ! -x build/gate/ds_runner ] || [ ! -f build/gate/fixtures/ds-proto.pce ]; then
+      fixture_build_run || { echo "HARNESS_ERROR mutation-snapshot-host-hash: the fixtures could not be built"; exit 2; }
+      stage_build || { echo "HARNESS_ERROR mutation-snapshot-host-hash: the gate preset could not be built"; exit 2; }
+    fi
+    if sh "$here/conformance-flatten" tests/conformance/cases > "$sh_d/cases.tsv" 2> "$sh_d/flatten.err" && sh "$here/conformance-flatten" --inputs tests/conformance/inputs > "$sh_d/inputs.tsv" 2>> "$sh_d/flatten.err"; then :; else sh_ok=0; sh_why="cannot flatten the cases"; fi
+    if [ "$sh_ok" -eq 1 ]; then
+      build/gate/ds_runner --cases "$sh_d/cases.tsv" --inputs "$sh_d/inputs.tsv" --evidence-dir "$sh_d/ev" --only snapshot_equals_digest > "$sh_d/run.out" 2> "$sh_d/run.err" || true
+      if ! awk '$1 == "RESULT" && $2 == "snapshot_equals_digest" && $3 == "pass" { f = 1 } END { exit !f }' "$sh_d/run.out" || [ ! -f "$sh_d/ev/snapshot_equals_digest.snapshot" ]; then sh_ok=0; sh_why="the live runner did not pass the case snapshot_equals_digest or wrote no snapshot"; fi
+    fi
+    if [ "$sh_ok" -eq 1 ]; then
+      if sh "$here/conformance-run" snapshot-host-hash "$sh_d/ev" > "$sh_d/alive.out" 2>&1 && grep -q '^STATUS snapshot-host-hash ok' "$sh_d/alive.out"; then :; else sh_ok=0; sh_why="the unmutated step does not pass the unmutated evidence"; fi
+    fi
+    if [ "$sh_ok" -eq 1 ]; then
+      cp "$sh_d/ev/snapshot_equals_digest.txt" "$sh_d/ev/snapshot_equals_digest.snapshot" "$sh_d/ev-mutated/"
+      sh_old=$(dd if="$sh_d/ev-mutated/snapshot_equals_digest.snapshot" bs=1 skip=5000 count=1 2> /dev/null | od -An -tu1 | tr -d ' ')
+      sh_new=$(( (sh_old + 1) % 256 ))
+      printf "$(printf '\\%03o' "$sh_new")" | dd of="$sh_d/ev-mutated/snapshot_equals_digest.snapshot" bs=1 seek=5000 conv=notrunc 2> /dev/null
+      if cmp -s "$sh_d/ev/snapshot_equals_digest.snapshot" "$sh_d/ev-mutated/snapshot_equals_digest.snapshot"; then sh_ok=0; sh_why="the scratch snapshot byte was not changed"; fi
+    fi
+    if [ "$sh_ok" -eq 1 ]; then
+      if sh "$here/conformance-run" snapshot-host-hash "$sh_d/ev-mutated" > "$sh_d/mut.out" 2>&1; then sh_r=0; else sh_r=$?; fi
+      sh_core=$(sed -n 's/^digest=\([0-9a-f]\{64\}\)$/\1/p' "$sh_d/ev/snapshot_equals_digest.txt")
+      if [ "$sh_r" -ne 1 ] || ! grep -q '^SNAPSHOT_HOST_HASH_MISMATCH core=' "$sh_d/mut.out" || ! grep -Fq "core=$sh_core " "$sh_d/mut.out"; then sh_ok=0; sh_why="the step did not report SNAPSHOT_HOST_HASH_MISMATCH with exit 1 for a snapshot with one flipped byte (exit $sh_r)"; fi
+    fi
+    if [ "$sh_ok" -eq 1 ]; then
+      if [ "$(grep -c 'rule-snapshot-host-hash-wired' "$here/conformance-run" || true)" -ne 1 ] || [ "$(grep -c 'rule-snapshot-host-hash$' "$here/conformance-run" || true)" -ne 1 ] || [ "$(grep -c 'snapshot_host_hash "$bd/evidence"' "$here/conformance-run" || true)" -ne 1 ]; then
+        sh_ok=0
+        sh_why="the run mode does not call the host hash step exactly once, or the comparison is not the one tagged line"
+      fi
+    fi
+    if [ "$sh_ok" -eq 1 ]; then
+      echo "SELFTEST mutation-snapshot-host-hash PASS"
+    else
+      echo "SELFTEST mutation-snapshot-host-hash FAIL ($sh_why)"; failed=1
+    fi
+  fi
+
   # (z3) the byte comparison of the encoding oracle is what turns the tsv-byte-changed control red (T-03-25, plan 03-08): same shape as (y). The control, run with --expect XASM_MISMATCH, is met on an
   # unmutated copy (exit 0, EXPECT_OK); with the line tagged rule-compare deleted from the copy of the awk program the mismatch is no longer reported, so the same run must exit 1: the control flipped.
   if st_want mutation-xasm-compare; then

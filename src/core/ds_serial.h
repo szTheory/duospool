@@ -34,6 +34,15 @@ void ds_digest_stream(const struct ds_instance *inst, ds_sink_fn sink, void *ctx
 uint32_t ds_digest(const struct ds_instance *inst, uint8_t out[DS_DIGEST_BYTES]);
 
 /*
+ * The frame of the stream, for the snapshot (snapshot.c, plan 03-30; D-121): the snapshot IS this stream, so the restore reads the prefix, the tag order and the payload lengths from the one region table of serial.c and keeps no layout of its own.
+ * DS_REGION_COUNT is the number of regions (serial.c asserts it equals its table). ds_region_frame gives the tag (a static NUL-terminated string of four characters) and the payload length of region index and returns 1, or returns 0 and writes nothing for an index at or above the count.
+ * ds_stream_prefix gives the prefix bytes of the stream (the text and its NUL) and writes their number to *len.
+ */
+#define DS_REGION_COUNT 14u
+uint32_t ds_region_frame(uint32_t index, const char **tag, uint32_t *payload_len);
+const char *ds_stream_prefix(uint32_t *len);
+
+/*
  * Test accessor over the region table that the digest itself walks. For region index (0 up to the region count minus one): the
  * four-character tag (a static NUL-terminated string), a pointer into the LIVE storage of the instance whose first byte the payload of
  * the region carries, and the length of that live span. Returns 1 for a valid index and 0 otherwise (outputs untouched).

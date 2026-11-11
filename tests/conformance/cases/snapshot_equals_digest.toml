@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The snapshot is the canonical digest stream (plan 03-30; CORE-05, D-121, D-122): the authored ds_proto fixture is run to a stop in the middle of its run under the seeded-prng-v2 policy (so that no region is all zero) and ds_snapshot writes the machine into a caller buffer. The runner checks, against
+# the hand-kept frame table of tests/conformance/snapkinds.c (not the core's region table): the size of 25021 bytes (the prefix, the version and 14 frames: PROF CONT POWR TIME RAM8 MPRS CPU0 BUS0 TIMR IRQC IRQS BLKT IOPT SCHD), that the call writes exactly that many bytes, the prefix, the version and
+# every tag and length, that the TIME, CPU0 and RAM8 payloads are the instance's own members read raw, that the SHA-256 of the snapshot is the digest of the instance, and that the ROM is not in it (a flipped ROM byte leaves the snapshot unchanged). The snapshot bytes are written to
+# snapshot_equals_digest.snapshot beside the evidence text, with the digest the core printed (digest=HEX): after the runner pass, scripts/conformance-run hashes that file with the host tool (sha256sum, else shasum -a 256) and fails the conformance stage with SNAPSHOT_HOST_HASH_MISMATCH when it differs
+# from the digest line, so the hash check is made by an implementation that shares no code, language or author with the core. The scratch-copy control is the selftest mutation-snapshot-host-hash. Evidence tier E0: repeatability and consistency of the core with itself; matching hashes prove nothing
+# about correctness, and no accuracy, compatibility or hardware claim is made.
+id = "snapshot_equals_digest"
+kind = "snapshot_hash"
+fixture = "authored:ds-proto"
+request = "bind.powerup_policy=seeded-prng-v2;seed=3"
+expect = "equals-digest;host-file"
+meaning = "The snapshot of a mid-run stop of ds_proto is the 25021-byte canonical digest stream, its SHA-256 is the digest, the ROM is not in it, and its bytes are written for the host hash tool of the conformance stage"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 100000

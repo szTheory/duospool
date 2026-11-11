@@ -222,3 +222,5 @@ interleave_pad
 observer_pad
 chunk_equiv_pad_2btn_correct
 digest_stream_input
+snapshot_equals_digest
+snapshot_restore_sampled

@@ -333,6 +333,26 @@ uint32_t ds_digest(const struct ds_instance *inst, uint8_t out[DS_DIGEST_BYTES])
     return DS_OK;
 }
 
+_Static_assert((uint32_t)R_COUNT == DS_REGION_COUNT, "DS_REGION_COUNT of ds_serial.h is not the number of rows of the region table");
+
+uint32_t ds_region_frame(uint32_t index, const char **tag, uint32_t *payload_len)
+{
+    if (tag == NULL || payload_len == NULL || index >= (uint32_t)R_COUNT) {
+        return 0u;
+    }
+    *tag = regions[index].tag;
+    *payload_len = regions[index].payload_len;
+    return 1u;
+}
+
+const char *ds_stream_prefix(uint32_t *len)
+{
+    if (len != NULL) {
+        *len = (uint32_t)sizeof stream_prefix;
+    }
+    return stream_prefix;
+}
+
 uint32_t ds_region_info(struct ds_instance *inst, uint32_t index, const char **tag, uint8_t **ptr, size_t *len)
 {
     if (inst == NULL || tag == NULL || ptr == NULL || len == NULL || index >= (uint32_t)R_COUNT) {
