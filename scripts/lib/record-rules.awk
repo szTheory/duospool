@@ -28,7 +28,6 @@ BEGIN {
   keys["record"] = "format_version"
   keys["core"] = "build_id behaviour_epoch"
   keys["profile"] = "id rev sha256"
-  keys["withheld"] = "ids"
   keys["content"] = "sha256 size mapper mapper_rule byte_order header_handling"
   keys["power_on"] = "policy policy_version seed_present seed"
   keys["run"] = "reason overshoot stop_point steps"
@@ -41,7 +40,7 @@ BEGIN {
   seq_refusal = "record core refusal"
   fieldkeys = "status value bound_by"
   modelkeys = "value ledger status bound_by"
-  nt = 0; sentinel = 0; nv = 0; events = ""
+  nt = 0; sentinel = 0; nv = 0; events = ""; wh_count = ""; wh_prev = ""
 }
 function viol(code, line, detail) { nv++; vbuf[nv] = sprintf("V\t%s\t%s\t%s", code, line, detail) }
 $1 == "END" { sentinel = 1; next }
@@ -61,6 +60,13 @@ $1 == "ERR" { viol($2, $3, $4); next }     # syntax-stage errors pass straight t
   # a stimulus line is events = N, or event_I = "AT,LINE,LEVEL": decimal fields with commas (a colon would read as a time)
   if (t == "stimulus" && k == "events") events = v
   if (t == "stimulus" && k != "events" && v !~ /^[0-9]+,[12],[01]$/) viol("REC_TABLES", ln, t "." k " is not AT,LINE,LEVEL in decimal")
+  # a withheld line is count = N (a plain decimal, at most 64) or id_I = a ledger id; the ids are strictly ascending, so the list is sorted and has no duplicate (plan 03-29: one id per row, format version 6)
+  if (t == "withheld" && k == "count") wh_count = v
+  if (t == "withheld" && k != "count") {
+    if (v !~ /^LED-[A-Z]+-[0-9][0-9][0-9][0-9]$/) viol("REC_TABLES", ln, t "." k " is not a ledger id")
+    else if (wh_prev != "" && !(v > wh_prev)) viol("REC_TABLES", ln, t "." k " is not strictly after the id before it: the withheld ids are sorted and without duplicates")   # rule-withheld-sorted
+    wh_prev = v
+  }
   # an input line is events = N (a plain decimal, at most 1024) or schedule_sha256 = 64 lowercase hex digits (plan 03-28)
   if (t == "input" && k == "events" && (v !~ /^(0|[1-9][0-9]*)$/ || length(v) > 4 || v + 0 > 1024)) viol("REC_TABLES", ln, t "." k " is not a plain decimal of at most 1024")
   if (t == "input" && k == "schedule_sha256" && (v !~ /^[0-9a-f]+$/ || length(v) != 64)) viol("REC_TABLES", ln, t "." k " is not 64 lowercase hex digits")
@@ -85,6 +91,12 @@ END {
       lim = events + 0; if (lim > 17) lim = 17     # a huge count is a violation below; the loop stays short
       for (j = 1; j <= lim; j++) want_st = want_st " event_" j
       if (events !~ /^[0-9]+$/ || events + 0 > 16 || kseq[t] != want_st) viol("REC_TABLES", seen[t], t " keys are '" kseq[t] "', want events and event_1 to event_N with N the value of events, at most 16")
+    } else if (t == "withheld") {
+      tok = t
+      want_wh = "count"
+      lim = wh_count + 0; if (lim > 65) lim = 65     # a huge count is a violation below; the loop stays short
+      for (j = 1; j <= lim; j++) want_wh = want_wh " id_" j
+      if (wh_count !~ /^(0|[1-9][0-9]*)$/ || wh_count + 0 > 64 || kseq[t] != want_wh) viol("REC_TABLES", seen[t], t " keys are '" kseq[t] "', want count and id_1 to id_N with N the value of count, at most 64")   # rule-withheld-count
     } else {
       tok = t
       if (t in keys && kseq[t] != keys[t]) viol("REC_TABLES", seen[t], t " keys are '" kseq[t] "', want '" keys[t] "'")

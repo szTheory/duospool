@@ -17,9 +17,13 @@
  * unmapped_read                       the byte an unmapped bank or an absent window reads (D-104)
  * vdc_vce_penalty_cycles              CPU cycles added to every bus access to the VDC and VCE windows (D-107)
  * tam_zero_noop                       1: TAM with the operand $00 changes no MPR and leaves the latch alone; 0: it leaves the MPRs alone and the latch takes A (D-105)
- * tma_multibit_highest                1: TMA with several operand bits returns the highest selected index; 0: the lowest (D-105) * block_prologue_cycles                cycles of the block-transfer prologue step (plan 03-25; D-100, LED-CPU-0008): the operand bytes are latched and Y, A and X are pushed in these cycles; the epilogue that pops X, A and Y is the manual's fixed 17 minus this (3) and a byte step is 6
+ * tma_multibit_highest                1: TMA with several operand bits returns the highest selected index; 0: the lowest (D-105)
+ * block_prologue_cycles                cycles of the block-transfer prologue step (plan 03-25; D-100, LED-CPU-0008): the operand bytes are latched and Y, A and X are pushed in these cycles; the epilogue that pops X, A and Y is the manual's fixed 17 minus this (3) and a byte step is 6
  *                                     (H8-6, S8-88, S8-89; the H8-25 grid misprints 17+16z, errata R-1), with the source read in the fourth cycle of a byte step and the destination written in the sixth, so a transfer of x bytes is 17 + 6x cycles whatever the split (a value from 1 to 16)
  * block_irq_after_epilogue            1: the interrupt inputs are sampled once, at the end of the block epilogue, and never inside a transfer (D-111, LED-IRQ-0007); 0: the epilogue takes no sample and the instruction after the transfer samples first
+ * pad_clr_high_nibble                the nibble a read of the $1000 window returns while the latch has CLR set, whatever is held (plan 03-29; D-115, LED-IO-0003): 0
+ * io_poweron_latch                    the latch of port O at power-on under every power-on policy (plan 03-29; D-115, R-5, LED-IO-0003): 255 (port O is high after reset, H8-18 and H8-19; which latch bits are SEL and CLR is the project choice of LED-IO-0002)
+ * pad_settle_mclk                     master clocks of settling after a write of the latch (plan 03-29; D-115, LED-IO-0004): 0, so a read sees the level of the input schedule at its own access stamp; the read looks up the schedule this many master clocks earlier
  */
 DS_CONST(cycle_mclk_low, 12, "LED-CPU-0003")
 DS_CONST(cycle_mclk_high, 3, "LED-CPU-0003")
@@ -36,3 +40,6 @@ DS_CONST(interrupt_entry_cycles, 8, "LED-CPU-0009")
 DS_CONST(speed_switch_extra_cycles, 0, "LED-CPU-0006")
 DS_CONST(block_prologue_cycles, 14, "LED-CPU-0008")
 DS_CONST(block_irq_after_epilogue, 1, "LED-IRQ-0007")
+DS_CONST(pad_clr_high_nibble, 0, "LED-IO-0003")
+DS_CONST(io_poweron_latch, 255, "LED-IO-0003")
+DS_CONST(pad_settle_mclk, 0, "LED-IO-0004")

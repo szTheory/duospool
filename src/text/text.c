@@ -275,7 +275,7 @@ static void emit_content(struct out *o, const struct ds_instance *inst)
  *     reads) and LED-PROF-0002 (the power-on values),
  *   - the ledger id of every row of model_params.def and of every row of constants.def (plan 03-18).
  */
-#define WH_MAX 24u    /* a line of the record is limited to 400 characters: the ids line prints each id as 12 characters, two quotes, a comma and a blank, so 24 ids take 7 + 24 * 16 + 1 = 392 */
+#define WH_MAX 64u    /* the table prints one id per row since format version 6 (plan 03-29), so a line is never longer than 20 characters and the count is limited only by the row capacity of a record; the single ids line of format version 5 held at most 24 ids (the 400-character line rule) */
 #define WH_ID_MAX 16u /* an id and its terminator */
 
 struct idset {
@@ -382,14 +382,14 @@ static void emit_withheld(struct out *o, const struct ds_profile *p)
         return;
     }
     table(o, "", "withheld");
-    put_lit(o, "ids = [");
-    for (i = 0u; i < set.n; i++) {
-        if (i != 0u) {
-            put_lit(o, ", ");
-        }
+    kv_u32(o, "count", set.n);
+    for (i = 0u; i < set.n; i++) { /* one id per row, id_1 to id_N in sorted order (format version 6, plan 03-29): every line stays far below the 400-character line rule whatever the number of ids */
+        put_lit(o, "id_");
+        put_u32(o, i + 1u);
+        put_lit(o, " = ");
         put_quoted(o, set.id[i], WH_ID_MAX);
+        put_ch(o, '\n');
     }
-    put_lit(o, "]\n");
 }
 
 /* the power-on policy of the run (D-50): its name, the version of the policy table, and whether a seed was supplied and which */

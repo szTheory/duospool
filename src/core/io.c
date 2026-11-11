@@ -52,7 +52,7 @@ const char *ds_input_refusal_name(uint32_t number)
 /* power-on state of the port (D-114, R-5): the latch of port O drives a high level after reset (H8-18, H8-19), so it is $FF under every policy, and port 1 holds the pad that the profile names (r1: pad2); ports 2 to 5 stay empty */
 void ds_io_poweron(struct ds_instance *inst)
 {
-    inst->o_latch = 0xFFu;
+    inst->o_latch = (uint8_t)DS_CONST_io_poweron_latch;
     inst->slot_type[0] = ds_streq(inst->profile.field[DS_FIELD_input_port1].value, "pad2") ? (uint8_t)DS_SLOT_PAD2 : (uint8_t)DS_SLOT_NONE;
 }
 
@@ -79,11 +79,13 @@ uint8_t ds_io_read(const struct ds_instance *inst, uint64_t stamp)
 {
     uint32_t d6 = inst->profile.field[DS_FIELD_io_1000_d6_value].value[0] == '1' ? 1u : 0u;
     uint32_t d7 = inst->profile.field[DS_FIELD_io_1000_d7_value].value[0] == '1' ? 1u : 0u;
-    uint32_t nibble = 0u;
+    uint32_t nibble;
     uint32_t held;
+    uint64_t settle = (uint64_t)DS_CONST_pad_settle_mclk; /* 0: no settling time (constants.def, ASSUMED LED-IO-0004), so the level is the one at the read's own stamp */
 
+    nibble = (uint32_t)DS_CONST_pad_clr_high_nibble & 0x0Fu; /* CLR high: the nibble is this constant whatever is held (ASSUMED LED-IO-0003) */
     if (((uint32_t)inst->o_latch & LATCH_CLR) == 0u) {
-        held = inst->slot_type[0] == (uint8_t)DS_SLOT_PAD2 ? level_at(inst, 1u, stamp) : 0u; /* no pad on port 1: the lines idle high, nothing pressed */
+        held = inst->slot_type[0] == (uint8_t)DS_SLOT_PAD2 ? level_at(inst, 1u, stamp >= settle ? stamp - settle : UINT64_C(0)) : 0u; /* no pad on port 1: the lines idle high, nothing pressed */
         held = ((uint32_t)inst->o_latch & LATCH_SEL) != 0u ? (held >> PAD_DIR_SHIFT) & 0x0Fu : held & 0x0Fu;
         nibble = ~held & 0x0Fu; /* a pressed button reads 0 */
     }

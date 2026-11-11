@@ -1698,6 +1698,33 @@ selftest() {
     fi
   fi
 
+  # (o2) the two rules of the [withheld] table (plan 03-29; one id per row, format version 6) are each removable and detected: one line per rule, SELFTEST mutation-record-lint-withheld CASE PASS|FAIL. Each entry is CASE:TAG, the mini-root under tests/gate/record-lint and the tag of the one statement of
+  # scripts/lib/record-rules.awk that reports its code. The control, run with --expect REC_TABLES, is met on an unmutated copy; with the tagged line deleted from the copy the same run must exit 1. A tag that matches no line, or that is still present after the deletion, is a FAIL. The tags are assembled here so that this script never carries them.
+  if st_want mutation-record-lint-withheld; then
+    st_ran=1
+    for rw_spec in withheld-count-mismatch:count withheld-unsorted:sorted; do
+      rw_case=${rw_spec%%:*}
+      rw_tag=rule-withheld-
+      rw_tag="${rw_tag}${rw_spec#*:}"
+      rm -rf "$cp_dir"
+      cp -R "$here" "$cp_dir"
+      rw_rec="tests/gate/record-lint/$rw_case/record.toml"
+      if sh "$cp_dir/record-lint" --expect REC_TABLES "$rw_rec" > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+      st_alive=0
+      if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+      before=$(grep -c "$rw_tag" "$cp_dir/lib/record-rules.awk" || true)
+      grep -v "$rw_tag" "$cp_dir/lib/record-rules.awk" > "$cp_dir/lib/record-rules.mutated" || true
+      mv "$cp_dir/lib/record-rules.mutated" "$cp_dir/lib/record-rules.awk"
+      after=$(grep -c "$rw_tag" "$cp_dir/lib/record-rules.awk" || true)
+      if sh "$cp_dir/record-lint" --expect REC_TABLES "$rw_rec" > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+      if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+        echo "SELFTEST mutation-record-lint-withheld $rw_case PASS"
+      else
+        echo "SELFTEST mutation-record-lint-withheld $rw_case FAIL (alive $st_alive, before $before, after $after, exit $r)"; failed=1
+      fi
+    done
+  fi
+
   # (o) the pointer rule of record-lint must be what turns the pointer control red, and only that rule (T-02-25). The pointer-in-value control
   # is run on a scratch copy of scripts/ with --expect REC_POINTER: unmutated that expectation is met (exit 0, EXPECT_OK); with the line that carries the
   # rule marker deleted the code is no longer reported, so the same run must exit 1, which is the control flipping to broken. The marker is assembled

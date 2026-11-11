@@ -75,7 +75,18 @@ value = "zero"
 bound_by = "run-request"
 
 [withheld]
-ids = ["LED-AUD-0001", "LED-IO-0001", "LED-IRQ-0001", "LED-LOAD-0001", "LED-LOAD-0002", "LED-LOAD-0003", "LED-LOAD-0005", "LED-PROF-0002", "LED-VID-0001", "LED-VID-0002", "LED-VID-0003"]
+count = 11
+id_1 = "LED-AUD-0001"
+id_2 = "LED-IO-0001"
+id_3 = "LED-IRQ-0001"
+id_4 = "LED-LOAD-0001"
+id_5 = "LED-LOAD-0002"
+id_6 = "LED-LOAD-0003"
+id_7 = "LED-LOAD-0005"
+id_8 = "LED-PROF-0002"
+id_9 = "LED-VID-0001"
+id_10 = "LED-VID-0002"
+id_11 = "LED-VID-0003"
 
 [content]
 sha256 = "cb038cda079ab0edec440521c4dc250a8a8c2af6e068470dbda7f05ff07b0287"

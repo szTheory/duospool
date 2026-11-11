@@ -191,7 +191,7 @@ void kind_record_golden(const struct kase *k, struct ctx *c, char *got, size_t g
 void kind_record_refusal(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_record_refuses_quote(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 /* moved from runner.c by plan 03-03: the record_lines kind, the record parser it shares with content_id, and the row type of both */
-#define REC_MAX_ROWS 128u
+#define REC_MAX_ROWS 192u
 #define KEY_MAX 72u
 
 struct recrow {

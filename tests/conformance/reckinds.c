@@ -243,7 +243,7 @@ void kind_record_refusal(const struct kase *k, struct ctx *c, char *got, size_t 
     if (st != DS_TEXT_OK || reason == NULL) {
         return;
     }
-    check(c, strncmp(text, "[record]\nformat_version = 5\n\n[core]\nbuild_id = \"", 47u) == 0, "the refusal record does not start with the record and core tables");
+    check(c, strncmp(text, "[record]\nformat_version = 6\n\n[core]\nbuild_id = \"", 47u) == 0, "the refusal record does not start with the record and core tables");
     check(c, strstr(text, "\nbehaviour_epoch = 2\n") != NULL, "the refusal record has no behaviour_epoch line");
     refusal_tail(tail, sizeof tail, reason, s.profile, s.rev);
     tlen = strlen(tail);
@@ -373,9 +373,106 @@ static void exp_add(const char *prefix, const char *table, const char *key)
     }
 }
 
+/* the ledger id of every row of constants.def, in file order (read from the def by the preprocessor, not from the printed record) */
+#define DS_CONST(name, value, ledger) ledger,
+static const char *const const_ledger[CONST_ROWS] = {
+#include "constants.def"
+};
+#undef DS_CONST
+
+/* the sorted, duplicate-free list of ledger ids that the [withheld] table must hold for a request (plan 03-29): the ids of the fields the request bound, the unresolved behaviours of the profile, the three load rules that are assumptions, and the ledger id of every model row and every constants row.
+ * It is rebuilt here from the defs and the request, not from the printer, so the table is checked against the sources and not against itself. Returns the count, or 0 when it does not fit. */
+#define WH_EXP_MAX 64u
+static char wh_exp[WH_EXP_MAX][16];
+
+static int wh_add(unsigned *n, const char *s, size_t len)
+{
+    unsigned i;
+    unsigned at;
+
+    if (len == 0u || len >= sizeof wh_exp[0]) {
+        return -1;
+    }
+    for (at = 0u; at < *n; at++) {
+        int cmp = strncmp(s, wh_exp[at], len);
+
+        if (cmp == 0 && wh_exp[at][len] == '\0') {
+            return 0;
+        }
+        if (cmp < 0 || (cmp == 0 && wh_exp[at][len] != '\0')) {
+            break;
+        }
+    }
+    if (*n == WH_EXP_MAX) {
+        return -1;
+    }
+    for (i = *n; i > at; i--) {
+        memcpy(wh_exp[i], wh_exp[i - 1u], sizeof wh_exp[0]);
+    }
+    memcpy(wh_exp[at], s, len);
+    wh_exp[at][len] = '\0';
+    (*n)++;
+    return 0;
+}
+
+static int wh_add_list(unsigned *n, const char *list)
+{
+    while (*list != '\0') {
+        size_t len = strcspn(list, "|");
+
+        if (wh_add(n, list, len) != 0) {
+            return -1;
+        }
+        list += len;
+        if (*list == '|') {
+            list++;
+        }
+    }
+    return 0;
+}
+
+static unsigned withheld_expected(const struct spec *s)
+{
+    unsigned n = 0u;
+    uint32_t i;
+    int bad = 0;
+
+    for (i = 0u; i < (uint32_t)DS_FIELD_COUNT; i++) {
+        if (s->bind[i] != NULL) {
+            bad |= wh_add_list(&n, ds_field_ledger(i)) != 0;
+        }
+    }
+    for (i = 0u; i < ds_profile_unresolved_count(); i++) {
+        bad |= wh_add_list(&n, ds_profile_unresolved(i)) != 0;
+    }
+    bad |= wh_add_list(&n, "LED-LOAD-0003|LED-LOAD-0005|LED-PROF-0002") != 0;
+    for (i = 0u; i < (uint32_t)DS_MODEL_COUNT; i++) {
+        bad |= wh_add_list(&n, ds_model_ledger(i)) != 0;
+    }
+    for (i = 0u; i < (uint32_t)CONST_ROWS; i++) {
+        bad |= wh_add_list(&n, const_ledger[i]) != 0;
+    }
+    return bad ? 0u : n;
+}
+
+static int value_is(const char *raw, const char *want);
+
+/* 1 when one of the rows withheld.id_N holds the ledger id (one id per row since format version 6) */
+static int withheld_has(const struct recrow *rows, size_t n, const char *id)
+{
+    size_t i;
+
+    for (i = 0u; i < n; i++) {
+        if (strncmp(rows[i].key, "withheld.id_", 12u) == 0 && value_is(rows[i].val, id)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static unsigned exp_events; /* the events the case declares: the skeleton holds one event_N line each after stimulus.events (plan 03-23) */
 
-static void build_expected_keys(void)
+static void build_expected_keys(unsigned nids)
 {
     uint32_t i;
 
@@ -399,7 +496,13 @@ static void build_expected_keys(void)
         exp_add("", tab, "value");
         exp_add("", tab, "bound_by");
     }
-    exp_add("", "withheld", "ids");
+    exp_add("", "withheld", "count");
+    for (i = 1u; i <= nids; i++) { /* one row id_N per withheld ledger id (format version 6) */
+        char name[16];
+
+        snprintf(name, sizeof name, "id_%u", (unsigned)i);
+        exp_add("", "withheld", name);
+    }
     exp_add("", "content", "sha256");
     exp_add("", "content", "size");
     exp_add("", "content", "mapper");
@@ -658,6 +761,23 @@ static void check_input_rows(struct ctx *c, const struct recrow *rows, size_t nr
     }
 }
 
+/* the [withheld] table against the list rebuilt from the defs and the request (plan 03-29): count is the number of ids, and the rows id_1 to id_N hold exactly those ids in sorted order, so a dropped, extra, duplicated or misordered id is noticed */
+static void check_withheld_rows(struct ctx *c, const struct recrow *rows, size_t nrows, unsigned nids)
+{
+    const struct recrow *rc = find_row(rows, nrows, "withheld.count");
+    unsigned i;
+    char key[KEY_MAX];
+
+    check(c, rc != NULL && strtoul(rc->val, NULL, 10) == (unsigned long)nids, "withheld.count is not the number of ledger ids that the defs and the request give");
+    for (i = 1u; i <= nids; i++) {
+        const struct recrow *ri;
+
+        snprintf(key, sizeof key, "withheld.id_%u", i);
+        ri = find_row(rows, nrows, key);
+        check(c, ri != NULL && value_is(ri->val, wh_exp[i - 1u]), "a withheld id row differs from the sorted list of ledger ids of the defs and the request");
+    }
+}
+
 /*
  * kind record_lines: boot the request (an accepted one), print the record into a buffer (nothing goes to stdout, D-80) and require
  *   the exact table and key order of the skeleton, LF and printable ASCII only, one blank line between tables and nowhere else,
@@ -685,6 +805,7 @@ void kind_record_lines(const struct kase *k, struct ctx *c, char *got, size_t go
     size_t nrows = 0u;
     size_t i;
     uint32_t f;
+    unsigned nids;
     const char *err;
     enum ds_text_status st;
 
@@ -749,9 +870,11 @@ void kind_record_lines(const struct kase *k, struct ctx *c, char *got, size_t go
     memcpy(work, text, len + 1u);
     err = parse_record(work, rows, &nrows);
     check(c, err == NULL, err != NULL ? err : "layout");
-    build_expected_keys();
+    nids = withheld_expected(&s);
+    check(c, nids > 0u, "the expected list of withheld ledger ids is empty or does not fit");
+    build_expected_keys(nids);
     /* 61 rows before plan 03-18 (format_version, 2 core, 3 profile, 39 field, 1 withheld, 6 content, 4 power_on, 1 limit, 4 machine), plus the 4 rows of the run table, the 1 row of the stimulus table of a record with no event (plan 03-23), the 2 rows of the input table (plan 03-28) and, from the defs, 4 rows per model parameter and 1 per constant */
-    check(c, n_exp == 61u + 4u + 1u + 2u + exp_events + 4u * (unsigned)DS_MODEL_COUNT + (unsigned)CONST_ROWS, "the expected record does not hold 68 rows plus 1 per declared stimulus event, 4 per model parameter and 1 per constant");
+    check(c, n_exp == 60u + 1u + nids + 4u + 1u + 2u + exp_events + 4u * (unsigned)DS_MODEL_COUNT + (unsigned)CONST_ROWS, "the expected record does not hold 68 rows plus 1 per withheld ledger id, 1 per declared stimulus event, 4 per model parameter and 1 per constant");
     check(c, err == NULL && nrows == n_exp, "the number of rows differs from the skeleton");
     for (i = 0u; err == NULL && i < nrows && i < n_exp; i++) {
         if (strcmp(rows[i].key, exp_key[i]) != 0) {
@@ -765,6 +888,7 @@ void kind_record_lines(const struct kase *k, struct ctx *c, char *got, size_t go
         check_items(c, rows, nrows, k->val[K_EXPECT]);
         check_stimulus_rows(c, rows, nrows, k);
         check_input_rows(c, rows, nrows, k);
+        check_withheld_rows(c, rows, nrows, nids);
     }
 
     /* every field table: status, value and binder follow from the built-in profile and the request */
@@ -818,9 +942,7 @@ void kind_record_lines(const struct kase *k, struct ctx *c, char *got, size_t go
         check(c, rl != NULL && value_is(rl->val, ds_model_ledger(f)), "a model ledger line differs from the row of model_params.def");
         check(c, rs != NULL && value_is(rs->val, ds_model_status(f)), "a model status line differs from the row of model_params.def");
         check(c, rb != NULL && value_is(rb->val, bound ? "run-request" : "default"), "a model bound_by line differs from the request");
-        snprintf(key, sizeof key, "\"%s\"", ds_model_ledger(f));
-        rv = find_row(rows, nrows, "withheld.ids");
-        check(c, rv != NULL && strstr(rv->val, key) != NULL, "the ledger id of a model row is not in the withheld list");
+        check(c, withheld_has(rows, nrows, ds_model_ledger(f)), "the ledger id of a model row is not in the withheld list");
     }
 
     /* the profile text is an exact part of the record, followed by the content table */
@@ -1240,19 +1362,13 @@ void kind_record_constants(const struct kase *k, struct ctx *c, char *got, size_
     tr = run_of(&s, NULL);
     if (print_rows(c, inst, &tr, text, work, rows, &nrows) == 0) {
         check(c, constants_match(rows, nrows, def, n), "the [constants] table differs from src/core/constants.def");
-        wh = find_row(rows, nrows, "withheld.ids");
+        wh = find_row(rows, nrows, "withheld.count");
         check(c, wh != NULL, "the record has no withheld list");
         for (i = 0u; wh != NULL && i < n; i++) {
-            char quoted[24];
-
-            snprintf(quoted, sizeof quoted, "\"%s\"", def[i].ledger);
-            check(c, strstr(wh->val, quoted) != NULL, "the ledger id of a constants row is not in the withheld list");
+            check(c, withheld_has(rows, nrows, def[i].ledger), "the ledger id of a constants row is not in the withheld list");
         }
         for (i = 0u; wh != NULL && i < (unsigned)DS_MODEL_COUNT; i++) {
-            char quoted[24];
-
-            snprintf(quoted, sizeof quoted, "\"%s\"", ds_model_ledger(i));
-            check(c, strstr(wh->val, quoted) != NULL, "the ledger id of a model row is not in the withheld list");
+            check(c, withheld_has(rows, nrows, ds_model_ledger(i)), "the ledger id of a model row is not in the withheld list");
         }
         /* the controls: the comparison fails for each kind of drift */
         memcpy(mut, def, n * sizeof def[0]);

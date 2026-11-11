@@ -26,8 +26,11 @@
 # Plan 03-29 (D-116, D-117, D-121; INP-04) added the regions IOPT (the latch of port O and the device kind of each of the five ports, 6 bytes: FF 01 00 00 00 00 at boot) and SCHD (the declared input schedule: 1024 slots of 16 bytes and the count and a reserved word, 16392 zero bytes for a boot that is given no input) and the serial version
 # 7, so the digest line changed. A throwaway C program outside the repo booted this request and wrote the 8607-byte version 6 stream with the core's stream writer, which hashes to the committed version 6 digest above under shasum -a 256; a throwaway python script outside the repo set the version to 7 and appended the frames IOPT and SCHD
 # written from the rules above, and the 25021-byte stream it wrote hashes to the new digest under shasum -a 256. No other line of the record changed (the schedule is not in the printed record, which names it in [input]).
+# Plan 03-29 changed the layout, format_version 5 to 6 (D-53 amended; the standing note on the 24-id cap of the single ids line): the table [withheld] is now count = N and one row id_1 to id_N per ledger id in sorted order, written here from the defs and the ledger (the ids of the open fields the default request binds, the unresolved
+# behaviours of the profile, LED-LOAD-0003, LED-LOAD-0005 and LED-PROF-0002, and the ledger id of every row of src/core/model_params.def and src/core/constants.def), not copied from printer output. The same plan added the constants rows pad_clr_high_nibble (0, LED-IO-0003), io_poweron_latch (255, LED-IO-0003) and pad_settle_mclk (0, LED-
+# IO-0004) after block_irq_after_epilogue, so LED-IO-0003 and LED-IO-0004 joined [withheld] (26 ids). The digest line is the one of the version 7 stream above: the constants and the layout are not in the digest.
 [record]
-format_version = 5
+format_version = 6
 
 [core]
 build_id = "unset"
@@ -104,7 +107,33 @@ value = "seeded-prng-v1"
 bound_by = "run-request"
 
 [withheld]
-ids = ["LED-AUD-0001", "LED-CPU-0003", "LED-CPU-0004", "LED-CPU-0006", "LED-CPU-0008", "LED-CPU-0009", "LED-CPU-0010", "LED-CPU-0012", "LED-CPU-0015", "LED-CPU-0017", "LED-IO-0001", "LED-IRQ-0001", "LED-IRQ-0003", "LED-IRQ-0005", "LED-IRQ-0006", "LED-IRQ-0007", "LED-LOAD-0001", "LED-LOAD-0002", "LED-LOAD-0003", "LED-LOAD-0005", "LED-PROF-0002", "LED-VID-0001", "LED-VID-0002", "LED-VID-0003"]
+count = 26
+id_1 = "LED-AUD-0001"
+id_2 = "LED-CPU-0003"
+id_3 = "LED-CPU-0004"
+id_4 = "LED-CPU-0006"
+id_5 = "LED-CPU-0008"
+id_6 = "LED-CPU-0009"
+id_7 = "LED-CPU-0010"
+id_8 = "LED-CPU-0012"
+id_9 = "LED-CPU-0015"
+id_10 = "LED-CPU-0017"
+id_11 = "LED-IO-0001"
+id_12 = "LED-IO-0003"
+id_13 = "LED-IO-0004"
+id_14 = "LED-IRQ-0001"
+id_15 = "LED-IRQ-0003"
+id_16 = "LED-IRQ-0005"
+id_17 = "LED-IRQ-0006"
+id_18 = "LED-IRQ-0007"
+id_19 = "LED-LOAD-0001"
+id_20 = "LED-LOAD-0002"
+id_21 = "LED-LOAD-0003"
+id_22 = "LED-LOAD-0005"
+id_23 = "LED-PROF-0002"
+id_24 = "LED-VID-0001"
+id_25 = "LED-VID-0002"
+id_26 = "LED-VID-0003"
 
 [content]
 sha256 = "dea83b86f5837a056859d5cf1ff5db8612092a2855be3e5da32ed277fc5f37e0"
@@ -155,6 +184,9 @@ interrupt_entry_cycles = "8 LED-CPU-0009"
 speed_switch_extra_cycles = "0 LED-CPU-0006"
 block_prologue_cycles = "14 LED-CPU-0008"
 block_irq_after_epilogue = "1 LED-IRQ-0007"
+pad_clr_high_nibble = "0 LED-IO-0003"
+io_poweron_latch = "255 LED-IO-0003"
+pad_settle_mclk = "0 LED-IO-0004"
 
 [run]
 reason = "none"
