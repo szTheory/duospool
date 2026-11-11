@@ -179,9 +179,27 @@ run_controls() {
 # preflight (D-60): the tools the gate needs are present. A missing tool is a harness error (exit 2 from preflight, ERROR
 # here), never a skipped stage. Then two controls against the checker itself: an impossible tool name must be refused with
 # exit 2 and a PREFLIGHT_MISSING line naming it (T-02-06), and an a|b entry must be satisfied by its second alternative.
+# pf_empty_path_control SCRIPT (D-128, D-129, Pitfall 15): the default tool list of SCRIPT must name the assembler and the linker. With PATH set to an empty scratch directory every
+# entry is missing (command -v is a builtin), so SCRIPT must exit 2, print PREFLIGHT_MISSING ca65 and PREFLIGHT_MISSING ld65 and never the STATUS line. Output goes to $tmp/pf.out.
+# Returns 0 when the control holds. The selftest mutation-preflight-ca65 runs it against a copy of the script with ca65 removed from the default list.
+pf_empty_path_control() {
+  pe_empty="$tmp/pf-empty-path"
+  mkdir -p "$pe_empty"
+  if env PATH="$pe_empty" /bin/sh "$1" > "$tmp/pf.out" 2>&1; then pe_r=0; else pe_r=$?; fi
+  if [ "$pe_r" -ne 2 ] || ! grep -qx 'PREFLIGHT_MISSING ca65' "$tmp/pf.out" || ! grep -qx 'PREFLIGHT_MISSING ld65' "$tmp/pf.out" || grep -q '^STATUS preflight ok$' "$tmp/pf.out"; then
+    return 1
+  fi
+  return 0
+}
+
 stage_preflight() {
   checker sh "$here/preflight" || return $?
   pf_rc=0
+  if pf_empty_path_control "$here/preflight"; then :; else
+    echo "CONTROL BROKEN preflight-empty-path-ca65 (wanted exit 2 with PREFLIGHT_MISSING ca65 and ld65 and no STATUS line)"
+    sed 's/^/  /' "$tmp/pf.out"
+    pf_rc=1
+  fi
   if sh "$here/preflight" --tools no-such-tool-xyz > "$tmp/pf.out" 2>&1; then r=0; else r=$?; fi
   if [ "$r" -ne 2 ] || ! grep -qx 'PREFLIGHT_MISSING no-such-tool-xyz' "$tmp/pf.out" || grep -q '^STATUS preflight ok$' "$tmp/pf.out"; then
     echo "CONTROL BROKEN preflight-missing-tool (exit $r, wanted 2 with PREFLIGHT_MISSING no-such-tool-xyz)"
@@ -1840,6 +1858,26 @@ selftest() {
       echo "SELFTEST mutation-fixture-lint-orphan PASS"
     else
       echo "SELFTEST mutation-fixture-lint-orphan FAIL"; failed=1
+    fi
+  fi
+
+  # (z2) the assembler is a default preflight requirement (D-128, Pitfall 15): the empty-PATH control of the preflight stage holds on the real script (alive), and with ca65 removed
+  # from the default tool list of a scratch copy it must go red, so a gate whose first stage forgot the assembler cannot pass.
+  if st_want mutation-preflight-ca65; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    st_alive=0
+    if pf_empty_path_control "$cp_dir/preflight"; then st_alive=1; fi
+    before=$(grep -c '^tools=".* ca65 ld65"$' "$cp_dir/preflight" || true)
+    sed 's/^\(tools=".*\) ca65 ld65"$/\1 ld65"/' "$cp_dir/preflight" > "$cp_dir/preflight.mutated" || true
+    mv "$cp_dir/preflight.mutated" "$cp_dir/preflight"
+    after=$(grep -c '^tools=".* ca65 ld65"$' "$cp_dir/preflight" || true)
+    if pf_empty_path_control "$cp_dir/preflight"; then r=0; else r=1; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+      echo "SELFTEST mutation-preflight-ca65 PASS"
+    else
+      echo "SELFTEST mutation-preflight-ca65 FAIL (alive $st_alive, before $before, after $after, control $r)"; failed=1
     fi
   fi
 

@@ -20,6 +20,8 @@
 #   FIX_BAD_VERDICT_SOURCE       verdict_source is a list of one or more forms joined by + (no blanks), each one of spec-literal:LED-AREA-NNNN,
 #                                guest-computed, independent-script or manual-cite:PAGE (PAGE is H8-n, S8-n or BIOS-n, n decimal); the literal
 #                                duospool-output (the emulator judging itself, FIX-03) is rejected as a form, in any list, as is any other value
+#   FIX_AUTHORED_REDIST          kind = authored with a redistribution other than generated-not-committed (D-123): an authored ROM is built in the
+#                                gate and never committed, so the only admitted value is the one that says so
 # This check enforces structure, not truth: the bytes are judged by the hash comparison in scripts/fixture-check.
 BEGIN {
   FS = "\t"
@@ -61,6 +63,7 @@ END {
     }
     if (vbad) viol("FIX_BAD_VERDICT_SOURCE", ln["verdict_source"], "verdict_source " v)
   }
+  if (val["kind"] == "authored" && ("redistribution" in val) && val["redistribution"] != "generated-not-committed") viol("FIX_AUTHORED_REDIST", ln["redistribution"], "authored entry with redistribution " val["redistribution"])  # rule-authored-redist
   v = val["sha256"]
   if (v != "" && (length(v) != 64 || v !~ /^[0-9a-f]+$/)) viol("FIX_BAD_ENUM", ln["sha256"], "sha256 is not 64 lowercase hex digits")
   if (("size" in val) && val["size"] + 0 < 0) viol("FIX_BAD_ENUM", ln["size"], "size is negative")

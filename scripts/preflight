@@ -6,7 +6,7 @@
 # a stage that silently did not run would read as a pass.
 # usage: preflight [--tools LIST]
 #   --tools LIST  space-separated tool names; a|b means either one satisfies the entry (the first one found is reported)
-#   default: cmake ninja cc nm perl iconv awk git sha256sum|shasum
+#   default: cmake ninja cc nm perl iconv awk git sha256sum|shasum ca65 ld65   (ca65 and ld65 build the authored fixtures, D-128; WLA-DX is optional and never required, D-129)
 # stdout: PREFLIGHT_OK TOOL per entry found, PREFLIGHT_MISSING ENTRY per entry not found, and on success the marker line
 #         STATUS preflight ok
 # exit  : 0 every entry found | 2 an entry is missing, or a usage error (there is no exit 1: nothing here is a violation of a rule)
@@ -18,7 +18,7 @@ usage() {
   exit 2
 }
 
-tools="cmake ninja cc nm perl iconv awk git sha256sum|shasum"
+tools="cmake ninja cc nm perl iconv awk git sha256sum|shasum ca65 ld65"
 while [ $# -gt 0 ]; do
   case $1 in
     --tools) [ $# -ge 2 ] || usage; tools=$2; shift 2 ;;
