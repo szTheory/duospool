@@ -508,9 +508,13 @@ stage_ingest_controls() {
 # and every ok-<case> must pass. Then three probes that run_controls cannot express, built at run time under $tmp: a directory
 # holding one good and one bad file must print not one byte on stdout (no partial TSV, D-51), the ok case must print its key
 # rows and end with an END row that counts both files, and a TAB in a file name must be refused as BAD_FILENAME.
+# Plan 03-27: the same for the input script mode (conformance-flatten --inputs, stage 2 scripts/lib/input-rules.awk): every tests/gate/flatten-input/<case>/ is a directory of input scripts judged like the case files above, a directory with one good and one bad script
+# must print not one byte (no partial rows reach the runner), the ok case must print SCRIPT and INPUT rows and an END row, and a stage 2 that prints nothing (an empty copy of input-rules.awk in a scratch tree) must be INP_STAGE_DEAD, never an accepted script.
 stage_flatten_controls() {
   run_controls --ok-prefix --require-negative tests/gate/flatten tests/gate/flatten sh "$here/conformance-flatten" @EXPECT@ @DIR@
   fc_rc=$rc
+  run_controls --ok-prefix --require-negative tests/gate/flatten-input tests/gate/flatten-input sh "$here/conformance-flatten" --inputs @EXPECT@ @DIR@
+  if [ "$rc" -eq 2 ] || { [ "$rc" -eq 1 ] && [ "$fc_rc" -eq 0 ]; }; then fc_rc=$rc; fi
   tab=$(printf '\t')
   w="$tmp/flatten"
   rm -rf "$w"
@@ -539,6 +543,36 @@ stage_flatten_controls() {
   if [ "$r" -ne 0 ]; then
     echo "CONTROL BROKEN tab-in-file-name (exit $r, wanted BAD_FILENAME)"
     sed 's/^/  /' "$w/tab.out"
+    [ "$fc_rc" -eq 2 ] || fc_rc=1
+  fi
+  # the input script mode (plan 03-27): no partial rows, the row shapes, and a dead stage 2
+  if mkdir -p "$w/imixed" "$w/dead/lib" \
+    && cp tests/gate/flatten-input/ok-script/a.toml "$w/imixed/a-good.toml" \
+    && cp tests/gate/flatten-input/bad-order/a.toml "$w/imixed/z-bad.toml" \
+    && cp "$here/conformance-flatten" "$w/dead/conformance-flatten" \
+    && cp "$here/lib/toml-subset.awk" "$w/dead/lib/toml-subset.awk" \
+    && : > "$w/dead/lib/input-rules.awk"; then :; else
+    echo "HARNESS_ERROR cannot create the input flatten probe files"
+    return 2
+  fi
+  if sh "$here/conformance-flatten" --inputs "$w/imixed" > "$w/imixed.out" 2> "$w/imixed.err"; then r=0; else r=$?; fi
+  bytes=$(wc -c < "$w/imixed.out" | tr -d ' ')
+  if [ "$r" -ne 1 ] || [ "$bytes" -ne 0 ]; then
+    echo "CONTROL BROKEN input-mixed-good-and-bad (exit $r, $bytes stdout bytes, wanted exit 1 and 0 bytes)"
+    sed 's/^/  /' "$w/imixed.err"
+    [ "$fc_rc" -eq 2 ] || fc_rc=1
+  fi
+  if sh "$here/conformance-flatten" --inputs tests/gate/flatten-input/ok-script > "$w/iok.out" 2> "$w/iok.err"; then r=0; else r=$?; fi
+  last=$(tail -n 1 "$w/iok.out")
+  if [ "$r" -ne 0 ] || [ "$last" != "END${tab}1" ] || ! grep -q "^SCRIPT${tab}a${tab}3\$" "$w/iok.out" || [ "$(grep -c "^INPUT${tab}a${tab}" "$w/iok.out")" -ne 3 ]; then
+    echo "CONTROL BROKEN input-ok-script-rows (exit $r, last row '$last')"
+    sed 's/^/  /' "$w/iok.err"
+    [ "$fc_rc" -eq 2 ] || fc_rc=1
+  fi
+  if sh "$w/dead/conformance-flatten" --inputs --expect INP_STAGE_DEAD tests/gate/flatten-input/ok-script > "$w/idead.out" 2>&1; then r=0; else r=$?; fi
+  if [ "$r" -ne 0 ]; then
+    echo "CONTROL BROKEN input-dead-stage-2 (exit $r, wanted INP_STAGE_DEAD)"
+    sed 's/^/  /' "$w/idead.out"
     [ "$fc_rc" -eq 2 ] || fc_rc=1
   fi
   return "$fc_rc"
