@@ -126,41 +126,46 @@ Plans:
   3. A fixture run in bounded chunks of varying size produces outputs identical to an uninterrupted run. This includes stops mid-frame and mid-block-transfer, including a length-0 (65,536-byte) transfer. A snapshot taken at any stop point and restored into a fresh instance continues identically.
   4. Turning on the CPU instruction trace and the device-register write log leaves verdicts, machine time, and state digests unchanged.
   5. Each cycle count and access penalty in use has a ledger entry that cites its source or labels it a modelling assumption. This covers speed switching and VDC/VCE access penalties. Unresolved edges are named profile or model parameters, not silent choices: interrupt latency around block transfers and after CLI/RTI, TAM/TMA #0, power-up MPR values, and ST0-ST2 MMU bypass.
-**Plans**: 33 plans in 33 sequential waves (context waves W1-W8 of 03-CONTEXT; W6-W7 are the Phase 3.1 cut line)
+**Plans**: 38 plans in 38 sequential waves, listed in execution order (context waves W1-W8 of 03-CONTEXT; W6-W7 are the Phase 3.1 cut line; ids 03-34..03-38 were added by the round-1 plan-check revision)
 
 Plans:
 - [ ] 03-01-PLAN.md — W1 tracer: ca65 ds_proto through fixture-build, absolute-deadline ds_run in master clocks, minimal CPU and bus, DSV1 judged from guest RAM
-- [ ] 03-02-PLAN.md — W1: placeholder run API deleted; spin, step and interleave kinds on ds_run; run refusals def
-- [ ] 03-03-PLAN.md — W1: placeholder state removed; epoch 2, serial 2, master-clocks record, CPU0 region, goldens
-- [ ] 03-04-PLAN.md — W1: runner headroom, optional case keys in three places, guestkinds.c, authored fixture key
-- [ ] 03-05-PLAN.md — W1: fixture library (startup, verdict, DCK1 literal table), DSV1 protocol controls, cites.txt, fixture-lint
+- [ ] 03-02-PLAN.md — W1: placeholder run API deleted; run_until_abs and run_chunk_sum; spin and interleave kinds on ds_run
+- [ ] 03-35-PLAN.md — W1: run refusals def with full coverage rows
+- [ ] 03-03-PLAN.md — W1: CPU0 region, PSGN/VDCP out, serial 2, goldens; runner headroom
+- [ ] 03-36-PLAN.md — W1: placeholder state removed; epoch 2, master-clocks record, goldens
+- [ ] 03-04-PLAN.md — W1: optional case keys in three places, guestkinds.c, authored fixture key
+- [ ] 03-05-PLAN.md — W1: fixture library (startup with RAM vectors, verdict, DCK1 literal table), DSV1 protocol controls, t=0 control
+- [ ] 03-37-PLAN.md — W1: cites.txt and fixture-lint with dead-stage control
 - [ ] 03-06-PLAN.md — W1: authored manifest entries, merged used list, assembler preflight, TOOLS.md, LED-TOOL-0001
-- [ ] 03-07-PLAN.md — W1: CI apt cc65 step with workflow-check, README and docs-check, W1 ledger entries and timing
+- [ ] 03-07-PLAN.md — W1: CI apt cc65 step with workflow-check and regenerated mini-roots
+- [ ] 03-38-PLAN.md — W1: README and docs-check, W1 ledger entries and timing
 - [ ] 03-08-PLAN.md — W2 tracer: manual opcode TSV and the ca65 encoding oracle (xasm), WLA optional
 - [ ] 03-09-PLAN.md — W2: 256-row cpu_ops.def, two-way opcode oracle, derived overshoot bound
 - [ ] 03-10-PLAN.md — W2: mutate_sweep, insn sink, opcode-exercise inventory
-- [ ] 03-11-PLAN.md — W2: load, store, transfer, stack semantics; cpu_ldst; policies key
+- [ ] 03-11-PLAN.md — W2: load, store, transfer, stack semantics; cpu_ldst; default policies list
 - [ ] 03-12-PLAN.md — W2: ALU, decimal and T flag; cpu_alu; adc-carry toy
 - [ ] 03-13-PLAN.md — W2: control flow, BRK, RTI; cpu_flow
 - [ ] 03-14-PLAN.md — W2: HuC6280 additions except block transfers; cpu_huc; opcode coverage required
-- [ ] 03-15-PLAN.md — W2: opcode and cycle pin cases, W2 ledger entries
+- [ ] 03-15-PLAN.md — W2: opcode and cycle pin cases, cyc_probe sweep, W2 ledger entries
 - [ ] 03-16-PLAN.md — W3 tracer: full bus and MMU, windows, stubs, io_buffer, VDC/VCE penalty; mmu_mpr; unmapped toy
 - [ ] 03-17-PLAN.md — W3: model_params.def with tma_zero, TAM/TMA edges
-- [ ] 03-18-PLAN.md — W3: [model_*] and [run] record tables, LED-PROF-0004, LED-CPU-0015
+- [ ] 03-18-PLAN.md — W3: [model_*], [run] and [constants] record tables, LED-PROF-0004, LED-CPU-0015
 - [ ] 03-19-PLAN.md — W3: dev sink, observer matrix, trace-hook toy, --trace-out rights
 - [ ] 03-20-PLAN.md — W3: bank-class oracle, mmu_mpr size variants, st_bypass, W3 ledger entries
 - [ ] 03-21-PLAN.md — W4 tracer: closed-form timer, TIQ interrupt path, timer_pure_function, tim_timer
 - [ ] 03-22-PLAN.md — W4: interrupt controller, irq_stim, irq_i_sample, TIMR/IRQC/IRQS regions, two toys
-- [ ] 03-23-PLAN.md — W4: speed switching, spd_speed, [stimulus] table, W4 ledger entries
+- [ ] 03-23-PLAN.md — W4: speed switching, spd_speed, [stimulus] table, W4 constants rows
+- [ ] 03-34-PLAN.md — W4: W4 ledger entries
 - [ ] 03-24-PLAN.md — W4: seeded-prng-v2, three-policy fixture runs, policy-diff control
-- [ ] 03-25-PLAN.md — W5 tracer: resumable block transfers, cpu_blk and length 0, BLKT region, block-progress toy
-- [ ] 03-26-PLAN.md — W5: chunk_equiv, 32-program random differential, W5 ledger entries
+- [ ] 03-25-PLAN.md — W5 tracer: resumable block transfers, cpu_blk, length 0 and interrupt-pending variants, BLKT region, block-progress toy
+- [ ] 03-26-PLAN.md — W5: chunk_equiv (including mid-block with interrupts pending), 32-program random differential, W5 ledger entries
 - [ ] 03-27-PLAN.md — W6 tracer: $1000 pad protocol, input schedule, ds_input_push, pad_2btn correct
 - [ ] 03-28-PLAN.md — W6: input-check with one negative per code, [input] table
-- [ ] 03-29-PLAN.md — W6: pad negative controls, exact edges, pad logs, shared-input toy, IOPT/SCHD, W6 ledger
-- [ ] 03-30-PLAN.md — W7 tracer: snapshot = digest stream, validate-then-commit restore, sampled restores, tiling assert
+- [ ] 03-29-PLAN.md — W6: pad negative controls, exact edges, pad logs, pad sweep and chunk case, shared-input toy, IOPT/SCHD, W6 ledger
+- [ ] 03-30-PLAN.md — W7 tracer: snapshot = digest stream, validate-then-commit restore, host hash check, sampled restores, tiling assert
 - [ ] 03-31-PLAN.md — W7: hostile snapshot corpus, restore at random stops, snapshot toys
-- [ ] 03-32-PLAN.md — W8: page re-reads, ledger finalisation under ER-2, evidence split by class, no PENDING pins
+- [ ] 03-32-PLAN.md — W8: page re-reads, ledger finalisation under ER-2, evidence split by class, constants ledger rule, no PENDING pins
 - [ ] 03-33-PLAN.md — W8: README wording with docs-check, timing re-baseline, optional WLA run, CI unverified record
 **Research**: Needed for targeted timing edges (C9, C10): block-transfer and CLI/RTI interrupt latency, speed-switch cycle count, TAM/TMA #0, power-up MPRs beyond MPR7, and ST0-ST2 (manual p. H8-3). Opcode tables come from the manual and follow a standard pattern.
 
@@ -233,7 +238,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phases 4 and 5
 |-------|----------------|--------|-----------|
 | 1. Owner Decisions, Claim Ledger and Toolchain Spike | 12/12 | Complete    | 2026-11-09 |
 | 2. Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate | 22/22 | Complete    | 2026-11-10 |
-| 3. HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad | 0/33 | Planned | - |
+| 3. HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad | 0/38 | Planned | - |
 | 4. VCE/VDC Raw Video | 0/TBD | Not started | - |
 | 5. PSG Raw Audio | 0/TBD | Not started | - |
 | 6. Headless Runner, Installed-Consumer Proof and Staged Verification | 0/TBD | Not started | - |
