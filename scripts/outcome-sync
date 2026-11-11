@@ -62,6 +62,8 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 viol="$tmp/viol"
 
+# CR-01: no awk in this file is the left side of a pipe. POSIX sh has no pipefail, so `awk ... | sort -u > file` reports the status of sort
+# and an awk that died reads as "no violations". Each awk writes a file and its own status is tested (the first one is covered by set -e); only then is the file sorted.
 # the row names in file order: the text between DS_OUTCOME( and the first ) of every line that starts with DS_OUTCOME(
 awk '/^DS_OUTCOME\(/ { s = substr($0, 12); i = index(s, ")"); if (i > 0) s = substr(s, 1, i - 1); print s }' "$def" > "$tmp/names"
 
@@ -76,7 +78,8 @@ END {
   for (i = 1; i <= nreq; i++) if (!(rq[i] in seen)) { nameok = 0; viol("OUTSYNC_NAME", "required name missing: " rq[i]) }
   for (i = 1; i <= n; i++) if (!(name[i] in inreq)) { nameok = 0; viol("OUTSYNC_NAME", "row " i " is not a required name: " name[i]) }
   if (rows && nameok) for (i = 1; i <= nreq; i++) if (name[i] != rq[i]) { viol("OUTSYNC_ORDER", "row " i " is " name[i] ", wanted " rq[i]); break }
-}' "$tmp/names" | sort -u > "$viol"
+}' "$tmp/names" > "$tmp/viol.raw" || { echo "HARNESS_AWK_FAILED outcome-sync (row check)" >&2; exit 2; }
+sort -u "$tmp/viol.raw" > "$viol"
 
 # the compiled list (--names) against the def rows, row for row and in order: any difference at all is OUTSYNC_NAME
 if [ -n "$names_file" ]; then
@@ -88,7 +91,8 @@ if [ -n "$names_file" ]; then
     if (nc != nd) viol("OUTSYNC_NAME", "the compiled list has " nc + 0 " names, outcomes.def has " nd + 0)  # rule-compiled-names
     m = (nc > nd) ? nc : nd
     for (i = 1; i <= m; i++) if (cmp[i] != def[i]) { viol("OUTSYNC_NAME", "compiled name " i " is " ((i <= nc) ? cmp[i] : "(none)") ", outcomes.def has " ((i <= nd) ? def[i] : "(none)")); break }  # rule-compiled-names
-  }' "$tmp/names" "$names_file" | sort -u >> "$viol"
+  }' "$tmp/names" "$names_file" > "$tmp/viol.names" || { echo "HARNESS_AWK_FAILED outcome-sync (compiled list)" >&2; exit 2; }
+  cat "$tmp/viol.names" >> "$viol"
   sort -u "$viol" > "$tmp/viol.sorted"
   mv "$tmp/viol.sorted" "$viol"
 fi

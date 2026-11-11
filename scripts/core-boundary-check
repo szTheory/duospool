@@ -197,7 +197,10 @@ done < "$tmp/c.list"
 # ---- layer 3: undefined symbols (L2) and writable symbols (L3) of every compiled object ----
 # the allowlist: comment lines are skipped, the first TAB-separated field is the name, a second field limits the entry to that platform
 [ -f "$here/core-boundary.allow" ] || harness "HARNESS_NO_FILE $here/core-boundary.allow"
-awk -F'\t' -v os="$os" '/^[ \t]*#/ { next } $1 ~ /^[ \t\r]*$/ { next } { if (NF >= 2 && $2 != "" && $2 != os) next; print $1 }' "$here/core-boundary.allow" | sort -u > "$tmp/allow"
+# CR-01: no awk below is the left side of a pipe (POSIX sh has no pipefail, so `awk ... | sort -u` reports the status of sort and a dead awk reads as
+# "no violations"): each awk writes a file and its own status is tested, and only then is the file sorted.
+awk -F'\t' -v os="$os" '/^[ \t]*#/ { next } $1 ~ /^[ \t\r]*$/ { next } { if (NF >= 2 && $2 != "" && $2 != os) next; print $1 }' "$here/core-boundary.allow" > "$tmp/allow.raw" || harness "HARNESS_AWK_FAILED core-boundary-check (allowlist)"
+sort -u "$tmp/allow.raw" > "$tmp/allow"
 command -v nm > /dev/null 2>&1 || harness "HARNESS_NO_TOOL nm"
 # the core is one unit that is compiled one source at a time: a symbol that one core object leaves undefined and another core object defines is an
 # internal reference, not a host call, so the external symbols defined by the objects are added to the allowed set. This never widens the allowlist
@@ -212,7 +215,8 @@ while IFS="$(printf '\t')" read -r rel o; do
   nscan=$((nscan + 1))
   # undefined symbols: field 1 of nm -P -u, a leading underscore stripped on Darwin, sorted in the C locale
   nm -P -u "$o" > "$tmp/nm.u" 2> /dev/null || harness "HARNESS_ERROR nm -P -u failed on the object of $rel"
-  awk -v os="$os" '{ s = $1; if (os == "Darwin" && substr(s, 1, 1) == "_") s = substr(s, 2); print s }' "$tmp/nm.u" | sort -u > "$tmp/undef"
+  awk -v os="$os" '{ s = $1; if (os == "Darwin" && substr(s, 1, 1) == "_") s = substr(s, 2); print s }' "$tmp/nm.u" > "$tmp/undef.raw" || harness "HARNESS_AWK_FAILED core-boundary-check (undefined symbols of $rel)"
+  sort -u "$tmp/undef.raw" > "$tmp/undef"
   comm -23 "$tmp/undef" "$tmp/allowed" > "$tmp/undef.bad"
   while IFS= read -r un; do
     [ -n "$un" ] || continue
@@ -230,10 +234,11 @@ while IFS="$(printf '\t')" read -r rel o; do
     harness "CB_NO_SYMBOLS the object of $rel has no symbols"
   fi
   if [ "$os" = "Darwin" ]; then
-    wr=$(awk '$2 ~ /^\(__DATA,__(data|bss|common)\)$/ || $2 ~ /^\(__DATA,__thread/ || $0 ~ /\(common\)/ { s = $NF; if (substr(s, 1, 1) == "_") s = substr(s, 2); print s }' "$tmp/nm.all" | sort -u)
+    awk '$2 ~ /^\(__DATA,__(data|bss|common)\)$/ || $2 ~ /^\(__DATA,__thread/ || $0 ~ /\(common\)/ { s = $NF; if (substr(s, 1, 1) == "_") s = substr(s, 2); print s }' "$tmp/nm.all" > "$tmp/wr.raw" || harness "HARNESS_AWK_FAILED core-boundary-check (writable symbols of $rel)"
   else
-    wr=$(awk '$2 ~ /^[BbCDdGgVvu]$/ { print $1 }' "$tmp/nm.all" | sort -u)
+    awk '$2 ~ /^[BbCDdGgVvu]$/ { print $1 }' "$tmp/nm.all" > "$tmp/wr.raw" || harness "HARNESS_AWK_FAILED core-boundary-check (writable symbols of $rel)"
   fi
+  wr=$(sort -u "$tmp/wr.raw")
   if [ -n "$wr" ]; then # rule-writable
     printf '%s\n' "$wr" | awk -v r="$rel" '{ printf "%s\tCB_WRITABLE\t0\t%s\n", r, $0 }' >> "$viol0" # rule-writable
   fi # rule-writable

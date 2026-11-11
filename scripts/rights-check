@@ -147,11 +147,14 @@ if [ -s "$tmp/files.s" ]; then
   sort -u "$tmp/nonpure.raw" > "$tmp/nonpure"
 fi
 
-# sha256_of FILE : the hash, with the tool chosen once (D-60: sha256sum if present, else shasum -a 256)
+# sha256_of FILE : the hash, with the tool chosen once (D-60: sha256sum if present, else shasum -a 256). CR-01: the tool is not the left side of
+# a pipe (POSIX sh has no pipefail, so `tool | awk` would report the status of awk and a dead tool would read as an empty hash): its output is
+# captured on its own, its status is the status of this function, and a caller must treat a non-zero status as a harness error.
 if command -v sha256sum > /dev/null 2>&1; then sha_cmd="sha256sum"; else sha_cmd="shasum -a 256"; fi
 sha256_of() {
   # shellcheck disable=SC2086
-  $sha_cmd "$1" | awk '{ print $1 }'
+  sha_out=$($sha_cmd "$1" 2> /dev/null) || return 1
+  printf '%s\n' "${sha_out%% *}"
 }
 
 # the line rules, over the plain-text files in bulk (names go in prefixed with ./ so that none can be taken for an option or an
@@ -231,7 +234,7 @@ manifest_entry() {
     return 0
   fi
   want=$(mval sha256)
-  got=$(sha256_of "$src")
+  got=$(sha256_of "$src") || { echo "HARNESS_SHA256_FAILED rights-check ($src)" >&2; exit 2; }
   if [ "$got" != "$want" ]; then
     bad "$m" RIGHTS_HASH_MISMATCH "$src"
     return 0
