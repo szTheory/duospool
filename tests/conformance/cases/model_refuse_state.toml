@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# ds_model_set refusal model.state (plan 03-17; D-113, F4, T-03-47): a valid name and value after the machine has taken a step (the value it already holds included) and a NULL instance. Before that step the same selection is accepted, also after a run that took no step; a bad name or value after the first step keeps its own code.
+# Every variant must return the code, write nothing (the whole instance, raw bytes and digest, is byte-identical afterwards) and leave the selected value where it was. The authored ds-proto is booted first; the model codes are their own set and print as model.NAME, never load.NAME or run.NAME.
+# Evidence tier E0 (a mechanism check of a setter against the closed refusal set of src/core/model_refusals.def): the refusal names and the order of the checks are the specification of this plan, not a hardware claim.
+id = "model_refuse_state"
+kind = "model_refuse"
+fixture = "none"
+request = ""
+expect = "rom=ds-proto;refuse=state"
+meaning = "A model parameter set after the first step (or on a NULL instance) is refused as model.state, a valid selection before the first step is accepted, and the arguments are judged before the state"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

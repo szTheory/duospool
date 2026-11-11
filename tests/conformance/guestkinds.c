@@ -41,6 +41,7 @@
 #include <string.h>
 
 #include "ds_core.h"
+#include "ds_serial.h"
 #include "runner.h"
 
 /* ---- the DSV1 judge ---- */
@@ -799,4 +800,196 @@ void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
             check(c, 0, msg);
         }
     }
+}
+
+/* ---- kinds model_refuse and model_refusal_coverage (plan 03-17; D-113, T-03-47, F4) ---- */
+
+/*
+ * model_refuse: expect is rom=NAME;refuse=CODE, CODE a name of src/core/model_refusals.def. The built authored image NAME is booted and every call of ds_model_set that the variants of CODE (a table below) name must return that
+ * code, write nothing (the whole instance, raw bytes and digest, is the same before and after) and leave the selected value of the parameter where it was. The state variants first prove that a valid selection IS accepted before the
+ * first step (so a core that refused everything would not pass the control), then run the machine and expect the refusal. The codes observed are kept for model_refusal_coverage.
+ */
+static unsigned char mr_observed[DS_MODELREF_SLOTS];
+
+/* one call that must be refused with want: the instance (inst, live in mem of ds_instance_size() bytes) must be byte-identical and its digest the same afterwards */
+static void mr_refused(struct ctx *c, struct ds_instance *inst, const char *name, const char *value, uint32_t want, unsigned *calls)
+{
+    size_t size = ds_instance_size();
+    unsigned char *copy = (unsigned char *)malloc(size);
+    uint8_t before[DS_DIGEST_BYTES];
+    uint8_t after[DS_DIGEST_BYTES];
+    uint32_t got;
+
+    if (copy == NULL) {
+        harness_error(c, "out of memory for the instance copy");
+        return;
+    }
+    memcpy(copy, inst, size);
+    check(c, ds_digest(inst, before) == 0u, "the digest of the instance before the refused ds_model_set was refused");
+    got = ds_model_set(inst, name, value);
+    check(c, got == want, "ds_model_set returned a code other than the one the row names");
+    check(c, ds_model_refusal_name(got) != NULL && (got == 0u || strncmp(ds_model_refusal_name(got), "model.", 6u) == 0), "a model refusal does not print as model.NAME");
+    check(c, memcmp(copy, inst, size) == 0, "a refused ds_model_set changed the instance");
+    check(c, ds_digest(inst, after) == 0u && memcmp(before, after, DS_DIGEST_BYTES) == 0, "a refused ds_model_set changed the digest");
+    if (got < (uint32_t)DS_MODELREF_SLOTS) {
+        mr_observed[got] = 1u;
+    }
+    (*calls)++;
+    free(copy);
+}
+
+/* the selected value of row 0 as text, compared with want */
+static int mr_value_is(const struct ds_instance *inst, const char *want)
+{
+    size_t n = 0u;
+    const char *v = ds_model_value(inst, 0u, &n);
+
+    return v != NULL && n == strlen(want) && memcmp(v, want, n) == 0;
+}
+
+static void mr_variants(struct ctx *c, const char *code, struct ds_instance *inst, unsigned *calls)
+{
+    static const char *const bad_names[] = {NULL, "", "tma_zer", "tma_zero_", "TMA_ZERO", " tma_zero", "tma_zero ", "tma_zero|", "irq_i_sample", "model.tma_zero"};
+    static const char *const bad_values[] = {NULL, "", "bus_latc", "bus_latch_", "BUS_LATCH", "bus_latch|a_unchanged", "a_unchanged|", "|", " bus_latch", "bus_latch ", "0", "1", "a_unchange"};
+    unsigned i;
+
+    if (strcmp(code, "unknown_name") == 0) {
+        for (i = 0u; i < sizeof bad_names / sizeof bad_names[0]; i++) {
+            mr_refused(c, inst, bad_names[i], "bus_latch", (uint32_t)DS_MODELREF_unknown_name, calls);
+        }
+        mr_refused(c, inst, NULL, NULL, (uint32_t)DS_MODELREF_unknown_name, calls); /* the name is checked before the value */
+    } else if (strcmp(code, "value_not_allowed") == 0) {
+        for (i = 0u; i < sizeof bad_values / sizeof bad_values[0]; i++) {
+            mr_refused(c, inst, "tma_zero", bad_values[i], (uint32_t)DS_MODELREF_value_not_allowed, calls);
+        }
+    } else if (strcmp(code, "state") == 0) {
+        struct ds_run_request rq;
+        struct ds_run_result res;
+        uint32_t reason;
+
+        /* before the first step a valid selection is accepted, also twice and back, and the instance then holds it (a core that refused everything must fail here) */
+        check(c, mr_value_is(inst, "bus_latch"), "a fresh instance does not hold the default value of tma_zero");
+        check(c, ds_model_set(inst, "tma_zero", "a_unchanged") == (uint32_t)DS_MODELREF_NONE && mr_value_is(inst, "a_unchanged"), "a valid selection before the first step was not accepted");
+        check(c, ds_model_set(inst, "tma_zero", "bus_latch") == (uint32_t)DS_MODELREF_NONE && mr_value_is(inst, "bus_latch"), "the default selection before the first step was not accepted");
+        memset(&rq, 0, sizeof rq);
+        memset(&res, 0, sizeof res);
+        rq.struct_size = (uint32_t)sizeof rq;
+        rq.until_mclk = 0u; /* a deadline that is not ahead takes no step: the machine is still before its first step */
+        reason = ds_run(inst, &rq, &res);
+        check(c, reason == (uint32_t)DS_RUN_REASON_UNTIL && res.steps == 0u && inst->machine_time == 0u, "a zero-step run moved the machine");
+        check(c, ds_model_set(inst, "tma_zero", "a_unchanged") == (uint32_t)DS_MODELREF_NONE && mr_value_is(inst, "a_unchanged"), "a selection after a run that took no step was refused");
+        check(c, ds_model_set(inst, "tma_zero", "bus_latch") == (uint32_t)DS_MODELREF_NONE, "the selection could not be put back");
+        rq.until_mclk = 600u;
+        reason = ds_run(inst, &rq, &res);
+        note_run(c, inst->machine_time, reason);
+        check(c, reason == (uint32_t)DS_RUN_REASON_UNTIL && res.steps >= 1u && inst->machine_time != 0u, "the first run of the state variants took no step");
+        mr_refused(c, inst, "tma_zero", "a_unchanged", (uint32_t)DS_MODELREF_state, calls);
+        mr_refused(c, inst, "tma_zero", "bus_latch", (uint32_t)DS_MODELREF_state, calls); /* the value it already holds is refused too: the state is not a comparison */
+        check(c, mr_value_is(inst, "bus_latch"), "a refused selection changed the value");
+        /* the arguments are judged before the state: a bad name or value after the first step keeps its own code */
+        mr_refused(c, inst, "tma_zer", "bus_latch", (uint32_t)DS_MODELREF_unknown_name, calls);
+        mr_refused(c, inst, "tma_zero", "bogus", (uint32_t)DS_MODELREF_value_not_allowed, calls);
+        /* a NULL instance is the state refusal */
+        check(c, ds_model_set(NULL, "tma_zero", "bus_latch") == (uint32_t)DS_MODELREF_state, "a NULL instance was not refused as model.state");
+        mr_observed[DS_MODELREF_state] = 1u;
+        (*calls)++;
+    } else {
+        harness_error(c, "a model_refuse row names a code that model_refusals.def does not have");
+    }
+}
+
+void kind_model_refuse(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    char list[PK_LIST_MAX];
+    char rom[48];
+    char code[32];
+    char *rest = list;
+    char *kv;
+    int have = 0;
+    struct booted b;
+    const struct ds_instance *inst = NULL;
+    unsigned calls = 0u;
+    const char *err;
+
+    rom[0] = '\0';
+    code[0] = '\0';
+    if (pk_copy_text(k->val[K_EXPECT], list, sizeof list) != 0) {
+        harness_error(c, "the expect list is too long");
+        return;
+    }
+    while ((kv = pk_next_item(&rest, ';')) != NULL) {
+        char *eq = strchr(kv, '=');
+
+        if (eq == NULL) {
+            harness_error(c, "a model_refuse expect is rom=NAME;refuse=CODE");
+            return;
+        }
+        *eq = '\0';
+        if (strcmp(kv, "rom") == 0 && strlen(eq + 1) > 0u && strlen(eq + 1) < sizeof rom && strspn(eq + 1, "abcdefghijklmnopqrstuvwxyz0123456789-") == strlen(eq + 1)) {
+            memcpy(rom, eq + 1, strlen(eq + 1) + 1u);
+            have |= 1;
+        } else if (strcmp(kv, "refuse") == 0 && strlen(eq + 1) > 0u && strlen(eq + 1) < sizeof code && strspn(eq + 1, "abcdefghijklmnopqrstuvwxyz0123456789_") == strlen(eq + 1)) {
+            memcpy(code, eq + 1, strlen(eq + 1) + 1u);
+            have |= 2;
+        } else {
+            harness_error(c, "a model_refuse expect is rom=NAME;refuse=CODE");
+            return;
+        }
+    }
+    if (have != 3) {
+        harness_error(c, "a model_refuse expect is rom=NAME;refuse=CODE");
+        return;
+    }
+    err = boot_built_rom(rom, k->val[K_REQUEST], &b, &inst);
+    if (err != NULL) {
+        harness_error(c, err);
+        return;
+    }
+    mr_variants(c, code, (struct ds_instance *)(void *)b.mem, &calls);
+    check(c, calls >= 1u, "the model_refuse case made no refused call");
+    release_boot(&b);
+    snprintf(got, gotcap, "calls=%u", calls);
+}
+
+/*
+ * model_refusal_coverage (DEFERRED, D-86 pattern): every member of model_refusals.def was observed by a model_refuse row, and the rows of model_params.def are well formed: at most 4, at least two allowed values each (a row exists only because
+ * two values are implemented, D-113), the default is the first allowed value (a zeroed instance holds index 0), the ledger id has the LED-AREA-NNNN shape and the status is assumed or open (never supported, ER-2).
+ */
+void kind_model_refusal_coverage(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    uint32_t n;
+    uint32_t r;
+    unsigned members = 0u;
+    unsigned seen = 0u;
+
+    (void)k;
+    for (n = 1u; n < (uint32_t)DS_MODELREF_SLOTS; n++) {
+        const char *name = ds_model_refusal_name(n);
+
+        if (name == NULL) {
+            continue;
+        }
+        members++;
+        seen += mr_observed[n] != 0u ? 1u : 0u;
+        check(c, mr_observed[n] != 0u, "a model refusal code was never observed by a model_refuse row");
+        if (mr_observed[n] == 0u) {
+            emit_err("model_refusal_coverage: %s was not observed by any model_refuse row\n", name);
+        }
+    }
+    check(c, members > 0u, "model_refusals.def has no member");
+    check(c, (unsigned)DS_MODEL_COUNT >= 1u && (unsigned)DS_MODEL_COUNT <= 4u, "model_params.def has no row or more than the 4 rows of D-113");
+    for (r = 0u; r < (uint32_t)DS_MODEL_COUNT; r++) {
+        const char *allowed = ds_model_allowed(r);
+        const char *def = ds_model_default(r);
+        const char *led = ds_model_ledger(r);
+        const char *status = ds_model_status(r);
+        size_t first = allowed != NULL ? strcspn(allowed, "|") : 0u;
+
+        check(c, ds_model_name(r) != NULL && strlen(ds_model_name(r)) > 0u, "a model parameter has no name");
+        check(c, allowed != NULL && allowed[first] == '|', "a model parameter has fewer than two allowed values");
+        check(c, def != NULL && allowed != NULL && strlen(def) == first && strncmp(def, allowed, first) == 0, "the default of a model parameter is not the first allowed value");
+        check(c, led != NULL && strlen(led) == 12u && strncmp(led, "LED-", 4u) == 0, "the ledger id of a model parameter is not LED-AREA-NNNN");
+        check(c, status != NULL && (strcmp(status, "assumed") == 0 || strcmp(status, "open") == 0), "the status of a model parameter is neither assumed nor open");
+    }
+    snprintf(got, gotcap, "members=%u observed=%u rows=%u", members, seen, (unsigned)DS_MODEL_COUNT);
 }

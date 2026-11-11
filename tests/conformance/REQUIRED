@@ -142,3 +142,10 @@ vdc_penalty_assumed
 mmu_mpr_tma_zero_latch
 mmu_mpr_tma_zero_keep
 mmu_mpr_observe_missing
+model_refuse_unknown_name
+model_refuse_value
+model_refuse_state
+model_param_refusal
+digest_stream_model
+digest_model_tma_zero_differs
+digest_model_default_same

@@ -1006,6 +1006,7 @@ static const struct {
     {"budget_spin", kind_spin, 0},
     {"spin_forever", kind_spin, 0},
     {"guest", kind_guest, 0},
+    {"model_refuse", kind_model_refuse, 0},
     {"mutate_sweep", kind_mutate_sweep, 0},
     {"insn_sink_shapes", kind_insn_sink_shapes, 0},
     {"opcode_table", kind_opcode_table, 0},
@@ -1028,6 +1029,7 @@ static const struct {
     {"liveness_shared_state_selfcheck", kind_liveness_shared_state_selfcheck, 0},
     {"coverage", kind_coverage, 1},
     {"run_refusal_coverage", kind_run_refusal_coverage, 1},
+    {"model_refusal_coverage", kind_model_refusal_coverage, 1},
 };
 
 static const char *outcome_of(const struct ctx *c, enum outcome *oc)

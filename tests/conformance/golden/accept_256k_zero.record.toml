@@ -9,7 +9,8 @@
 # file. Plan 03-36 changed only three values, format_version 1 to 2, behaviour_epoch 1 to 2 and the time unit from the placeholder label to master-clocks;
 # the digest line was unchanged by that plan (the epoch is not in the digest stream). Plan 03-16 added the region BUS0 (io_buffer and mpr_latch, two zero bytes at boot) and the serial version 3, so the digest line changed again:
 # it was recomputed with a throwaway perl script that wrote the version 3 stream of the documented rules, after the same script had reproduced the committed version 2 digest from the version 2 stream, and the stream file hashes
-# to the value under shasum -a 256. The runner skips this comment block and compares the rest byte for byte.
+# to the value under shasum -a 256. Plan 03-17 added the third BUS0 byte (the selection index of the model parameter tma_zero, 0 at boot) and the serial version 4, so the digest line changed again:
+# it was recomputed with the same throwaway perl script after it had reproduced the committed version 3 digest, and the stream file hashes to the value under shasum -a 256. The runner skips this comment block and compares the rest byte for byte.
 [record]
 format_version = 2
 
@@ -111,4 +112,4 @@ size_cap = 1048576
 time = 0
 time_unit = "master-clocks"
 digest_algorithm = "sha256"
-digest = "cc8d3b89990e6d14924f1612e30ad0db689ccce0b1a698e6c6029142a7edec1c"
+digest = "3d70806fffa7f098ab0a306842b690514d335bdaeab854190796fd4ecb6ad0e3"

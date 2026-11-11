@@ -127,6 +127,11 @@ static const char *block_boot(const char *fixture, const char *request, unsigned
         block_free(b);
         return "the request was refused: this kind needs an accepted boot";
     }
+    err = apply_model(res.instance, &s);
+    if (err != NULL) {
+        block_free(b);
+        return err;
+    }
     *inst = res.instance;
     return NULL;
 }
@@ -273,8 +278,8 @@ void kind_digest_stream(const struct kase *k, struct ctx *c, char *got, size_t g
                          (unsigned)(pl[5] | ((unsigned)pl[6] << 8)) == (unsigned)inst->pc && pl[7] == inst->speed,
                   msg);
         } else if (strcmp(fw[i].tag, "BUS0") == 0) {
-            /* io_buffer then mpr_latch (plan 03-16) */
-            check(c, fw[i].len == 2u && pl[0] == inst->io_buffer && pl[1] == inst->mpr_latch, msg);
+            /* io_buffer, mpr_latch (plan 03-16), then the selection of the model parameter tma_zero (plan 03-17) */
+            check(c, fw[i].len == 3u && pl[0] == inst->io_buffer && pl[1] == inst->mpr_latch && pl[2] == inst->tma_zero, msg);
         } else {
             harness_error(c, "a digest_stream frame names a tag that the case does not know");
             break;

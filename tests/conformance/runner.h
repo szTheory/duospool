@@ -217,6 +217,9 @@ void kind_spin(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 
 /* the guest kind (guestkinds.c since plan 03-04): boots a built authored ROM, runs it with ds_run and judges its DSV1 verdict block from raw RAM */
 void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+/* the model parameter kinds (guestkinds.c, plan 03-17): ds_model_set refusals with the instance unchanged, and the deferred coverage of model_refusals.def and the rows of model_params.def */
+void kind_model_refuse(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_model_refusal_coverage(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 /* boot build/gate/fixtures/ROM.pce over the request text: NULL and the accepted instance, or why not (a harness fault of the case); release_boot frees it */
 const char *boot_built_rom(const char *rom, const char *request, struct booted *b, const struct ds_instance **inst);
 /* the two halves of boot_built_rom (plan 03-10): load_image reads build/gate/fixtures/ROM.pce into a heap buffer (NULL and *len 0 when it cannot); boot_content boots the buffer

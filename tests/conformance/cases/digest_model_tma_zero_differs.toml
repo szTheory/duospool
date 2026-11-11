@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The two values of the model parameter tma_zero give different digests (plan 03-17; D-113, D-121): the same content, profile and seed, model.tma_zero=bus_latch against model.tma_zero=a_unchanged, so a selection that was not carried in the stream would leave the digests equal. Two boots of the first
+# request in differently filled blocks must still agree with each other. Repeatability only, never correctness (E0).
+id = "digest_model_tma_zero_differs"
+kind = "digest_pair"
+fixture = "plain-256k"
+request = "bind.powerup_policy=seeded-prng-v1;seed=42;model.tma_zero=bus_latch||bind.powerup_policy=seeded-prng-v1;seed=42;model.tma_zero=a_unchanged"
+expect = "differ"
+meaning = "model.tma_zero=bus_latch and model.tma_zero=a_unchanged give different digests, so the selection is carried in the digest stream"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
