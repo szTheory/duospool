@@ -421,7 +421,8 @@ pick_sha_tool() {
 # TSV or binary and needs no earlier stage. Then, for every line of  ds_runner --cases build/gate/cases.tsv --fixtures  (or only NAME), it
 # measures the bytes of  ds_runner --emit NAME  with host tools only: the SHA-256 from the sha tool chosen once, the size from wc -c; the
 # runner's own size column must agree with the measured one. The lines  NAME SIZE SHA256  go to build/gate/fixtures.used, which is removed
-# first and never read from an earlier run. An --only run is a partial list: fixture-check gets --partial, so the one-recipe list is not
+# first and never read from an earlier run. A run without --only then appends the authored list build/gate/fixtures-authored.used that scripts/fixture-build
+# wrote in the same gate run (an absent or empty list is a harness error). An --only run is a partial list: fixture-check gets --partial, so the one-recipe list is not
 # read as a verdict on the other entries (FIX_STALE); a run without --only never passes it. The exit status and the output are the
 # checker's (0 STATUS fixtures ok, 1 FIX_ codes, 2 harness error).
 fixtures_mode() {
@@ -481,6 +482,15 @@ fixtures_mode() {
     fi
     printf '%s %s %s\n' "$fm_name" "$fm_bytes" "$fm_sha" >> "$fm_bd/fixtures.used"
   done < "$fm_bd/fixtures.list"
+  # the authored images (D-59 amended, D-123, F3): scripts/fixture-build writes its own list, which is appended after the synthetic lines. A run without
+  # --only must find it non-empty (the build stage runs first in the same gate run and removes the old list before it writes); an --only run is partial.
+  if [ -z "$fm_only" ]; then
+    if [ ! -s "$fm_bd/fixtures-authored.used" ]; then
+      echo "HARNESS_ERROR $fm_bd/fixtures-authored.used is missing or empty: scripts/fixture-build has not produced the authored list in this run" >&2
+      exit 2
+    fi
+    cat "$fm_bd/fixtures-authored.used" >> "$fm_bd/fixtures.used" || { echo "HARNESS_ERROR cannot append the authored used list" >&2; exit 2; }
+  fi
   if [ ! -s "$fm_bd/fixtures.used" ]; then
     echo "HARNESS_ERROR the used list is empty" >&2
     exit 2

@@ -806,6 +806,8 @@ stage_determinism_negatives() {
 # can never go unchecked because a partial or stale list was judged.
 stage_fixtures() {
   rm -f build/gate/fixtures.used
+  # the authored images are part of the used list (D-59 amended, D-85): build them in this run, so the list is never one an earlier run left behind
+  fixture_build_run || return $?
   checker sh "$here/conformance-run" fixtures || return $?
   if [ ! -s build/gate/fixtures.used ]; then
     echo "HARNESS_ERROR build/gate/fixtures.used is missing or empty after the fixtures mode"

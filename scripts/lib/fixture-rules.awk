@@ -17,8 +17,9 @@
 #   FIX_ID_FILENAME_MISMATCH     id differs from the file stem
 #   FIX_BAD_LICENCE              licence is not one of 0BSD MIT Apache-2.0 BSD-2-Clause BSD-3-Clause ISC Zlib CC0-1.0 (the SPDX ids that
 #                                docs/decisions/0007-copied-code-provenance.md allows)
-#   FIX_BAD_VERDICT_SOURCE       verdict_source is not spec-literal:LED-AREA-NNNN, guest-computed or independent-script; the literal
-#                                duospool-output (the emulator judging itself, FIX-03) is rejected, as is any other value
+#   FIX_BAD_VERDICT_SOURCE       verdict_source is a list of one or more forms joined by + (no blanks), each one of spec-literal:LED-AREA-NNNN,
+#                                guest-computed, independent-script or manual-cite:PAGE (PAGE is H8-n, S8-n or BIOS-n, n decimal); the literal
+#                                duospool-output (the emulator judging itself, FIX-03) is rejected as a form, in any list, as is any other value
 # This check enforces structure, not truth: the bytes are judged by the hash comparison in scripts/fixture-check.
 BEGIN {
   FS = "\t"
@@ -51,7 +52,15 @@ END {
   v = val["licence"]
   if (v != "" && !(v in okl)) viol("FIX_BAD_LICENCE", ln["licence"], "licence " v)
   v = val["verdict_source"]
-  if (v != "" && v != "guest-computed" && v != "independent-script" && v !~ /^spec-literal:LED-(PROF|CPU|VID|AUD|IRQ|LOAD|IO|TOOL)-[0-9][0-9][0-9][0-9]$/) viol("FIX_BAD_VERDICT_SOURCE", ln["verdict_source"], "verdict_source " v)
+  if (v != "") {  # rule-verdict-source: every +-joined part must be an allowed form; an empty part (a leading, trailing or doubled +) is not one
+    np = split(v, vp, "+")
+    vbad = 0
+    for (i = 1; i <= np; i++) {
+      q = vp[i]
+      if (q != "guest-computed" && q != "independent-script" && q !~ /^spec-literal:LED-(PROF|CPU|VID|AUD|IRQ|LOAD|IO|TOOL)-[0-9][0-9][0-9][0-9]$/ && q !~ /^manual-cite:(H8|S8|BIOS)-[0-9][0-9]*$/) vbad = 1
+    }
+    if (vbad) viol("FIX_BAD_VERDICT_SOURCE", ln["verdict_source"], "verdict_source " v)
+  }
   v = val["sha256"]
   if (v != "" && (length(v) != 64 || v !~ /^[0-9a-f]+$/)) viol("FIX_BAD_ENUM", ln["sha256"], "sha256 is not 64 lowercase hex digits")
   if (("size" in val) && val["size"] + 0 < 0) viol("FIX_BAD_ENUM", ln["size"], "size is negative")
