@@ -968,7 +968,17 @@ stage_opcode_oracle() {
 # so the tables agree row by row) OPC_UNDEF_COUNT alone. The mini-roots were generated once from the real files by a throwaway script and are committed; the real stage judges the live files, so a drift of the
 # live table never changes a control.
 stage_opcode_oracle_negatives() {
-  run_controls --ok-prefix --require-negative tests/gate/opcode-oracle tests/gate/opcode-oracle sh "$here/opcode-check" --root @DIR@ @EXPECT@
+  oc_rc=0
+  run_controls --ok-prefix --require-negative tests/gate/opcode-oracle tests/gate/opcode-oracle sh "$here/opcode-check" --root @DIR@ @EXPECT@ || oc_rc=$?
+  # IN-02: a row found in the manual table must be reported against the table, not against cpu_ops.def: the message that tells the reader which side to correct depends on it. The mini-root tsv-extra-row lists an opcode twice in the table.
+  oc_tab=$(printf '\t')
+  if sh "$here/opcode-check" --root tests/gate/opcode-oracle/tsv-extra-row > "$tmp/oc.out" 2>&1; then oc_r=0; else oc_r=$?; fi
+  if [ "$oc_r" -ne 1 ] || ! grep -q "^tests/oracle/huc6280-opcodes.tsv${oc_tab}OPC_EXTRA_ROW${oc_tab}" "$tmp/oc.out" || grep -q "^src/core/cpu_ops.def${oc_tab}OPC_EXTRA_ROW${oc_tab}.*listed more than once" "$tmp/oc.out"; then
+    echo "CONTROL BROKEN opcode-attribution-tsv (exit $oc_r: the duplicate row of the manual table is not reported against the table file)"
+    sed 's/^/  /' "$tmp/oc.out"
+    oc_rc=1
+  fi
+  return "$oc_rc"
 }
 
 # xasm-negatives (FIX-01, D-129; plan 03-08): the encoding oracle must go red for each failure it is built to catch. Every tests/gate/xasm/<case>/ is a mini-root holding tests/oracle/huc6280-opcodes.tsv:

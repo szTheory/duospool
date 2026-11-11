@@ -70,6 +70,7 @@ for f in "$def" "$tsv"; do
   fi
 done
 defrel=${def#"$root"/}
+tsvrel=${tsv#"$root"/}
 tab=$(printf '\t')
 
 tmp=$(mktemp -d)
@@ -113,7 +114,9 @@ ndef=0
 nund=0
 while IFS="$tab" read -r tag a b c d; do
   case $tag in
-    V) printf '%s\t%s\t%s\t%s\n' "$defrel" "$a" "$b" "$c" >> "$tmp/viol0" ;;
+    V) # a row found in one of the two files in stage 1 carries that file's kind in column 5: name the file it is in, not always the def (IN-02); the rows of the comparison and the count rows name the def, or the table where the row says so
+      if [ "$d" = tsv ] || { [ "$a" = OPC_UNDEF_COUNT ] && [ "$b" = tsv ]; }; then vfile=$tsvrel; else vfile=$defrel; fi
+      printf '%s\t%s\t%s\t%s\n' "$vfile" "$a" "$b" "$c" >> "$tmp/viol0" ;;
     N) nsum=$((nsum + 1)); ndef=$a; nund=$b ;;
     *) dead "unknown record $tag from stage 2" ;;
   esac

@@ -4,7 +4,7 @@
 # opcode-rules.awk - both awk stages of scripts/opcode-check (plan 03-09; D-96, D-97, CR-01). POSIX awk only. The stage is chosen with -v stage=1 or -v stage=2.
 #
 # stage 1 (-v stage=1 -v kind=def|tsv): input is src/core/cpu_ops.def (kind def) or tests/oracle/huc6280-opcodes.tsv (kind tsv). It checks the shape of every row and writes, to stdout:
-#   V<TAB>CODE<TAB>opcode-or-line<TAB>detail            a malformed row (OPC_SHAPE, rule-shape) or an opcode listed twice in one file (OPC_EXTRA_ROW, rule-dup)
+#   V<TAB>CODE<TAB>opcode-or-line<TAB>detail<TAB>kind    a malformed row (OPC_SHAPE, rule-shape) or an opcode listed twice in one file (OPC_EXTRA_ROW, rule-dup); the last column is the kind of the file (def or tsv), so that the wrapper names the file the row is in
 #   R<TAB>kind<TAB>OP<TAB>mnemonic<TAB>mode<TAB>bytes<TAB>cycles   one per first row of an opcode, OP two upper-case hex digits; an UNDEF row has mode, bytes and cycles of - in the tsv and the values of the def
 #   END<TAB>kind<TAB>rows                                the very last line, the sentinel (CR-01): a stage 1 that died or was emptied does not print it
 # The def row is DS_OP(0xNN, MNEMONIC, MODE, bytes, cycles, ACCESS, "cite") on ONE line; the tsv row is opcode, mnemonic, mode, bytes, cycles, flags, cite separated by TAB, # lines are comments.
@@ -23,11 +23,11 @@ function trim(s) {
   return s
 }
 function shape(where, detail) {
-  print "V\tOPC_SHAPE\t" where "\t" detail # rule-shape
+  print "V\tOPC_SHAPE\t" where "\t" detail "\t" kind # rule-shape
 }
 function emit(op, mnem, mode, nbytes, cyc) {
   if (op in seen) {
-    print "V\tOPC_EXTRA_ROW\t" op "\topcode " op " is listed more than once in the " kind " file" # rule-dup
+    print "V\tOPC_EXTRA_ROW\t" op "\topcode " op " is listed more than once in the " kind " file\t" kind # rule-dup
     return
   }
   seen[op] = 1
