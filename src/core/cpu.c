@@ -120,12 +120,12 @@ static uint32_t flag_adders(uint32_t mn)
     return flag_cycles(mn, 1, P_D);
 }
 
-/* the longest this opcode can take in cycles: the table count plus every adder that can apply to it (D-94). A block transfer counts its 17 here (the table value). */
+/* the longest this opcode can take in cycles: the table count plus every adder that can apply to it (D-94); the VDC and VCE penalty is one cycle per bus access and an access occupies at least one cycle, so at most as many accesses as the table count can be charged (D-107). A block transfer counts its 17 here (the table value). */
 uint32_t ds_cpu_op_max_cycles(uint32_t opcode)
 {
     const struct ds_op *op = &ops[opcode & 0xFFu];
 
-    return (uint32_t)op->cycles + taken_adder(op->mn) + flag_adders(op->mn);
+    return (uint32_t)op->cycles + taken_adder(op->mn) + flag_adders(op->mn) + (uint32_t)op->cycles * (uint32_t)DS_ADDER_VDC_ACCESS;
 }
 
 /* ---- the opcode table accessors ---- */
@@ -863,6 +863,7 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
         cycles += taken_adder(mn);
     }
     cycles += flag_cycles(mn, t_active, inst->p);
+    cycles += bus->penalty; /* the VDC and VCE accesses this instruction made, charged by the bus (D-107) */
     inst->pc = (uint16_t)next;
     return cycles * mclk_per_cycle;
 }

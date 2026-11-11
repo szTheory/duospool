@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The VDC and VCE access penalty, a labelled assumption with a probe (plan 03-16; D-106, D-107, D-94, ER-2, ER-7, ASSUMED LED-CPU-0017): kind cycle_probe runs the authored cyc_probe fixture with an instruction sink and takes, per item, the start stamp of the
+# instruction (found by the pc and opcode that the ca65 listing of the second subroutine, penalty, gives) and of the next instruction; the difference must equal CYCLES times the clocks per cycle of the speed in force. Each item is PC:OPCODE:CYCLES:SPEED.
+# Two kinds of literal stand in this case and neither is a DuoSpool value. The BASE counts come from the instruction map (H8-25, with S8-53 for LDA and S8-80 for ST0): ST0 4, LDA absolute 5, STA absolute 5, LDA zero page 4. The PENALTY of one more cycle for an access
+# to physical $1FE000-$1FE7FF (the VDC window and the VCE window) is NOT on any page: it is the owner-recorded modelling assumption of D-107 (ledger entry LED-CPU-0017, assumed, withheld, written by plan 03-20; the emulator readings that disagree on its scope and order are
+# reports only). So every CYCLES below that exceeds the base count is of class ASSUMED:LED-CPU-0017, and a pass says only that the core charges what the assumption says, never that the penalty exists on hardware.
+#   0xE182 ST0 #imm:                  4 + 1 = 5 (D-106: the immediate goes to physical $1FE000, a VDC access)           0xE184 LDA $0000 with MPR0 = $FF (VDC window): 5 + 1 = 6
+#   0xE187 STA $0400 (VCE window):    5 + 1 = 6                                                                      0xE18A LDA $07FF, the last address of the range ($1FE7FF): 5 + 1 = 6
+#   0xE18D LDA $0800, the first address outside the range (PSG window, $1FE800): 5, the base count                     0xE190 LDA $0C00 (timer window): 5, the base count
+#   0xE197 LDA zero page with MPR1 = $FF (the zero page is the first bytes of the VDC window): 4 + 1 = 5 (D-107 names the zero-page-mapped case)
+#   0xE19E LDA $0000 at high speed: (5 + 1) cycles of 3 clocks (the penalty is one cycle at the current speed, D-107)
+# What is not asserted: the penalty of a read-modify-write (the core charges one per access, so two), of a block transfer (the block steps are plan 03-25), the order of the penalty against the device access and the interrupt-entry accesses. Evidence tier E0 for what is
+# measured (the core's charged time against assumed literals); no accuracy, compatibility, cycle-accurate or hardware claim, and the word pass is not a support claim.
+id = "vdc_penalty_assumed"
+kind = "cycle_probe"
+fixture = "none"
+request = ""
+expect = "rom=cyc-probe;0xE182:0x03:5:L;0xE184:0xAD:6:L;0xE187:0x8D:6:L;0xE18A:0xAD:6:L;0xE18D:0xAD:5:L;0xE190:0xAD:5:L;0xE197:0xA5:5:L;0xE19E:0xAD:6:H"
+meaning = "In the instruction trace of the cyc_probe fixture the access penalty is charged as assumed: ST0 takes 5 cycles, accesses at $0000, $0400, $07FF and a zero-page read in the VDC window take their base count plus 1, reads at $0800 and $0C00 take their base count, and the penalty is one cycle of the current speed"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000

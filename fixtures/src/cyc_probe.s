@@ -8,10 +8,12 @@
 ; The cycle counts are judged by the runner kind cycle_probe from the instruction trace (start stamps of the insn sink), against literals written in the case from the manual pages (cases cyc_probe, cycle_adders_manual). What the guest does check
 ; is that the sequence completed and took the paths the manual defines (the twelve checks below: branch paths, the T-mode cell, the decimal results, the TAM and TMA round trip, the BRK handler and the RTI return, the speed switch pair and the end marker), so the sweep of the
 ; literal table applies like for every fixture. Every cell the checks read is written by the fixture first (D-127). No HuC, PCEAS, emulator or cc65 library code.
+; The second subroutine, penalty (plan 03-16), follows probe_h: ST0, a read of the VDC window ($0000 while MPR0 = $FF), a write to the VCE window, reads at the two sides of the range boundary ($07FF and $0800), a read of the timer window, a zero-page read with MPR1 = $FF and the VDC read again at high speed.
+; Its cycle counts are judged the same way by the case vdc_penalty_assumed against literals of ASSUMED class (LED-CPU-0017: the +1 cycle of D-107 is a modelling assumption, not a page value); one more guest check (13) shows that it completed.
         .setcpu "huc6280"
 
 DSV_ID = 7
-DSV_CHECKS = 12
+DSV_CHECKS = 13
 
         .include "startup.inc"
         .include "verdict.inc"
@@ -30,6 +32,7 @@ DSV_CHECKS = 12
         LIT 10, $01
         LIT 11, $02
         LIT 12, $00
+        LIT 13, $00
 
 ; the cells of the checks (work RAM $2410 and up, outside the verdict block, the stack and the vector slots)
 MK_BEQN = $2410                 ; incremented by the fall-through path of the BEQ that is not taken
@@ -44,10 +47,12 @@ MK_BRK = $2418                  ; how often the BRK handler ran
 MK_AFT = $2419                  ; incremented by the instruction after the BRK signature byte
 MK_X = $241A                    ; X after the two INX of the speed pair
 MK_END = $241B                  ; the last store of the probe
+MK_PEND = $241C                 ; the last store of the penalty section
 ZPA = $40                       ; the zero-page cell of the bit branches (logical $2040): bit 0 set, bit 1 clear
 ZA = $2000+ZPA
 ZT = $10                        ; the zero-page cell of the T-mode step: X = ZT selects it (logical $2010)
 ZTA = $2000+ZT
+ZPV = $10                        ; the zero-page cell of the penalty section: logical $2010, read while MPR1 maps the hardware page (the VDC window)
 
         .res $100 - (* - reset), $FF      ; pad the code window so that probe starts at offset $100 of it (logical $E100, hucard.cfg ROMA); the assert below fails the build if the library code ever outgrows that
         .assert * - reset = $100, error, "probe must start at the fixed address $E100"
@@ -116,7 +121,32 @@ m_inx_l: inx                            ; the next instruction runs at the low s
 probe_h: inc a:MK_BRK
 m_rti:  rti
 
+; the penalty section (plan 03-16; D-106, D-107, ASSUMED LED-CPU-0017): the VDC window is physical $1FE000-$1FE3FF and the VCE window $1FE400-$1FE7FF, the timer window $1FEC00 and up carries no penalty
+penalty:
+        lda #$FF
+        tam #$01                        ; MPR0 = $FF: logical $0000-$1FFF is the hardware page (the first byte of window k of $400 bytes is at $0000 + k * $400)
+m_st0:  st0 #$22                        ; ST0 writes physical $1FE000: 4 cycles in the table and 1 for the VDC access = 5 (D-106)
+m_vdc_rd: lda a:$0000                   ; a read of the VDC window: 5 cycles in the table and 1 more = 6
+m_vce_wr: sta a:$0400                   ; a write to the VCE window: 5 and 1 more = 6
+m_vce_end: lda a:$07FF                  ; the last byte of the VCE window, the last address of the penalty range: 5 and 1 more = 6
+m_psg_rd: lda a:$0800                   ; the first byte of the PSG window, the first address outside the range: 5
+m_tim_rd: lda a:$0C00                   ; a read of the timer window: not in the penalty range: 5
+        lda #$FF
+        tam #$02                        ; MPR1 = $FF: the zero page (logical $2000-$20FF) is now the first bytes of the VDC window; nothing below uses the stack until MPR1 is restored
+m_zp_rd: lda z:ZPV                      ; a zero-page read that lands in the VDC window: 4 cycles in the table and 1 more = 5 (D-107 names the zero-page-mapped case)
+        lda #$F8
+        tam #$02                        ; MPR1 = $F8 again
+        csh
+m_vdc_h: lda a:$0000                    ; the same VDC read at high speed: 5 and 1 more, all at the high-speed cycle length = 6 cycles of 3 clocks
+        csl
+        lda #$F8
+        tam #$01                        ; MPR0 = $F8 again
+        lda #$5A
+        sta a:MK_PEND
+        rts
+
 fixture_main:
+        stz a:MK_PEND
         stz a:MK_BEQN
         stz a:MK_BEQT
         stz a:MK_BBRN
@@ -125,6 +155,7 @@ fixture_main:
         stz a:MK_AFT
         stz a:MK_END
         jsr probe
+        jsr penalty
         lda a:MK_BEQN                   ; check 1 MAN:S8-24: BEQ does not branch when Z is 0, so the fall-through INC ran once
         CHECK_LIT 1
         lda a:MK_BEQT                   ; check 2 MAN:S8-24: BEQ branches when Z is 1, so the INC behind it did not run
@@ -151,4 +182,8 @@ fixture_main:
         sta a:GEXP
         lda a:MK_END
         CHECK_GUEST 12
+        lda #$5A                        ; check 13 GUEST:penalty-end-marker: the penalty section stored the byte $5A in its last step; the cell is cleared before it runs
+        sta a:GEXP
+        lda a:MK_PEND
+        CHECK_GUEST 13
         rts

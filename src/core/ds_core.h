@@ -182,10 +182,11 @@ uint32_t ds_boot(void *mem, size_t cap, const struct ds_boot_request *request, s
 #define DS_MCLK_PER_CYCLE_LOW 12u
 #define DS_MCLK_PER_CYCLE_HIGH 3u
 #define DS_INT_ENTRY_CYCLES 8u
-/* the named cycle adders of D-98, applied on top of the opcode table's base counts (ds_max_step_mclk adds them to the table maximum); the VDC and VCE penalty slots join in plan 03-16 */
+/* the named cycle adders of D-98 and D-107, applied on top of the opcode table's base counts (ds_max_step_mclk adds them to the table maximum) */
 #define DS_ADDER_BRANCH_TAKEN 2u /* a taken conditional branch, BBR and BBS included (S8-20); BRA and BSR are fixed counts in the table */
 #define DS_ADDER_T_MODE 3u       /* ADC, AND, EOR, ORA with the T flag set (S8-17) */
 #define DS_ADDER_DECIMAL 1u      /* ADC and SBC with the D flag set (S8-17) */
+#define DS_ADDER_VDC_ACCESS 1u   /* one CPU cycle, at the speed the instruction started at, for every bus access to physical $1FE000-$1FE7FF (the VDC and VCE windows), zero-page-mapped, block and ST accesses included; charged in the bus before the device sees the access (D-107, ASSUMED LED-CPU-0017: the scope and the order are modelling assumptions) */
 /* the value an unmapped read returns (D-104) */
 #define DS_UNMAPPED_READ 0xFFu
 /* the stub reads of the hardware-page windows whose device does not exist yet (D-104, ASSUMED LED-CPU-0012): the VDC window until Phase 4 and the VCE window until Phase 4 */
@@ -249,16 +250,16 @@ uint64_t ds_max_step_mclk(void);
 void ds_cpu_reset(struct ds_instance *inst);
 uint32_t ds_cpu_step(struct ds_instance *inst); /* executes one instruction and returns the master clocks it took (ds_cpu_step_obs of ds_obs.h adds the observer hook) */
 int ds_cpu_op_defined(uint32_t opcode); /* 1 when the opcode row of the table is a defined instruction, 0 for the 22 undefined rows (opcode is masked to 8 bits); the table is checked against the manual transcription by scripts/opcode-check */
-uint32_t ds_cpu_op_max_cycles(uint32_t opcode); /* the longest one opcode can take in CPU cycles: its table count plus every adder that can apply (opcode is masked to 8 bits) */
+uint32_t ds_cpu_op_max_cycles(uint32_t opcode); /* the longest one opcode can take in CPU cycles: its table count plus every adder that can apply, the VDC and VCE access penalty included (a bus access occupies at least one cycle, so an instruction makes at most as many accesses as its table count); opcode is masked to 8 bits */
 void ds_op_meta(uint32_t opcode, uint32_t *bytes, uint32_t *cycles); /* the table's instruction length and base cycle count of one opcode (a block transfer holds its 17; an undefined row holds its assumed 1 and 2, LED-CPU-0010), for the manual comparison of the opcode_table kind (plan 03-15); opcode is masked to 8 bits */
 
 /*
  * The bus choke point (bus.c, plan 03-16; D-102 to D-108): every CPU access translates through the MPRs per access, phys = (mpr[a >> 13] << 13) | (a & $1FFF), and dispatches through a const bank_class[256]
- * table. One struct ds_bus lives in a local of the step and carries what one instruction's accesses add to it (the VDC and VCE penalty cycles, plan 03-16 task 3); a NULL bus is accepted (the reset reads, a test).
+ * table. One struct ds_bus lives in a local of the step and carries what one instruction's accesses add to it (the VDC and VCE penalty cycles); a NULL bus is accepted (the reset reads, a test).
  * Reads change state (io_buffer, D-104), so the instance is not const here, and no observer ever reads through the bus (D-108).
  */
 struct ds_bus {
-    uint32_t penalty; /* CPU cycles added by accesses to physical $1FE000-$1FE7FF during this step (D-107); 0 until the penalty lands */
+    uint32_t penalty; /* CPU cycles added by accesses to physical $1FE000-$1FE7FF during this step (D-107): DS_ADDER_VDC_ACCESS per access */
 };
 
 uint8_t ds_bus_read(struct ds_instance *inst, struct ds_bus *bus, uint16_t addr);

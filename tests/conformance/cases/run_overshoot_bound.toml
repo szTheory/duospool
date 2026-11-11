@@ -4,15 +4,16 @@
 # The overshoot bound of ds_run (CORE-04, D-94; plan 03-09): ds_run stops only between whole instructions, so a call can end past its absolute deadline by less than one step. The bound
 # ds_max_step_mclk() is computed from the 256-row opcode table (the longest opcode with the adders that can apply to it, plus the interrupt entry, at the low-speed cycle length), never a guessed constant.
 # Here 64 deadlines are run on the authored image ds-proto and on two synthetic images (plain-256k and plain-384k, random bytes that execute every kind of opcode): every call must end at or past its deadline with
-# overshoot = time - deadline, every overshoot and every single step must be within ds_max_step_mclk(), and the largest overshoot must be above zero. bound=300 is a literal from the manual and not from a run: a block
-# transfer's base count is 17 cycles (S8-89), a break or an interrupt entry is 8 (S8-30, D-99), and a cycle is 12 master clocks at low speed (D-90): (17 + 8) x 12 = 300. A change of the cycle adders in a later plan
+# overshoot = time - deadline, every overshoot and every single step must be within ds_max_step_mclk(), and the largest overshoot must be above zero. bound=600 is a literal from the manual and the access assumption, not from a run: a block
+# transfer's base count is 17 cycles (S8-89), a break or an interrupt entry is 8 (S8-30, D-99), and a cycle is 12 master clocks at low speed (D-90). Plan 03-16 added the access penalty of D-107 (ASSUMED LED-CPU-0017): one more cycle per bus access to the VDC
+# or VCE window, and an access occupies at least one cycle, so one step charges at most as many penalty cycles as it has cycles: (17 + 17 + 8 + 8) x 12 = 600 (before the penalty it was (17 + 8) x 12 = 300). A change of the cycle adders in a later plan
 # changes this number in the same commit. Evidence tier E0 (repeatability and a literal): the run API only, no hardware claim.
 id = "run_overshoot_bound"
 kind = "run_overshoot"
 fixture = "none"
 request = ""
-expect = "roms=ds-proto,plain-256k,plain-384k;calls=64;span=400;seed=20261111;bound=300"
-meaning = "Over 64 deadlines on one authored and two synthetic images every overshoot of ds_run and every single step is within ds_max_step_mclk(), which equals the manual-derived 300 master clocks"
+expect = "roms=ds-proto,plain-256k,plain-384k;calls=64;span=400;seed=20261111;bound=600"
+meaning = "Over 64 deadlines on one authored and two synthetic images every overshoot of ds_run and every single step is within ds_max_step_mclk(), which equals the manual-derived 600 master clocks"
 required = true
 control = false
 expect_outcome = "pass"

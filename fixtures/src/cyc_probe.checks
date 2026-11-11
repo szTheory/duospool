@@ -3,10 +3,10 @@
 #
 # cyc_probe.checks - one row per CHECK of fixtures/src/cyc_probe.s (D-125, plan 03-15). Columns separated by one TAB: check index (1-based, the entry number of the DCK1 table), slug, class tag, meaning.
 # Class tags: MAN:<page> (the literal is a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model> (the expected byte is computed in the guest, the table entry is an XOR mask of $00), ASSUMED:<LED-id>.
-# These twelve checks show that the probe sequence completed and took the paths the manual defines. No check here counts a cycle: the cycle counts of the sequence are judged by the runner kind cycle_probe from the instruction trace
+# These thirteen checks show that the probe sequence and the penalty section completed and took the paths the manual defines. No check here counts a cycle: the cycle counts of the sequence are judged by the runner kind cycle_probe from the instruction trace
 # (cases cycle_adders_manual and cyc_probe), against literals from the pages. A pass is not a support claim (ER-4).
 id=7
-checks=12
+checks=13
 1	beq-not-taken-path	MAN:S8-24	BEQ does not branch when Z is 0 (A = $02 before it): the fall-through INC ran once, so the marker reads $01
 2	beq-taken-skips	MAN:S8-24	BEQ branches when Z is 1 (A = $00 before it): the INC behind it did not run, so the marker reads $00
 3	bbr-not-taken-path	MAN:S8-20	BBR0 does not branch when bit 0 of the zero-page cell is 1 (the cell holds $01): the fall-through INC ran once, so the marker reads $01
@@ -19,3 +19,4 @@ checks=12
 10	rti-returns-after-signature	MAN:S8-70	RTI pulls P, PCL, PCH (S8-70) and BRK pushed its own address plus 2 (S8-30): the instruction behind the signature byte ran once and the signature byte was not executed
 11	csh-csl-length	MAN:H8-25	CSH and CSL are one byte each (H8-25 map): X = $00, an INX after CSH and an INX after CSL leave X = $02
 12	probe-end-marker	GUEST:probe-end-marker	The last store of the probe wrote the byte $5A into a cell that the guest had cleared; the model is the byte $5A kept in GEXP before the read
+13	penalty-end-marker	GUEST:penalty-end-marker	The last store of the penalty section (plan 03-16) wrote the byte $5A into a cell that the guest had cleared; the model is the byte $5A kept in GEXP before the read

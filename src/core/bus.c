@@ -56,12 +56,24 @@ static uint32_t offset_of(uint16_t addr)
  */
 enum hw_window { HW_VDC = 0, HW_VCE = 1, HW_PSG = 2, HW_TIMER = 3, HW_IO = 4, HW_IRQ = 5 };
 
+/*
+ * The VDC and VCE access penalty (D-107, ASSUMED LED-CPU-0017): any access to physical $1FE000-$1FE7FF, that is the offset in the page below $800 (windows 0 and 1), costs DS_ADDER_VDC_ACCESS more CPU cycles. It is charged here, in the bus,
+ * before the device sees the access, for every route to the page (a logical address through any MPR, so the zero page and the stack included, and the physical writes of ST0 to ST2), and the step adds the sum to the instruction (cpu.c).
+ * A NULL bus (the reset reads, a test) charges nothing. The cycle length it is multiplied by is the speed the instruction started at (D-101).
+ */
+static void charge_penalty(struct ds_bus *bus, uint32_t offset)
+{
+    if (bus != NULL && offset < 0x800u) {
+        bus->penalty = bus->penalty + (uint32_t)DS_ADDER_VDC_ACCESS;
+    }
+}
+
 static uint8_t hw_read(struct ds_instance *inst, struct ds_bus *bus, uint32_t offset)
 {
     uint32_t reg = offset & 0x3FFu;
     uint8_t value;
 
-    (void)bus; /* the penalty joins in task 3 of plan 03-16 */
+    charge_penalty(bus, offset);
     switch ((enum hw_window)(offset >> 10u)) {
     case HW_VDC:
         return (uint8_t)DS_VDC_STUB_READ;
@@ -87,7 +99,7 @@ static uint8_t hw_read(struct ds_instance *inst, struct ds_bus *bus, uint32_t of
 
 static void hw_write(struct ds_instance *inst, struct ds_bus *bus, uint32_t offset, uint8_t value)
 {
-    (void)bus; /* the penalty joins in task 3 of plan 03-16 */
+    charge_penalty(bus, offset);
     switch ((enum hw_window)(offset >> 10u)) {
     case HW_PSG:
     case HW_TIMER:

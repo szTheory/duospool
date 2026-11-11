@@ -36,7 +36,7 @@ const char *ds_run_refusal_name(uint32_t number)
 
 uint64_t ds_max_step_mclk(void)
 {
-    /* the maximum over the 256 table rows of the base count plus the adders that can apply, plus the interrupt entry, in cycles, at the low-speed cycle length (D-94) */
+    /* the maximum over the 256 table rows of the base count plus the adders that can apply (the VDC and VCE access penalty included), plus the interrupt entry with its own penalty accesses (at most one per cycle), in cycles, at the low-speed cycle length (D-94, D-107) */
     uint32_t most = 0u;
     uint32_t op;
 
@@ -47,7 +47,7 @@ uint64_t ds_max_step_mclk(void)
             most = cycles;
         }
     }
-    return ((uint64_t)most + (uint64_t)DS_INT_ENTRY_CYCLES) * (uint64_t)DS_MCLK_PER_CYCLE_LOW;
+    return ((uint64_t)most + (uint64_t)DS_INT_ENTRY_CYCLES + (uint64_t)DS_INT_ENTRY_CYCLES * (uint64_t)DS_ADDER_VDC_ACCESS) * (uint64_t)DS_MCLK_PER_CYCLE_LOW;
 }
 
 static uint32_t finish(struct ds_run_result *result, const struct ds_instance *inst, uint32_t reason, uint32_t refusal, uint64_t until,
