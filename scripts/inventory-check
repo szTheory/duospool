@@ -124,10 +124,11 @@ done
 # DEND sentinel; a stage that failed or printed no sentinel is NO_SENTINEL for that file and never a pass. A root without a def file has no rows (a mini-root without core sources). Stage 2 is the cross-file awk below.
 for dspec in src/core/constants.def src/core/model_params.def; do
   [ -f "$root/$dspec" ] || continue
-  if awk -v rel="$dspec" -f "$here/lib/inventory-defs.awk" "$root/$dspec" > "$tmp/defs1" 2> /dev/null && [ "$(tail -n 1 "$tmp/defs1")" = "DEND" ]; then
-    grep -v '^DEND$' "$tmp/defs1" >> "$recs" || true
+  # the sentinel is DEND<TAB>N with N the rows read: a def file that exists must give at least one row (WR-03), so an indented or reformatted file whose rows are no longer seen is a dead stage
+  if awk -v rel="$dspec" -f "$here/lib/inventory-defs.awk" "$root/$dspec" > "$tmp/defs1" 2> /dev/null && dend=$(tail -n 1 "$tmp/defs1") && case $dend in "DEND$tab"[0-9]*) [ "${dend#DEND"$tab"}" -ge 1 ] 2> /dev/null ;; *) false ;; esac; then
+    grep -v "^DEND$tab" "$tmp/defs1" >> "$recs" || true
   else
-    printf '%s\tNO_SENTINEL\t0\tthe constants stage printed no DEND sentinel\n' "$dspec" >> "$viol0"
+    printf '%s\tNO_SENTINEL\t0\tthe constants stage printed no DEND sentinel, or read no row of the file\n' "$dspec" >> "$viol0"
   fi
 done
 
