@@ -12,6 +12,7 @@
 #        conformance-run control-signal DIR SIG
 #        conformance-run filter-cases CASES_TSV IDS_FILE OUT_TSV
 #        conformance-run snapshot-host-hash EVIDENCE_DIR
+#        conformance-run trace-out-check BD
 #        conformance-run supervise --ids FILE --out FILE [--wall N] -- CMD ARGS...
 # run mode (D-60, D-85): everything lives under build/NAME (default gate, the build directory of the preset NAME). The steps are
 #   (the runner also gets --records DIR/records, made empty on every run, and --golden-dir tests/conformance/golden: see plan 14, D-84b, D-86; and --inputs DIR/inputs.tsv, plan 03-27)
@@ -78,7 +79,7 @@ LC_ALL=C; export LC_ALL
 here=$(cd "$(dirname "$0")" && pwd)
 
 usage() {
-  echo "usage: conformance-run run [--preset NAME] | sanitize | fixtures [--only NAME] | control DIR | control-signal DIR SIG | filter-cases CASES_TSV IDS_FILE OUT_TSV | snapshot-host-hash EVIDENCE_DIR | supervise --ids FILE --out FILE [--wall N] -- CMD ARGS..." >&2
+  echo "usage: conformance-run run [--preset NAME] | sanitize | fixtures [--only NAME] | control DIR | control-signal DIR SIG | filter-cases CASES_TSV IDS_FILE OUT_TSV | snapshot-host-hash EVIDENCE_DIR | trace-out-check BD | supervise --ids FILE --out FILE [--wall N] -- CMD ARGS..." >&2
   exit 2
 }
 
@@ -317,7 +318,7 @@ run_mode() {
 }
 
 # trace_out_check BD (plan 03-19; D-120, T-03-51, T-03-52): the runner writes a trace only on an explicit --trace-out. The cases that just ran must have left no build/gate/traces; then the explicit request for the authored case ds_proto must
-# print exactly two lines (the insn and the dev file: record count, lost count, size, sha256), the two files must exist with the size and the SHA-256 that a host tool measures (the printed values are not trusted), the insn size must be 24 bytes per
+# print exactly two lines (the insn and the dev file: record count, lost count, size, sha256), the two files must exist with the size and the SHA-256 that a host tool measures (the printed values are not trusted), the insn trace must hold at least one record (TRACE_OUT_EMPTY, WR-04), the insn size must be 24 bytes per
 # record with none lost, and four refused requests (an id with a slash and dot-dot, an upper-case id, a case whose fixture is none, no such case) must exit 2 and add no file. Any fault is exit 1 with a TRACE_OUT_ code, a missing tool exit 2.
 trace_out_check() {
   to_bd=$1
@@ -345,6 +346,11 @@ trace_out_check() {
     to_sha=$(printf '%s\n' "$to_line" | sed -n 's/^.* sha256=\([0-9a-f]\{64\}\)$/\1/p')
     if [ -z "$to_recs" ] || [ -z "$to_bytes" ] || [ -z "$to_sha" ] || [ ! -f "$to_dir/ds_proto.$to_k" ]; then
       echo "TRACE_OUT_SHAPE the summary line or the file of ds_proto.$to_k is missing or malformed"
+      exit 1
+    fi
+    # the instruction trace of a program that ran must hold at least one record: a tracer that recorded nothing (hook not wired, no step run, a sink never attached) satisfies size 0 = 0 records * 24 and a hash of the empty file, so it must be refused here (WR-04). The dev file may be empty: ds_proto touches no logged window.
+    if [ "$to_k" = insn ] && [ "$to_recs" -lt 1 ]; then
+      echo "TRACE_OUT_EMPTY the instruction trace of ds_proto holds no record: a tracer that records nothing is dead, not a pass"
       exit 1
     fi
     to_host_bytes=$(wc -c < "$to_dir/ds_proto.$to_k" | tr -d ' ')
@@ -831,6 +837,7 @@ case $1 in
   control-signal) shift; [ $# -eq 2 ] || usage; control_mode "$1" "$2" ;;
   filter-cases) shift; [ $# -eq 3 ] || usage; filter_cases "$1" "$2" "$3"; exit 0 ;;
   snapshot-host-hash) shift; [ $# -eq 1 ] || usage; snapshot_host_hash "$1"; exit 0 ;;
+  trace-out-check) shift; [ $# -eq 1 ] || usage; trace_out_check "$1"; exit 0 ;; # the entry the selftest trace-out-empty drives with a shim runner in a scratch directory
   supervise) shift ;;
   *) usage ;;
 esac

@@ -3222,6 +3222,49 @@ selftest() {
     fi
   fi
 
+  # (x2) WR-04: trace_out_check passed a trace with zero instruction records (size 0 equals 0 records times 24 and the hash of an empty file matches), so a tracer that recorded nothing read as TRACE_OUT ok. The mode conformance-run
+  # trace-out-check BD runs that one step against a shim ds_runner in a scratch directory (the step writes build/gate/traces relative to its working directory, so the shim never touches the real one). The shim writes N records of 24 zero bytes
+  # for the instruction file and an empty device file, and prints the two summary lines with the real size and the host sha256, and exits 2 for every other id (the four refused requests of the step). A run with N = 3 must pass (exit 0 and
+  # the line TRACE_OUT ds_proto insn dev ok: the step is alive); a run with N = 0 must exit 1 with TRACE_OUT_EMPTY and no ok line. A step without the rule passes both and the case is FAIL.
+  if st_want trace-out-empty; then
+    st_ran=1
+    to_s="$tmp/selftest/trace-out"
+    rm -rf "$to_s"
+    mkdir -p "$to_s/bd"
+    : > "$to_s/bd/cases.tsv"
+    cat > "$to_s/bd/ds_runner" <<'TEOF'
+#!/bin/sh
+id=""
+while [ $# -gt 0 ]; do
+  case $1 in
+    --trace-out) id=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+[ "$id" = ds_proto ] || exit 2
+n=${TRACE_SHIM_RECORDS:-0}
+mkdir -p build/gate/traces
+dd if=/dev/zero bs=24 count="$n" of=build/gate/traces/ds_proto.insn 2> /dev/null
+: > build/gate/traces/ds_proto.dev
+if command -v sha256sum > /dev/null 2>&1; then h=$(sha256sum build/gate/traces/ds_proto.insn); else h=$(shasum -a 256 build/gate/traces/ds_proto.insn); fi
+printf 'TRACE ds_proto insn records=%s lost=0 bytes=%s sha256=%s\n' "$n" "$((n * 24))" "${h%% *}"
+printf 'TRACE ds_proto dev records=0 lost=0 bytes=0 sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n'
+TEOF
+    chmod +x "$to_s/bd/ds_runner"
+    to_conf="$root/scripts/conformance-run"
+    rm -rf "$to_s/run1" "$to_s/run0"
+    mkdir -p "$to_s/run1" "$to_s/run0"
+    if (cd "$to_s/run1" && TRACE_SHIM_RECORDS=3 sh "$to_conf" trace-out-check "$to_s/bd") > "$tmp/st.out" 2>&1; then to_r1=0; else to_r1=$?; fi
+    to_alive=0
+    if [ "$to_r1" -eq 0 ] && grep -q '^TRACE_OUT ds_proto insn dev ok' "$tmp/st.out"; then to_alive=1; fi
+    if (cd "$to_s/run0" && TRACE_SHIM_RECORDS=0 sh "$to_conf" trace-out-check "$to_s/bd") > "$tmp/st.out" 2>&1; then to_r0=0; else to_r0=$?; fi
+    if [ "$to_alive" -eq 1 ] && [ "$to_r0" -eq 1 ] && grep -q '^TRACE_OUT_EMPTY' "$tmp/st.out" && ! grep -q '^TRACE_OUT ds_proto insn dev ok' "$tmp/st.out"; then
+      echo "SELFTEST trace-out-empty PASS"
+    else
+      echo "SELFTEST trace-out-empty FAIL (alive $to_alive, exit with 3 records $to_r1, exit with none $to_r0)"; failed=1
+    fi
+  fi
+
   # a selected NAME that matched no mutation is a usage error, never a vacuous pass
   if [ -n "$st_sel" ] && [ "$st_ran" -eq 0 ]; then usage; fi
   if [ "$failed" -eq 0 ]; then echo "SELFTEST RESULT PASS"; return 0; fi
