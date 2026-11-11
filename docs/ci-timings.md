@@ -183,3 +183,83 @@ for a GitHub runner: the heaviest stages there were `named-controls` (19 to 20 s
   that a warm runner removes; second, running the two independent compiler builds (`gate-gcc`, `gate-clang`) as one job step instead of two cold
   configures; third, reducing repeated `git` spawns in `protocol-negatives` and `audit-synthetic`. A dependency cache is the last resort, because a
   stale cache hides exactly the cold-start failures the job exists to catch.
+
+## Local baseline after W1 (a local run, not a CI run)
+
+CI for the W1 changes: unverified, pending owner push authorisation (D-64). Nothing of W1 (authored fixtures, the cc65 install step in the workflow,
+the README and docs-check rule) has run on a GitHub runner, so this file holds no CI row for it and no CI claim. The first-run row above and its
+efficiency review describe the Phase 2 gate only. The workflow now installs cc65 before the Gate step (plan 03-07); the first CI run after an
+authorised push will add that apt step to the critical path, and the row for it is to be added then.
+
+Measured on 2026-11-11 on the owner's development machine (Apple M5 Pro, 18 cores, macOS 26.6.2, BWK awk 20200816, Homebrew cc65 2.19 whose `ca65`
+prints V2.18) with `sh scripts/check --timing` on a warm tree (`build/` present). The machine was shared and loaded: the load average was about 10 to
+13 during the run, so the seconds are an upper-leaning local figure, not a quiet-machine one. The seconds are whole seconds from the gate's own clock.
+
+Target and verdict: the warm target is 120 s for the gate. The run took 62 s of wall time for 50 stages (sum of the stage seconds 62), which is under
+the target with a margin of about 58 s. No stage ran longer than 20 s, so no `TIMING_WARN` line was printed; the longest was `sanitizers` at 7 s.
+`sh scripts/check --selftest` took 14 s. Against the Phase 2 local baseline above (45 s for 47 stages on a quieter machine), the three added stages
+`fixture-build`, `fixture-lint` and `fixture-lint-negatives` cost 0 or 1 s each warm, and `fixtures` grew from 1 s to 2 s (it now runs the
+authored image build first, plan 03-06); the rest of the difference (45 s to 62 s) is not separable from machine load, so no regression is claimed.
+
+| # | Stage | Seconds (local) | Verdict |
+|---|-------|-----------------|---------|
+| 1 | preflight | 0 | PASS |
+| 2 | ledger-entries | 1 | PASS |
+| 3 | ledger-negatives | 1 | PASS |
+| 4 | ledger-samples | 0 | PASS |
+| 5 | decision-records | 0 | PASS |
+| 6 | decision-negatives | 1 | PASS |
+| 7 | profile-records | 0 | PASS |
+| 8 | profile-negatives | 1 | PASS |
+| 9 | filename-controls | 1 | PASS |
+| 10 | empty-expect-controls | 0 | PASS |
+| 11 | provenance | 0 | PASS |
+| 12 | provenance-negatives | 1 | PASS |
+| 13 | licences | 1 | PASS |
+| 14 | licence-negatives | 1 | PASS |
+| 15 | protocol-order | 0 | PASS |
+| 16 | protocol-negatives | 6 | PASS |
+| 17 | score-controls | 0 | PASS |
+| 18 | results | 0 | PASS |
+| 19 | results-negatives | 1 | PASS |
+| 20 | ingest-controls | 0 | PASS |
+| 21 | flatten-controls | 1 | PASS |
+| 22 | cancel-controls | 1 | PASS |
+| 23 | outcome-controls | 0 | PASS |
+| 24 | rights-tree | 2 | PASS |
+| 25 | rights-negatives | 5 | PASS |
+| 26 | audit-synthetic | 5 | PASS |
+| 27 | inventory | 2 | PASS |
+| 28 | inventory-negatives | 1 | PASS |
+| 29 | fixture-lint | 0 | PASS |
+| 30 | fixture-lint-negatives | 1 | PASS |
+| 31 | workflow | 0 | PASS |
+| 32 | workflow-negatives | 1 | PASS |
+| 33 | docs-claims | 0 | PASS |
+| 34 | docs-claims-negatives | 0 | PASS |
+| 35 | ci-timings-controls | 0 | PASS |
+| 36 | fixture-build | 0 | PASS |
+| 37 | build | 0 | PASS |
+| 38 | outcome-sync | 1 | PASS |
+| 39 | conformance | 6 | PASS |
+| 40 | sanitizers | 7 | PASS |
+| 41 | excluded-mode-controls | 0 | PASS |
+| 42 | record-lint | 0 | PASS |
+| 43 | record-lint-negatives | 1 | PASS |
+| 44 | core-boundary | 0 | PASS |
+| 45 | core-boundary-negatives | 3 | PASS |
+| 46 | determinism | 2 | PASS |
+| 47 | determinism-negatives | 0 | PASS |
+| 48 | fixtures | 2 | PASS |
+| 49 | fixture-negatives | 1 | PASS |
+| 50 | named-controls | 5 | PASS |
+
+### Efficiency review of the W1 baseline
+
+- **Where the time goes.** The same long tail of short stages as before; the largest are `sanitizers` 7 s, `conformance` 6 s, `protocol-negatives` 6 s,
+  and `named-controls`, `audit-synthetic` and `rights-negatives` 5 s each. None is near the 30 s per step threshold (D-61), so no cache is added.
+- **The fixture stages are cheap.** `fixture-build` rounds to 0 s (under a second) for the five small authored images; the `fixtures` stage runs the
+  image build first (plan 03-06) and takes 2 s. A cold-tree figure was not measured here.
+- **Not measured.** A cold tree, the Linux container run and any GitHub runner run were not part of this measurement. The apt install of cc65
+  is the one step with no number at all.
+- **Nothing was weakened.** No stage, control or selftest was skipped, merged or shortened to save time.

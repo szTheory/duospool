@@ -1,16 +1,16 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
-# Power-on state and placeholder state evolution (D-50, D-68, D-75). A modelling assumption of this project, not an established hardware fact. The pinning test lists the seed-42 draw order; the stepping rules are pinned by advance_rules.
+# Power-on state (D-50, D-68, D-75); the unit and mapping register constant clauses are superseded by D-91 and D-114 (03-CONTEXT). A modelling assumption, not a hardware fact. The pin lists the seed-42 draw order.
 id = "LED-PROF-0002"
-statement = "DuoSpool models power-on as one of two policies bound in the run request: zero (RAM zero, psg_noise 1, vdc_phase 0), or seeded-prng-v1 (splitmix64, one stream per domain, sub = splitmix64(seed XOR DOMAIN_CONST), little-endian draws); the 8 mapping registers are zero. This is a modelling choice, not a hardware measurement."
+statement = "DuoSpool models power-on as one of two policies bound in the run request: zero (RAM zero), or seeded-prng-v1 (splitmix64, one stream per domain, little-endian draws). SUPERSEDED: the unit clause (psg_noise, vdc_phase, placeholder cycles) by D-91 and the all-zero mapping register clause by D-114. A modelling choice, not a hardware measurement."
 profile = "pce-hucard-2btn"
 status = "assumed"
 sources = ["UNKNOWN|hardware power-on RAM contents|no source read; the two policies are the project's own modelling choice (D-50)", "UNKNOWN|hardware power-on mapping register values|not read; the all-zero constant is an open item for Phase 3", "UNKNOWN|hardware PSG noise and VDC phase behaviour|not read; Phase 2 evolves them with placeholder rules only (D-68)"]
 evidence = []
 disagreement = "none: no hardware source was consulted, so there is nothing to disagree with"
 pinning_test = "TEST:poweron_draw_order"
-updated = "2026-11-10"
-assumption = "powerup_policy stays an open profile field bound by the run request. Stepping is placeholder evolution: machine time counts placeholder cycles, psg_noise is a fixed 32-bit xorshift register stepped once per cycle and vdc_phase a wrapping counter; all of it exists so that later liveness controls can fail, and Phase 3 replaces it."
+updated = "2026-11-11"
+assumption = "powerup_policy stays an open profile field bound by the run request. Superseded by D-91: machine time is master clocks and the placeholder psg_noise and vdc_phase evolution is removed. Superseded by D-114: reset values are per-register constants (MPR7 $00), and MPR0-6 stay zero under zero and seeded-prng-v1."
 revisit_phase = 3
 withheld = ["any claim that guests do not depend on uninitialised memory", "any hardware claim for the placeholder state evolution (the word LFSR here means a fixed placeholder generator, not a hardware LFSR)", "any hardware claim for the mapping register constant", "any claim that a power-on value or a machine-time unit matches hardware"]
 origin = "02-CONTEXT D-50"

@@ -17,4 +17,4 @@ meaning = "ds_run to an absolute deadline ends at the first instruction boundary
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-CPU-0003"]

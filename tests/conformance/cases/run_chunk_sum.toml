@@ -15,4 +15,4 @@ meaning = "Running the same guest to one absolute deadline in chunks of 1, 7, 16
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-CPU-0004"]
