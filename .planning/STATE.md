@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 3
 current_phase_name: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-current_plan: 33
+current_plan: 34
 status: planning
-stopped_at: Completed 03-27-PLAN.md
-last_updated: "2026-11-11T17:52:32.467Z"
+stopped_at: Completed 03-28-PLAN.md
+last_updated: "2026-11-11T18:09:28.750Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 2 complete, transitioned to Phase 3
-state_head: e0a476329661554f114b02777e3df924c37acc1e
+state_head: 2dc7ffdca8458ed2d0044c756235aab72dbd5f72
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 72
-  completed_plans: 66
+  completed_plans: 67
   percent: 33
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 3 — HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-Current Plan: 33
+Current Plan: 34
 Total Plans in Phase: 38
 Status: Ready to execute
 Last activity: 2026-11-11 — Completed 03-04 (W1: optional case keys, guestkinds.c, authored fixture key, machine_time and stop on RESULT)
@@ -125,6 +125,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 03 P25 | 95min | 3 tasks | 31 files |
 | Phase 03 P26 | 150min | 3 tasks | 27 files |
 | Phase 03 P27 | 30min | 3 tasks | 40 files |
+| Phase 03 P28 | 70min | 3 tasks | 77 files |
 
 ## Accumulated Context
 
@@ -252,6 +253,7 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-27: the $1000 window is the two-button pad on the SEL and CLR protocol (D-115); a read of it makes the byte read the new io_buffer like every read in 0800-17FF; the pcetech direction-nibble order (RIGHT and DOWN swapped) is carried as a disagreement, not decided
 - [Phase 03]: 03-27: the input schedule is an immutable copy of at most 1024 events (16 bytes each) in the instance, frozen once it holds an event; ds_input_push checks queue_full, port, bits, order, then late and state, with the typed input.* refusals
 - [Phase 03]: 03-27: input scripts reach the runner only as flattened SCRIPT and INPUT rows (conformance-flatten --inputs, then --inputs FILE in every runner invocation); held is an array of lowercase button names in canonical bit order
+- [Phase 03]: 03-28: input-rules.awk adds INP_PORT_EMPTY, INP_HELD_OPPOSITE and INP_HELD_RESERVED and is the one rule set of input-check and conformance-flatten --inputs; the [input] record table (events, schedule_sha256 over AT,PORT,MASK plus LF per event) is record format version 5 and prints no ledger id
 
 ### Pending Todos
 
@@ -275,6 +277,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-11T17:52:32.010Z
-Stopped at: Completed 03-27-PLAN.md
+Last session: 2026-11-11T18:09:28.461Z
+Stopped at: Completed 03-28-PLAN.md
 Resume file: None
