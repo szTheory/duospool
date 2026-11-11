@@ -13,7 +13,7 @@
 #   --tsv FILE    the opcode table whose mnemonics a fixture may use (default: tests/oracle/huc6280-opcodes.tsv of this repository, whatever --root says; plan 03-08)
 # Three stages, each writing to a file with its exit status tested (CR-01: no awk on the left of a pipe): a ledger reader (inline awk) lists every entry id, status and FACT source and prints an END sentinel,
 # scripts/lib/fixture-lint-lex.awk reads the sources and prints an END sentinel, scripts/lib/fixture-lint-rules.awk requires it. A stage that died, or a reader that printed no sentinel, is FXL_STAGE_DEAD (exit 2), never a pass.
-# Codes: FXL_ORPHAN_CHECK FXL_UNLISTED_CHECK FXL_BAD_CLASS FXL_COUNT FXL_INCLUDE_PATH FXL_SIZE_HINT FXL_RAW_UNCITED FXL_UNKNOWN_CITE FXL_UNKNOWN_MNEMONIC FXL_BAD_OBSERVE FXL_OCR_BACKS_SUPPORTED FXL_UNKNOWN_LEDGER_ID (scripts/lib/fixture-lint-rules.awk).
+# Codes: FXL_ORPHAN_CHECK FXL_UNLISTED_CHECK FXL_BAD_CLASS FXL_COUNT FXL_INCLUDE_PATH FXL_INCBIN FXL_SIZE_HINT FXL_RAW_UNCITED FXL_UNKNOWN_CITE FXL_UNKNOWN_MNEMONIC FXL_BAD_OBSERVE FXL_OCR_BACKS_SUPPORTED FXL_UNKNOWN_LEDGER_ID (scripts/lib/fixture-lint-rules.awk).
 # stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then (clean) a line  FIXTURE_LINT fixtures=N checks=M raw=R  and  STATUS fixture-lint ok
 # stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
 # exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error (including FXL_STAGE_DEAD)

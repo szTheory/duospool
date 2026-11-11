@@ -16,6 +16,7 @@
 #   FXL_BAD_CLASS      the class tag is not MAN:<page>, GUEST:<model> or ASSUMED:LED-AREA-NNNN (DuoSpool output and other emulators are no class)  rule-bad-class
 #   FXL_COUNT          the id= or checks= header is missing or malformed, or checks= is not the number of rows                              rule-count
 #   FXL_INCLUDE_PATH   an .include that is not a bare file name (resolved through fixtures/lib), fixtures/lib/NAME or build/PATH            rule-include-path
+#   FXL_INCBIN         an .incbin of any file (a fixture is built from its own source, so a binary blob would enter the image with no source, provenance or rights record, D-123, D-133; none is allowed)  rule-incbin
 #   FXL_SIZE_HINT      an instruction operand that is a literal below $100 without z:, a: or < in front (Pitfall 5; (zp) and BBR/BBS take <)  rule-size-hint
 #   FXL_RAW_UNCITED    a source line with a RAW marker in its comment that does not read RAW:<page>                                         rule-raw-uncited
 #   FXL_UNKNOWN_CITE   a MAN:<page> or RAW:<page> whose page is not in cites.txt, or a page named in a FACT source of a supported entry that cites.txt does not list                                                           rule-unknown-cite
@@ -95,6 +96,10 @@ $1 == "INC" {
   p = $4; gsub(/^"|"$/, "", p)
   okinc = ($4 ~ /^"[^"]+"$/) && (p !~ /\.\./) && (p !~ /^\//) && ((p !~ /\//) || (p ~ /^fixtures\/lib\/[A-Za-z0-9_.-]+$/) || (p ~ /^build\/[A-Za-z0-9_.\/-]+$/))
   if (!okinc) viol($2, "FXL_INCLUDE_PATH", $3, ".include " $4 " is not a bare name, fixtures/lib/NAME or build/PATH")  # rule-include-path
+  next
+}
+$1 == "BIN" {
+  viol($2, "FXL_INCBIN", $3, ".incbin " $4 " would embed a file whose provenance and rights no manifest records: raw data is written as .byte lines in the source")  # rule-incbin
   next
 }
 $1 == "MAC" {

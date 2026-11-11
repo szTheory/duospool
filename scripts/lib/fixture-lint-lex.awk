@@ -7,6 +7,7 @@
 #   F    file                                  the file has at least one line
 #   CHK  file line k word                      a CHECK_LIT, CHECK_GUEST or CHECK_OBSERVE use of check number k (the text before the first comma of the operand, not evaluated; word is the macro name)
 #   INC  file line path                        a .include of path
+#   BIN  file line operand                    a .incbin (any case) with its operand: stage 2 refuses every one (FXL_INCBIN)
 #   INS  file line mnemonic word operand       a source line whose first word is letters and digits (any case; mnemonic is that word in lower case, word as written; stage 2 decides whether it is an instruction or a macro)
 #   MAC  file line name                        a .macro definition of name in a source or in a fixtures/lib include (an .inc file is read for these only; ca65 macro names are case sensitive)
 #   RAW  file line comment                     a source line whose comment holds the word RAW (a raw-byte line; the cite is judged by stage 2)
@@ -55,6 +56,7 @@ FILENAME ~ /\.s$/ {
   if (i == 0) { word = code; rest = "" } else { word = substr(code, 1, i - 1); rest = trim(substr(code, i + 1)) }
   if (word ~ /^CHECK_(LIT|GUEST|OBSERVE)$/) { i = index(rest, ","); if (i > 0) rest = substr(rest, 1, i - 1); printf "CHK\t%s\t%d\t%s\t%s\n", FILENAME, FNR, trim(rest), word; next }
   if (tolower(word) == ".include") { printf "INC\t%s\t%d\t%s\n", FILENAME, FNR, rest; next }
+  if (tolower(word) == ".incbin") { printf "BIN\t%s\t%d\t%s\n", FILENAME, FNR, rest; next }
   lw = tolower(word)  # ca65 takes an instruction in any case: LDA and lda are the same word
   if (lw ~ /^[a-z][a-z0-9]*$/) printf "INS\t%s\t%d\t%s\t%s\t%s\n", FILENAME, FNR, lw, word, rest
   next
