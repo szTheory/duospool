@@ -13,8 +13,8 @@
  * *outlen as 0, so a failed print can never be read as a short record.
  * On success the text is NUL-terminated inside cap and *outlen is its length without the terminator.
  * The accept record prints, in order, the tables record, core, profile (id, rev and the resolved sha256 from ds_profile_hash), the 13
- * field_NAME tables, withheld (the sorted ledger ids that bound the run), content, power_on, the model_NAME tables, constants, run, limits and machine (the machine time in
- * the unit master-clocks, and the state digest from ds_digest). The refusal record prints record, core and refusal (reason,
+ * field_NAME tables, withheld (the sorted ledger ids that bound the run, one row per id), content, power_on, the model_NAME tables, stimulus (the declared IRQ test stimulus), input (the declared input script's identity), constants, run, limits and
+ * machine (the machine time in the unit master-clocks, and the state digest from ds_digest). The refusal record prints record, core and refusal (reason,
  * requested_id, requested_rev) and nothing after: a run that was refused has no machine. Every value is read from the instance through
  * the core's accessors; there is no struct that repackages them. A digest and a profile hash are evidence of repeatability only.
  */

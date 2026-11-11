@@ -7,7 +7,7 @@
  * ds_restore runs its checks in this order: the arguments, the overlap of the buffer with the instance, the length (truncated, then trailing), the prefix, the version, then the regions in stream order, each one tag, its length and its fields (profile and content first, as the stream carries them).
  *
  * name           number  returned when
- * argument       1       the instance, the buffer or (ds_snapshot) the written pointer's target is NULL
+ * argument       1       the instance or the buffer is NULL (ds_snapshot accepts a NULL written pointer: it is optional)
  * overlap        2       the buffer shares a byte with the instance (a restore would read bytes it is about to overwrite)
  * capacity       3       ds_snapshot: the buffer is smaller than ds_snapshot_size() bytes
  * truncated      4       ds_restore: the length is below ds_snapshot_size()

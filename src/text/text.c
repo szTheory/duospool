@@ -513,7 +513,7 @@ static unsigned dec_u64(char *dst, uint64_t v)
  * AT,PORT,MASK in plain decimal (the machine time in master clocks, the port from 1, the logical button mask in the CD BIOS layout) with no padding, each line closed by one LF (0x0A) and nothing else in the stream. A run with no input hashes the empty stream, so a no-input run is
  * an explicit empty script with its own identity (the sha256 of zero bytes, e3b0c442...), not a missing key. The identity says which declared events were given to the core and says nothing about any pad (a script is a test input declared by the case, E2 at most). A schedule that
  * ds_input_push could not have produced (a count above DS_INPUT_MAX, a nonzero reserved word, a used slot with a port outside 1 to 5, a mask above bit 7 or with opposite directions, times that go back, an equal time whose port does not increase, a nonzero unused slot) is a state error:
- * the printer never guesses. The table prints no ledger id (the [withheld] list is full at 24 of 24 and this table adds none).
+ * the printer never guesses. The table prints no ledger id, so it adds nothing to the [withheld] table (which holds one row per id since format version 6, up to WH_MAX).
  */
 static void emit_input(struct out *o, const struct ds_instance *inst)
 {
