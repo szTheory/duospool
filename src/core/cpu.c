@@ -510,7 +510,7 @@ _Static_assert((uint32_t)DS_CONST_speed_switch_extra_cycles <= 8u, "speed_switch
 static uint32_t interrupt_entry(struct ds_instance *inst, struct ds_obs_log *log, uint64_t start, uint32_t vector)
 {
     uint32_t mclk = inst->speed != 0u ? DS_MCLK_PER_CYCLE_HIGH : DS_MCLK_PER_CYCLE_LOW;
-    struct ds_bus bus = {0u, log, start, mclk, DS_INT_ENTRY_CYCLES - 1u, 0u}; /* the entry's own accesses are stamped inside its cycles */
+    struct ds_bus bus = {0u, log, start, mclk, DS_INT_ENTRY_CYCLES - 1u, 0u, (uint32_t)inst->pc}; /* the entry's own accesses are stamped inside its cycles; their records carry the address of the interrupted instruction's next (WR-02) */
     uint32_t pc = inst->pc;
     uint32_t lo;
     uint32_t hi;
@@ -672,7 +672,7 @@ static uint32_t block_epilogue(struct ds_instance *inst, struct ds_obs_log *log,
 static uint32_t block_step(struct ds_instance *inst, struct ds_obs_log *log)
 {
     uint32_t mclk_per_cycle = inst->speed != 0u ? DS_MCLK_PER_CYCLE_HIGH : DS_MCLK_PER_CYCLE_LOW;
-    struct ds_bus bus = {0u, log, inst->machine_time, mclk_per_cycle, 0u, 0u};
+    struct ds_bus bus = {0u, log, inst->machine_time, mclk_per_cycle, 0u, 0u, ((uint32_t)inst->pc - 7u) & 0xFFFFu}; /* inst->pc is the opcode address plus 7 once the prologue ran: the records of a byte or of the epilogue carry the address of the transfer (WR-02) */
 
     if (inst->blk_remaining == 0u) {
         return block_epilogue(inst, log, &bus, mclk_per_cycle);
@@ -687,7 +687,7 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
         return block_step(inst, log);
     }
     uint32_t mclk_per_cycle = inst->speed != 0u ? DS_MCLK_PER_CYCLE_HIGH : DS_MCLK_PER_CYCLE_LOW; /* the speed this instruction starts at: CSL and CSH are charged at the old speed, the new one applies from the next instruction (D-101) */
-    struct ds_bus bus_state = {0u, log, inst->machine_time, mclk_per_cycle, 0u, 0u}; /* what this instruction's bus accesses add to it, the observer log they report to and the stamp rule of the accesses (start, cycle length, last cycle, read-modify-write): a local of the step, nothing survives it (D-92, D-108) */
+    struct ds_bus bus_state = {0u, log, inst->machine_time, mclk_per_cycle, 0u, 0u, (uint32_t)inst->pc}; /* what this instruction's bus accesses add to it, the observer log they report to and the stamp rule of the accesses (start, cycle length, last cycle, read-modify-write): a local of the step, nothing survives it (D-92, D-108) */
     struct ds_bus *bus = &bus_state;
     uint32_t pc = inst->pc;
     uint32_t i_before = (uint32_t)inst->p & P_I; /* the I value in force before the instruction: the interrupt sample uses it when irq_i_sample is pre, the default (D-111) */

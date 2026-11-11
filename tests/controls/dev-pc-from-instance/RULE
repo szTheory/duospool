@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Toy control (D-85, D-119; code review WR-02): the first rule of the pc field of a device-register record, which read the pc of the instance when the record was written, made from the live src/core/bus.c by scripts/control-mutate. The anchor is the argument of the one ds_obs_dev
+# call that names the pc the bus carries; the replacement reads the instance instead, which is the address after the transfer for every byte and epilogue step of a block transfer (the prologue moves the program counter past the seven bytes). The case in EXPECT must come out guest_failure on
+# the toy, or no case can see that the dev records of a TII carry the next instruction's address. The real core passes it (a REQUIRED case).
+tag=rule-dev-pc-from-instance
+file=src/core/bus.c
+anchor=stamp, bus->pc, HW_PAGE_PHYS | offset,
+replace=stamp, (uint32_t)inst->pc, HW_PAGE_PHYS | offset,

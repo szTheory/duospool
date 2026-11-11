@@ -241,7 +241,7 @@ void ds_obs_insn(struct ds_obs_log *log, const struct ds_instance *inst, uint32_
     }
 }
 
-void ds_obs_dev(struct ds_obs_log *log, const struct ds_instance *inst, uint64_t stamp, uint32_t phys, uint32_t value, uint32_t kind, uint32_t flags)
+void ds_obs_dev(struct ds_obs_log *log, const struct ds_instance *inst, uint64_t stamp, uint32_t pc, uint32_t phys, uint32_t value, uint32_t kind, uint32_t flags)
 {
     uint8_t *r;
     uint32_t i;
@@ -259,7 +259,7 @@ void ds_obs_dev(struct ds_obs_log *log, const struct ds_instance *inst, uint64_t
     r[13] = (uint8_t)(kind & 0xFFu);
     r[14] = (uint8_t)(flags & 0xFFu);
     r[15] = inst->io_buffer;
-    put_u16(r + 16, (uint32_t)inst->pc);
+    put_u16(r + 16, pc);
     for (i = 18u; i < DS_DEV_RECORD_BYTES; i++) {
         r[i] = 0u;
     }

@@ -11,7 +11,7 @@
  *   record (DS_DEV_RECORD_BYTES = 24, little-endian): +00 u64 stamp (the stamp of the access in master clocks, since plan 03-21 the access stamp of the bus: the instruction's start stamp plus the cycle of the access inside it times the cycle length, D-92 and D-108; seq orders accesses with one stamp)
  *     +08 u32 phys (physical address, $1FE000 | offset in the page)  +12 u8 value (the byte written, or the byte the read returned)  +13 u8 kind (DS_DEV_WRITE, DS_DEV_READ or DS_DEV_ST)
  *     +14 u8 flags (DS_DEV_FLAG_PENALTY: the access paid the VDC and VCE penalty, DS_DEV_FLAG_PHYS: a physical access that did not consult the mapping registers)  +15 u8 aux (the bus latch io_buffer after the access, D-104)
- *     +16 u16 pc (the instruction's address)  +18..+23 zero
+ *     +16 u16 pc (WR-02: the opcode address of the instruction, and of every step of a block transfer, so a record joins the transfer's single insn record by pc; an interrupt entry's accesses carry the next address the entry pushes)  +18..+23 zero
  * header (DS_INSN_HEADER_BYTES = DS_DEV_HEADER_BYTES = 16, little-endian, in the sink struct): +00 u32 count (records stored)  +04 u32 lost (records dropped, saturating)  +08 u64 seq (records offered in this call = count + lost
  * unless lost saturated). The core overwrites the header at the start of every accepted ds_run call and again at its end, and never reads it back, so a garbage-poisoned header cannot steer a write. The only overflow policy is
  * drop-newest: when count reaches the capacity of the request, later records are dropped and lost counts them. There is no SINK_FULL stop reason (D-95, D-119).
@@ -74,8 +74,8 @@ struct ds_obs_log {
 uint32_t ds_obs_sinks_check(const struct ds_run_request *request, const struct ds_instance *inst, const struct ds_run_result *result);
 void ds_obs_begin(struct ds_obs_log *log, struct ds_insn_sink *insn, struct ds_dev_sink *dev); /* zero the running counts and overwrite the headers of the sinks that are carried */
 void ds_obs_insn(struct ds_obs_log *log, const struct ds_instance *inst, uint32_t opcode);     /* one record, or lost++; log NULL or no insn sink does nothing */
-/* one dev record for an access at the stamp the bus computed for it (the bus calls it after the access, so aux is the latch it left); log NULL or no dev sink does nothing */
-void ds_obs_dev(struct ds_obs_log *log, const struct ds_instance *inst, uint64_t stamp, uint32_t phys, uint32_t value, uint32_t kind, uint32_t flags);
+/* one dev record for an access at the stamp the bus computed for it, carrying the pc the bus was given (struct ds_bus pc: never read from the instance); the bus calls it after the access, so aux is the latch it left; log NULL or no dev sink does nothing */
+void ds_obs_dev(struct ds_obs_log *log, const struct ds_instance *inst, uint64_t stamp, uint32_t pc, uint32_t phys, uint32_t value, uint32_t kind, uint32_t flags);
 void ds_obs_end(struct ds_obs_log *log); /* overwrite the headers with the final counts; log NULL does nothing */
 
 /* one instruction with the observer hook (cpu.c): ds_cpu_step is ds_cpu_step_obs with no log */

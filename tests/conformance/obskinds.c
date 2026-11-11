@@ -1418,6 +1418,7 @@ static void dl_windows(struct ctx *c, const char *rom, const char *request, char
     memset(&bus_off, 0, sizeof bus_off);
     bus.obs = &log;
     bus.start = w->machine_time; /* no instruction runs in the walk: a cycle length of 0 stamps every access at the instance's machine time */
+    bus.pc = (uint32_t)w->pc;    /* the pc of the bus is the one every record of the walk carries: the instance's own, which the check below compares with (WR-02) */
     bus_off.start = w->machine_time;
     ds_mpr_write(w, 0u, 0xFFu); /* logical $0000-$1FFF is the hardware page */
     /* a write to every window: offsets $000 + k * $400 + 5 */
@@ -1508,7 +1509,7 @@ static void dl_windows(struct ctx *c, const char *rom, const char *request, char
         memset(&sbus, 0, sizeof sbus);
         sbus.obs = &slog;
         for (n = 0u; n < 10u; n++) {
-            ds_obs_dev(sbus.obs, w, w->machine_time, 0x1FE000u + n, n, (uint32_t)DS_DEV_WRITE, 0u);
+            ds_obs_dev(sbus.obs, w, w->machine_time, (uint32_t)w->pc, 0x1FE000u + n, n, (uint32_t)DS_DEV_WRITE, 0u);
         }
         ds_obs_end(&slog);
         check(c, get_u32(ssk.header) == 4u && get_u32(ssk.header + 4) == 6u && get_u64(ssk.header + 8) == 10u, "a 4-record dev sink offered 10 records does not read count 4, lost 6, seq 10");

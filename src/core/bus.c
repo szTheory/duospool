@@ -106,7 +106,7 @@ static uint64_t access_stamp(const struct ds_instance *inst, const struct ds_bus
 static void log_dev(const struct ds_instance *inst, const struct ds_bus *bus, uint64_t stamp, uint32_t offset, uint32_t value, uint32_t kind)
 {
     if (bus != NULL) {
-        ds_obs_dev(bus->obs, inst, stamp, HW_PAGE_PHYS | offset, value, kind, (offset < 0x800u ? (uint32_t)DS_DEV_FLAG_PENALTY : 0u) | (kind == (uint32_t)DS_DEV_ST ? (uint32_t)DS_DEV_FLAG_PHYS : 0u));
+        ds_obs_dev(bus->obs, inst, stamp, bus->pc, HW_PAGE_PHYS | offset, value, kind, (offset < 0x800u ? (uint32_t)DS_DEV_FLAG_PENALTY : 0u) | (kind == (uint32_t)DS_DEV_ST ? (uint32_t)DS_DEV_FLAG_PHYS : 0u));
     }
 }
 

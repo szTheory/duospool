@@ -19,7 +19,7 @@
 #define DS_MAPPER_NAME_MAX 16u
 #define DS_CONTENT_ID_BYTES 32u
 /* behaviour epoch (D-53): bumped by any change that can alter what a run observes; goldens compare it, never a build id */
-#define DS_BEHAVIOUR_EPOCH 3u
+#define DS_BEHAVIOUR_EPOCH 4u
 /* the version of the power-on policy table that the record prints next to the policy name is ds_policy_version() of ds_poweron.h (D-50, D-134): 1 for zero and seeded-prng-v1, 2 for seeded-prng-v2 */
 /* field_index of a result that names no profile field */
 #define DS_NO_FIELD 0xffffffffu
@@ -366,6 +366,7 @@ struct ds_bus {
     uint32_t cycle_mclk;     /* master clocks per CPU cycle at the speed the step started at (D-101) */
     uint32_t last;           /* zero-based index of the last cycle of the instruction before the penalty: its table cycles plus the flag adders, minus one */
     uint32_t rmw;            /* 1 for a read-modify-write instruction, whose read is one cycle before the last */
+    uint32_t pc;             /* the 16-bit address the dev records carry (WR-02): the opcode address for an instruction and for every step of a block transfer; for an interrupt entry the next address, which the entry pushes */
 };
 
 /* the class of a bank (bus.c, plan 03-20; D-103, ASSUMED LED-CPU-0011): the value of the const bank_class[256] table the bus dispatches on, for the independent bank-class oracle of the runner; a bank above 255 gives DS_BANK_CLASS_NONE */
