@@ -306,6 +306,19 @@ every `assumed` entry include: hardware cycle accuracy, interrupt latency in cyc
 5. **Hash pin portability.** The fixture hash pin was measured across a source build and the Ubuntu package, not the Homebrew bottle. W1 must confirm the local Homebrew build produces identical bytes before the manifest hashes are trusted (D-123).
 6. **Plan count.** The synthesis says "about 30" in one place and "28-32" in another; both are kept as estimates, not commitments.
 
+
+### Research errata (applied after 03-RESEARCH.md page-image verification)
+
+These correct citations and wording only. No decision outcome changes.
+
+- **R-1 Block-transfer cycle formula.** The H8-25 scan itself prints "17+16z", a misprint of 17+6x. H8-6 and S8-88/89 print 17+6x. Cite H8-6 and S8-88/89 for LED-CPU-0007 and put the H8-25 footnote in `disagreement`. It is not an OCR error.
+- **R-2 D-97 cite.** H8-26 does not exist in the mirrored hardware manual (28 pages, ends at H8-25). Read "H8-25/26" as H8-25 plus the software manual per-instruction pages.
+- **R-3 D-125 lint rule.** "z: and a: always explicit" cannot be met for (zp) and BBR/BBS forms in ca65. Read it as "z:, a: or <". `lda $0020` still assembles as zero page.
+- **R-4 D-105 scope.** Narrow `.byte` to multi-bit TAM/TMA operands. `tam #0` and `tma #0` assemble normally.
+- **R-5 ER-5 power-on latch.** H8-18 and H8-19 say port O resets high, so the $FF power-on latch has a manual basis. It may be recorded as source-backed once the pages are verified in the ledger entry, but it stays `assumed` until a pinned test exists.
+- **R-6 ST0-ST2 page.** The ROADMAP's "H8-3" is wrong: H8-3 is the stack and reset page. ST0-ST2 is H8-8 Table 2-2-3 and S8-80 (image-verified). CSL and CSH appear only as H8-25 map cells (1 byte, 3 cycles); the software manual has no page for them.
+- **R-7 Guest pad-read log.** ROADMAP success criterion 2 asks for a guest pad-read log. Store the raw $1000 reads in the DSV1 observed bytes as well as the runner pad log, so the guest-side log exists.
+- **R-8 Verification record.** Each ledger entry that cites a page records the verifier, date and the fact verified. W8 re-reads the pages behind the eight E1 candidates.
 </reconciliations>
 
 <canonical_refs>
