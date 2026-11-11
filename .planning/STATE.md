@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 3
 current_phase_name: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-current_plan: 19
+current_plan: 20
 status: planning
-stopped_at: Completed 03-14-PLAN.md
-last_updated: "2026-11-11T10:26:50.949Z"
+stopped_at: Completed 03-15-PLAN.md
+last_updated: "2026-11-11T10:44:55.288Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 2 complete, transitioned to Phase 3
-state_head: 25a64e7d83a791075c51e503af4ecc1c7a9fc056
+state_head: 46eb2edee0b8052ec0127fc17ea42ad30eabda7a
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 72
-  completed_plans: 52
+  completed_plans: 53
   percent: 33
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 3 — HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-Current Plan: 19
+Current Plan: 20
 Total Plans in Phase: 38
 Status: Ready to execute
 Last activity: 2026-11-11 — Completed 03-04 (W1: optional case keys, guestkinds.c, authored fixture key, machine_time and stop on RESULT)
@@ -111,6 +111,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 03 P12 | 30min | 3 tasks | 12 files |
 | Phase 3 P13 | 45min | 3 tasks | 8 files |
 | Phase 3 P14 | 30min | 3 tasks | 10 files |
+| Phase 03 P15 | 75min | 3 tasks | 24 files |
 
 ## Accumulated Context
 
@@ -210,6 +211,7 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-12: subtract is A - M - not C (S8-74); decimal V unchanged, decimal N Z C and T plus decimal are ASSUMED LED-CPU-0010; TSB and TRB assert memory and Z only
 - [Phase 03]: 03-12: shared-state toy made phase-independent with a strictly increasing hidden counter; DSV1 limit of 96 checks per fixture
 - [Phase 3]: 03-14: ST0-ST2 go through ds_bus_write_phys (physical $1FE000|n, MPRs ignored); CSL/CSH charged at the old speed; cpu_huc carries the 18 mode-coverage checks because cpu_alu is at the 96-check DSV1 limit; opcode_exercise is mode=require with the five block transfers excluded by hex opcode
+- [Phase 03]: 03-15: opcode_table compares bytes and base cycles only (block 17+6x as base 17, 22 UNDEF by membership); cycle_probe judges 18 single-instruction counts from insn-sink start stamps against page literals with the speed stated per item; cyc_probe code pinned at E100 by padding and an assert; LED-CPU-0001, -0002, -0009, -0010 written as assumed
 
 ### Pending Todos
 
@@ -233,6 +235,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-11T10:26:50.794Z
-Stopped at: Completed 03-14-PLAN.md
+Last session: 2026-11-11T10:44:55.133Z
+Stopped at: Completed 03-15-PLAN.md
 Resume file: None
