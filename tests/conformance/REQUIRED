@@ -127,3 +127,4 @@ insn_sink_shapes
 opcode_exercise
 cpu_ldst
 mutate_sweep_cpu_ldst
+cpu_alu

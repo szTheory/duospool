@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# cpu_alu.checks - one row per CHECK of fixtures/src/cpu_alu.s (D-125, plan 03-12). Columns separated by one TAB: check index (1-based, the entry number of the DCK1 table), slug, class tag, meaning.
+# Class tags: MAN:<page> (the literal is a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model> (the expected byte is computed in the guest, the table entry is an XOR mask of $00),
+# ASSUMED:<LED-id> (the literal is DuoSpool's own model, an assumption: decimal N, Z and C, the decimal borrow value, T mode with decimal mode, the Z of TSB and TRB and the stored result of TRB; the entry is written in a later plan).
+# A GUEST row aggregates 32 sums or shifts and expects a difference byte of zero. P read through PHP then PLA is masked with $C3 (N V Z C) or $83 (N Z C) or a single bit: B, I and T are not part of the literal.
+# A pass is not a support claim (ER-4).
+id=4
+checks=25
+1	and-imm	MAN:S8-18	AND immediate: A = $F0 AND $3C gives $30
+2	ora-imm	MAN:S8-58	ORA immediate: A = $30 OR $0C gives $3C
+3	eor-imm	MAN:S8-47	EOR immediate: A = $FF EOR $0F gives $F0
+4	and-flag-n	MAN:S8-18	AND sets N from the result and leaves V and C alone: V and C set by PLP, $FF AND $80 gives N, so the P byte masked with $C3 is $C1
+5	and-flag-z	MAN:S8-18	AND sets Z from the result and leaves V and C alone: $0F AND $F0 gives zero, so the P byte masked with $C3 is $43 (V, Z, C)
+6	ora-flag-n	MAN:S8-58	ORA sets N from the result and leaves V and C alone: $00 OR $80, V and C set, masked P byte $C1
+7	eor-flag-z	MAN:S8-47	EOR sets Z from the result and leaves V and C alone: $80 EOR $80 gives zero, V and C set, masked P byte $43
+8	and-zp	MAN:S8-18	AND zero page: $0F AND the cell $2010 ($01) gives $01
+9	ora-indy	MAN:S8-58	ORA (zz),Y: $20 OR the byte at $2603 ($05) gives $25 (Y = 3)
+10	eor-absx	MAN:S8-47	EOR absolute,X: $FF EOR the byte at $2502 ($07) gives $F8 (X = 2)
+11	adc-imm	MAN:S8-17	ADC immediate with C clear: $10 + $20 gives $30
+12	adc-carry-in	MAN:S8-17	ADC adds the carry: $10 + $20 + C = $31
+13	adc-carry-out	MAN:S8-17	ADC sets C and Z for $FF + $01 = $100: masked P byte $03 (N and V clear)
+14	adc-overflow-pos	MAN:S8-17	ADC sets V and N for $7F + $01 = $80 (two positives give a negative): masked P byte $C0
+15	adc-overflow-neg	MAN:S8-17	ADC of $80 + $80 = $100 sets V, Z and C (two negatives give a positive): masked P byte $43
+16	adc-model-result	GUEST:adc-binary	ADC against the in-guest bit-serial adder over 16 edge pairs with C clear and set: the OR of every result difference is zero
+17	adc-model-flags	GUEST:adc-binary	ADC N V Z C against the in-guest adder over the same 32 sums: the OR of every flag difference is zero
+18	adc-zp	MAN:S8-17	ADC zero page with C set: $10 + the cell value $01 + 1 gives $12
+19	adc-zpx	MAN:S8-17	ADC zero page,X (X = 3) with C set: $10 + the cell value $02 + 1 gives $13
+20	adc-ind	MAN:S8-17	ADC (zz) with C set: $10 + the cell value $03 + 1 gives $14
+21	adc-indx	MAN:S8-17	ADC (zz,X) (X = 4) with C set: $10 + the cell value $04 + 1 gives $15
+22	adc-indy	MAN:S8-17	ADC (zz),Y (Y = 3) with C set: $10 + the cell value $05 + 1 gives $16
+23	adc-abs	MAN:S8-17	ADC absolute with C set: $10 + the cell value $06 + 1 gives $17
+24	adc-absx	MAN:S8-17	ADC absolute,X (X = 2) with C set: $10 + the cell value $07 + 1 gives $18
+25	adc-absy	MAN:S8-17	ADC absolute,Y (Y = 5) with C set: $10 + the cell value $08 + 1 gives $19

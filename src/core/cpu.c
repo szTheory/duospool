@@ -92,19 +92,35 @@ static uint32_t taken_adder(uint32_t mn)
     }
 }
 
-/* T mode (memory-to-memory through $2000+X) and decimal mode add cycles to these mnemonics only (S8-17, S8-18, S8-47, S8-58, S8-74) */
+/* T mode (memory-to-memory through $2000+X) and decimal mode add cycles to these mnemonics only (S8-17, S8-18, S8-47, S8-58, S8-74). The two predicates are the one place that says which: the worst case below and the adders of one execution use them. */
+static int t_mode_mnemonic(uint32_t mn)
+{
+    return mn == (uint32_t)MN_ADC || mn == (uint32_t)MN_AND || mn == (uint32_t)MN_EOR || mn == (uint32_t)MN_ORA;
+}
+
+static int decimal_mnemonic(uint32_t mn)
+{
+    return mn == (uint32_t)MN_ADC || mn == (uint32_t)MN_SBC;
+}
+
+/* the cycles the active flags add to one execution: T mode +3 and decimal +1 apply together on ADC (the sum +4 is the project's reading: no page states the combination, ASSUMED, LED-CPU-0010) */
+static uint32_t flag_cycles(uint32_t mn, int t_active, uint32_t p)
+{
+    uint32_t extra = 0u;
+
+    if (t_active != 0 && t_mode_mnemonic(mn) != 0) {
+        extra += DS_ADDER_T_MODE;
+    }
+    if ((p & P_D) != 0u && decimal_mnemonic(mn) != 0) {
+        extra += DS_ADDER_DECIMAL;
+    }
+    return extra;
+}
+
+/* the worst case of flag_cycles: both flags active */
 static uint32_t flag_adders(uint32_t mn)
 {
-    switch ((enum ds_mn)mn) {
-    case MN_ADC:
-        return DS_ADDER_T_MODE + DS_ADDER_DECIMAL;
-    case MN_AND: case MN_EOR: case MN_ORA:
-        return DS_ADDER_T_MODE;
-    case MN_SBC:
-        return DS_ADDER_DECIMAL;
-    default:
-        return 0u;
-    }
+    return flag_cycles(mn, 1, P_D);
 }
 
 /* the longest this opcode can take in cycles: the table count plus every adder that can apply to it (D-94). A block transfer counts its 17 here (the table value). */
@@ -195,25 +211,6 @@ static void set_nz(struct ds_instance *inst, uint32_t value)
         p |= P_Z;
     }
     inst->p = (uint8_t)p;
-}
-
-/* binary ADC (S8-17): A + M + C, flags N V Z C. Decimal mode needs SED, which this subset does not execute, so D is never set here. */
-static void adc(struct ds_instance *inst, uint32_t m)
-{
-    uint32_t a = inst->a;
-    uint32_t sum = a + m + ((uint32_t)inst->p & P_C);
-    uint32_t res = sum & 0xFFu;
-    uint32_t p = (uint32_t)inst->p & ~(P_N | P_V | P_Z | P_C);
-
-    if (sum > 0xFFu) {
-        p |= P_C;
-    }
-    if (((a ^ res) & (m ^ res) & 0x80u) != 0u) {
-        p |= P_V;
-    }
-    inst->p = (uint8_t)p;
-    inst->a = (uint8_t)res;
-    set_nz(inst, res);
 }
 
 /* CMP: A - M for N Z C only; C is set when A >= M */
@@ -320,6 +317,76 @@ static void store_operand(struct ds_instance *inst, uint32_t mode, uint32_t op1,
     }
 }
 
+/*
+ * The accumulator-class operations (S8-17, S8-18, S8-47, S8-58): ADC, AND, EOR and ORA work on A, except right after SET, when they work on the zero-page cell named by X, logical $2000 | X, and A is left alone.
+ * acc_in reads the operand the operation changes (A, or that cell); acc_out writes the result back to it. t_mode is the value of T before this instruction (H8-5: T is cleared by the next instruction's fetch).
+ */
+static uint16_t t_cell(const struct ds_instance *inst)
+{
+    return zp_addr((uint32_t)inst->x);
+}
+
+static uint32_t acc_in(const struct ds_instance *inst, int t_mode)
+{
+    return t_mode != 0 ? (uint32_t)ds_bus_read(inst, t_cell(inst)) : (uint32_t)inst->a;
+}
+
+static void acc_out(struct ds_instance *inst, int t_mode, uint32_t value)
+{
+    if (t_mode != 0) {
+        ds_bus_write(inst, t_cell(inst), (uint8_t)value);
+    } else {
+        inst->a = (uint8_t)value;
+    }
+}
+
+/* AND, ORA, EOR: N and Z from the result, no other flag (S8-18, S8-47, S8-58) */
+static void logic_op(struct ds_instance *inst, uint32_t mn, int t_mode, uint32_t m)
+{
+    uint32_t acc = acc_in(inst, t_mode);
+    uint32_t res;
+
+    switch ((enum ds_mn)mn) {
+    case MN_AND:
+        res = acc & m;
+        break;
+    case MN_ORA:
+        res = acc | m;
+        break;
+    default: /* MN_EOR */
+        res = acc ^ m;
+        break;
+    }
+    acc_out(inst, t_mode, res);
+    set_nz(inst, res);
+}
+
+/* binary add (S8-17): a + m + C, flags N V Z C; the 9-bit sum keeps the carry out, V is the signed overflow ((a ^ r) & (m ^ r) & $80, Pitfall 14). SBC reaches this with m complemented (A - M - not C, S8-74). */
+static uint32_t add_binary(struct ds_instance *inst, uint32_t a, uint32_t m)
+{
+    uint32_t sum = a + m + ((uint32_t)inst->p & P_C);
+    uint32_t res = sum & 0xFFu;
+    uint32_t p = (uint32_t)inst->p & ~(P_N | P_V | P_Z | P_C);
+
+    if (sum > 0xFFu) {
+        p |= P_C;
+    }
+    if (((a ^ res) & (m ^ res) & 0x80u) != 0u) {
+        p |= P_V;
+    }
+    inst->p = (uint8_t)p;
+    set_nz(inst, res);
+    return res;
+}
+
+/* ADC: the T-mode cell or A is the first addend; the decimal variant lands with its checks in the same plan */
+static void adc_op(struct ds_instance *inst, int t_mode, uint32_t m)
+{
+    uint32_t res = add_binary(inst, acc_in(inst, t_mode), m);
+
+    acc_out(inst, t_mode, res);
+}
+
 /* one instruction; log is the instruction sink writer of the running ds_run call or NULL (plan 03-10): the hook is called once per executed instruction with the state before it runs (D-119) */
 uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
 {
@@ -340,6 +407,7 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
     uint32_t hi;
     int taken = 0;
     uint32_t i;
+    int t_active = ((uint32_t)inst->p & P_T) != 0u; /* T as the instruction before this one left it: only ADC, AND, EOR and ORA read it (S8-17) */
 
     ds_obs_insn(log, inst, opcode); /* a void hook over a const instance: the observer cannot change the machine (D-119) */
     inst->p = (uint8_t)((uint32_t)inst->p & ~P_T); /* T is reset in the fetch cycle of every instruction (H8-5) */
@@ -352,6 +420,9 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
         break;
     case MN_CLC:
         inst->p = (uint8_t)((uint32_t)inst->p & ~P_C);
+        break;
+    case MN_SEC: /* C <- 1, no other flag (S8-75); the flag instructions of plan 03-13 that this group's fixture needs come with it */
+        inst->p = (uint8_t)((uint32_t)inst->p | P_C);
         break;
     case MN_LDA:
         if (operand_value(inst, mode, op1, abs_addr, &v) != 0) {
@@ -433,9 +504,18 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
         inst->x = (uint8_t)(((uint32_t)inst->x + 1u) & 0xFFu);
         set_nz(inst, inst->x);
         break;
-    case MN_ADC: /* binary only: decimal mode and the T-mode variant are plan 03-12 */
+    case MN_INY:
+        inst->y = (uint8_t)(((uint32_t)inst->y + 1u) & 0xFFu);
+        set_nz(inst, inst->y);
+        break;
+    case MN_ADC: /* binary; the decimal variant is added with its checks */
         if (operand_value(inst, mode, op1, abs_addr, &v) != 0) {
-            adc(inst, v);
+            adc_op(inst, t_active, v);
+        }
+        break;
+    case MN_AND: case MN_ORA:
+        if (operand_value(inst, mode, op1, abs_addr, &v) != 0) {
+            logic_op(inst, mn, t_active, v);
         }
         break;
     case MN_CMP:
@@ -443,10 +523,9 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
             cmp(inst, v);
         }
         break;
-    case MN_EOR: /* N and Z (the T-mode variant is plan 03-12) */
+    case MN_EOR: /* N and Z */
         if (operand_value(inst, mode, op1, abs_addr, &v) != 0) {
-            inst->a = (uint8_t)((uint32_t)inst->a ^ v);
-            set_nz(inst, inst->a);
+            logic_op(inst, mn, t_active, v);
         }
         break;
     case MN_INC: /* memory forms only: one read and one write, N and Z from the result (the accumulator form is plan 03-12) */
@@ -510,13 +589,13 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
     /* ---- the functionality gap: these mnemonics advance PC by the table length and charge the table cycles, with no register, flag or memory effect, until their group lands ---- */
     case MN_UNDEF: /* D-96: one byte, two cycles, T cleared */
         break;
-    case MN_AND: case MN_ASL: case MN_BIT: case MN_CPX: case MN_CPY: case MN_DEC: case MN_LSR: case MN_ORA: case MN_ROL: case MN_ROR: case MN_SBC:
-    case MN_TRB: case MN_TSB: case MN_TST: case MN_SET: case MN_DEX: case MN_DEY: case MN_INY:
-        break; /* plan 03-12: arithmetic, logic, shift, compare, bit test, SET */
+    case MN_ASL: case MN_BIT: case MN_CPX: case MN_CPY: case MN_DEC: case MN_LSR: case MN_ROL: case MN_ROR: case MN_SBC:
+    case MN_TRB: case MN_TSB: case MN_TST: case MN_SET: case MN_DEX: case MN_DEY:
+        break; /* plan 03-12, later tasks: shift, compare, bit test, SBC, SET */
     case MN_BBR0: case MN_BBR1: case MN_BBR2: case MN_BBR3: case MN_BBR4: case MN_BBR5: case MN_BBR6: case MN_BBR7:
     case MN_BBS0: case MN_BBS1: case MN_BBS2: case MN_BBS3: case MN_BBS4: case MN_BBS5: case MN_BBS6: case MN_BBS7:
     case MN_BCC: case MN_BCS: case MN_BMI: case MN_BPL: case MN_BVC: case MN_BRK: case MN_BSR: case MN_RTI: case MN_NOP:
-    case MN_CLI: case MN_CLV: case MN_SEC: case MN_SED:
+    case MN_CLI: case MN_CLV: case MN_SED:
         break; /* plan 03-13: flow, flag instructions, BRK and RTI */
     case MN_RMB0: case MN_RMB1: case MN_RMB2: case MN_RMB3: case MN_RMB4: case MN_RMB5: case MN_RMB6: case MN_RMB7:
     case MN_SMB0: case MN_SMB1: case MN_SMB2: case MN_SMB3: case MN_SMB4: case MN_SMB5: case MN_SMB6: case MN_SMB7:
@@ -529,6 +608,7 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
         next = branch_target(next, op1);
         cycles += taken_adder(mn);
     }
+    cycles += flag_cycles(mn, t_active, inst->p);
     inst->pc = (uint16_t)next;
     return cycles * (inst->speed != 0u ? DS_MCLK_PER_CYCLE_HIGH : DS_MCLK_PER_CYCLE_LOW);
 }

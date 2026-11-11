@@ -35,14 +35,29 @@ H8-24	img	gsd-phase-researcher	2026-11-10	device table: VDC at logical 0000, 000
 H8-25	img	gsd-phase-researcher	2026-11-10	instruction map: CSL (54) and CSH (D4) 1 byte 3 cycles; ST0-ST2 2 bytes 4; TAMi 2 bytes 5; TMAi 2 bytes 4; BSR 2 bytes 8; BRK 8; RTI 7; footnote prints 17+16z
 S8-11	img	gsd-phase-researcher	2026-11-10	zero page high byte is always logical $20, also for zero page indexed modes
 S8-17	img	gsd-phase-researcher	2026-11-10	ADC: immediate 2 bytes 2 cycles; zero page 4; absolute 5; T=1 adds 3 cycles; D=1 adds 1 cycle and V is unaffected; flags N V Z C
+S8-18	img	gsd-executor	2026-11-11	AND $29 $25 $35 $32 $21 $31 $2D $3D $39, 2 to 3 bytes, 2 to 7 cycles; A <- A AND M, or M(x) <- M(x) AND M with T=1 and 3 more cycles; flags N and Z, T reads 0
+S8-19	img	gsd-executor	2026-11-11	ASL: zp 06, zp,X 16, abs 0E, abs,X 1E, acc 0A; zp and abs forms 6 and 7 cycles, acc 2; bit 7 into C, 0 into bit 0; flags N Z C
 S8-20	img	gsd-phase-researcher	2026-11-10	BBRi 3 bytes 6 cycles, 2 more when taken; machine code 10i+F
+S8-25	img	gsd-executor	2026-11-11	BIT: imm 89, zp 24, zp,X 34, abs 2C, abs,X 3C; A AND M not stored; flag row N = M7, V = M6, Z; C unchanged
 S8-30	img	gsd-phase-researcher	2026-11-10	BRK $00, 1 byte, 8 cycles; pushes PCH, PCL, P; B pushed 1; T=0 B=1 D=0 I=1
 S8-34	img	gsd-executor	2026-11-11	CLA $62, 1 byte, 2 cycles; A <- $00; no flag changes (T reads 0)
 S8-39	img	gsd-executor	2026-11-11	CLX $82, 1 byte, 2 cycles; X <- $00; no flag changes
 S8-40	img	gsd-executor	2026-11-11	CLY $C2, 1 byte, 2 cycles; Y <- $00; no flag changes
+S8-41	img	gsd-executor	2026-11-11	CMP: A - M, result not stored; imm C9 and eight memory modes; flags N Z C, V unchanged
+S8-42	img	gsd-executor	2026-11-11	CPX: X - M, result not stored; imm E0, zp E4, abs EC; flags N Z C
+S8-43	img	gsd-executor	2026-11-11	CPY: Y - M, result not stored; imm C0, zp C4, abs CC; flags N Z C
+S8-44	img	gsd-executor	2026-11-11	DEC: M <- M - 1 or A <- A - 1; zp C6, zp,X D6, abs CE, abs,X DE, acc 3A; flags N and Z only
+S8-45	img	gsd-executor	2026-11-11	DEX CA, 1 byte, 2 cycles; flags N and Z; the function line prints Y <- X - 1 (a misprint: title, opcode and mnemonic are X)
+S8-46	img	gsd-executor	2026-11-11	DEY 88, 1 byte, 2 cycles; Y <- Y - 1; flags N and Z
+S8-47	img	gsd-executor	2026-11-11	EOR: A <- A xor M, or M(x) <- M(x) xor M with T=1 and 3 more cycles; modes as AND with opcodes 49 45 55 52 41 51 4D 5D 59; flags N and Z; the abs,X row prints AND (a misprint)
+S8-48	img	gsd-executor	2026-11-11	INC: M <- M + 1 or A <- A + 1; zp E6, zp,X F6, abs EE, abs,X FE, acc 1A; flags N and Z only
+S8-49	img	gsd-executor	2026-11-11	INX E8, 1 byte, 2 cycles; X <- X + 1; flags N and Z
+S8-50	img	gsd-executor	2026-11-11	INY C8, 1 byte, 2 cycles; Y <- Y + 1; flags N and Z
 S8-53	img	gsd-executor	2026-11-11	LDA: A <- M; immediate A9 2 bytes 2 cycles, zp 4, zp,X 4, (zp) 7, (zp,X) 7, (zp),Y 7, abs 5, abs,X 5, abs,Y 5; flags N and Z only, T reads 0
 S8-54	img	gsd-executor	2026-11-11	LDX: immediate A2 2 bytes 2 cycles, zp A6 4, zp,Y B6 4, abs AE 5, abs,Y BE 5; flags N and Z only
 S8-55	img	gsd-executor	2026-11-11	LDY: immediate A0 2 bytes 2 cycles, zp A4 4, zp,X B4 4, abs AC 5, abs,X BC 5; flags N and Z only
+S8-56	img	gsd-executor	2026-11-11	LSR: 0 into bit 7, bit 0 into C; zp 46, zp,X 56, abs 4E, abs,X 5E, acc 4A; flags N Z C
+S8-58	img	gsd-executor	2026-11-11	ORA: A <- A or M, or M(x) <- M(x) or M with T=1 and 3 more cycles; opcodes 09 05 15 12 01 11 0D 1D 19; flags N and Z
 S8-59	img	gsd-executor	2026-11-11	PHA $48, 1 byte, 3 cycles; Ms <- A, S <- S - 1; no flag changes
 S8-61	img	gsd-executor	2026-11-11	PHX $DA, 1 byte, 3 cycles; Ms <- X, S <- S - 1; no flag changes
 S8-62	img	gsd-executor	2026-11-11	PHY $5A, 1 byte, 3 cycles; Ms <- Y, S <- S - 1; no flag changes
@@ -50,8 +65,13 @@ S8-63	img	gsd-executor	2026-11-11	PLA $68, 1 byte, 4 cycles; S <- S + 1, A <- Ms
 S8-64	img	gsd-executor	2026-11-11	PLP $28, 1 byte, 4 cycles; S <- S + 1, P <- Ms; the flag row reads RESTORED
 S8-65	img	gsd-executor	2026-11-11	PLX $FA, 1 byte, 4 cycles; S <- S + 1, X <- Ms; flags N and Z
 S8-66	img	gsd-executor	2026-11-11	PLY $7A, 1 byte, 4 cycles; S <- S + 1, Y <- Ms; flags N and Z
+S8-68	img	gsd-executor	2026-11-11	ROL: C into bit 0, bit 7 into C; zp 26, zp,X 36, abs 2E, abs,X 3E, acc 2A; flags N Z C
+S8-69	img	gsd-executor	2026-11-11	ROR: C into bit 7, bit 0 into C; zp 66, zp,X 76, abs 6E, abs,X 7E, acc 6A; flags N Z C
 S8-70	img	gsd-phase-researcher	2026-11-10	RTI $40, 1 byte, 7 cycles; P pulled first, then PCL, PCH
 S8-74	img	gsd-phase-researcher	2026-11-10	SBC: A - M - not C; same cycle table as ADC; D=1 adds 1 cycle
+S8-75	img	gsd-executor	2026-11-11	SEC $38, 1 byte, 2 cycles; C <- 1; flag row C = 1, T = 0, others unchanged
+S8-76	img	gsd-executor	2026-11-11	SED $F8, 1 byte, 2 cycles; D <- 1; flag row D = 1, T = 0, others unchanged
+S8-78	img	gsd-executor	2026-11-11	SET $F4, 1 byte, 2 cycles; T <- 1; flag row T = 1, others unchanged
 S8-80	img	gsd-phase-researcher	2026-11-10	ST0 $03 nn, 2 bytes, 4 cycles; CE7 asserted, (A1,A0) = (0,0)
 S8-83	img	gsd-executor	2026-11-11	STA: zp 85, zp,X 95, (zp) 92, (zp,X) 81, (zp),Y 91, abs 8D, abs,X 9D, abs,Y 99; M <- A; no flag changes
 S8-84	img	gsd-executor	2026-11-11	STX: zp 86, zp,Y 96, abs 8E; M <- X; no flag changes
@@ -63,6 +83,7 @@ S8-90	img	gsd-phase-researcher	2026-11-10	TAMi $53, operand 2^i, 2 bytes, 5 cycl
 S8-91	img	gsd-executor	2026-11-11	TAX $AA, 1 byte, 2 cycles; X <- A; flags N and Z
 S8-92	img	gsd-executor	2026-11-11	TAY $A8, 1 byte, 2 cycles; Y <- A; flags N and Z
 S8-101	img	gsd-phase-researcher	2026-11-10	TMAi $43, 2 bytes, 4 cycles
+S8-102	img	gsd-executor	2026-11-11	TRB: zp 14 6 cycles, abs 1C 7 cycles; formula M <- not A and M while the prose says the result is not stored; N = M7, V = M6, Z
 S8-103	img	gsd-phase-researcher	2026-11-10	TSB $04 zero page 6 cycles, $0C absolute 7 cycles; N from memory bit 7, V from bit 6
 S8-104	img	gsd-phase-researcher	2026-11-10	TST $83 $A3 3 bytes 7 cycles, $93 $B3 4 bytes 8 cycles; operand order opcode, immediate, address
 S8-105	img	gsd-executor	2026-11-11	TSX $BA, 1 byte, 2 cycles; X <- S; flags N and Z

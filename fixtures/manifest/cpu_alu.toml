@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Fixture manifest entry (FIX-02, FIX-01, D-59 amended, D-123): one authored HuCard image of fixtures/src/cpu_alu.s. The bytes are assembled in the gate by ca65 and ld65 and are
+# never committed. scripts/fixture-check compares size and sha256 below with the bytes scripts/fixture-build wrote, as hashed by the host sha tool, so a changed source, library or
+# toolchain output turns the gate red. The pin was measured on the Homebrew cc65 2.19 bottle (see fixtures/lib/TOOLS.md); it proves the build is repeatable, nothing more.
+id = "cpu_alu"
+kind = "authored"
+source = "fixtures/src/cpu_alu.s"
+recipe = "cpu-alu: ca65 --cpu huc6280 -D ROMBANKS=32 -I fixtures/lib -o build/gate/fx/cpu-alu.o fixtures/src/cpu_alu.s; ld65 -C fixtures/lib/hucard.cfg -D ROMBANKS=32 -o build/gate/fixtures/cpu-alu.pce build/gate/fx/cpu-alu.o"
+toolchain = "cc65 V2.19 (ca65 prints V2.18; identity by encoding-matrix bytes, plan 03-08), Homebrew bottle 2.19 locally, hashed by sha256sum or shasum -a 256"
+size = 262144
+sha256 = "13d7c13cd176a0582c3c50537f9aa0a461a1402ba153b1173a4bb8d46e5cdbb6"
+licence = "0BSD"
+notices = "none: assembled at gate time from the project-owned sources fixtures/src/cpu_alu.s and fixtures/lib/*.inc and hucard.cfg (0BSD); no HuC, PCEAS or cc65 library or startup code, no emulator code, no game content"
+redistribution = "generated-not-committed"
+meaning = "Authored diagnostic HuCard of 256 KiB: logic, binary and decimal add and subtract, T-mode memory forms, shifts, increments, compares and bit tests, judged from a DSV1 verdict block with in-guest models for the binary adder and the shifts. A pass is not a support claim."
+verdict_source = "manual-cite:S8-17+manual-cite:S8-74+guest-computed"
