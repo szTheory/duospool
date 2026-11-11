@@ -16,6 +16,8 @@
 #include "ds_core.h"
 #include "ds_timer.h"
 
+_Static_assert((uint32_t)DS_CONST_timer_hold_on_stop <= 1u, "timer_hold_on_stop is 0 or 1");
+
 /* the steps elapsed since the origin at the stamp, the counter value after them and the borrows among them; a stopped timer, or a stamp that is not after the origin, has no steps */
 static void fold(const struct ds_instance *inst, uint64_t stamp, uint64_t *steps, uint8_t *value, uint64_t *borrows)
 {
@@ -97,7 +99,10 @@ void ds_timer_write(struct ds_instance *inst, uint32_t reg, uint8_t value, uint6
             inst->timer_counter = inst->timer_reload;
             inst->timer_origin = stamp;
         }
-    } else if (inst->timer_enabled != 0u) { /* bit 0 goes 1 to 0: the timer stops with the counter held (D-109 constant: hold, ASSUMED LED-IRQ-0003) */
+    } else if (inst->timer_enabled != 0u) { /* bit 0 goes 1 to 0: the timer stops; the counter is held (D-109, constants.def timer_hold_on_stop 1, ASSUMED LED-IRQ-0003) or, with 0, loaded with the reload value */
         inst->timer_enabled = 0u;
+        if ((uint32_t)DS_CONST_timer_hold_on_stop == 0u) {
+            inst->timer_counter = inst->timer_reload;
+        }
     }
 }

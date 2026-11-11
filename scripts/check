@@ -736,7 +736,7 @@ stage_outcome_sync() {
 # record-lint (D-53, D-55, D-84b, D-86): the records of the run are the files the conformance step wrote into build/gate/records (conformance-run
 # makes the directory empty on every run and passes it to the runner as --records; this stage never reads a directory left by an earlier run
 # without that step, and with no such directory it is a harness error, not a pass). The ids are derived here from the kind column of
-# build/gate/cases.tsv: every case of kind accept, record_lines, record_golden or record_refusal must have exactly one DIR/ID.record.toml, and
+# build/gate/cases.tsv: every case of kind accept, record_lines, record_run, record_golden or record_refusal must have exactly one DIR/ID.record.toml, and
 # nothing else may be there, so a record that went missing (or an extra file) fails before any record is read. Then record-lint reads the
 # committed goldens and every record of the run.
 stage_record_lint() {
@@ -746,7 +746,7 @@ stage_record_lint() {
     echo "HARNESS_NO_FILE $rl_tsv or $rl_dir is missing: the conformance stage writes both (sh scripts/check --stage conformance first)"
     return 2
   fi
-  awk -F'\t' '$1 == "K" && $4 == "kind" && ($6 == "accept" || $6 == "record_lines" || $6 == "record_golden" || $6 == "record_refusal") { print $2 }' "$rl_tsv" | sort -u > "$tmp/rl.ids"
+  awk -F'\t' '$1 == "K" && $4 == "kind" && ($6 == "accept" || $6 == "record_lines" || $6 == "record_run" || $6 == "record_golden" || $6 == "record_refusal") { print $2 }' "$rl_tsv" | sort -u > "$tmp/rl.ids"
   rl_ids=$(sed -n '$=' "$tmp/rl.ids")
   rl_files=$(ls -A "$rl_dir" | sed -n '$=')
   rc=0

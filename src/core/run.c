@@ -43,6 +43,9 @@ uint64_t ds_max_step_mclk(void)
     for (op = 0u; op < 256u; op++) {
         uint32_t cycles = ds_cpu_op_max_cycles(op);
 
+        if (op == 0x54u || op == 0xD4u) { /* CSL and CSH: a switch that changes the speed may cost extra cycles (constants.def speed_switch_extra_cycles, LED-CPU-0006: none) */
+            cycles += (uint32_t)DS_CONST_speed_switch_extra_cycles;
+        }
         if (cycles > most) {
             most = cycles;
         }

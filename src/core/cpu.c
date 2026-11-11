@@ -501,6 +501,11 @@ static uint16_t tst_addr(const struct ds_instance *inst, uint32_t mode, uint32_t
     }
 }
 
+/* the named constants of plan 03-23 (constants.def) have a range the code below relies on: no instruction is shorter than two cycles, an entry has at least one cycle (its accesses are stamped in the last one), and a switch costs at most as much as the longest table row */
+_Static_assert((uint32_t)DS_CONST_irq_sample_cycles_before_end >= 1u && (uint32_t)DS_CONST_irq_sample_cycles_before_end <= 2u, "irq_sample_cycles_before_end must be 1 or 2");
+_Static_assert(DS_INT_ENTRY_CYCLES >= 1u && DS_INT_ENTRY_CYCLES <= 32u, "interrupt_entry_cycles is between 1 and 32");
+_Static_assert((uint32_t)DS_CONST_speed_switch_extra_cycles <= 8u, "speed_switch_extra_cycles is at most 8");
+
 /*
  * The interrupt entry (plan 03-21; D-110, D-111, LED-CPU-0009 assumed; H8-12, H8-13): the program counter (PCH then PCL) and the status byte are pushed with B = 0 and the T bit as it is now, I is set, D and T are cleared, and the program counter is
  * loaded from the vector, the low byte at vector and the high byte at vector + 1, through the mapping registers like any access. It takes DS_INT_ENTRY_CYCLES cycles (8, an assumption of this project: the manual does not give a figure, ASSUMED LED-CPU-0009)
@@ -692,10 +697,16 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
     case MN_ST2:
         ds_bus_write_phys(inst, bus, 0x1FE003u, (uint8_t)op1);
         break;
-    case MN_CSL: /* the speed bit is state (D-101): CSL selects low and CSH high, 1 byte and 3 cycles in the H8-25 map, no software-manual page; the cycles of this instruction are charged at the old speed below */
+    case MN_CSL: /* the speed bit is state (D-101): CSL selects low and CSH high, 1 byte and 3 cycles in the H8-25 map, no software-manual page; the cycles of this instruction are charged at the old speed below, and a switch that changes the speed adds speed_switch_extra_cycles (constants.def, LED-CPU-0006: none) */
+        if (inst->speed != 0u) {
+            cycles += (uint32_t)DS_CONST_speed_switch_extra_cycles;
+        }
         inst->speed = 0u;
         break;
     case MN_CSH:
+        if (inst->speed == 0u) {
+            cycles += (uint32_t)DS_CONST_speed_switch_extra_cycles;
+        }
         inst->speed = 1u;
         break;
     case MN_PHX:
@@ -922,7 +933,7 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
      * exists (D-111). The entry runs now, in the same step, so there is no persisted latch and no stop point between an instruction and its entry.
      */
     if (i_sample == 0u) {
-        vector = ds_irq_pending(inst, bus->start + (uint64_t)total - (uint64_t)mclk_per_cycle);
+        vector = ds_irq_pending(inst, bus->start + (uint64_t)total - (uint64_t)DS_CONST_irq_sample_cycles_before_end * (uint64_t)mclk_per_cycle);
         if (vector != 0u) {
             total += interrupt_entry(inst, log, bus->start + (uint64_t)total, vector);
         }

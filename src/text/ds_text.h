@@ -30,8 +30,8 @@
 #define DS_TEXT_REQUEST_ID_MAX 64u
 #define DS_TEXT_REASON_MAX 40u
 
-/* version of the record layout: bumped whenever a table or a key is added, removed or reordered (3: plan 03-18 adds the model tables, the constants table and the run table) */
-#define DS_TEXT_FORMAT_VERSION 3u
+/* version of the record layout: bumped whenever a table or a key is added, removed or reordered (3: plan 03-18 adds the model tables, the constants table and the run table; 4: plan 03-23 adds the stimulus table after the model tables and four rows to the constants table) */
+#define DS_TEXT_FORMAT_VERSION 4u
 
 enum ds_text_status {
     DS_TEXT_OK = 0,

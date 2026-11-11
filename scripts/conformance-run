@@ -217,7 +217,7 @@ run_mode() {
   mkdir -p "$bd/evidence" || { echo "HARNESS_ERROR cannot create $bd/evidence" >&2; exit 2; }
   # the records of the run (D-84b, D-86): the one directory the runner writes records into. It is made here, empty, on every run (stale files were
   # removed above), so the record-lint stage never reads a directory left by an earlier run; the runner writes DIR/ID.record.toml for every case of
-  # kind accept, record_lines, record_golden or record_refusal and creates nothing else. The goldens are read from tests/conformance/golden.
+  # kind accept, record_lines, record_run, record_golden or record_refusal and creates nothing else. The goldens are read from tests/conformance/golden.
   mkdir -p "$bd/records" || { echo "HARNESS_ERROR cannot create $bd/records" >&2; exit 2; }
   if sh "$here/conformance-run" supervise --ids "$bd/ids.txt" --out "$bd/results.txt" --wall "$wall_secs" -- "$bd/ds_runner" --cases "$bd/cases.tsv" --evidence-dir "$bd/evidence" --profile-tsv "$bd/r1.tsv" --rules-fields "$bd/rules-fields.txt" --oracle "$bd/oracle.tsv" --bank-oracle "$bd/bankclass.tsv" \
     --opcode-tsv tests/oracle/huc6280-opcodes.tsv --marker-seed "$marker_seed" --records "$bd/records" --golden-dir tests/conformance/golden $ex_args; then sup=0; else sup=$?; fi

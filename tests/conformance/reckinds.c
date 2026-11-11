@@ -242,7 +242,7 @@ void kind_record_refusal(const struct kase *k, struct ctx *c, char *got, size_t 
     if (st != DS_TEXT_OK || reason == NULL) {
         return;
     }
-    check(c, strncmp(text, "[record]\nformat_version = 3\n\n[core]\nbuild_id = \"", 47u) == 0, "the refusal record does not start with the record and core tables");
+    check(c, strncmp(text, "[record]\nformat_version = 4\n\n[core]\nbuild_id = \"", 47u) == 0, "the refusal record does not start with the record and core tables");
     check(c, strstr(text, "\nbehaviour_epoch = 2\n") != NULL, "the refusal record has no behaviour_epoch line");
     refusal_tail(tail, sizeof tail, reason, s.profile, s.rev);
     tlen = strlen(tail);
@@ -345,7 +345,7 @@ void kind_record_refuses_quote(const struct kase *k, struct ctx *c, char *got, s
 /* ---- kind record_lines: the canonical record skeleton, line by line (D-53, D-69); moved here from runner.c by plan 03-03 ---- */
 
 /* the keys the record must print, in order: table.key (D-53: record, core, profile with its sha256, 13 field tables, withheld, content with the
- * sha256 first, power_on, one model_NAME table per row of model_params.def, constants (one key per row of constants.def), run, limits, machine).
+ * sha256 first, power_on, one model_NAME table per row of model_params.def, stimulus (the key events: this skeleton declares no stimulus, so no event line; plan 03-23), constants (one key per row of constants.def), run, limits, machine).
  * The count below is pinned: a plan that adds a key or a table edits this list and the count in one commit */
 /* the number of rows of constants.def */
 #define DS_CONST(name, value, ledger) +1
@@ -421,6 +421,7 @@ static void build_expected_keys(void)
         exp_add("", tab, "status");
         exp_add("", tab, "bound_by");
     }
+    exp_add("", "stimulus", "events");
 #define DS_CONST(name, value, ledger) exp_add("", "constants", #name);
 #include "constants.def"
 #undef DS_CONST
@@ -626,8 +627,8 @@ void kind_record_lines(const struct kase *k, struct ctx *c, char *got, size_t go
     err = parse_record(work, rows, &nrows);
     check(c, err == NULL, err != NULL ? err : "layout");
     build_expected_keys();
-    /* 61 rows before plan 03-18 (format_version, 2 core, 3 profile, 39 field, 1 withheld, 6 content, 4 power_on, 1 limit, 4 machine), plus the 4 rows of the run table and, from the defs, 4 rows per model parameter and 1 per constant */
-    check(c, n_exp == 61u + 4u + 4u * (unsigned)DS_MODEL_COUNT + (unsigned)CONST_ROWS, "the expected record does not hold 65 rows plus 4 per model parameter and 1 per constant");
+    /* 61 rows before plan 03-18 (format_version, 2 core, 3 profile, 39 field, 1 withheld, 6 content, 4 power_on, 1 limit, 4 machine), plus the 4 rows of the run table, the 1 row of the stimulus table of a record with no event (plan 03-23) and, from the defs, 4 rows per model parameter and 1 per constant */
+    check(c, n_exp == 61u + 4u + 1u + 4u * (unsigned)DS_MODEL_COUNT + (unsigned)CONST_ROWS, "the expected record does not hold 66 rows plus 4 per model parameter and 1 per constant");
     check(c, err == NULL && nrows == n_exp, "the number of rows differs from the skeleton");
     for (i = 0u; err == NULL && i < nrows && i < n_exp; i++) {
         if (strcmp(rows[i].key, exp_key[i]) != 0) {
@@ -750,6 +751,26 @@ void kind_record_lines(const struct kase *k, struct ctx *c, char *got, size_t go
         memcpy(tmp, inst, sizeof *tmp);
         tmp->tma_zero = 9u;
         check(c, refuses_with(tmp, &run, DS_TEXT_ERR_STATE, scratch, sizeof scratch), "a model selection outside its allowed list was not refused");
+        /* the stimulus slots: a list that ds_irq_stim_set could not have produced is a state error, never printed (plan 03-23) */
+        memcpy(tmp, inst, sizeof *tmp);
+        tmp->irq_stim_line[0] = 3u;
+        check(c, refuses_with(tmp, &run, DS_TEXT_ERR_STATE, scratch, sizeof scratch), "a stimulus line above 2 was not refused");
+        memcpy(tmp, inst, sizeof *tmp);
+        tmp->irq_stim_line[0] = 1u;
+        tmp->irq_stim_level[0] = 2u;
+        check(c, refuses_with(tmp, &run, DS_TEXT_ERR_STATE, scratch, sizeof scratch), "a stimulus level above 1 was not refused");
+        memcpy(tmp, inst, sizeof *tmp);
+        tmp->irq_stim_line[2] = 1u;
+        check(c, refuses_with(tmp, &run, DS_TEXT_ERR_STATE, scratch, sizeof scratch), "a used stimulus slot after an unused one was not refused");
+        memcpy(tmp, inst, sizeof *tmp);
+        tmp->irq_stim_line[0] = 1u;
+        tmp->irq_stim_line[1] = 2u;
+        tmp->irq_stim_at[0] = UINT64_C(9);
+        tmp->irq_stim_at[1] = UINT64_C(8);
+        check(c, refuses_with(tmp, &run, DS_TEXT_ERR_STATE, scratch, sizeof scratch), "stimulus times that go back were not refused");
+        memcpy(tmp, inst, sizeof *tmp);
+        tmp->irq_stim_at[5] = UINT64_C(1);
+        check(c, refuses_with(tmp, &run, DS_TEXT_ERR_STATE, scratch, sizeof scratch), "a nonzero time in an unused stimulus slot was not refused");
         free(tmp);
     }
     snprintf(got, gotcap, "rows=%u", (unsigned)nrows);
@@ -794,8 +815,47 @@ static int stop_at_once(const struct ds_instance *inst, void *ctx)
 }
 
 /*
+ * The [stimulus] table against the case's own irq_stim list (plan 03-23; D-112, T-03-65): events is the number of declared events, event_I holds the I-th as AT,LINE,LEVEL in decimal fields separated by commas (the case's numbers, parsed by the one reader of the
+ * runner, printed here from the parsed values and not from the record), no event_N+1 line exists, every line of the table is one of those, and no value holds a colon (a dd:dd shape would be taken for a time by the record lint). A case with no irq_stim key must print events = 0.
+ */
+static void check_stimulus_rows(struct ctx *c, const struct recrow *rows, size_t nrows, const struct kase *k)
+{
+    struct ds_irq_event ev[IRQ_STIM_PARSE_MAX];
+    unsigned n = 0u;
+    int declared = 0;
+    unsigned i;
+    size_t r;
+    uint64_t events = 0u;
+    char key[KEY_MAX];
+    char want[64];
+    const char *err = irq_stim_parse(k, ev, IRQ_STIM_PARSE_MAX, &n, &declared);
+
+    if (err != NULL) {
+        harness_error(c, err);
+        return;
+    }
+    check(c, row_u64(rows, nrows, "stimulus.events", &events) == 0 && events == (uint64_t)n, "the stimulus table does not hold the number of events the case declares");
+    for (i = 0u; i < n; i++) {
+        const struct recrow *row;
+
+        snprintf(key, sizeof key, "stimulus.event_%u", i + 1u);
+        snprintf(want, sizeof want, "%llu,%u,%u", (unsigned long long)ev[i].at, (unsigned)ev[i].line, (unsigned)ev[i].level);
+        row = find_row(rows, nrows, key);
+        check(c, row != NULL && value_is(row->val, want), "a stimulus event line differs from the event the case declares (AT,LINE,LEVEL in decimal)");
+    }
+    snprintf(key, sizeof key, "stimulus.event_%u", n + 1u);
+    check(c, find_row(rows, nrows, key) == NULL, "the stimulus table holds more event lines than the case declares");
+    for (r = 0u; r < nrows; r++) {
+        if (strncmp(rows[r].key, "stimulus.", 9u) == 0) {
+            check(c, strchr(rows[r].val, ':') == NULL && strchr(rows[r].val, '/') == NULL && strchr(rows[r].val, '\\') == NULL, "a stimulus value holds a colon, a slash or a backslash");
+        }
+    }
+}
+
+/*
  * kind record_run: boot the built authored image NAME (fixture = authored:NAME, request as given), run it with ds_run to the absolute deadline of the key until_mclk and print the record with the run result. expect is TABLE.KEY=VALUE items
- * (run.reason=until;run.stop_point=instruction), the literals of the case. Structural assertions that name no DuoSpool-derived number: [run] steps is above 0, overshoot is below ds_max_step_mclk() and is the machine time past the deadline,
+ * (run.reason=until;run.stop_point=instruction, and for a case with an irq_stim list the stimulus.events and stimulus.event_N lines), the literals of the case; the [stimulus] table is also compared with the case's own list (plan 03-23).
+ * Structural assertions that name no DuoSpool-derived number: [run] steps is above 0, overshoot is below ds_max_step_mclk() and is the machine time past the deadline,
  * machine.time is at or past the deadline. The same instance is then printed with no run named (reason none, 0, none, 0), after a run that a stop callback ended at once (callback, 0 steps) and after a refused run (refused): the table
  * follows the result it is given and nothing else. Evidence tier E0: the record repeats what the run reported; it says nothing about the machine. No file is written (D-86).
  */
@@ -839,6 +899,16 @@ void kind_record_run(const struct kase *k, struct ctx *c, char *got, size_t gotc
         return;
     }
     w = (struct ds_instance *)(void *)b.mem;
+    {
+        uint32_t stim_refusal = 0u;
+        const char *serr = apply_irq_stim(w, k, &stim_refusal); /* the case's declared stimulus, before the first step (plan 03-23); no key: nothing is applied */
+
+        if (serr != NULL) {
+            harness_error(c, serr);
+            release_boot(&b);
+            return;
+        }
+    }
     memset(&rq, 0, sizeof rq);
     rq.struct_size = (uint32_t)sizeof rq;
     rq.until_mclk = until;
@@ -847,7 +917,9 @@ void kind_record_run(const struct kase *k, struct ctx *c, char *got, size_t gotc
     note_run(c, w->machine_time, res.reason);
     tr = run_of(&s, &res);
     if (print_rows(c, inst, &tr, text, work, rows, &nrows) == 0) {
+        record_emit(k, c, text, strlen(text)); /* --records: the record of the run, so the record lint reads the stimulus table of a real print (plan 03-23) */
         check_items(c, rows, nrows, k->val[K_EXPECT]);
+        check_stimulus_rows(c, rows, nrows, k);
         check(c, row_u64(rows, nrows, "run.steps", &steps) == 0 && steps > 0u, "the run table shows no step after a run to a deadline");
         check(c, row_u64(rows, nrows, "run.overshoot", &over) == 0 && over < ds_max_step_mclk(), "the run table shows an overshoot that is not below ds_max_step_mclk");
         check(c, row_u64(rows, nrows, "machine.time", &when) == 0 && when >= until, "the machine time of the record is below the deadline");

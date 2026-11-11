@@ -216,10 +216,10 @@ enum ds_constant {
     DS_CONST_END_OF_LIST
 };
 
-/* one CPU cycle is 12 master clocks at the power-up low speed and 3 at high speed (constants.def, D-90); the interrupt entry is 8 cycles (assumed, D-98, D-99) */
+/* one CPU cycle is 12 master clocks at the power-up low speed and 3 at high speed (constants.def, D-90); the interrupt entry is DS_INT_ENTRY_CYCLES cycles (8, assumed, D-98, D-99) */
 #define DS_MCLK_PER_CYCLE_LOW ((uint32_t)DS_CONST_cycle_mclk_low)
 #define DS_MCLK_PER_CYCLE_HIGH ((uint32_t)DS_CONST_cycle_mclk_high)
-#define DS_INT_ENTRY_CYCLES 8u
+#define DS_INT_ENTRY_CYCLES ((uint32_t)DS_CONST_interrupt_entry_cycles) /* constants.def (ASSUMED LED-CPU-0009) */
 /* the named cycle adders of D-98 and D-107, applied on top of the opcode table's base counts (ds_max_step_mclk adds them to the table maximum) */
 #define DS_ADDER_BRANCH_TAKEN 2u /* a taken conditional branch, BBR and BBS included (S8-20); BRA and BSR are fixed counts in the table */
 #define DS_ADDER_T_MODE 3u       /* ADC, AND, EOR, ORA with the T flag set (S8-17) */

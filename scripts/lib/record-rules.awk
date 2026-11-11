@@ -9,9 +9,11 @@
 #           V<TAB>CODE<TAB>line<TAB>detail     a violation
 #           P<TAB>1                            the record was read (tallied by the wrapper; never a violation)
 # codes : REC_TABLES     the set, the order or the keys of the tables differ from the accept record (record, core, profile, the field
-#                        tables, withheld, content, power_on, the model tables, constants, run, limits, machine) or from the refusal record
+#                        tables, withheld, content, power_on, the model tables, stimulus, constants, run, limits, machine) or from the refusal record
 #                        (record, core, refusal); a model table with keys other than value ledger status bound_by; a constants line whose value
-#                        is not "NUMBER LEDGER-ID" (the constants table has one line per row of src/core/constants.def, so its keys are not listed here)
+#                        is not "NUMBER LEDGER-ID" (the constants table has one line per row of src/core/constants.def, so its keys are not listed here);
+#                        a stimulus table whose keys are not events and then event_1 to event_N with N equal to the value of events (at most 16), or an event
+#                        value that is not three decimal fields AT,LINE,LEVEL separated by commas with a line of 1 or 2 and a level of 0 or 1 (plan 03-23)
 #         REC_FIELDS     the field tables are not exactly the 13 profile fields in profile order, each with status, value, bound_by
 #         REC_PATH       a value holds a slash or a backslash (a path or an escape)
 #         REC_POINTER    a value holds 0x followed by a hex digit (a pointer or an address)
@@ -33,11 +35,11 @@ BEGIN {
   keys["machine"] = "time time_unit digest_algorithm digest"
   keys["refusal"] = "reason requested_id requested_rev"
   # the table sequences; the field tables count as one token, and so do the model tables (one per row of src/core/model_params.def, at least one)
-  seq_accept = "record core profile FIELDS withheld content power_on MODELS constants run limits machine"
+  seq_accept = "record core profile FIELDS withheld content power_on MODELS stimulus constants run limits machine"
   seq_refusal = "record core refusal"
   fieldkeys = "status value bound_by"
   modelkeys = "value ledger status bound_by"
-  nt = 0; sentinel = 0; nv = 0
+  nt = 0; sentinel = 0; nv = 0; events = ""
 }
 function viol(code, line, detail) { nv++; vbuf[nv] = sprintf("V\t%s\t%s\t%s", code, line, detail) }
 $1 == "END" { sentinel = 1; next }
@@ -54,6 +56,9 @@ $1 == "ERR" { viol($2, $3, $4); next }     # syntax-stage errors pass straight t
   if (v ~ /[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/ || v ~ /[0-9][0-9]:[0-9][0-9]/) viol("REC_TIMESTAMP", ln, t "." k " holds a date or a time")
   # a constants line is NAME = "NUMBER LEDGER-ID" (a decimal number, one blank, an id of the ledger shape)
   if (t == "constants" && v !~ /^[0-9]+ LED-[A-Z]+-[0-9][0-9][0-9][0-9]$/) viol("REC_TABLES", ln, t "." k " is not a number and a ledger id")
+  # a stimulus line is events = N, or event_I = "AT,LINE,LEVEL": decimal fields with commas (a colon would read as a time)
+  if (t == "stimulus" && k == "events") events = v
+  if (t == "stimulus" && k != "events" && v !~ /^[0-9]+,[12],[01]$/) viol("REC_TABLES", ln, t "." k " is not AT,LINE,LEVEL in decimal")
 }
 END {
   if (!sentinel) viol("NO_SENTINEL", 0, "stage 1 printed no END line")
@@ -69,6 +74,12 @@ END {
     } else if (substr(t, 1, 6) == "model_") {
       tok = "MODELS"
       if (kseq[t] != modelkeys) viol("REC_TABLES", seen[t], t " keys are '" kseq[t] "', want '" modelkeys "'")
+    } else if (t == "stimulus") {
+      tok = t
+      want_st = "events"
+      lim = events + 0; if (lim > 17) lim = 17     # a huge count is a violation below; the loop stays short
+      for (j = 1; j <= lim; j++) want_st = want_st " event_" j
+      if (events !~ /^[0-9]+$/ || events + 0 > 16 || kseq[t] != want_st) viol("REC_TABLES", seen[t], t " keys are '" kseq[t] "', want events and event_1 to event_N with N the value of events, at most 16")
     } else {
       tok = t
       if (t in keys && kseq[t] != keys[t]) viol("REC_TABLES", seen[t], t " keys are '" kseq[t] "', want '" keys[t] "'")

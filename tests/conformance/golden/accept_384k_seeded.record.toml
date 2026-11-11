@@ -16,8 +16,10 @@
 # Plan 03-22 added the second row of src/core/model_params.def, irq_i_sample (default pre, ledger LED-IRQ-0005, status open): the record gains the table [model_irq_i_sample] after [model_tma_zero] and [withheld] the id LED-IRQ-0005 (18 ids, under the cap of 24). The two blocks were written by hand from the def and are not printer output; the layout otherwise did not change.
 # Plan 03-22 also added the regions TIMR, IRQC and IRQS and the serial version 5, so the digest line changed: it was recomputed with a throwaway python script outside the repo that rebuilt the version 4 stream of this boot (and checked it against the committed version 4 digest 1843d592... under
 # shasum -a 256), set the version to 5 and appended the frames TIMR (11 zero bytes), IRQC (3) and IRQS (160); the 8588-byte stream file hashes to the new value under shasum -a 256. The profile and content hashes did not change.
+# Plan 03-23 changed the layout, format_version 3 to 4: the table [stimulus] (events = 0 for a boot that declares none, then one event_N line per declared event as AT,LINE,LEVEL in decimal) follows the model tables, and the table [constants] gained the four rows timer_hold_on_stop, irq_sample_cycles_before_end,
+# interrupt_entry_cycles and speed_switch_extra_cycles of src/core/constants.def, whose ledger ids LED-IRQ-0003, LED-IRQ-0006, LED-CPU-0009 and LED-CPU-0006 joined [withheld] (22 ids, under the cap of 24). The literals were written by hand from the def, not copied from printer output. The digest line, the profile hash and the content hash did not change (no state was added).
 [record]
-format_version = 3
+format_version = 4
 
 [core]
 build_id = "unset"
@@ -94,7 +96,7 @@ value = "seeded-prng-v1"
 bound_by = "run-request"
 
 [withheld]
-ids = ["LED-AUD-0001", "LED-CPU-0003", "LED-CPU-0004", "LED-CPU-0010", "LED-CPU-0012", "LED-CPU-0015", "LED-CPU-0017", "LED-IO-0001", "LED-IRQ-0001", "LED-IRQ-0005", "LED-LOAD-0001", "LED-LOAD-0002", "LED-LOAD-0003", "LED-LOAD-0005", "LED-PROF-0002", "LED-VID-0001", "LED-VID-0002", "LED-VID-0003"]
+ids = ["LED-AUD-0001", "LED-CPU-0003", "LED-CPU-0004", "LED-CPU-0006", "LED-CPU-0009", "LED-CPU-0010", "LED-CPU-0012", "LED-CPU-0015", "LED-CPU-0017", "LED-IO-0001", "LED-IRQ-0001", "LED-IRQ-0003", "LED-IRQ-0005", "LED-IRQ-0006", "LED-LOAD-0001", "LED-LOAD-0002", "LED-LOAD-0003", "LED-LOAD-0005", "LED-PROF-0002", "LED-VID-0001", "LED-VID-0002", "LED-VID-0003"]
 
 [content]
 sha256 = "dea83b86f5837a056859d5cf1ff5db8612092a2855be3e5da32ed277fc5f37e0"
@@ -122,6 +124,9 @@ ledger = "LED-IRQ-0005"
 status = "open"
 bound_by = "default"
 
+[stimulus]
+events = 0
+
 [constants]
 cycle_mclk_low = "12 LED-CPU-0003"
 cycle_mclk_high = "3 LED-CPU-0003"
@@ -132,6 +137,10 @@ unmapped_read = "255 LED-CPU-0012"
 vdc_vce_penalty_cycles = "1 LED-CPU-0017"
 tam_zero_noop = "1 LED-CPU-0015"
 tma_multibit_highest = "1 LED-CPU-0015"
+timer_hold_on_stop = "1 LED-IRQ-0003"
+irq_sample_cycles_before_end = "1 LED-IRQ-0006"
+interrupt_entry_cycles = "8 LED-CPU-0009"
+speed_switch_extra_cycles = "0 LED-CPU-0006"
 
 [run]
 reason = "none"

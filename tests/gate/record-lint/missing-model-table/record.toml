@@ -96,6 +96,9 @@ policy_version = 1
 seed_present = false
 seed = 0
 
+[stimulus]
+events = 0
+
 [constants]
 cycle_mclk_low = "12 LED-CPU-0003"
 cycle_mclk_high = "3 LED-CPU-0003"

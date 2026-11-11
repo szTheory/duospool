@@ -456,6 +456,44 @@ static void emit_model(struct out *o, const struct ds_instance *inst, const stru
     }
 }
 
+/*
+ * The [stimulus] table (plan 03-23; D-112, D-53 amended, T-03-65): the declared IRQ1 and IRQ2 test stimulus of the run, copied into the instance before the first step. events is the number of used slots (a slot with line 0 is unused), and
+ * event_1 to event_N hold one event each as three decimal fields separated by commas, AT,LINE,LEVEL (the machine time in master clocks, line 1 or 2, level 1 requested or 0): never a dd:dd shape, which the record lint would take for a time. No
+ * stimulus declared prints events = 0 and no event line. The list is a test hook (ER-5), not a statement about any device. A slot list that ds_irq_stim_set could not have produced (a used slot after an unused one, a line above 2, a level
+ * above 1, times that go back) is a state error: the printer never guesses.
+ */
+static void emit_stimulus(struct out *o, const struct ds_instance *inst)
+{
+    uint32_t n = 0u;
+    uint32_t i;
+
+    while (n < (uint32_t)DS_IRQ_STIM_MAX && inst->irq_stim_line[n] != 0u) {
+        n++;
+    }
+    for (i = 0u; i < (uint32_t)DS_IRQ_STIM_MAX; i++) {
+        int used = i < n;
+
+        if (used ? (inst->irq_stim_line[i] > 2u || inst->irq_stim_level[i] > 1u || (i > 0u && inst->irq_stim_at[i] < inst->irq_stim_at[i - 1u]))
+                 : (inst->irq_stim_line[i] != 0u || inst->irq_stim_level[i] != 0u || inst->irq_stim_at[i] != UINT64_C(0))) {
+            fail(o, DS_TEXT_ERR_STATE);
+            return;
+        }
+    }
+    table(o, "", "stimulus");
+    kv_u32(o, "events", n);
+    for (i = 0u; i < n; i++) {
+        put_lit(o, "event_");
+        put_u32(o, i + 1u);
+        put_lit(o, " = \"");
+        put_u64(o, inst->irq_stim_at[i]);
+        put_ch(o, ',');
+        put_u32(o, (uint32_t)inst->irq_stim_line[i]);
+        put_ch(o, ',');
+        put_u32(o, (uint32_t)inst->irq_stim_level[i]);
+        put_lit(o, "\"\n");
+    }
+}
+
 /* the [constants] table: one line per row of constants.def, NAME = "VALUE LEDGER" (the value in decimal, a blank, the ledger id), in file order */
 static void emit_constants(struct out *o)
 {
@@ -592,6 +630,7 @@ enum ds_text_status ds_text_record(const struct ds_instance *inst, const struct 
     emit_content(&o, inst);
     emit_power_on(&o, inst);
     emit_model(&o, inst, run);
+    emit_stimulus(&o, inst);
     emit_constants(&o);
     emit_run(&o, run);
     table(&o, "", "limits");

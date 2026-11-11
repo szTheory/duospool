@@ -97,6 +97,9 @@ ledger = "LED-CPU-0015"
 status = "assumed"
 bound_by = "default"
 
+[stimulus]
+events = 0
+
 [constants]
 cycle_mclk_low = "12 LED-CPU-0003"
 cycle_mclk_high = "3 LED-CPU-0003"
