@@ -82,8 +82,8 @@ different job, not a deletion.
   of a job (AGENTS.md, "CI and release: review efficiency after every run"). The result of each review, including "nothing to change", is recorded
   here next to the row it is about.
 - Revisit caching when any single step exceeds 30 seconds. Until then there is no cache: measure first.
-- Review the gate job's `timeout-minutes: 10` limit (D-61) against the first recorded critical path. The second gate run and the two compiler runs
-  add to the job, so the limit may be too tight or needlessly loose.
+- Review the gate job's `timeout-minutes` limit (D-61; 10 until plan 03-33, 20 since) against each recorded critical path. The second gate run and
+  the two compiler runs add to the job, so the limit may be too tight or needlessly loose.
 - Time is a record and a warning, never a failure of the gate (D-60).
 
 ## Pending hand-offs
@@ -300,3 +300,179 @@ Reading: the conformance stage went from 122 s to 31 s although the load was hig
 before, 29 and 25 s after). The total did not drop in this pair of runs only because the unchanged stages took longer under the heavier load
 (`sanitizers` 47 to 66 s, the others 131 to 215 s in sum). A quiet-machine run would show the saving in the total; it was not available here.
 Nothing was weakened: no stage, control or selftest was skipped, merged or shortened, and every toy still shows `CONTROL NAME RED_OK`.
+
+## Local baseline after W8 (a local run, not a CI run)
+
+CI for Phase 3: unverified, pending owner push authorisation (D-64). Nothing of Phase 3 has run on a GitHub runner: the only CI run on record is the
+Phase 2 run above (pull request 1, head `b063518`), and about 180 commits have been made since that head (the Phase 2 review fixes and Phase 3). Nothing was
+pushed, no pull request was opened and no repository setting changed in plan 03-33. This file holds no CI row for Phase 3 and makes no CI claim for it.
+
+Measured on 2026-11-11 on the owner's development machine (Apple M5 Pro, 18 cores, macOS 26.6.2, BWK awk 20200816, Apple clang 21, cmake 4.4.3), commit
+`bf1bef0`, warm tree (`build/` present), with `sh scripts/check --timing`. The machine is shared with unrelated jobs and the load was never quiet, so two
+runs are recorded. Run A: 193 s wall (`time -l`: 129 s user, 56 s system), load average 14.9 16.8 23.3 at the start and 15.3 15.3 21.4 at the end.
+Run B: 295 s wall (155 s user, 88 s system), load average 49.8 65.4 50.7 at the start and 14.0 36.3 41.8 at the end. All 56 stages passed in both. Single
+stage runs at load 12 to 16: `conformance` 37 s (33 s user), `sanitizers` 71 s (62 s user), `determinism` 36 s (32 s user). User time close to wall
+time says these three stages are compute, not waiting.
+
+Target and verdict: the warm target is 120 s (D-132). **Missed**: 193 s in the better run (73 s over) and 295 s in the loaded one. Even the user CPU
+time of run A (129 s) is above the target, so a quiet machine would not meet it either. Time is a record and never fails the gate. Stages over 20 s,
+run A: `conformance` 31 s, `sanitizers` 52 s, `determinism` 30 s (113 s of 192, 59 percent); in run B the same three (55, 65, 24 s). Against the W1
+baseline (62 s for 50 stages, `conformance` 6 s, `sanitizers` 7 s, `determinism` 2 s) the growth is these three stages: 234 case files, the
+guest cases and the random, chunk and snapshot sweeps run through the machine, and again under ASan and UBSan. Every other stage is 10 s or less in
+run A. The Linux columns are the one-off container runs below, cold builds under emulation, and are not comparable with the macOS columns.
+
+| # | Stage | Run A s (mac) | Run B s (mac) | Linux gawk+gcc s (emulated) | Linux mawk+clang s (emulated) | Verdict (mac) |
+|---|-------|---------------|---------------|-----------------------------|-------------------------------|---------------|
+| 1 | preflight | 0 | 0 | 1 | 1 | PASS |
+| 2 | ledger-entries | 1 | 8 | 7 | 6 | PASS |
+| 3 | ledger-negatives | 2 | 10 | 14 | 11 | PASS |
+| 4 | ledger-samples | 1 | 5 | 2 | 3 | PASS |
+| 5 | decision-records | 0 | 1 | 2 | 1 | PASS |
+| 6 | decision-negatives | 1 | 2 | 10 | 9 | PASS |
+| 7 | profile-records | 1 | 0 | 1 | 0 | PASS |
+| 8 | profile-negatives | 1 | 1 | 9 | 9 | PASS |
+| 9 | filename-controls | 1 | 1 | 4 | 3 | PASS |
+| 10 | empty-expect-controls | 0 | 1 | 3 | 3 | PASS |
+| 11 | provenance | 0 | 0 | 1 | 1 | PASS |
+| 12 | provenance-negatives | 2 | 3 | 10 | 9 | PASS |
+| 13 | licences | 3 | 7 | 16 | 16 | PASS |
+| 14 | licence-negatives | 1 | 3 | 5 | 6 | PASS |
+| 15 | protocol-order | 0 | 1 | 2 | 2 | PASS |
+| 16 | protocol-negatives | 6 | 17 | 30 | 30 | PASS |
+| 17 | score-controls | 1 | 1 | 6 | 4 | PASS |
+| 18 | results | 0 | 0 | 1 | 1 | PASS |
+| 19 | results-negatives | 0 | 1 | 3 | 2 | PASS |
+| 20 | ingest-controls | 2 | 1 | 10 | 9 | PASS |
+| 21 | flatten-controls | 1 | 1 | 9 | 7 | PASS |
+| 22 | cancel-controls | 1 | 2 | 3 | 3 | PASS |
+| 23 | outcome-controls | 1 | 0 | 2 | 1 | PASS |
+| 24 | rights-tree | 2 | 7 | 14 | 11 | PASS |
+| 25 | rights-negatives | 7 | 13 | 40 | 33 | PASS |
+| 26 | audit-synthetic | 5 | 15 | 44 | 36 | PASS |
+| 27 | inventory | 5 | 9 | 53 | 42 | PASS |
+| 28 | inventory-negatives | 1 | 3 | 13 | 12 | PASS |
+| 29 | fixture-lint | 0 | 0 | 1 | 0 | PASS |
+| 30 | fixture-lint-negatives | 1 | 3 | 7 | 7 | PASS |
+| 31 | input-check | 0 | 0 | 2 | 2 | PASS |
+| 32 | input-check-negatives | 2 | 4 | 14 | 13 | PASS |
+| 33 | xasm | 0 | 0 | 0 | 0 | PASS |
+| 34 | opcode-oracle | 0 | 0 | 0 | 0 | PASS |
+| 35 | opcode-oracle-negatives | 1 | 1 | 3 | 3 | PASS |
+| 36 | xasm-negatives | 0 | 1 | 3 | 3 | PASS |
+| 37 | workflow | 0 | 0 | 1 | 1 | PASS |
+| 38 | workflow-negatives | 1 | 3 | 10 | 8 | PASS |
+| 39 | docs-claims | 0 | 1 | 1 | 3 | PASS |
+| 40 | docs-claims-negatives | 1 | 1 | 8 | 6 | PASS |
+| 41 | ci-timings-controls | 0 | 1 | 1 | 1 | PASS |
+| 42 | fixture-build | 1 | 2 | 6 | 5 | PASS |
+| 43 | build | 0 | 0 | 5 | 8 | PASS |
+| 44 | outcome-sync | 0 | 1 | 2 | 2 | PASS |
+| 45 | conformance | 31 | 55 | 136 | 156 | PASS |
+| 46 | sanitizers | 52 | 65 | 147 | 146 | PASS |
+| 47 | excluded-mode-controls | 1 | 0 | 3 | 2 | PASS |
+| 48 | record-lint | 0 | 0 | 1 | 1 | PASS |
+| 49 | record-lint-negatives | 1 | 1 | 8 | 5 | PASS |
+| 50 | core-boundary | 3 | 3 | 18 | 17 | PASS |
+| 51 | core-boundary-negatives | 4 | 3 | 30 | 26 | PASS |
+| 52 | determinism | 30 | 24 | 54 | 45 | PASS |
+| 53 | determinism-negatives | 0 | 0 | 2 | 1 | PASS |
+| 54 | fixtures | 6 | 5 | 33 | 23 | PASS |
+| 55 | fixture-negatives | 1 | 0 | 5 | 3 | PASS |
+| 56 | named-controls | 10 | 7 | 38 | 34 | PASS |
+| | sum of stage seconds | 192 | 294 | 854 | 792 | |
+
+### Container run after W8 (one-off, not CI)
+
+Two local one-off container runs of `scripts/linux-repro` (ubuntu:24.04, linux/amd64 emulated on this arm64 Mac, cold `build/`, host load 16 to 33
+and shared with another project's container). They are local runs, never CI claims.
+
+- **Two earlier runs (both stopped, part `gawk`, gawk 5.2.1, gcc 13.3.0, cmake 3.28.3):** together they found two defects that macOS never showed, both
+  fixed in plan 03-33. The first run: gcc 13 reported `-Werror=format-truncation` in five places of the conformance runner and the `build` stage failed
+  (fixed in commit `b578443`, then checked with part `gate-gcc`, 79 s, passed). The second run: UBSan reported `memcpy` of zero bytes through a null
+  pointer at `obskinds.c:854` and the `sanitizers` stage failed (fixed in commit `bf1bef0`). Each was stopped during its selftest, the tree was fixed
+  and the run repeated.
+- **Final run, part `gawk` (real script):** gate exit 0, 56 stages PASS in 856 s (sum of stage seconds 854), selftest exit 0 (113 SELFTEST lines, no FAIL),
+  the part about 1250 s with the install. Slowest stages: `conformance` 136 s, `sanitizers` 147 s, `determinism` 54 s, `inventory` 53 s,
+  `audit-synthetic` 44 s, `rights-negatives` 40 s, `named-controls` 38 s, `fixtures` 33 s.
+- **Final run, part `mawk` (a scratch copy of the script with the selftest omitted, because CI does not run it):** mawk 1.3.4, clang 18.1.3. Gate exit 0,
+  56 stages PASS in 793 s (sum 792): `conformance` 156 s, `sanitizers` 146 s (so the sanitizers stage also passes under clang 18 on Linux), `determinism`
+  45 s. The whole part took 870 s. The scratch copy is not committed; it differs from `scripts/linux-repro` only in the selftest line and the repository root.
+- **Reading:** the Linux gate now passes under the two awk implementations and the two compilers of the CI job, as a local run. The numbers are about
+  4 to 8 times the expected runner times (see the calibration below) and are not a prediction of a runner.
+
+### Estimated CI critical path for the Phase 3 gate (an estimate, not a measurement)
+
+There is no CI row for the Phase 3 gate, so the job time is estimated. The only calibration is the Phase 2 pair (47 stages): the one-off container
+gates took 216 s (gawk, gcc) and 207 s (mawk, clang), and the real runner took 37 s (`Gate`) and 25 s (`Second awk gate run`), a factor of 5.8 and 8.3.
+Compute-heavy stages scale less than process-spawning ones (`conformance`: 17 to 20 s emulated against 6 s on the runner, a factor of 3), and the three
+compute stages are now 39 to 44 percent of the gate, so the factor is applied per group: 5.8 or 8.3 for the spawn-bound stages and 3 to 5 for the three
+compute stages. This is one calibration point and an emulator, so the uncertainty is wide, at least plus or minus 50 percent.
+
+| Part of the job | Low s | Central s | High s | Basis |
+|-----------------|-------|-----------|--------|-------|
+| Set up, checkout (full clone), tool versions | 7 | 8 | 10 | Phase 2 run: 2 s for the first part; the full clone is larger now |
+| Install cc65 (`apt-get update` and install) | 10 | 20 | 30 | not measured anywhere; a guess, the one step with no number |
+| Gate (gawk, gcc, cold build) | 147 | 175 | 201 | 854 s emulated, scaled as above |
+| Range audit (pull request only) | 30 | 45 | 60 | 16 s for 130 commits in run 42939483070; the first pull request of this branch holds about 370 |
+| gcc build and conformance | 23 | 35 | 45 | the `conformance` stage again, in a second build directory |
+| clang build and conformance | 26 | 40 | 52 | same, clang 18 |
+| Second awk gate run (mawk, gcc) | 95 | 135 | 170 | 792 s emulated, scaled as above |
+| **Job** | **338 (5.6 min)** | **458 (7.6 min)** | **568 (9.5 min)** | |
+
+A local cross-check gives the same order: the local gate took 193 to 295 s, and the runner was about 0.8 times the local figure in Phase 2 (37 s against
+45 s), which puts `Gate` at 155 to 240 s and the job at about 8 to 11 minutes. So the estimate runs from about 6 to 11 minutes, and the old limit of
+10 minutes sits inside it. **`timeout-minutes: 10` is not safe for the first Phase 3 run.**
+
+### Efficiency review after W8 (decisions)
+
+- **`timeout-minutes` raised from 10 to 20** in `.github/workflows/gate.yml`, the smallest safe change (a limit only bounds a hung job, so a higher limit
+  costs nothing when the job is healthy). 20 is about twice the high estimate. The 14 mini-roots of `tests/workflow` were regenerated by the same text
+  replacement (each differs from the real file by exactly the lines it differed by before; `ok-gate` is byte-identical to the real file) and
+  `workflow`, `workflow-negatives` pass. Tighten it after three recorded Phase 3 rows, as the protocol above says.
+- **The second awk run stays a whole gate run.** The awk-call census (a shim for `awk` first on PATH, each stage run alone on macOS, 5736 calls, a lower
+  bound) shows 52 of 56 stages run awk; only `preflight`, `empty-expect-controls`, `protocol-order` and `build` run none. The heavy stages are not an
+  exception: `conformance` makes 675 awk calls (about 240 parses of the case files with `toml-subset.awk`), `sanitizers` 584, `fixtures` 707, `inventory`
+  847 (that stage is awk-bound, 53 s emulated). The only stage that could be dropped from the second run without losing awk coverage in practice is
+  `sanitizers`, whose awk work repeats `conformance`'s (the same case parsing; one result-judging call differs), a saving of about
+  25 to 40 s of the estimated job. That needs a skip mechanism in `scripts/check` that the gate's fail-closed rule discourages, and the stage does run
+  awk, so it is **not** done. Revisit when the first Phase 3 row exists; no failure class (awk dialect, sh and userland, history, compilers) is dropped.
+- **Sanitizers under the second compiler (a note, not changed).** CI runs the `sanitizers` stage only under the default `cc`, which is gcc on the runner,
+  in both gate runs. The container runs show clang 18 + UBSan passes on Linux (146 s emulated, perhaps 30 to 50 s on a runner), and the first
+  container run showed that the compiler matters: gcc's UBSan reported a null-pointer `memcpy` that the macOS clang run never flagged. Two ways to get
+  clang's sanitizers: add a third run (about 30 to 50 s), or make the second awk run use clang as `cc` (no extra minutes, but a failure of that run would
+  no longer say whether awk or the compiler caused it; `scripts/linux-repro` already pairs mawk with clang). Neither is applied without the owner's
+  say, and the first Phase 3 row should come first.
+- **The gcc and clang steps repeat `conformance`.** Each rebuilds in its own directory and runs all cases again (an estimated 35 to 40 s each). They
+  prove a clean preset build with the strict warning flags under each compiler, and this plan's gcc findings show the value of that. Not changed.
+- **`Range audit`** will be long on the first pull request (hundreds of commits) and short on a normal one.
+- **Nothing was weakened:** no stage, control, selftest or workflow step was skipped, merged or shortened.
+- **Next action:** after the owner authorises a push and the first Phase 3 run exists, add its row to the table above with `sh scripts/ci-timings RUN_ID`,
+  compare it with the estimate here, and decide the timeout, the second-awk subset and the sanitizers-under-clang question from that row.
+
+### Optional WLA-DX cross-check (one local run, not CI)
+
+WLA-DX 10.7 from the Homebrew core bottle was installed locally (reversible, outside the repository), `sh scripts/xasm-check --rows 234` was run with
+`wla-huc6280` and `wlalink` on PATH, and the tool was then uninstalled. The WLA path had never run. First run: `XASM_WLA_FAILED` (the generated text
+wrote the accumulator `inc a`, which WLA reads as an operand named `a`). After spelling accumulator INC and DEC as `ina` and `dea` (commit `7c7e065`) it
+assembled all 234 rows and printed one mismatch: **233 rows equal the table, 1 differs**, `BRK` (expected `00` and padding, WLA emitted `00 00`, two
+bytes). So `wla=equal` was never printed. This is an observation about one external tool, not a verdict on the table or on ca65, and the reason (a
+second signature byte for `BRK`) is a guess that was not checked against the WLA documentation. **No cross-assembler identity claim is made.** Nothing
+of WLA is committed and its output was discarded. It was uninstalled because, while it is on PATH, the `xasm` stage of the gate reports the BRK mismatch
+and fails; the next step is an owner choice (accept a recorded WLA exception for `BRK`, or leave the optional check unused).
+
+## Owner hand-off list after Phase 3 (recorded once)
+
+Automated and not to be re-asked: every stage, case family, control and selftest added in Phase 3 (56 stages, 113 selftest lines on Linux, the
+README claim-word rules and their controls). What only the owner can do or confirm:
+
+1. **Push and pull request authorisation (D-64).** The Phase 2 review-fix commits and every Phase 3 commit (about 180 commits after `b063518` at the time of
+   writing) are local only. CI evidence for them is pending: it needs an authorised push, and the first Phase 3 run then needs the review above.
+2. **Three remote settings** (see the pending hand-offs above, unchanged): Actions default workflow permissions read-only, Actions not allowed to
+   approve pull requests, and a branch ruleset on `main` requiring the `gate` check.
+3. **CODEOWNERS handle:** `@szTheory` was taken from the local git config and is awaiting confirmation.
+4. **ADR 0008 (evidence-tier policy)** is still `proposed-default`. The seven supported entries were promoted under that default; confirming or
+   changing it is an optional ask.
+5. **Optional hardware captures:** not needed for any current claim.
+6. **`CLAUDE.md` Technology Stack section** still reads as an unadopted Rust proposal ("research proposal, NOT a decision") while decision 0001
+   governs the language and build system. Recorded only; it was not edited.
+7. **Optional WLA-DX:** whether to record a `BRK` exception so the optional cross-check can print `equal` (see above).
