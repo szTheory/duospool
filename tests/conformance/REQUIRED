@@ -207,3 +207,4 @@ chunk_equiv_cpu_blk_irq
 chunk_equiv_random32
 observer_cpu_blk
 observer_random
+pad_2btn_correct

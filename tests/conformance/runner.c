@@ -17,6 +17,7 @@
  *   --oracle FILE        the bank-signature rows of tests/conformance/mirror-oracle.awk (SIZE BANK FILEBANK FIRST LAST), read by banksig
  *   --bank-oracle FILE   the 256 rows (BANK CLASS) of tests/conformance/bankclass-oracle.awk, read by bankclass_oracle (buskinds.c, plan 03-20)
  *   --opcode-tsv FILE    the manual opcode table tests/oracle/huc6280-opcodes.tsv, read by the opcode_table kind (cpukinds.c)
+ *   --inputs FILE        the flattened input scripts of tests/conformance/inputs (conformance-flatten --inputs: SCRIPT and INPUT rows), read by the guest kind for a case with an input key (inputkinds.c, plan 03-27)
  *   --marker-seed N      the seed of the run-time unique markers of the redaction kinds (D-56); scripts/conformance-run passes the host
  *                        clock and pid. The runner never calls a clock and no marker is a constant in any source
  *   --records DIR        every case of kind accept, record_lines, record_golden or record_refusal writes DIR/ID.record.toml (record text only);
@@ -1043,6 +1044,7 @@ static const struct {
     {"run_refusal_coverage", kind_run_refusal_coverage, 1},
     {"model_refusal_coverage", kind_model_refusal_coverage, 1},
     {"stim_refusal_coverage", kind_stim_refusal_coverage, 1},
+    {"input_refusal_coverage", kind_input_refusal_coverage, 1},
 };
 
 static const char *outcome_of(const struct ctx *c, enum outcome *oc)
@@ -1211,7 +1213,7 @@ int main(int argc, char **argv)
             oracle_path = argv[++a];
         } else if (strcmp(argv[a], "--bank-oracle") == 0 && a + 1 < argc) {
             bank_oracle_path = argv[++a];
-        } else if (cpukinds_arg(argc, argv, &a) || obskinds_arg(argc, argv, &a)) {
+        } else if (cpukinds_arg(argc, argv, &a) || obskinds_arg(argc, argv, &a) || inputkinds_arg(argc, argv, &a)) {
             continue;
         } else {
             cases_path = NULL;
@@ -1220,7 +1222,7 @@ int main(int argc, char **argv)
     }
     if (cases_path == NULL || (evdir == NULL && !list_fx && trace_out_id == NULL)) {
         emit_err("usage: ds_runner --cases FILE --evidence-dir DIR [--profile-tsv FILE] [--rules-fields FILE]\n"
-                        "                 [--oracle FILE] [--bank-oracle FILE] [--opcode-tsv FILE] [--exclude-ids FILE] [--only ID] [--marker-seed N] [--records DIR] [--golden-dir DIR]\n"
+                        "                 [--oracle FILE] [--bank-oracle FILE] [--opcode-tsv FILE] [--inputs FILE] [--exclude-ids FILE] [--only ID] [--marker-seed N] [--records DIR] [--golden-dir DIR]\n"
                         "       ds_runner --cases FILE --trace-out CASE_ID   (writes build/gate/traces/CASE_ID.insn and .dev for an authored or synthetic case)\n"
                         "       ds_runner --sweep-lengths | --spec | --emit RECIPE | --hash RECIPE\n");
         return 2;

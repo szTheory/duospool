@@ -234,6 +234,20 @@ void kind_model_refusal_coverage(const struct kase *k, struct ctx *c, char *got,
 const char *irq_stim_parse(const struct kase *k, struct ds_irq_event *ev, unsigned cap, unsigned *n, int *declared);
 const char *apply_irq_stim(struct ds_instance *inst, const struct kase *k, uint32_t *refusal);
 void kind_stim_refusal_coverage(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+/*
+ * The input schedule of a case (inputkinds.c, plan 03-27; D-51, D-116, D-117, ER-5): the case key input names an input script; scripts/conformance-flatten --inputs parsed it and wrote its rows to the file named by --inputs (inputkinds_arg parses that option for
+ * main: 1 when it consumed argv[*a] and its value), which every runner invocation of conformance-run and determinism-run passes, the toy runners included. input_events reads the events of the named script (at most cap; a longer script, a missing script, a missing
+ * rows file and a malformed row are faults of the case); declared is 1 when the key is present. apply_input gives the events to a booted instance through ds_input_push before the first step (no key: nothing is applied); *refusal receives the code of
+ * input_refusals.def that the core returned (0 for none) and a refusal is a fault of the case for every caller but the refusal rows. input_refuse runs the refusal rows of a refused=input.NAME expect; the deferred kind input_refusal_coverage needs every member observed.
+ */
+#define INPUT_PARSE_MAX 1100u
+struct guest_expect;
+extern const char *inputs_tsv_path;
+int inputkinds_arg(int argc, char **argv, int *a);
+const char *input_events(const struct kase *k, struct ds_input_event *ev, unsigned cap, unsigned *n, int *declared);
+const char *apply_input(struct ds_instance *inst, const struct kase *k, uint32_t *refusal);
+void input_refuse(const struct kase *k, struct ctx *c, const struct guest_expect *ex, const char *rom, uint64_t until, char *got, size_t gotcap);
+void kind_input_refusal_coverage(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 /* boot build/gate/fixtures/ROM.pce over the request text: NULL and the accepted instance, or why not (a harness fault of the case); release_boot frees it */
 const char *boot_built_rom(const char *rom, const char *request, struct booted *b, const struct ds_instance **inst);
 /* the two halves of boot_built_rom (plan 03-10): load_image reads build/gate/fixtures/ROM.pce into a heap buffer (NULL and *len 0 when it cannot); boot_content boots the buffer
@@ -255,6 +269,8 @@ const char *boot_content(const char *request, size_t len, struct booted *b, cons
  *   verdict=OUTCOME:REASON  a protocol control (the judge must give exactly this outcome and a reason containing the word)
  *   poison-t0               the t=0 precondition control (guest only)
  *   refused=stim.NAME       a stimulus refusal control (plan 03-22, guest only): the case's irq_stim list must be refused by ds_irq_stim_set with exactly the code NAME of src/core/stim_refusals.def, the instance unchanged, and no guest is run (observe items are not allowed)
+ *   refused=input.NAME[,NAME...]  (plan 03-27, guest only) an input refusal control: synthetic events that bypass every script are pushed to ds_input_push and each variant of each named code of src/core/input_refusals.def must come back as exactly that code, the instance
+ *                           byte-identical (inputkinds.c); no guest is run except for the late code; observe items are not allowed
  *   observe=IDX:VALUE       the observed byte of observe row IDX must equal VALUE (decimal or 0x hex, at most 255)
  *   observe=IDX:policy      (plan 03-24) the byte is recorded and compared with no value, and it is exempt from the cross-policy equality of the guest kind: the row legitimately reads power-on state (the power-up reads of mmu_mpr)
  *   observe=IDX:differs     (plan 03-24) only in a case that carries policy-diff=IDX for the same IDX: the byte of every policy after the first must differ from the byte of the first one
@@ -262,7 +278,7 @@ const char *boot_content(const char *request, size_t len, struct booted *b, cons
  *                           it makes the case guest_failure, which shows that the comparison across policies can see a difference
  *   exclude=IDX,IDX,...     the checks a mutation sweep skips (strictly ascending), which must equal the observe rows of the fixture (mutate_sweep only)
  */
-enum guest_mode { MODE_PLAIN, MODE_VERDICT, MODE_POISON, MODE_REFUSED };
+enum guest_mode { MODE_PLAIN, MODE_VERDICT, MODE_POISON, MODE_REFUSED, MODE_REFUSED_INPUT };
 #define GE_ITEMS_MAX 32u
 
 struct guest_expect {

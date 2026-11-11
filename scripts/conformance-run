@@ -13,7 +13,8 @@
 #        conformance-run filter-cases CASES_TSV IDS_FILE OUT_TSV
 #        conformance-run supervise --ids FILE --out FILE [--wall N] -- CMD ARGS...
 # run mode (D-60, D-85): everything lives under build/NAME (default gate, the build directory of the preset NAME). The steps are
-#   (the runner also gets --records DIR/records, made empty on every run, and --golden-dir tests/conformance/golden: see plan 14, D-84b, D-86)
+#   (the runner also gets --records DIR/records, made empty on every run, and --golden-dir tests/conformance/golden: see plan 14, D-84b, D-86; and --inputs DIR/inputs.tsv, plan 03-27)
+#   flatten the input scripts of tests/conformance/inputs into inputs.tsv (conformance-flatten --inputs: the same parser and the schema rules of scripts/lib/input-rules.awk; the runner reads rows, never a script),
 #   flatten tests/conformance/cases into cases.tsv (the only parser of hand-edited data, D-51), derive ids.txt from it, flatten the
 #   frozen profiles/pce-hucard-2btn/r1.toml into r1.tsv and cut the 13 field names of scripts/lib/profile-rules.awk into
 #   rules-fields.txt (both handed to the runner for the profile kinds), write oracle.tsv from tests/conformance/mirror-oracle.awk
@@ -92,6 +93,20 @@ flatten_cases() {
     rm -f "$fc_bd/cases.tsv"
     [ "$fc_r" -eq 1 ] || fc_r=2
     exit "$fc_r"
+  fi
+}
+
+# flatten_inputs BD (plan 03-27; D-51, D-117, F5): the input scripts of tests/conformance/inputs are flattened by the one parser of hand-edited data (conformance-flatten --inputs: stage 1 toml-subset.awk, stage 2 input-rules.awk) into BD/inputs.tsv, the file the
+# runner reads as --inputs (SCRIPT, INPUT and END rows; the runner never reads a script). The old file is removed first and a failed or END-less flatten leaves none. A malformed script gives exit 1, a harness fault exit 2.
+flatten_inputs() {
+  fi_bd=$1
+  rm -f "$fi_bd/inputs.tsv" "$fi_bd/inputs.err"
+  if sh "$here/conformance-flatten" --inputs tests/conformance/inputs > "$fi_bd/inputs.tsv" 2> "$fi_bd/inputs.err"; then fi_r=0; else fi_r=$?; fi
+  if [ "$fi_r" -ne 0 ] || [ "$(tail -n 1 "$fi_bd/inputs.tsv" | cut -c1-3)" != "END" ]; then
+    cat "$fi_bd/inputs.err"
+    rm -f "$fi_bd/inputs.tsv"
+    [ "$fi_r" -eq 1 ] || fi_r=2
+    exit "$fi_r"
   fi
 }
 
@@ -184,11 +199,12 @@ run_mode() {
     exit 2
   fi
   mkdir -p "$bd" || { echo "HARNESS_ERROR cannot create $bd" >&2; exit 2; }
-  rm -rf "$bd/exclude-ids.txt" "$bd/cases.tsv" "$bd/ids.txt" "$bd/results.txt" "$bd/evidence" "$bd/records" "$bd/r1.tsv" "$bd/rules-fields.txt" "$bd/oracle.tsv" "$bd/oracle.err" "$bd/bankclass.tsv" "$bd/bankclass.err"
+  rm -rf "$bd/exclude-ids.txt" "$bd/cases.tsv" "$bd/ids.txt" "$bd/results.txt" "$bd/evidence" "$bd/records" "$bd/r1.tsv" "$bd/rules-fields.txt" "$bd/oracle.tsv" "$bd/oracle.err" "$bd/bankclass.tsv" "$bd/bankclass.err" "$bd/inputs.tsv" "$bd/inputs.err"
   # the traces of an earlier explicit --trace-out run (plan 03-19; D-120): the cases write none, and trace_out_check below requires the directory to be absent until it makes it itself (the gate mode only: the sanitize mode makes none)
   if [ "$mode" != sanitize ]; then rm -rf build/gate/traces; fi
 
   flatten_cases "$bd"
+  flatten_inputs "$bd"
   awk -F'\t' '$1 == "K" { print $2 }' "$bd/cases.tsv" | sort -u > "$bd/ids.txt"
   if [ ! -s "$bd/ids.txt" ]; then
     echo "HARNESS_NO_CASES the flattened inventory holds no case" >&2
@@ -260,7 +276,7 @@ run_mode() {
   # removed above), so the record-lint stage never reads a directory left by an earlier run; the runner writes DIR/ID.record.toml for every case of
   # kind accept, record_lines, record_golden or record_refusal and creates nothing else. The goldens are read from tests/conformance/golden.
   mkdir -p "$bd/records" || { echo "HARNESS_ERROR cannot create $bd/records" >&2; exit 2; }
-  if sh "$here/conformance-run" supervise --ids "$bd/ids.txt" --out "$bd/results.txt" --wall "$wall_secs" -- "$bd/ds_runner" --cases "$bd/cases.tsv" --evidence-dir "$bd/evidence" --profile-tsv "$bd/r1.tsv" --rules-fields "$bd/rules-fields.txt" --oracle "$bd/oracle.tsv" --bank-oracle "$bd/bankclass.tsv" \
+  if sh "$here/conformance-run" supervise --ids "$bd/ids.txt" --out "$bd/results.txt" --wall "$wall_secs" -- "$bd/ds_runner" --cases "$bd/cases.tsv" --evidence-dir "$bd/evidence" --profile-tsv "$bd/r1.tsv" --rules-fields "$bd/rules-fields.txt" --oracle "$bd/oracle.tsv" --bank-oracle "$bd/bankclass.tsv" --inputs "$bd/inputs.tsv" \
     --opcode-tsv tests/oracle/huc6280-opcodes.tsv --marker-seed "$marker_seed" --records "$bd/records" --golden-dir tests/conformance/golden $ex_args; then sup=0; else sup=$?; fi
   if [ "$sup" -eq 2 ]; then
     exit 2
@@ -488,7 +504,7 @@ controls_mode() {
     mkdir -p "$cm_bd/controls/$cm_name/evidence" || { echo "HARNESS_ERROR cannot create the evidence directory of $cm_name" >&2; exit 2; }
     cm_out="$cm_bd/controls/$cm_name/results.txt"
     # the toy fails cases on purpose, so a runner status of 1 is expected here; only a harness status (2) stops the run
-    if sh "$here/conformance-run" supervise --ids "$cm_bd/controls/$cm_name.ids" --out "$cm_out" -- "$cm_bd/ds_toy_$cm_name" --cases "$cm_bd/controls/$cm_name/cases.tsv" --evidence-dir "$cm_bd/controls/$cm_name/evidence" --profile-tsv "$cm_bd/r1.tsv" --rules-fields "$cm_bd/rules-fields.txt" --oracle "$cm_bd/oracle.tsv" --bank-oracle "$cm_bd/bankclass.tsv" \
+    if sh "$here/conformance-run" supervise --ids "$cm_bd/controls/$cm_name.ids" --out "$cm_out" -- "$cm_bd/ds_toy_$cm_name" --cases "$cm_bd/controls/$cm_name/cases.tsv" --evidence-dir "$cm_bd/controls/$cm_name/evidence" --profile-tsv "$cm_bd/r1.tsv" --rules-fields "$cm_bd/rules-fields.txt" --oracle "$cm_bd/oracle.tsv" --bank-oracle "$cm_bd/bankclass.tsv" --inputs "$cm_bd/inputs.tsv" \
     --opcode-tsv tests/oracle/huc6280-opcodes.tsv --marker-seed "$marker_seed" --golden-dir tests/conformance/golden > /dev/null 2> "$cm_bd/controls/$cm_name/stderr.txt"; then cm_sup=0; else cm_sup=$?; fi
     if [ "$cm_sup" -ge 2 ]; then
       cat "$cm_bd/controls/$cm_name/stderr.txt" >&2

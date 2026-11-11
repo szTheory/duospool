@@ -86,7 +86,7 @@ BYTE19 = $7F
         LIT 40, $A5
         LIT 41, $0F
         LIT 42, $96
-        LIT 43, $5C
+        LIT 43, $FF
         LIT 44, $FF
         LIT 45, $A5
         LIT 46, $A5
@@ -311,7 +311,7 @@ fixture_main:
         lda a:$6800                     ; check 42 ASSUMED:LED-CPU-0013: the I/O window is part of $0800-$17FF: the write stored its byte in io_buffer
         CHECK_LIT 42
         SETIO $5C
-        lda a:$7000                     ; check 43 ASSUMED:LED-CPU-0012: the I/O window has no pad behind it yet (plan 03-27): the read is open bus, io_buffer ($5C)
+        lda a:$7000                     ; check 43 ASSUMED:LED-IO-0002: the I/O window is the pad port since plan 03-27: the latch $5C has SEL 0 and CLR 0 and no input is declared, so nothing is pressed and the read is $30 | d6 << 6 | d7 << 7 | $0F = $FF under the default bindings d6 = d7 = 1; the io_buffer ($5C) is no longer what the read returns
         CHECK_LIT 43
         SETIO $A5
         lda a:$7800                     ; check 44 ASSUMED:LED-CPU-0012: $1800-$1FFF have no device (H8-9: reserved): the read is $FF

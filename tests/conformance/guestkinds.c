@@ -14,6 +14,7 @@
  *                                            (pass, guest_failure, harness_failure or timeout) and its reason text contains the word REASON (lowercase letters,
  *                                            digits, hyphens and underscores); any other verdict, or the right outcome for another reason, is a guest_failure
  *                   ;refused=stim.NAME       a stimulus refusal control (plan 03-22, D-112): the case's irq_stim list must be refused by ds_irq_stim_set with exactly that code, the instance unchanged; the guest is never run
+ *                   ;refused=input.NAME[,NAME...]  an input refusal control (plan 03-27, D-117): synthetic events bypassing every script are pushed to ds_input_push and must be refused with exactly the named codes of src/core/input_refusals.def, the instance unchanged (inputkinds.c)
  *                   ;poison-t0               the runner writes the DSV1 magic and the done state into work RAM after boot and before the first step; the
  *                                            t=0 precondition must then give harness_failure ("before the first step"), and the guest is not run at all
  *                 Observe rows (plan 03-10): the optional fifth column of NAME.checks, the word observe, marks a check whose expected value legitimately differs by case; scripts/fixture-build lists
@@ -284,6 +285,16 @@ static int parse_item(char *item, struct guest_expect *e, int *seen_mode, int *s
         *seen_mode = 1;
         memcpy(e->reason, item, strlen(item) + 1u);
         e->mode = MODE_REFUSED;
+        return 0;
+    }
+    if (strncmp(item, "refused=input.", 14u) == 0) {
+        item += 14;
+        if (*seen_mode || strlen(item) == 0u || strlen(item) >= sizeof e->reason || strspn(item, "abcdefghijklmnopqrstuvwxyz_,") != strlen(item)) {
+            return -1;
+        }
+        *seen_mode = 1;
+        memcpy(e->reason, item, strlen(item) + 1u);
+        e->mode = MODE_REFUSED_INPUT;
         return 0;
     }
     if (strncmp(item, "observe=", 8u) == 0) {
@@ -745,6 +756,7 @@ static int guest_once(const struct gstate *g, struct ctx *c, struct ctx *judged,
     const char *err;
     uint32_t reason;
     uint32_t stim_refusal = 0u;
+    uint32_t input_refusal = 0u;
     const struct guest_expect *ex = g->ex;
 
     err = boot_built_rom(g->rom, g->request, &b, &inst);
@@ -755,6 +767,13 @@ static int guest_once(const struct gstate *g, struct ctx *c, struct ctx *judged,
     err = apply_irq_stim((struct ds_instance *)(void *)b.mem, g->kase, &stim_refusal);
     if (err == NULL && stim_refusal != 0u) {
         err = "the irq_stim list of the case was refused by ds_irq_stim_set";
+    }
+    if (err == NULL) {
+        /* the input script of the case (plan 03-27; D-117): its events are pushed after the boot and before the first step, like the stimulus; the core re-validates them */
+        err = apply_input((struct ds_instance *)(void *)b.mem, g->kase, &input_refusal);
+        if (err == NULL && input_refusal != 0u) {
+            err = "the input script of the case was refused by ds_input_push";
+        }
     }
     if (err != NULL) {
         harness_error(c, err);
@@ -1064,6 +1083,14 @@ void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
             return;
         }
         stim_refuse(k, c, &ex, rom, until, got, gotcap);
+        return;
+    }
+    if (ex.mode == MODE_REFUSED_INPUT) {
+        if (ex.nobs != 0u) {
+            harness_error(c, "a refused=input.NAME case takes no observe= item");
+            return;
+        }
+        input_refuse(k, c, &ex, rom, until, got, gotcap);
         return;
     }
     np = policy_list(k, pbuf, sizeof pbuf, plist);

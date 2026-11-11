@@ -1,0 +1,23 @@
+/* SPDX-License-Identifier: MIT OR Apache-2.0 */
+/* SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors */
+/*
+ * input_refusals.def - the closed refusal set of ds_input_push (plan 03-27; D-116, D-117, T-03-74 to T-03-76, F4), defined once.
+ * One X-macro row per refusal: DS_INPUTREF(name, number). 0 is "no refusal" and has no row. The string form is input.NAME, never load.NAME, run.NAME, model.NAME or stim.NAME: these codes belong to the input schedule alone.
+ * Numbers are stable and never reused; a new refusal takes the next free number, and the name table has DS_INPUTREF_SLOTS slots (a number at or above it fails to compile). A refusal writes nothing.
+ * The checks run in this order: the length of the list (queue_full), then each event (its port, then its bits), then the order of the times across events, then the machine (late, then state). The numbers below are the order of the
+ * decision text (D-117), not the order of the checks.
+ *
+ * name        number  returned when
+ * port        1       an event names port 0, a port above DS_PORT_COUNT (5), or a port with no pad behind it (r1 populates port 1 only, D-116)
+ * state       2       the instance is NULL, or already holds a schedule (the schedule is immutable once it holds an event; an empty list leaves it empty and may be pushed again)
+ * bits        3       an event's mask has a bit above bit 7 (III to VI and everything else are reserved for the two-button pad), or presses UP and DOWN together, or LEFT and RIGHT together
+ * order       4       the times are not non-decreasing, or two events share a time and the second's port is not greater than the first's
+ * queue_full  5       the list has more than DS_INPUT_MAX (1024) events, or is NULL with a nonzero count
+ * late        6       the machine has taken a step (machine time is not 0): the schedule is declared before the first step and is never fed to a running machine (per-frame feeding is a Phase 6 question)
+ */
+DS_INPUTREF(port, 1)
+DS_INPUTREF(state, 2)
+DS_INPUTREF(bits, 3)
+DS_INPUTREF(order, 4)
+DS_INPUTREF(queue_full, 5)
+DS_INPUTREF(late, 6)

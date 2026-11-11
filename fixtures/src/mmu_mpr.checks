@@ -48,7 +48,7 @@ checks=65
 40	irq-1400-open-bus	ASSUMED:LED-CPU-0013	The interrupt window addresses with A1 = 0 name no register: the read is io_buffer, $A5
 41	irq-write-sets-iobuf	ASSUMED:LED-CPU-0013	A write of $0F to $1402 stores its byte in io_buffer: the PSG window reads $0F
 42	io-write-sets-iobuf	ASSUMED:LED-CPU-0013	A write at the last byte of the I/O window ($1FF3FF) stores its byte in io_buffer: the PSG window reads $96
-43	io-read-open-bus	ASSUMED:LED-CPU-0012	The I/O window has no pad behind it until plan 03-27: a read is open bus, io_buffer ($5C)
+43	io-read-pad-idle	ASSUMED:LED-IO-0002	The I/O window is the pad port (plan 03-27, E2 self-consistency): with the latch at $5C (SEL 0, CLR 0) and no input declared nothing is pressed, so the read is $30 | d6 << 6 | d7 << 7 | $0F, $FF with the default bindings d6 = d7 = 1 (LED-IO-0001); it is no longer open bus
 44	empty-window-reads-ff	ASSUMED:LED-CPU-0012	The window $1800-$1FFF has no device (H8-9: reserved for extension): a read returns the unmapped constant $FF
 45	empty-read-keeps-iobuf	ASSUMED:LED-CPU-0013	A read in the empty window does not change io_buffer: the PSG window still reads $A5
 46	empty-write-keeps-iobuf	ASSUMED:LED-CPU-0013	A write in the empty window does not change io_buffer: the PSG window still reads $A5

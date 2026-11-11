@@ -60,11 +60,11 @@ static uint32_t offset_of(uint16_t addr)
 /*
  * The hardware page, bank $FF: six windows of $400 bytes at physical $1FE000 (H8-9, H8-24), decoded by the offset in the page shifted right by 10 in one switch (D-103, no function-pointer bus).
  * Window 0 is the VDC (register A1-A0), 1 the VCE (A2-A0), 2 the PSG (A3-A0), 3 the timer (A0), 4 the I/O port (one register for the whole window), 5 the interrupt registers (A1-A0: 2 is $1402, 3 is $1403),
- * and windows 6 and 7 ($1800-$1FFF) have no device. No device exists yet behind any window except as a stub (the timer and the interrupt controller arrive in plans 03-21 and 03-22, the pad in plan 03-27, the VDC and VCE in Phase 4):
+ * and windows 6 and 7 ($1800-$1FFF) have no device. The timer, the interrupt controller (plans 03-21 and 03-22) and the pad (plan 03-27, io.c) are devices; the VDC and VCE are stubs until Phase 4 and the PSG until Phase 5:
  *   VDC window reads DS_VDC_STUB_READ and VCE window DS_VCE_STUB_READ (D-104); the windows without a device read the unmapped constant and change nothing.
  *   io_buffer (D-104, ASSUMED LED-CPU-0013) is the byte of the last read or write in $0800-$17FF (windows 2 to 5): a read returns its stub value with the upper bits of the byte the window does not drive taken from io_buffer
- *   (the PSG window all eight bits, the timer bit 7 over a 7-bit counter stub of 0, $1402 and $1403 the upper five bits over three stub bits of 0, the interrupt registers $1400 and $1401 and the I/O window all eight), and the byte read becomes the new io_buffer;
- *   a write in those windows stores its byte in io_buffer (the registers themselves do not exist yet). Reads and writes in the VDC and VCE windows and in the empty windows do not touch io_buffer.
+ *   (the PSG window all eight bits, the timer bit 7 over its 7-bit counter, $1402 and $1403 the upper five bits over three register bits, the interrupt registers $1400 and $1401 all eight, the I/O window nothing: the pad drives all eight lines), and the byte read becomes the new io_buffer;
+ *   a write in those windows stores its byte in io_buffer (the I/O window's byte is also the latch of port O). Reads and writes in the VDC and VCE windows and in the empty windows do not touch io_buffer.
  */
 enum hw_window { HW_VDC = 0, HW_VCE = 1, HW_PSG = 2, HW_TIMER = 3, HW_IO = 4, HW_IRQ = 5 };
 
@@ -124,8 +124,10 @@ static uint8_t hw_read(struct ds_instance *inst, struct ds_bus *bus, uint32_t of
     case HW_VCE:
         return (uint8_t)DS_VCE_STUB_READ;
     case HW_PSG:
-    case HW_IO:
         value = inst->io_buffer;
+        break;
+    case HW_IO: /* the pad protocol of io.c (plan 03-27): a pure function of the latch, the input schedule and the stamp; like every read in $0800-$17FF the byte read becomes io_buffer */
+        value = ds_io_read(inst, stamp);
         break;
     case HW_TIMER: /* the counter at the access stamp over bit 7 of the bus latch; both addresses read the same (D-109) */
         value = (uint8_t)((uint32_t)(inst->io_buffer & 0x80u) | (uint32_t)ds_timer_read(inst, reg, stamp));
@@ -163,8 +165,11 @@ static void hw_write(struct ds_instance *inst, struct ds_bus *bus, uint32_t offs
         }
         break;
     case HW_PSG:
-    case HW_IO:
         inst->io_buffer = value;
+        break;
+    case HW_IO: /* the byte is the latch of port O (bit 0 SEL, bit 1 CLR) and, as for every write in $0800-$17FF, the new io_buffer */
+        inst->io_buffer = value;
+        ds_io_write(inst, value);
         break;
     default: /* the VDC and VCE windows (stubs: the write is dropped) and the empty windows */
         break;

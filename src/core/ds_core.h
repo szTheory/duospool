@@ -111,6 +111,21 @@ uint32_t ds_resolve(const char *id, uint32_t rev, const struct ds_bindings *bind
 /* the most events of the declared IRQ1 and IRQ2 stimulus (D-112) */
 #define DS_IRQ_STIM_MAX 16u
 
+/* the input schedule (plan 03-27, io.c; D-116, D-117): at most DS_INPUT_MAX events, one pad per port, ports numbered 1 to DS_PORT_COUNT (the five ports of the multitap-capable $1000 interface, of which r1 populates port 1 only) */
+#define DS_INPUT_MAX 1024u
+#define DS_PORT_COUNT 5u
+
+/*
+ * One event of the input schedule: from machine time at (master clocks) the pad on port (1-based) holds exactly the buttons of mask (an absolute level, not an edge). The mask is in the CD BIOS layout (the manual's EX_JOYSNS byte, CDBIOS-p28):
+ * bit 0 I (ONE), 1 II (TWO), 2 SELECT, 3 RUN, 4 UP, 5 RIGHT, 6 DOWN, 7 LEFT, 1 = pressed. Bits 8 and above are reserved (III to VI of later pad kinds) and refused for the two-button pad.
+ */
+struct ds_input_event {
+    uint64_t at;
+    uint32_t port;
+    uint32_t mask;
+};
+_Static_assert(sizeof(struct ds_input_event) == 16u, "struct ds_input_event has padding");
+
 struct ds_instance {
     uint64_t machine_time; /* master clocks of OSC1, 0 at boot, advanced only by ds_run (D-90) */
     struct ds_profile profile; /* the resolved profile of this run */
@@ -129,6 +144,12 @@ struct ds_instance {
     uint64_t irq_stim_at[DS_IRQ_STIM_MAX];
     uint8_t irq_stim_line[DS_IRQ_STIM_MAX];
     uint8_t irq_stim_level[DS_IRQ_STIM_MAX];
+    /* the input schedule (plan 03-27, io.c; D-116, D-117): an immutable copy of the declared events, in non-decreasing time order (equal times in strictly increasing port order), copied in by ds_input_push before the first step.
+     * Slot i below input_count is a declared event and every other slot is zero, so the schedule is a function of the declared list alone. The level of a port at a stamp is the mask of its last event at or before the stamp,
+     * a pure function of these members: there is no cursor, so no chunking of a run can change what a read sees. input_reserved is always 0 and keeps the timer block on its 8-byte boundary */
+    struct ds_input_event input_ev[DS_INPUT_MAX];
+    uint32_t input_count;
+    uint32_t input_reserved;
     /* the timer (plan 03-21, timer.c; D-109): timer_origin is the master-clock stamp of the last prescaler step boundary the state was folded to, or of the start write; timer_counter is the 7-bit counter value at timer_origin, timer_reload the 7-bit reload register and timer_enabled the start bit. All four are region TIMR of the digest (plan 03-22); the counter and the reload register are what the power-on policy made them, the start bit is 0 at reset (H8-18) */
     uint64_t timer_origin;
     uint8_t timer_counter;
@@ -157,6 +178,10 @@ struct ds_instance {
     uint32_t blk_remaining;
     uint16_t blk_src;
     uint16_t blk_dst;
+    /* the I/O port (plan 03-27, io.c; D-115, D-116): o_latch is the byte last written to the $1000 window (the latch of port O, $FF at power-on under every policy: the port drives a high level at reset, MAN:H8-18 and H8-19),
+     * whose bit 0 is SEL and bit 1 CLR; slot_type[p] is the kind of device on port p + 1 (enum ds_slot_type, 0 none, 1 two-button pad), set at boot from the profile and never changed by a run */
+    uint8_t o_latch;
+    uint8_t slot_type[DS_PORT_COUNT];
     uint8_t rom[DS_ROM_CAP];
 };
 
@@ -164,7 +189,10 @@ struct ds_instance {
 _Static_assert(offsetof(struct ds_instance, irq_stim_at) == offsetof(struct ds_instance, powerup_seed) + sizeof(uint64_t), "padding before the stimulus times");
 _Static_assert(offsetof(struct ds_instance, irq_stim_line) == offsetof(struct ds_instance, irq_stim_at) + DS_IRQ_STIM_MAX * sizeof(uint64_t), "padding between the stimulus times and lines");
 _Static_assert(offsetof(struct ds_instance, irq_stim_level) == offsetof(struct ds_instance, irq_stim_line) + DS_IRQ_STIM_MAX, "padding between the stimulus lines and levels");
-_Static_assert(offsetof(struct ds_instance, timer_origin) == offsetof(struct ds_instance, irq_stim_level) + DS_IRQ_STIM_MAX, "padding before the timer origin");
+_Static_assert(offsetof(struct ds_instance, input_ev) == offsetof(struct ds_instance, irq_stim_level) + DS_IRQ_STIM_MAX, "padding before the input schedule");
+_Static_assert(offsetof(struct ds_instance, input_count) == offsetof(struct ds_instance, input_ev) + DS_INPUT_MAX * sizeof(struct ds_input_event), "padding between the input events and their count");
+_Static_assert(offsetof(struct ds_instance, input_reserved) == offsetof(struct ds_instance, input_count) + sizeof(uint32_t), "padding between the input count and the reserved word");
+_Static_assert(offsetof(struct ds_instance, timer_origin) == offsetof(struct ds_instance, input_reserved) + sizeof(uint32_t), "padding before the timer origin");
 _Static_assert(offsetof(struct ds_instance, timer_counter) == offsetof(struct ds_instance, timer_origin) + sizeof(uint64_t), "padding after the timer origin");
 _Static_assert(offsetof(struct ds_instance, timer_reload) == offsetof(struct ds_instance, timer_counter) + 1u, "padding in the timer bytes");
 _Static_assert(offsetof(struct ds_instance, timer_enabled) == offsetof(struct ds_instance, timer_reload) + 1u, "padding in the timer bytes");
@@ -181,7 +209,9 @@ _Static_assert(offsetof(struct ds_instance, blk_toggle) == offsetof(struct ds_in
 _Static_assert(offsetof(struct ds_instance, blk_remaining) == offsetof(struct ds_instance, blk_toggle) + 1u, "padding before the block transfer length");
 _Static_assert(offsetof(struct ds_instance, blk_src) == offsetof(struct ds_instance, blk_remaining) + sizeof(uint32_t), "padding after the block transfer length");
 _Static_assert(offsetof(struct ds_instance, blk_dst) == offsetof(struct ds_instance, blk_src) + sizeof(uint16_t), "padding between the block transfer addresses");
-_Static_assert(offsetof(struct ds_instance, rom) == offsetof(struct ds_instance, blk_dst) + sizeof(uint16_t), "padding between the block transfer state and the ROM");
+_Static_assert(offsetof(struct ds_instance, o_latch) == offsetof(struct ds_instance, blk_dst) + sizeof(uint16_t), "padding between the block transfer state and the I/O port bytes");
+_Static_assert(offsetof(struct ds_instance, slot_type) == offsetof(struct ds_instance, o_latch) + 1u, "padding between o_latch and slot_type");
+_Static_assert(offsetof(struct ds_instance, rom) == offsetof(struct ds_instance, slot_type) + DS_PORT_COUNT, "padding between the I/O port bytes and the ROM");
 
 struct ds_boot_request {
     uint32_t struct_size; /* sizeof(struct ds_boot_request) */
@@ -364,6 +394,31 @@ enum ds_stim_refusal {
 /* "stim.NAME" for a stimulus refusal number, "ok" for DS_STIMREF_NONE, NULL for a number that is not a member */
 const char *ds_stim_refusal_name(uint32_t number);
 uint32_t ds_irq_stim_set(struct ds_instance *inst, const struct ds_irq_event *events, uint32_t count);
+
+/*
+ * The I/O port and the input schedule (io.c, plan 03-27; D-115, D-116, D-117; ASSUMED LED-IO-0002 to LED-IO-0005, E2 self-consistency only, ER-5): the $1000 window of the hardware page. A write stores its byte in o_latch (bit 0 SEL, bit 1 CLR). A read is a pure function of o_latch,
+ * the schedule and the stamp: $30 | d6 << 6 | d7 << 7 | nibble, d6 and d7 the values the run request bound to io_1000_d6_value and io_1000_d7_value (LED-IO-0001), the nibble 0 while CLR is 1, else the inverted directions while SEL is 1 (D0 UP, D1 RIGHT, D2 DOWN, D3 LEFT) or the
+ * inverted buttons while SEL is 0 (D0 I, D1 II, D2 SELECT, D3 RUN), a pressed button reading 0, of the pad on port 1 at the stamp. A read changes nothing here (the bus latch is the bus's, bus.c). There is no settling time: the level a read sees is the level at its own stamp.
+ * ds_input_push copies a declared schedule into the instance before the first step. It refuses with a code of input_refusals.def and then writes nothing (the instance is byte-identical): count above DS_INPUT_MAX (or a NULL list with a nonzero count), an event whose port is 0, above
+ * DS_PORT_COUNT or an empty port (port), an event whose mask has a bit above bit 7 or presses opposite directions (bits), times that decrease or an equal time whose port does not increase (order), and, last, a NULL instance or an instance that already holds a schedule (state)
+ * and a machine that has taken a step (late). A count of 0 is accepted and declares no input. The schedule is immutable once it holds an event: it is never edited in place.
+ */
+enum ds_slot_type { DS_SLOT_NONE = 0, DS_SLOT_PAD2 = 1 };
+
+enum ds_input_refusal {
+    DS_INPUTREF_NONE = 0,
+#define DS_INPUTREF(name, number) DS_INPUTREF_##name = number,
+#include "input_refusals.def"
+#undef DS_INPUTREF
+    DS_INPUTREF_SLOTS = 8 /* the name table has this many slots: a number at or above it fails to compile */
+};
+
+/* "input.NAME" for an input refusal number, "ok" for DS_INPUTREF_NONE, NULL for a number that is not a member */
+const char *ds_input_refusal_name(uint32_t number);
+uint32_t ds_input_push(struct ds_instance *inst, const struct ds_input_event *events, uint32_t count);
+void ds_io_poweron(struct ds_instance *inst);
+uint8_t ds_io_read(const struct ds_instance *inst, uint64_t stamp);
+void ds_io_write(struct ds_instance *inst, uint8_t value);
 
 void ds_bus_write_phys(struct ds_instance *inst, struct ds_bus *bus, uint32_t phys, uint8_t value); /* the physical write of ST0 to ST2 (D-106): $1FE000 | n for n in 0, 2, 3, the MPRs are never consulted; any other address is dropped */
 

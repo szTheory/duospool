@@ -355,6 +355,7 @@ uint32_t ds_boot(void *mem, size_t cap, const struct ds_boot_request *request, s
     inst->has_seed = request->has_seed != 0u ? 1u : 0u;
     inst->powerup_seed = inst->has_seed != 0u ? request->powerup_seed : UINT64_C(0);
     ds_poweron_apply(inst);
+    ds_io_poweron(inst); /* the I/O port latch is $FF and port 1 holds the profile's pad under every policy (plan 03-27; D-114, R-5): constants, never drawn */
     __builtin_memcpy(inst->rom, request->content, request->len);
     /* reset (D-92, D-114): the CPU takes its vector through the normal bus path at machine time 0, so the ROM must already be in place */
     ds_cpu_reset(inst);

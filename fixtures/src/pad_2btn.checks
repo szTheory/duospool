@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# pad_2btn.checks - one row per CHECK of fixtures/src/pad_2btn.s (D-125, plan 03-27). Columns separated by one TAB: check index (1-based, the entry number of the DCK1 table), slug, class tag, meaning.
+# Class tags: MAN:<page> (the literal is a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model> (the expected byte is computed in the guest, the table entry is an XOR mask of $00), ASSUMED:<LED-id>.
+# Every row is ASSUMED: the wire protocol (SEL and CLR bits, the nibble order, pressed reads 0, CLR high reads 0, the power-on latch) is a modelling assumption of this project and the pad core and this file are written by one party (E2 self-consistency, ER-5). What a manual page states is only the logical button mask
+# of an event (CDBIOS-p28: I 0, II 1, SELECT 2, RUN 3, UP 4, RIGHT 5, DOWN 6, LEFT 7, 1 = pressed) and that port O drives a high level after reset and is written and read through the window at physical $1FF000 (H8-18, H8-19). LED-IO-0001 to LED-IO-0005 are written by plans 03-29 and 03-34.
+# The expected bytes assume the default run-request binding d6 = d7 = 1 (LED-IO-0001, open), so a raw byte is $F0 | nibble. Disagreements carried into the ledger (ER-8): the nibble order of the directions (one report has RIGHT and DOWN swapped against the three-source order used here), CLR-high, the power-on latch, bit 6.
+# The raw byte of every read is stored as the observed byte of its check: the DSV1 block holds the guest-side pad-read log of the run (R-7). A pass is not a support claim (ER-4).
+id=14
+checks=2
+1	pad-run-buttons	ASSUMED:LED-IO-0002	With RUN held from time 0 on port 1 and the latch at SEL 0, CLR 0 (after the nine-cycle wait), the read is $30 | d6 << 6 | d7 << 7 | $7: the buttons nibble has D3 (RUN) low and the rest high, $F7 under d6 = d7 = 1
+2	pad-poweron-latch	ASSUMED:LED-IO-0003	The first read, before any write, sees the power-on latch $FF (port O high after reset, H8-18 and H8-19): CLR is set, so the nibble is 0 whatever is held and the raw byte is $F0
