@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
-# Snapshot field-domain rows (plan 03-30 task 2; D-121): the timer reload and start bit, a block transfer with an unknown opcode or an alternation state on an instruction that does not alternate, a power-on policy outside 1 to 3 or other than the one the profile binds (profile), a seed flag that
+# Snapshot field-domain rows (plan 03-30 task 2; D-121): the timer reload and start bit,
+# a timer origin after the machine time of the same stream (one past it, and 2^62 with the timer enabled: a machine no guest can reach, WR-03; the edits read the TIME payload of the stream, never the core), a block transfer with an unknown opcode or an alternation state on an instruction that does not alternate,
+# a power-on policy outside 1 to 3 or other than the one the profile binds (profile), a seed flag that
 # disagrees with the policy, and the selections and masks of the bus and the interrupt controller outside their allowed lists, and a machine time of 2^64 - 1 (time). Each row edits a copy of a valid snapshot of ds_proto (taken at a mid-run stop under the seeded-prng-v2 policy) with offsets of the hand-kept frame table of
 # tests/conformance/snapkinds.c, and ds_restore must refuse it with exactly the declared code of src/core/snapshot_refusals.def while the target instance (a twin booted with another seed whose restorable members are poisoned) stays byte-identical, compared over the whole instance including the ROM and
 # member by member. Evidence tier E0; the stream is untrusted input (T-03-83, T-03-85).
@@ -9,8 +11,8 @@ id = "snapshot_refusal_fields"
 kind = "snapshot_refuse"
 fixture = "authored:ds-proto"
 request = "bind.powerup_policy=seeded-prng-v2;seed=3"
-expect = "reload-128=field|timer-start-2=field|blk-opcode=field|blk-toggle-tii=field|policy-4=field|policy-other=profile|seed-no-flag=field|tma-zero-2=field|irq-sample-2=field|irq-disable-8=field|tiq-2=field|time-max=time"
-meaning = "A snapshot with a timer reload of 128, a start bit of 2, an unknown block opcode, an alternation state on TII, a policy of 4 or another profile's policy, a seed flag that disagrees with the policy, a bus or interrupt selection outside its list is refused and the instance is byte-identical"
+expect = "reload-128=field|timer-start-2=field|timer-origin-ahead=field|timer-origin-far=field|blk-opcode=field|blk-toggle-tii=field|policy-4=field|policy-other=profile|seed-no-flag=field|tma-zero-2=field|irq-sample-2=field|irq-disable-8=field|tiq-2=field|time-max=time"
+meaning = "A snapshot with a timer reload of 128, a start bit of 2, a timer origin after the machine time, an unknown block opcode, an alternation state on TII, a policy of 4 or another profile's policy, a seed flag that disagrees with the policy, a bus or interrupt selection outside its list is refused and the instance is byte-identical"
 required = true
 control = false
 expect_outcome = "pass"

@@ -184,9 +184,10 @@ static uint32_t model_values(uint32_t index)
     return n;
 }
 
-/* what pass 1 learns from one region that a later region is judged against: the device kind of each port (IOPT, judged before SCHD) */
+/* what pass 1 learns from one region that a later region is judged against: the device kind of each port (IOPT, judged before SCHD) and the machine time of the stream (TIME, judged before TIMR: the timer origin may not lie after it) */
 struct vctx {
     uint8_t slot_type[DS_PORT_COUNT];
+    uint64_t time;
 };
 
 /* a decoder reads its region from r in stream order and, when commit is nonzero, stores every field into inst and returns DS_SNAPREF_NONE; otherwise it writes nothing and returns the refusal of the first field outside its domain */
@@ -267,11 +268,11 @@ static uint32_t dec_time(struct ds_instance *inst, struct vctx *v, struct rd *r,
 {
     uint64_t t = r_u64(r);
 
-    (void)v;
     if (commit) {
         inst->machine_time = t;
         return (uint32_t)DS_SNAPREF_NONE;
     }
+    v->time = t; /* kept for dec_timr: pass 1 only, the commit pass judges nothing */
     return t >= SNAP_TIME_LIMIT ? (uint32_t)DS_SNAPREF_time : (uint32_t)DS_SNAPREF_NONE;
 }
 
@@ -355,7 +356,6 @@ static uint32_t dec_timr(struct ds_instance *inst, struct vctx *v, struct rd *r,
     uint8_t reload = r_u8(r);
     uint8_t enabled = r_u8(r);
 
-    (void)v;
     if (commit) {
         inst->timer_origin = origin;
         inst->timer_counter = counter;
@@ -363,8 +363,10 @@ static uint32_t dec_timr(struct ds_instance *inst, struct vctx *v, struct rd *r,
         inst->timer_enabled = enabled;
         return (uint32_t)DS_SNAPREF_NONE;
     }
-    /* the origin is any stamp: the closed form only subtracts it from a later stamp when that is above it, so no value can wrap */
-    return counter > 127u || reload > 127u || enabled > 1u ? (uint32_t)DS_SNAPREF_field : (uint32_t)DS_SNAPREF_NONE;
+    /* no origin can wrap the closed form (it only subtracts the origin from a later stamp when that is above it), but a reachable origin is never after the machine time: every write that sets it uses a stamp inside the instruction that
+     * did the write and ds_timer_settle only moves it to a step boundary at or below the stamp it is given, so between steps origin <= machine time, enabled or not (a stopped timer keeps its stale origin). An origin after the time of the
+     * same stream is a machine that never counts or borrows and that no guest can reach: refused as a field outside its domain (WR-03) */
+    return counter > 127u || reload > 127u || enabled > 1u || origin > v->time ? (uint32_t)DS_SNAPREF_field : (uint32_t)DS_SNAPREF_NONE;
 }
 
 static uint32_t dec_irqc(struct ds_instance *inst, struct vctx *v, struct rd *r, int commit)
@@ -567,6 +569,7 @@ static uint32_t walk(struct ds_instance *inst, const uint8_t *buf, int commit)
     for (k = 0u; k < DS_PORT_COUNT; k++) {
         v.slot_type[k] = 0u;
     }
+    v.time = 0u;
     for (i = 0u; i < prefix_len; i++) {
         if (r_u8(&r) != (uint8_t)prefix[i]) {
             return (uint32_t)DS_SNAPREF_prefix;

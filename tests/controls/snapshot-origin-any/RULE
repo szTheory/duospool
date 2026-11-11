@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Toy control (D-85, D-121; code review WR-03): the first rule of the timer region of a restore, in which the origin was any stamp, made from the live src/core/snapshot.c by scripts/control-mutate. The anchor is the clause of dec_timr that refuses an origin after the machine time of the
+# same stream; the replacement keeps the comparison in the text (so the unused-parameter warning of the build stays quiet) but makes it unable to fire, so a snapshot whose timer origin lies after its machine time (a machine that never counts or borrows and that no guest can reach) is accepted. The case in EXPECT must come out guest_failure on the toy, or no case can see that restore accepts an
+# unreachable timer state. The real core passes it (a REQUIRED case).
+tag=rule-snapshot-origin-any
+file=src/core/snapshot.c
+anchor=enabled > 1u || origin > v->time ?
+replace=enabled > 1u || (origin > v->time && origin == 0u) ?

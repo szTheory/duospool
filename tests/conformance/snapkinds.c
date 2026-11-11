@@ -1249,6 +1249,20 @@ static void ed_timer_start2(uint8_t *b)
 {
     b[sk_payload_off(RG_TIMR) + 10u] = 2u;
 }
+/* the timer origin against the machine time of the same stream (WR-03): one after it is a machine no guest can reach, one equal to it is a boundary a reachable machine has. The rows read the TIME payload of the stream they edit, never the core. */
+static void ed_timer_origin_ahead(uint8_t *b)
+{
+    sk_put64(b + sk_payload_off(RG_TIMR), sk_get64(b + sk_payload_off(RG_TIME)) + 1u);
+}
+static void ed_timer_origin_far(uint8_t *b)
+{
+    sk_put64(b + sk_payload_off(RG_TIMR), UINT64_C(1) << 62);
+    b[sk_payload_off(RG_TIMR) + 10u] = 1u; /* enabled, so the timer is the stuck one of the review: it never counts and never borrows */
+}
+static void ed_timer_origin_at_time(uint8_t *b)
+{
+    sk_put64(b + sk_payload_off(RG_TIMR), sk_get64(b + sk_payload_off(RG_TIME)));
+}
 static void ed_blk_rem_inactive(uint8_t *b)
 {
     uint8_t *p = b + sk_payload_off(RG_BLKT);
@@ -1500,6 +1514,9 @@ static const struct {
     {"timer-128", M_EDIT, ed_timer128},
     {"reload-128", M_EDIT, ed_reload128},
     {"timer-start-2", M_EDIT, ed_timer_start2},
+    {"timer-origin-ahead", M_EDIT, ed_timer_origin_ahead},
+    {"timer-origin-far", M_EDIT, ed_timer_origin_far},
+    {"timer-origin-at-time", M_EDIT, ed_timer_origin_at_time},
     {"blk-rem-inactive", M_EDIT, ed_blk_rem_inactive},
     {"blk-rem-65537", M_EDIT, ed_blk_rem_65537},
     {"blk-rem-65536", M_EDIT, ed_blk_rem_65536},

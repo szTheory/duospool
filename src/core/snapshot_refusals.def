@@ -18,7 +18,7 @@
  * region_length  9       a region frame announces another payload length than the region table has
  * profile        10      the profile hash of the stream is not the one of the instance (also a power-on policy that is not the one the profile binds)
  * content        11      the content id, the size class or the size of the stream is not the one of the instance: a snapshot is restored only onto an instance booted from the same content
- * field          12      a field is outside its domain (a speed, a flag, a counter, a selection, a block transfer field, a stimulus or schedule slot)
+ * field          12      a field is outside its domain (a speed, a flag, a counter, a selection, a block transfer field, a timer origin after the machine time, a stimulus or schedule slot)
  * time           13      the machine time is 2^63 or above: a deadline arithmetic that near 2^64 would wrap (Pitfall 20)
  * reserved       14      a reserved bit or word is not zero (the B bit of P, which is never stored, and the reserved word of the schedule)
  */
