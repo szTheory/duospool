@@ -6,6 +6,7 @@
 # cycle count read from the timer (E2) and the interrupt around a 4096-byte transfer with I set (the timer borrow is latched and not taken). The expected literals are in the literal table of fixtures/lib/check.inc and classed in fixtures/src/cpu_blk.checks: a manual page (MAN), an
 # in-guest computation (GUEST) or an assumed ledger entry (ASSUMED LED-CPU-0008, LED-IRQ-0007); none comes from DuoSpool output. The case has no policies key, so the guest kind runs the ROM under its default policy list (zero and two seeds of seeded-prng-v2, D-127).
 # Evidence tier E0, a mechanism check: the cycle rows are E2 self-consistency; no accuracy, compatibility or cycle-accuracy claim, and the word pass is not a support claim.
+# Ledger pin: this case is the intended pin of LED-CPU-0008 (the aliasing, wrap, stack-clobber and byte-step stamp model); the entry is not written yet (plans 03-26 and 03-32), so pins is empty here and the back-link is set with the entry (inventory-check refuses a pin whose entry does not name the case).
 id = "cpu_blk"
 kind = "guest"
 fixture = "authored:cpu-blk"
@@ -15,6 +16,6 @@ meaning = "The authored cpu_blk fixture runs the five block transfers with the r
 required = true
 control = false
 expect_outcome = "pass"
-pins = ["LED-CPU-0008"]
+pins = []
 until_mclk = 1150000
 checks = 54

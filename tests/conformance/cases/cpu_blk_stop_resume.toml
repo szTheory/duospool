@@ -5,6 +5,7 @@
 # 3072 master clocks and by those four sizes in rotation. A block transfer is three kinds of step (the prologue, one step per byte of 6 cycles = 72 clocks at the low speed, and the epilogue), so every one of those lists ends a call inside a transfer many times: a chunk of 1 or 7 clocks ends after every step, 168 clocks (14 cycles) after about every
 # second byte, 3072 after about every 42nd. Each list must end with the same machine time, the same step count, the same CPU registers and the same digest as the reference: a core that loses the progress of a transfer when a run stops would move a byte twice or not at all and differ. The comparison is of runs with each other, so the evidence tier is E0, repeatability only; no literal here
 # comes from a DuoSpool run, and the word pass is not a support claim. The toy control block-progress-lost must turn this case red (tests/controls/block-progress-lost).
+# Ledger pin: this case is the intended pin of LED-CPU-0008 (resumable byte-granular steps); the entry is not written yet (plans 03-26 and 03-32), so pins is empty here and the back-link is set with the entry (inventory-check refuses a pin whose entry does not name the case).
 id = "cpu_blk_stop_resume"
 kind = "run_chunk_sum"
 fixture = "none"
@@ -14,4 +15,4 @@ meaning = "Running the cpu_blk guest, which performs block transfers of up to 40
 required = true
 control = false
 expect_outcome = "pass"
-pins = ["LED-CPU-0008"]
+pins = []
