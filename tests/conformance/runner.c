@@ -1017,6 +1017,7 @@ static const struct {
     {"mutate_sweep", kind_mutate_sweep, 0},
     {"insn_sink_shapes", kind_insn_sink_shapes, 0},
     {"observer", kind_observer, 0},
+    {"chunk_equiv", kind_chunk_equiv, 0},
     {"dev_log", kind_dev_log, 0},
     {"trace_out_rights", kind_trace_out_rights, 0},
     {"opcode_table", kind_opcode_table, 0},

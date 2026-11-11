@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Chunk invariance of a 65,536-byte block transfer (plan 03-26; D-92, D-93, D-95, D-100, CORE-04, ER-7): the len0 image of fixtures/src/cpu_blk.s (assembled with -D LEN0, never committed), whose long transfer has the length operand 0 and so moves 65536 bytes, is run to one absolute deadline past its done state in a
+# single call and then, on fresh boots, in calls whose deadlines follow each of seven schedules (chunks key): the fixed sizes 1, 7, 168 and 3072 master clocks, a frame-sized fixed size of 357368 (labelled a fixed size because the machine has no frame yet) and the deadlines one clock either side of a timer prescaler step (3072k-1 and
+# 3072k+1; the schedule 3072 lands on the steps themselves). The transfer is 6 cycles = 72 master clocks per byte, so every schedule ends many calls inside it (block-stop: at least one call per schedule takes a step and ends at a block byte stop). Each schedule must end with the machine time, the step count, the verdict RAM, the digest
+# and the sequence of step boundaries (the stop sequence, folded by a callback that never holds, with the whole block transfer state in the fold) of the uninterrupted run. A snapshot does not exist yet (plan 03-30), so equality is of outputs, machine time, stop sequence and digests. Evidence tier E0: the core compared with itself (repeatability and consistency,
+# ER-7), no accuracy, compatibility, cycle-accurate or hardware claim, and the word pass is not a support claim. The toy control block-progress-lost must turn this case red (tests/controls/block-progress-lost).
+id = "chunk_equiv_cpu_blk_len0"
+kind = "chunk_equiv"
+fixture = "authored:cpu-blk-len0"
+request = ""
+expect = "compare=verdict,machine_time,stops,digest;block-stop"
+meaning = "The cpu_blk len0 image, whose 65536-byte transfer is stopped inside many times by seven chunk schedules (1, 7, 168, 3072, a fixed 357368, 3072k-1, 3072k+1 master clocks), ends with the machine time, step count, verdict RAM, stop sequence and digest of the uninterrupted run to the same absolute deadline past done"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 5900000
+chunks = "1,7,168,3072,frame,tick-1,tick+1"

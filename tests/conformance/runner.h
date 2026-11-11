@@ -313,6 +313,14 @@ void kind_trace_out_rights(const struct kase *k, struct ctx *c, char *got, size_
 /* the stop callback that holds once the guest has set the DSV1 done state with its complement (a speed aid only, D-95: the deadline stays the hard bound) */
 int dsv1_done(const struct ds_instance *inst, void *ctx);
 
+/* the chunk invariance kind (chunkkinds.c, plan 03-26) and the in-process random programs it and the observer kind run (randprog.c): rp_seed is the seed of program index, rp_build writes its RP_IMAGE_BYTES image,
+ * boot_random boots it over the request text (NULL and the accepted instance, or why not; release_boot frees it); programs are built in memory only, from a splitmix64 stream, and no file or host randomness is involved */
+#define RP_IMAGE_BYTES 262144u
+void kind_chunk_equiv(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+uint64_t rp_seed(unsigned index);
+void rp_build(unsigned char *img, uint64_t seed);
+const char *boot_random(unsigned index, const char *request, struct booted *b, const struct ds_instance **inst);
+
 /* the mutation sweep (sweepkinds.c, plan 03-10): every literal of the DCK1 table of a built image is flipped in an in-memory copy and must flip exactly its own check */
 void kind_mutate_sweep(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 /* the NAME of a fixture key authored:NAME (0 on success; NAME is [a-z0-9-]) and the recording of a run for the machine_time and stop tail of a RESULT line */
