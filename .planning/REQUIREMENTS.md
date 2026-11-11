@@ -53,9 +53,9 @@ E4 = differential vs another emulator (finds disagreements, decides nothing).
 ### Input
 
 - [x] **INP-01**: A 2-button pad is emulated through the real SEL/CLR guest scan protocol on the I/O port, so the guest observes input only through its own reads.
-- [ ] **INP-02**: An input script format specifies logical button states per port with explicit machine-time stamps, and the runner applies them deterministically.
-- [ ] **INP-03**: Each input fixture has negative controls: a no-input run and a wrong-input run must produce guest results different from the correct-input run, and a log of guest pad reads is recorded.
-- [ ] **INP-04**: Input state is modelled per port (not a single global mask), so later multitap/6-button support does not require reshaping the core boundary.
+- [x] **INP-02**: An input script format specifies logical button states per port with explicit machine-time stamps, and the runner applies them deterministically.
+- [x] **INP-03**: Each input fixture has negative controls: a no-input run and a wrong-input run must produce guest results different from the correct-input run, and a log of guest pad reads is recorded.
+- [x] **INP-04**: Input state is modelled per port (not a single global mask), so later multitap/6-button support does not require reshaping the core boundary.
 
 ### Content Loading & Security
 
@@ -176,9 +176,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AUD-02 | Phase 5 | Pending |
 | AUD-03 | Phase 5 | Pending |
 | INP-01 | Phase 3 | Complete |
-| INP-02 | Phase 3 | Pending |
-| INP-03 | Phase 3 | Pending |
-| INP-04 | Phase 3 | Pending |
+| INP-02 | Phase 3 | Complete |
+| INP-03 | Phase 3 | Complete |
+| INP-04 | Phase 3 | Complete |
 | CONT-01 | Phase 2 | Complete |
 | CONT-02 | Phase 2 | Complete |
 | CONT-03 | Phase 2 | Complete |

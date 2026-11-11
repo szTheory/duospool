@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 3
 current_phase_name: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-current_plan: 34
+current_plan: 35
 status: planning
-stopped_at: Completed 03-28-PLAN.md
-last_updated: "2026-11-11T18:09:28.750Z"
+stopped_at: Completed 03-29-PLAN.md
+last_updated: "2026-11-11T19:06:04.564Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 2 complete, transitioned to Phase 3
-state_head: 2dc7ffdca8458ed2d0044c756235aab72dbd5f72
+state_head: b49104555ead00f7b80c5bb61e33512e1935ce8b
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 72
-  completed_plans: 67
+  completed_plans: 68
   percent: 33
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 3 — HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
-Current Plan: 34
+Current Plan: 35
 Total Plans in Phase: 38
 Status: Ready to execute
 Last activity: 2026-11-11 — Completed 03-04 (W1: optional case keys, guestkinds.c, authored fixture key, machine_time and stop on RESULT)
@@ -126,6 +126,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 03 P26 | 150min | 3 tasks | 27 files |
 | Phase 03 P27 | 30min | 3 tasks | 40 files |
 | Phase 03 P28 | 70min | 3 tasks | 77 files |
+| Phase 3 P29 | 55min | 3 tasks | 73 files |
 
 ## Accumulated Context
 
@@ -254,6 +255,10 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-27: the input schedule is an immutable copy of at most 1024 events (16 bytes each) in the instance, frozen once it holds an event; ds_input_push checks queue_full, port, bits, order, then late and state, with the typed input.* refusals
 - [Phase 03]: 03-27: input scripts reach the runner only as flattened SCRIPT and INPUT rows (conformance-flatten --inputs, then --inputs FILE in every runner invocation); held is an array of lowercase button names in canonical bit order
 - [Phase 03]: 03-28: input-rules.awk adds INP_PORT_EMPTY, INP_HELD_OPPOSITE and INP_HELD_RESERVED and is the one rule set of input-check and conformance-flatten --inputs; the [input] record table (events, schedule_sha256 over AT,PORT,MASK plus LF per event) is record format version 5 and prints no ledger id
+- [Phase 3]: 03-29: [withheld] is count plus one row id_N per ledger id (record format 6, at most 64); the expected id list is rebuilt from the defs and the request, and a variable-key table follows the stimulus pattern
+- [Phase 3]: 03-29: the pad negative controls are judged by the exact fail set of a consistent done block, the correct case runs the none and wrong scripts first and requires pairwise different verdicts and a SEL high and a SEL low read per dev log; the compare statement is tagged for a deletion selftest
+- [Phase 3]: 03-29: the digest gains IOPT (6 bytes) and SCHD (16392 bytes), serial version 7; literals recomputed by a throwaway program that first reproduced the committed version 6 hashes, plus digest_stream_input pinning SCHD with nonzero bytes
+- [Phase 3]: 03-29: the shared-input toy leaks the last nonzero level into an empty level through a function-local static; red by construction when A is stepped before B in interleave_pad
 
 ### Pending Todos
 
@@ -277,6 +282,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-11T18:09:28.461Z
-Stopped at: Completed 03-28-PLAN.md
+Last session: 2026-11-11T19:06:04.372Z
+Stopped at: Completed 03-29-PLAN.md
 Resume file: None
