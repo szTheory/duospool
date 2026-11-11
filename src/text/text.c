@@ -394,20 +394,15 @@ static void emit_withheld(struct out *o, const struct ds_profile *p)
 /* the power-on policy of the run (D-50): its name, the version of the policy table, and whether a seed was supplied and which */
 static void emit_power_on(struct out *o, const struct ds_instance *inst)
 {
-    const char *policy = NULL;
+    const char *policy = ds_policy_name(inst->powerup_policy);
 
-    if (inst->powerup_policy == (uint32_t)DS_POLICY_ZERO) {
-        policy = "zero";
-    } else if (inst->powerup_policy == (uint32_t)DS_POLICY_SEEDED) {
-        policy = "seeded-prng-v1";
-    }
     if (policy == NULL || inst->has_seed > 1u) {
         fail(o, DS_TEXT_ERR_STATE);
         return;
     }
     table(o, "", "power_on");
     kv_lit(o, "policy", policy);
-    kv_u32(o, "policy_version", DS_POWERON_POLICY_VERSION);
+    kv_u32(o, "policy_version", ds_policy_version(inst->powerup_policy));
     kv_bool(o, "seed_present", inst->has_seed == 1u);
     kv_u64(o, "seed", inst->has_seed == 1u ? inst->powerup_seed : UINT64_C(0));
 }

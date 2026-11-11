@@ -8,6 +8,11 @@
  *   splitmix        request seed=N; expect a comma-separated list of 0x outputs of successive splitmix64 steps started from state N
  *   poweron         boots the request (fixture and request key) and checks the instance against the expect items, separated by ';':
  *                   ram=zero | ram@OFFSET=HEXBYTES | mpr=zero | time=N | policy=NAME | seed=N|none
+ *                   plan 03-24 (seeded-prng-v2; D-114): a=N | x=N | y=N | s=N | p=N (the register after the boot's reset) | timer_reload=N | timer_counter=N
+ *                   | mpr@INDEX=HEXBYTES (the mapping registers from INDEX on) | cpu=zero | tmr=zero (every register of the domain is 0, as under zero and v1)
+ *                   | drawn=cpu|mpr|tmr (the domain is not all zero: a structural assertion that names no value; mpr means MPR0 to MPR6)
+ *                   | reset=constants (the reset facts of H8-18 and H8-8 hold: I set, D and T clear, low speed, MPR7 $00, timer stopped, disable register 0, TIQ clear, and io_buffer and mpr_latch 0 under every policy)
+ *                   | streams=distinct (the four domain streams of the request seed start with four different 8-byte words)
  *   poweron_domain  request seed=N; expect extra=A,B: the first 16 bytes of the ram8k stream are unchanged when another stream (the one
  *                   of a value that names no domain, whose constant is 0) draws A or B values in between, that other stream's bytes
  *                   differ from the ram8k bytes, and a boot reproduces the ram8k stream
@@ -175,6 +180,75 @@ void kind_poweron(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
                 break;
             }
             check(c, memcmp(inst->ram8k + off, want, (size_t)n) == 0, "the work RAM differs from the independently derived literal");
+        } else if (strcmp(item, "cpu=zero") == 0) {
+            check(c, inst->a == 0u && inst->x == 0u && inst->y == 0u && inst->s == 0u && inst->p == 0x04u, "the CPU registers are not the zero constants (A, X, Y, S 0 and only I set in P)");
+        } else if (strcmp(item, "tmr=zero") == 0) {
+            check(c, inst->timer_reload == 0u && inst->timer_counter == 0u, "the timer reload or counter is not 0");
+        } else if (strcmp(item, "drawn=cpu") == 0) {
+            check(c, (inst->a | inst->x | inst->y | inst->s | (inst->p & 0xC3u)) != 0u, "the cpu domain drew nothing: A, X, Y, S and N V Z C are all 0");
+        } else if (strcmp(item, "drawn=mpr") == 0) {
+            check(c, !is_all_zero(inst->mpr, 7u), "the mpr domain drew nothing: MPR0 to MPR6 are all 0");
+        } else if (strcmp(item, "drawn=tmr") == 0) {
+            check(c, (inst->timer_reload | inst->timer_counter) != 0u, "the tmr domain drew nothing: the timer reload and counter are both 0");
+        } else if (strcmp(item, "reset=constants") == 0) {
+            check(c, (inst->p & 0x04u) != 0u, "the I flag is not set after reset (H8-18)");
+            check(c, (inst->p & 0x28u) == 0u, "the D or T flag is set after reset (H8-18)");
+            check(c, inst->speed == 0u, "the speed is not low after reset (H8-18)");
+            check(c, inst->mpr[7] == 0u, "MPR7 is not $00 after reset (H8-8)");
+            check(c, inst->timer_enabled == 0u, "the timer is not stopped after reset (H8-18)");
+            check(c, inst->irq_disable == 0u && inst->tiq_latch == 0u, "the disable register or TIQ is not clear after reset (H8-18)");
+            check(c, inst->io_buffer == 0u && inst->mpr_latch == 0u, "io_buffer or mpr_latch is not 0 at power-on (D-114: they have no domain)");
+        } else if (strcmp(item, "streams=distinct") == 0) {
+            uint64_t w[(size_t)DS_DOMAIN_COUNT];
+            uint32_t d;
+            uint32_t e;
+
+            for (d = 0u; d < (uint32_t)DS_DOMAIN_COUNT; d++) {
+                struct ds_stream st;
+
+                ds_stream_init(&st, inst->powerup_seed, d);
+                w[d] = ds_stream_next(&st);
+            }
+            for (d = 0u; d < (uint32_t)DS_DOMAIN_COUNT; d++) {
+                for (e = d + 1u; e < (uint32_t)DS_DOMAIN_COUNT; e++) {
+                    check(c, w[d] != w[e], "two power-on domains start with the same 64-bit word");
+                }
+            }
+        } else if (strncmp(item, "mpr@", 4) == 0) {
+            char *eq = strchr(item, '=');
+            unsigned char want[8];
+            size_t off;
+            long n;
+
+            if (eq == NULL) {
+                harness_error(c, "an mpr@ item has no =");
+                break;
+            }
+            *eq = '\0';
+            n = hex_bytes(eq + 1, want, sizeof want);
+            if (parse_size(item + 4, &off) != 0 || n < 0 || off > sizeof inst->mpr || (size_t)n > sizeof inst->mpr - off) {
+                harness_error(c, "an mpr@ item is malformed or outside the eight mapping registers");
+                break;
+            }
+            check(c, memcmp(inst->mpr + off, want, (size_t)n) == 0, "the mapping registers differ from the independently derived literal");
+        } else if ((item[0] == 'a' || item[0] == 'x' || item[0] == 'y' || item[0] == 's' || item[0] == 'p') && item[1] == '=') {
+            char *eq = item + 1;
+            uint8_t got_reg = item[0] == 'a' ? inst->a : item[0] == 'x' ? inst->x : item[0] == 'y' ? inst->y : item[0] == 's' ? inst->s : inst->p;
+
+            if (parse_u64(eq + 1, &num) != 0 || num > 255u) {
+                harness_error(c, "a register expect item is not a byte");
+                break;
+            }
+            check(c, got_reg == (uint8_t)num, "a CPU register differs from the independently derived literal");
+        } else if (strncmp(item, "timer_reload=", 13) == 0 || strncmp(item, "timer_counter=", 14) == 0) {
+            char *eq = strchr(item, '=');
+            int is_reload = item[6] == 'r';
+
+            if (parse_u64(eq + 1, &num) != 0 || num > 255u) {
+                harness_error(c, "a timer expect item is not a byte");
+                break;
+            }
+            check(c, (is_reload ? inst->timer_reload : inst->timer_counter) == (uint8_t)num, "a timer register differs from the independently derived literal");
         } else if (strncmp(item, "time=", 5) == 0) {
             char *eq = strchr(item, '=');
 

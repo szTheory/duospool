@@ -93,6 +93,8 @@ poweron_domain_independence
 digest_stream_prefix
 poweron_same_seed_same_digest
 poweron_diff_seed_diff_digest
+poweron_v2_smoke
+record_power_on_v2
 profile_hash_fields
 profile_hash_identity
 digest_region

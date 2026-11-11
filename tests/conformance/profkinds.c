@@ -185,7 +185,7 @@ static int list_has(const char *set, const char *v)
  */
 static const char *core_allowed_without_r1(const char *field)
 {
-    return strcmp(field, "powerup_policy") == 0 ? "zero|seeded-prng-v1" : "";
+    return strcmp(field, "powerup_policy") == 0 ? "zero|seeded-prng-v1|seeded-prng-v2" : "";
 }
 
 /* the ledger ids of a field that r1 gives no ledger key: none, except powerup_policy, whose entry LED-PROF-0002 came after the frozen record */

@@ -116,7 +116,7 @@ static uint32_t check_bindings(struct boot_ctx *c)
 }
 
 /*
- * The power-on policy is bound in the request (D-50): seeded-prng-v1 needs a seed and zero refuses one (D-79(b)). The seed is a
+ * The power-on policy is bound in the request (D-50): both seeded policies (v1 and v2) need a seed and zero refuses one (D-79(b)). The seed is a
  * 64-bit value, so its presence is a separate flag: seed 0 is a valid seed and is not the same as no seed.
  */
 static uint32_t check_powerup(struct boot_ctx *c)
@@ -132,7 +132,7 @@ static uint32_t check_powerup(struct boot_ctx *c)
         return c->resolve_code;
     }
     policy = ds_policy_of(c->profile.field[DS_FIELD_powerup_policy].value);
-    if (policy == (uint32_t)DS_POLICY_SEEDED && c->req->has_seed == 0u) {
+    if (ds_policy_is_seeded(policy) != 0u && c->req->has_seed == 0u) {
         c->field = DS_FIELD_powerup_policy;
         return DS_REFUSE_powerup_seed_required;
     }

@@ -20,8 +20,7 @@
 #define DS_CONTENT_ID_BYTES 32u
 /* behaviour epoch (D-53): bumped by any change that can alter what a run observes; goldens compare it, never a build id */
 #define DS_BEHAVIOUR_EPOCH 2u
-/* version of the power-on policy table (D-50): the record prints it next to the policy name; both policies are version 1 */
-#define DS_POWERON_POLICY_VERSION 1u
+/* the version of the power-on policy table that the record prints next to the policy name is ds_policy_version() of ds_poweron.h (D-50, D-134): 1 for zero and seeded-prng-v1, 2 for seeded-prng-v2 */
 /* field_index of a result that names no profile field */
 #define DS_NO_FIELD 0xffffffffu
 /* power-on state (D-50): the 8 KiB work RAM and the 8 mapping registers */
@@ -122,8 +121,8 @@ struct ds_instance {
     uint32_t header;     /* 1 none, 2 copier_512 */
     /* power-on state (D-50, D-75, D-91): the work RAM and the mapping registers; none of it is a hardware claim (LED-PROF-0002) */
     uint8_t ram8k[DS_RAM8K_BYTES];
-    uint8_t mpr[DS_MPR_COUNT]; /* a documented all-zero constant, an open ledger item for Phase 3 */
-    uint32_t powerup_policy;   /* enum ds_policy of ds_poweron.h: 1 zero, 2 seeded-prng-v1 */
+    uint8_t mpr[DS_MPR_COUNT]; /* MPR0 to MPR6 are 0 under zero and seeded-prng-v1 and drawn under seeded-prng-v2, MPR7 is $00 at reset under every policy (D-114) */
+    uint32_t powerup_policy;   /* enum ds_policy of ds_poweron.h: 1 zero, 2 seeded-prng-v1, 3 seeded-prng-v2 */
     uint32_t has_seed;         /* 1 when the request carried a seed */
     uint64_t powerup_seed;     /* the seed of the run, 0 when has_seed is 0 */
     /* the declared IRQ1 and IRQ2 test stimulus (plan 03-22, irq.c; D-112, ER-5): up to DS_IRQ_STIM_MAX events, slot i holding the machine time at which line irq_stim_line[i] (1 or 2, 0 = an unused slot) takes the level irq_stim_level[i] (0 or 1). Written only by ds_irq_stim_set before the first step; the level of a line at a stamp is a pure function of these arrays. A test hook, never a claim about the VDC. The three arrays are one live span of 160 bytes (region IRQS) and the 8-byte times come first so that the span sits on the 8-byte boundary after the power-up seed */
@@ -182,7 +181,7 @@ struct ds_boot_request {
     uint32_t header;     /* 0 undeclared, 1 none, 2 copier_512 */
     const uint8_t *content;
     size_t len;
-    uint64_t powerup_seed; /* read only when has_seed is nonzero: required by seeded-prng-v1, refused under zero (D-50, D-79(b)) */
+    uint64_t powerup_seed; /* read only when has_seed is nonzero: required by both seeded policies, refused under zero (D-50, D-79(b)) */
     uint32_t has_seed;
 };
 

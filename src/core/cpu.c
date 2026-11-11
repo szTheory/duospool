@@ -155,12 +155,8 @@ void ds_cpu_reset(struct ds_instance *inst)
     uint32_t lo;
     uint32_t hi;
 
-    /* the facts of H8-18 and H8-8: I set, D and T clear, low speed, MPR7 = $00; the registers the manual leaves open are 0 under every policy of this plan */
-    inst->a = 0u;
-    inst->x = 0u;
-    inst->y = 0u;
-    inst->s = 0u;
-    inst->p = (uint8_t)P_I;
+    /* the facts of H8-18 and H8-8: I set, D and T clear, low speed, MPR7 = $00. The registers the manual leaves open (A, X, Y, S, the N V Z and C flags, MPR0 to MPR6, the timer reload and counter) are left as ds_poweron_apply made them: 0 under zero and seeded-prng-v1, drawn under seeded-prng-v2 (D-114) */
+    inst->p = (uint8_t)(((uint32_t)inst->p & (P_N | P_V | P_Z | P_C)) | P_I);
     inst->speed = 0u;
     inst->timer_enabled = 0u; /* the timer is stopped, the disable register is 0 and the TIQ request is clear after reset (H8-18, H8-16, H8-15); the counter and the reload register are left as the power-on policy made them */
     inst->tiq_latch = 0u;
