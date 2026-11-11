@@ -14,8 +14,8 @@ fuzz/corpus/
 
 # ROM-like extensions, so such files cannot be staged by accident (T-01-12).
 # These patterns are active, not commented out. The Phase 2 FIX-05 tree check is the real gate.
-# Phase 3 authored fixture ROMs will need an explicit !-prefixed allow rule for their own fixture directory
-# when they are admitted.
+# Authored fixture ROMs (Phase 3) are assembled in the gate into the ignored build/ directory and are never committed (D-123, D-133),
+# so no !-prefixed allow rule exists and nothing ROM-like is tracked.
 *.pce
 *.sgx
 *.iso

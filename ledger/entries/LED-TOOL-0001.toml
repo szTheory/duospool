@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# Fixture toolchain identity and cross-check scope (D-128, D-129, D-130; FIX-01). A statement about the build tools of this project, not about hardware.
+id = "LED-TOOL-0001"
+statement = "DuoSpool assumes the authored HuC6280 fixtures built with ca65 and ld65 of cc65 V2.19 (commit 555282497c3ecf8b313d87d5973093af19c35bd5, Zlib) are identified by the bytes of their encoding matrix and by pinned image hashes, never by the printed version V2.18, with ca65 against the manual transcription required and WLA-DX an optional one-off check."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["REPORT|03-RESEARCH 2026-11-10|bottle, apt 2.19-1 and a V2.19 source build gave one SHA-256 for one prototype image, all print V2.18", "CODE|cc65 src/ca65/instr.c at V2.19|the HuC6280 table lists block transfers, ST0 to ST2, TAM, TMA, SXY, SAX, SAY, CSH, CSL, SET, TST, BSR", "REPORT|WLA-DX v10.7 README|GPL-2.0-or-later, HUC6280 target; optional external cross-check only"]
+evidence = ["E0|fixtures/manifest/ds_proto.toml: the five ds-proto images reproduce their pinned hashes on two builds of the Homebrew bottle"]
+disagreement = "none: the sources agree that the packages behave identically on the one prototype; the Ubuntu package has not been run on the committed fixture sources"
+pinning_test = "PENDING:3"
+updated = "2026-11-11"
+assumption = "Tool identity by behaviour (the encoding matrix compared with the manual transcription, plan 03-08, plus the hash pins) is enough to trust the fixture bytes for this phase's diagnostics. The matrix check has not run yet, so identity rests on the hash pins and recorded package names (fixtures/lib/TOOLS.md). WLA-DX is optional, so no second-assembler claim is made while it is absent."
+revisit_phase = 3
+withheld = ["any claim of hardware cycle accuracy", "any claim of interrupt latency in cycles", "any claim of game compatibility", "any TG-16 or region claim", "any claim that ca65 is verified against a second assembler"]
+origin = "03-CONTEXT D-128"
