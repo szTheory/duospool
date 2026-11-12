@@ -1,16 +1,19 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
-# Scroll and mode latches (D-156; VID-01). E1 candidate for the next-line statements only (ER-2); assumed until a closing plan promotes it. H7-9 is listed because it gives the SCREEN and CM validity (research finding F-12).
+# BG scroll latch (D-156; VID-01). Supported (E1, documentary) by plan 04-13 under ER-2, scoped to the next-line statements of the page: the equality of the core with page statements, not a hardware measurement. The first display line that shows a BYR write, the counter rows and the position inside the line are modelling readings outside the E1 part (finding F-12).
+# ER-2 record (plan 04-13, verifier gsd-executor, 2026-11-12). Condition 1: H7-7 (BXR: if the register is updated the screen becomes valid with the next scanning line; BYR: if the register is updated during display the screen becomes valid with the next scanning line, BYR + 1) was re-read as a page image from a scratch copy of the HuC6270 manual (sha256 2bb87866..., never committed).
+# Condition 2: the literals are the MAN H7-7 rows of fixtures/src/bg_scroll.vexp (the latch group for BXR and the byr_next group for BYR), derived by hand on solid tiles whose rows do not depend on scroll direction or wrap, and judged on a line located by the dev-log stamp of the write, at least 250 master clocks from every line origin; none comes from the core or a hash.
+# Condition 3: the statement says equals the manual's stated values. Condition 4: withheld lists hardware accuracy, timing and compatibility. Condition 5: pin TEST:video_bg_scroll names the entry in its pins.
 id = "LED-VID-0009"
-statement = "R1: BXR is taken as of the line start; a BYR write during display shows from the next line as BYR_new+1; MWR SCREEN is valid at vertical blanking entry and CM from the next line. E1 candidate: only the next-line statements equal the manual; the first display line showing BYR is a modelling reading."
+statement = "VL0 (E1 documentary): DuoSpool's background scroll equals the manual's stated next-line behaviour: a write of BXR during display shows from the next scanning line, and a write of BYR during display shows from the next scanning line as BYR + 1 (H7-7)."
 profile = "pce-hucard-2btn"
-status = "assumed"
+status = "supported"
 sources = ["FACT|H7-7 H7-8 H7-9|BXR valid with the next scanning line, BYR update shows with the next line as BYR+1, VM and SM and SCREEN valid at the beginning of vertical blanking, CM with the next line"]
-evidence = []
+evidence = ["E1|tests/conformance/cases/video_bg_scroll.toml: MAN H7-7 rows of bg_scroll.vexp (the next-line shift after a BXR write, row BYR + 1 after a BYR write); page re-read as an image in plan 04-13", "E0|tests/conformance/cases/video_bg_scroll.toml: stream hash beside the literal verdict, repeatability only; the toy vid-scroll-latch turns it red"]
 disagreement = "the sub-line latch offset differs (Geargrafx about 12 dots into the line); no page held gives a latch instant inside a line"
 pinning_test = "TEST:video_bg_scroll"
-updated = "2026-11-11"
-assumption = "'BYR on the first display line equals BYR' is on no page (H7-7 says only that a mid-display update shows from the next line as BYR+1), so it stays outside the E1 part. Writes are judged at least 250 master clocks from both line boundaries."
+updated = "2026-11-12"
+assumption = "R1: BXR as of the line start; MWR SCREEN at vertical blanking entry and CM from the next line are page statements no pinned row judges (outside E1). The first display line that shows BYR, the counter on the line of a BYR write, the scroll direction and the wrap are modelling readings (ASSUMED LED-VID-0009, LED-VID-0010); the latch position inside the line is not claimed."
 revisit_phase = 4
-withheld = ["latch position inside the line", "scroll-accurate"]
+withheld = ["latch position inside the line", "scroll-accurate", "any claim of hardware accuracy", "any claim about timing", "any claim of game compatibility"]
 origin = "04-CONTEXT D-156"

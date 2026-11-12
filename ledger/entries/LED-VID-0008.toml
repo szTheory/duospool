@@ -1,16 +1,19 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
-# VDC status layout and flag gating (D-144; VID-04). E1 candidate for the layout, the IE and DCR enable bits and the clear on read (ER-2); assumed until a closing plan promotes it.
+# VDC status register (D-150; VID-04). Supported (E1, documentary) by plan 04-13 under ER-2, scoped to the flags that the pinned case raises: the equality of the core with page statements, not a hardware measurement. OR and CR are not raised by any event yet, DS rests on ASSUMED rows, and BSY reads 0: all outside the E1 part.
+# ER-2 record (plan 04-13, verifier gsd-executor, 2026-11-12). Condition 1: H7-4 (SR bits CR 0, OR 1, RR 2, DS 3, DV 4, VD 5, BSY 6; a bit is set when an interrupt enabled by CR or DCR occurs; the register is cleared after a read except BSY; a transfer cancelled by a display start gives no End status), H7-6 (IE field bits 0 to 3 = CC, OC, RC, VC) and H7-11 (DCR bit 1 = DVC)
+# were re-read as page images from a scratch copy of the HuC6270 manual (sha256 2bb87866..., never committed). Condition 2: the literals are the MAN rows of fixtures/src/vdc_stat.s (the VD flag $20, the RR flag $04, the DV flag $10, the clear on read) and fixtures/src/vdc_dma.s; none comes from the core or a hash.
+# Condition 3: the statement says equals the manual's stated values. Condition 4: withheld lists hardware accuracy, timing and compatibility. Condition 5: pin TEST:vdc_stat names the entry in its pins.
 id = "LED-VID-0008"
-statement = "VL0: the VDC status bits are CR 0, OR 1, RR 2, DS 3, DV 4, VD 5, BSY 6; a flag is set only when its enable is set at the event instant; a read returns the flags and clears bits 0 to 5; BSY reads 0. E1 candidate: only the layout, the IE and DCR enable bits and the clear on read equal the manual."
+statement = "VL0 (E1 documentary): DuoSpool's VDC status register equals the manual's stated values for the flags the pinned case raises: RR is bit 2, DV bit 4 and VD bit 5 (H7-4); a flag is set for an event enabled by CR bit 2 (RC) or bit 3 (VC) (H7-6) or by DCR bit 1 (DVC) (H7-11), and a read of the status register clears the flags (H7-4)."
 profile = "pce-hucard-2btn"
-status = "assumed"
+status = "supported"
 sources = ["FACT|H7-4 H7-6 H7-11|status bit layout, a bit is set when an interrupt enabled by CR or DCR occurs, all but BSY clear on read, IE bits 0-3, DCR bits 0-1", "CODE|three emulators|agree on set-if-enabled"]
-evidence = []
+evidence = ["E1|tests/conformance/cases/vdc_stat.toml: the MAN rows of fixtures/src/vdc_stat.s (VD alone $20, RR alone $04, DV alone $10, a second read $00); pages re-read as images in plan 04-13", "E0|tests/conformance/cases/vdc_stat.toml: the 21 checks pass identically under three power-on policies, repeatability only"]
 disagreement = "none recorded for set-if-enabled; enabling later never creates a flag and disabling later never clears one; H7-4 calls BSY the inverse of the /BUSY pin and this model holds it at a constant 0"
 pinning_test = "TEST:vdc_stat"
-updated = "2026-11-11"
-assumption = "The reading 'set only when enabled at the event instant' is outside the E1 part; BSY = 0 is a modelling constant (vdc_bsy_level), not a page fact."
+updated = "2026-11-12"
+assumption = "A flag set ONLY when its enable is set: the page gives the set-if-enabled direction, the converse is the reading of three emulators, outside the E1 statement. BSY reads 0. CR (bit 0), OR (bit 1) and DS (bit 3) rest on the page but no MAN row raises them (OR and CR: no event yet; DS rows are ASSUMED LED-VID-0013). Event instants: LED-VID-0004, LED-VID-0005, LED-IRQ-0009."
 revisit_phase = 4
-withheld = ["interrupt latency", "any BSY claim"]
+withheld = ["interrupt latency", "any BSY claim", "any claim of hardware accuracy", "any claim about timing", "any claim of game compatibility"]
 origin = "04-CONTEXT D-144"

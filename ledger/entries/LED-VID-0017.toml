@@ -1,16 +1,19 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
-# VCE CR table for contents 00h and 01h (D-141; VID-05). E1 candidate (ER-2); assumed until a closing plan promotes it. The sentence is exactly content 00h and 01h (research finding F-23): H6-3 gives the divider for the content of the whole byte, so nothing is claimed for bits 1:0 alone or for other contents.
+# VCE CR table for contents 00h and 01h (D-141; VID-05). Supported (E1, documentary) by plan 04-13 under ER-2: the equality of the core with a page statement, not a hardware measurement. The sentence is exactly content 00h and 01h (research finding F-23): H6-3 gives the divider for the content of the whole byte, so nothing is claimed for bits 1:0 alone or for other contents.
+# ER-2 record (plan 04-13, verifier gsd-executor, 2026-11-12). Condition 1: H6-3 (the control register selects a division ratio of the oscillator frequency: 4 when the content is 00h and 3 when it is 01h; fCLOCK 6fsc, fck 1.5fsc and 2fsc) was re-read as a page image from a scratch copy of the HuC6260 manual (sha256 c6f0d83a..., never committed).
+# Condition 2: the literals are the MAN H6-3 rows of fixtures/src/vce_dot.vexp (div_window div=4,3,4,4,4,3 for the writes 00h, 01h, 00h and the later ones), judged on the dot-clock divisor field of the line record at least one whole line from the write; none comes from the core or a hash.
+# Condition 3: the statement says equals the manual's stated ratios. Condition 4: withheld lists hardware accuracy, timing and compatibility. Condition 5: pin TEST:video_vce_dot names the entry in its pins.
 id = "LED-VID-0017"
-statement = "DuoSpool's CR table maps content 00h to master/4 and 01h to master/3, equal to HuC6260 H6-3 (E1 candidate for exactly these two contents; nothing is claimed for any other value or for bits 1:0 alone)."
+statement = "VL0 (E1 documentary): DuoSpool's VCE control register table gives the division ratio 4 for the content 00h and the division ratio 3 for the content 01h (the dot-clock divisor of the line record), equal to the manual's stated ratios (H6-3); nothing is claimed for any other content or for bits 1:0 alone."
 profile = "pce-hucard-2btn"
-status = "assumed"
+status = "supported"
 sources = ["FACT|H6-3|CR content 00h is division ratio 4 and 01h is ratio 3, fCLOCK 6fsc"]
-evidence = []
+evidence = ["E1|tests/conformance/cases/video_vce_dot.toml: the MAN H6-3 rows of fixtures/src/vce_dot.vexp (the divisor is 4, then 3, then 4 after the writes 00h, 01h and 00h); page re-read as an image in plan 04-13", "E0|tests/conformance/cases/video_vce_dot.toml: the raw video stream hash is printed beside the literal verdict, repeatability only"]
 disagreement = "none for the contents 00h and 01h; the encodings 10 and 11 are LED-VID-0002"
 pinning_test = "TEST:video_vce_dot"
-updated = "2026-11-11"
-assumption = "The model reads bits 1:0 of a written byte whose other bits are carried; the page gives the divider for the whole content 00h and 01h only. Promotion needs a real pin that names this entry (ER-2)."
+updated = "2026-11-12"
+assumption = "The master clock of DuoSpool is identified with the 6fsc clock of the page and the divisor is counted in master clocks per dot: a modelling identification (LED-VID-0001 and the profile constants). The model reads bits 1:0 of a written byte whose other bits are carried; the page gives the divider for the whole content 00h and 01h only. The encodings 10 and 11 are LED-VID-0002."
 revisit_phase = 4
-withheld = ["any other CR value", "hardware-verified"]
+withheld = ["any other CR value", "hardware-verified", "any claim of hardware accuracy", "any claim about timing", "any claim of game compatibility"]
 origin = "04-CONTEXT D-141"

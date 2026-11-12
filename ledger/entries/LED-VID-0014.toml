@@ -1,16 +1,20 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
-# VRAM to VRAM block transfer (D-151; VID-03). E1 candidate scoped to the trigger, the M-1 length, the cancel statement and the DCR bits (ER-2); assumed until a closing plan promotes it.
+# VRAM to VRAM block transfer (D-151; VID-03). Supported (E1, documentary) by plan 04-13 under ER-2, scoped to the trigger, the M-1 length, the DCR bits and the cancel statement: the equality of the core with page statements, not a hardware measurement. The speed, the bus wait and the overrun handling are modelling readings outside the E1 part.
+# ER-2 record (plan 04-13, verifier gsd-executor, 2026-11-12). Condition 1: H7-12 (the length can be set up to 64K words, LENR = M-1; the transfer is triggered by access to the high byte of LENR), H7-11 (DCR bit 1 DVC end interrupt enable, bit 2 SI/D and bit 3 DI/D: 0 increments, 1 decrements) and H7-4 (DV: a vertical display cycle start cancels the transfer, no End status is generated)
+# were re-read as page images from a scratch copy of the HuC6270 manual (sha256 2bb87866..., never committed). Condition 2: the literals are the MAN rows of fixtures/src/vdc_dma.s (LENR + 1 words and not one more, LENR = 0 moves one word, the SI/D and DI/D steps, DV only with DCR bit 1, a low-byte write of LENR starts nothing, a transfer cancelled by the display start sets no
+# DV); none comes from the core or a hash.
+# Condition 3: the statement says equals the manual's stated values. Condition 4: withheld lists hardware accuracy, timing and compatibility. Condition 5: pin TEST:vdc_dma names the entry in its pins.
 id = "LED-VID-0014"
-statement = "VL1: the VRAM-VRAM transfer moves LENR+1 words, stepping source and destination by +-1 from DCR SI/D and DI/D, at 4 dots per word, is cancelled at display start with no DV and waits until the bus is free. E1 candidate: only the trigger, M-1 length, cancel statement and DCR bits equal the manual."
+statement = "VL1 (E1 documentary): DuoSpool's VRAM-VRAM transfer equals the manual's stated values: it is triggered by a write to the high byte of LENR and moves LENR + 1 words (LENR = M-1); DCR bits 2 (SI/D) and 3 (DI/D) select increment (0) or decrement (1) of the source and destination; DCR bit 1 enables DV; a transfer cancelled by a display start sets no end status (H7-4, H7-11, H7-12)."
 profile = "pce-hucard-2btn"
-status = "assumed"
+status = "supported"
 sources = ["FACT|H7-4 H7-11 H7-12|no end status when a display cycle cancels a transfer, SI/D and DI/D 0 increments 1 decrements, LENR = M-1 up to 64K words, vertical blanking or burst only, LENR high-byte trigger", "CODE|Mednafen MAME Geargrafx|transfer speed and overrun handling differ"]
-evidence = []
+evidence = ["E1|tests/conformance/cases/vdc_dma.toml: the MAN rows of fixtures/src/vdc_dma.s (LENR + 1 words, LENR = 0 moves one, the SI/D and DI/D steps, DV only with DCR bit 1, the trigger byte, a cancelled transfer sets no DV); pages re-read as images in plan 04-13", "E0|tests/conformance/cases/vdc_dma.toml: the 24 checks pass identically under three power-on policies, repeatability only"]
 disagreement = "an overrun at display start is cancelled, resumed, run through or made instant depending on the source; the manual says the rest is not transferred in the next period"
 pinning_test = "TEST:vdc_dma"
-updated = "2026-11-11"
-assumption = "IW never applies to the transfer, 4 dots per word and pending-until-the-bus-is-free are modelling choices outside the E1 part; the overrun fixture checks the first words moved and DV never set, with no count."
+updated = "2026-11-12"
+assumption = "VL1: 4 dots per word, the wait until the bus is free, the overlap and IW rows, the registers left alone, the retrigger by a lone high byte and the overrun cut are modelling choices (ASSUMED rows of vdc_dma and vdc_advance_pure); no speed, completion time or behaviour outside vertical blanking is claimed. The speed and the handling of an overrun differ between three emulators."
 revisit_phase = 4
-withheld = ["any DMA speed claim", "DMA-accurate"]
+withheld = ["any DMA speed claim", "DMA-accurate", "any claim of hardware accuracy", "any claim about timing", "any claim of game compatibility"]
 origin = "04-CONTEXT D-151"

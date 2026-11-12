@@ -1,16 +1,20 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
-# VRAM to SATB transfer (D-150; VID-03). E1 candidate scoped to size, trigger and start (ER-2); assumed until a closing plan promotes it. The duration and the copy instant are modelling choices.
+# VRAM to SATB transfer (D-151; VID-03). Supported (E1, documentary) by plan 04-13 under ER-2, scoped to the size, the trigger and the start of the page: the equality of the core with page statements, not a hardware measurement. The duration of the copy, the DS flag instant and the repeat are modelling readings outside the E1 part.
+# ER-2 record (plan 04-13, verifier gsd-executor, 2026-11-12). Condition 1: H7-12 (256 words are transferred at the beginning of a vertical blanking period; the transfer is triggered by access to the high byte of DVSSR; if the register is set the transfer starts at the beginning of the following vertical blanking period) was re-read as a page image from a scratch copy of the
+# HuC6270 manual (sha256 2bb87866..., never committed).
+# Condition 2: the literals are the MAN H7-12 rows of fixtures/src/vdc_satb.s (a DVSSR low-byte write starts nothing; a high-byte write is carried out at the FOLLOWING vertical blanking, not mid-frame; nothing re-armed copies nothing) and the 256 words that the vdc_satb_data kind compares with a pattern the guest wrote; none comes from the core or a hash.
+# Condition 3: the statement says equals the manual's stated values. Condition 4: withheld lists hardware accuracy, timing and compatibility. Condition 5: pin TEST:vdc_satb_data names the entry in its pins; the trigger and start rows run in the sibling case vdc_satb, listed in the evidence field.
 id = "LED-VID-0013"
-statement = "VL1: the VRAM-SATB transfer moves 256 words, is triggered by the DVSSR high-byte write, starts at the next vertical blanking and repeats each blanking while DCR DSR is set; DS is set 1024 dots x divider after the copy. E1 candidate: only the size, trigger and start equal the manual."
+statement = "VL1 (E1 documentary): DuoSpool's VRAM-SATB transfer equals the manual's stated values: it moves 256 words, it is triggered by a write to the high byte of DVSSR, and a transfer set that way starts at the beginning of the following vertical blanking period (H7-12)."
 profile = "pce-hucard-2btn"
-status = "assumed"
+status = "supported"
 sources = ["FACT|H7-11 H7-12|256 words at the beginning of vertical blanking, triggered by the DVSSR high byte, a set register starts at the following period, DCR DSR repeat bit 4 and DSC bit 0", "CODE|Mednafen and Geargrafx|copy at vertical blanking entry with a modelled duration"]
-evidence = []
+evidence = ["E1|tests/conformance/cases/vdc_satb_data.toml: 256 SATB words equal the guest pattern; page re-read as an image in plan 04-13", "E1|tests/conformance/cases/vdc_satb.toml: MAN H7-12 rows (the trigger is the high byte, the copy starts at the following vertical blanking)", "E0|tests/conformance/cases/vdc_satb_data.toml: identical under three power-on policies, repeatability only"]
 disagreement = "the duration differs between sources (four lines or 4 hsyncs) and so does the trigger byte; no page held states a duration"
 pinning_test = "TEST:vdc_satb_data"
-updated = "2026-11-11"
-assumption = "The 1,024-dot duration and the copy instant (vertical blanking entry) are modelling choices behind named constants; the renderer reads SATB live after the copy."
+updated = "2026-11-12"
+assumption = "VL1: the copy takes a modelled duration after the vertical blanking entry and DS is set a modelled time after it; the DSR repeat and the DS enable are modelling readings (ASSUMED rows of vdc_satb). Mednafen and Geargrafx model the copy at the blanking entry with their own durations."
 revisit_phase = 4
-withheld = ["any SATB DMA duration claim"]
+withheld = ["any SATB DMA duration claim", "any claim of hardware accuracy", "any claim about timing", "any claim of game compatibility"]
 origin = "04-CONTEXT D-150"
