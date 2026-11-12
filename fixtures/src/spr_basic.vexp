@@ -89,4 +89,8 @@ row	video_spr_basic_asym	clip	line=active+1;x=38..57;frame=5	index=2*0,8*274,0,2
 # The golden row is a change detector beside the literal scenes, never a verdict (ER-11): the digest is the SHA-256 of the canonical stream of the spr_basic guest (D-163), pinned by plan 04.1-01 after the literal cases video_spr_basic_solid and video_spr_basic_asym passed on that stream, and recomputed outside the core with shasum -a 256 over the --video-out file of
 # video_spr_basic_solid (it equalled the digest the core prints).
 # E0 repeatability only. A later plan that changes the records repins it by its own procedure, recording the old digest, the new digest and the reason in a comment here, in the same commit as the change.
-golden	video_spr_basic_solid	sha256=cc16b853bcdc1a71cece91b8fe7436a8a1234ecf7fc8677febc8c5d36a3f7cfd
+# Repinned by plan 04.1-02 (task 1) in the same commit as the change: the records now carry slots_used (header byte 33, 1 to 4 on the covering lines of this guest) and the flags b6 and b7 stay 0 (no line of this guest has more sprites than slots or a collision). Old digest
+# cc16b853bcdc1a71cece91b8fe7436a8a1234ecf7fc8677febc8c5d36a3f7cfd, new digest eaf53309d6f8640701406fdfbdb395c0b76d27d8c0c01c481d5a464793db0f66.
+# The literal cases video_spr_basic_solid and video_spr_basic_asym passed on the new stream first; the new digest was recomputed outside the core with shasum -a 256 over the --video-out file of video_spr_basic_solid and equals the digest the core prints. E0 repeatability, a change detector and no
+# verdict (ER-11).
+golden	video_spr_basic_solid	sha256=eaf53309d6f8640701406fdfbdb395c0b76d27d8c0c01c481d5a464793db0f66

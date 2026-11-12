@@ -329,3 +329,6 @@ video_spr_basic_asym
 video_fault_sweep_spr_basic_asym
 vdc_satb_data_spr
 video_spr_basic_golden
+spr_limit
+video_spr_limit
+video_fault_sweep_spr_limit

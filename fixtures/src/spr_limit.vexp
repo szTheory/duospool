@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# spr_limit.vexp - the hand-derived literal rows of the spr_limit video scene, first slice (plan 04.1-02; D-155, D-159, D-160, D-161, D-169, D-171, D-172, ER-10, ER-11, F-13).
+# scripts/fixture-build writes this file, comments dropped, as build/gate/fixtures/spr-limit.vexp.tsv; the runner kind video (tests/conformance/videokinds.c) reads only that file. One source holds the literals: no expected value lives in a case file, and none comes from a run of DuoSpool, another emulator or a hash.
+# The grammar is the one of spr_basic.vexp (scripts/lib/vexp-rules.awk) plus the STRUCT check spr_line of this plan: slots_used, covering and the OVERFLOW and COLLISION flags of display line k of the frame the author marks held (the line is counted from the first record with an active window of that frame; ;held=F says the literal does not rest on the frame number: a
+# neighbouring frame shows the same values or fails).
+# The fixture (fixtures/src/spr_limit.s) sets HSR $0202 and HDR $031F (HDS 2, HSW 2, HDE 3, HDW 31: d = HDW + 1 = 32, e = HDE + HSW + HDS + 3 = 10, active_x 24 and active_w 256 dots), MWR 0, BXR = BYR = 0, the palette P(i) = (91 * i + 17) & 511 and a BAT of the transparent tile (index 0 whatever the bank, H7-18), so a dot no sprite covers has the index 0.
+# Display line K is the K-th record with an active window of a frame. Sprite coordinates (32, 64) are the display top-left (H7-13): a sprite of Y covers the display lines Y - 64 to Y - 64 + height - 1 and dots X - 32 to X - 32 + width - 1; the sprite index is 256 + 16 * palette + pixel (H7-24); the pattern cell is solid (pixel 15), so no bit order or flip is read.
+# The slot rule (MAN H7-19): d = 32 >= 32 searches the 64 entries and e = 10 gives 2(e - 2) = 16 slots; a 16-wide sprite takes one slot, entries are taken in index order and a sprite that finds no slot is dropped and OVERFLOW is set. H7-19 says that 17 or more sprites show the 16 of higher priority and H7-4 says more than 17: the points 16 and 18 are MAN and the 17 point is
+# not asserted here.
+# F4 (frame 4): 16 sprites, entry i at the dots 16 i to 16 i + 15 (Y 84: display lines 20 to 35), palette i, pixel 15: index 271 + 16 i, so 271, 287, ..., 511 in runs of 16; slots_used 16, covering 16, no overflow. F6: 18 sprites at an X step of 14 (entry i covers the dots 14 i to 14 i + 15; the lower entry wins the two dots of an overlap): entry 13 wins the dots 196 and 197
+# (479), entry 14 shows 198 to 211 (495),
+# entry 15 shows 212 to 225 (511), entries 16 and 17 (palettes 0 and 1, the dots 224 to 239 and 238 to 253) are dropped, so the dots 226 to 239 are 0; slots_used 16, covering 18, OVERFLOW 1 and COLLISION 1 (sprite 0 is opaque at the dots 14 and 15, where entry 1 is also opaque, H7-4(a)). The frames were read from the guest's own sequence on one run, as a calibration and never
+# as a literal.
+# Class (ER-10): the index rows and the slot rows are MAN H7-19 (with H7-13 and H7-24); the structure rows use the grid and the frame length (ASSUMED LED-VID-0004). Kills (D-172): F1 shifts the focus line one dot, F7 zeroes its indices, F0 perturbs the first number of the first row; F4 puts a copy of the record before the focus in its place and F8 swaps the focus record with
+# the one before it (the line before the first covering line carries other values).
+scene	video_spr_limit	case=video_spr_limit	role=literal
+group	video_spr_limit	struct	form=STRUCT	class=ASSUMED:LED-VID-0004	sym=none	kills=F4,F8,F9
+row	video_spr_limit	struct	check=count	grid=1365
+row	video_spr_limit	struct	check=origins	step=1365
+row	video_spr_limit	struct	check=rec_bytes	header=64;version=1;max_w=682
+row	video_spr_limit	struct	check=values_below_512	limit=512
+group	video_spr_limit	lim16	form=ROWS	class=MAN:H7-19	sym=order	kills=F0,F1,F7
+row	video_spr_limit	lim16	line=active+20;x=0..255;held=4	index=16*271,16*287,16*303,16*319,16*335,16*351,16*367,16*383,16*399,16*415,16*431,16*447,16*463,16*479,16*495,16*511
+group	video_spr_limit	lim18	form=ROWS	class=MAN:H7-19	sym=order	kills=F0,F1,F7
+row	video_spr_limit	lim18	line=active+20;x=196..239;held=6	index=2*479,14*495,14*511,14*0
+group	video_spr_limit	slots	form=STRUCT	class=MAN:H7-19	sym=none	kills=F0,F4,F8
+row	video_spr_limit	slots	check=spr_line	slots=16;covering=16;ovf=0;col=0;k=20;held=4
+row	video_spr_limit	slots	check=spr_line	slots=16;covering=18;ovf=1;col=1;k=20;held=6
+row	video_spr_limit	slots	check=spr_line	slots=0;covering=0;ovf=0;col=0;k=19;held=4
+row	video_spr_limit	slots	check=spr_line	slots=0;covering=0;ovf=0;col=0;k=36;held=4

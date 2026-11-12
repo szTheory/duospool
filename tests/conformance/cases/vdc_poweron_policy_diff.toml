@@ -11,7 +11,7 @@ id = "vdc_poweron_policy_diff"
 kind = "vdc_poweron_policy_diff"
 fixture = "none"
 request = ""
-expect = "roms=vce-pal@5,vce-dot@1,bg-basic@2,bg-scroll@2,bg-enab@2,spr-basic@2;control=vce-pal-nopal@0"
+expect = "roms=vce-pal@5,vce-dot@1,bg-basic@2,bg-scroll@2,bg-enab@2,spr-basic@2,spr-limit@2;control=vce-pal-nopal@0"
 meaning = "Under the zero policy and two seeded-prng-v3 seeds the six video fixtures give the same verdict RAM and the same line records from the first judged frame on, while the vce_pal image whose palette is never initialised gives a different border, so the power-on guard is shown able to fail, E0 repeatability"
 required = true
 control = false

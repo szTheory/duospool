@@ -16,8 +16,10 @@
  * Plan 04.1-01 adds the sprites (D-155, D-159, D-160 priority part; MAN H7-13, H7-20 to H7-24). ds_vid_sprites is the STATE part of a display line with SB set: it scans the 64 SATB entries in index order (word 0 Y bits 9-0, word 1 X bits 9-0, word 2 pattern code bits 10-0, word 3 Y-flip 15, CGY 13-12, X-flip 11, CGX 8, SPBG 7, palette 3-0), counts the entries whose range
  * Y <= display_k + 64 < Y + height covers the line (height 16, 32, 64 for CGY 0, 1, 3 and DS_CONST_vid_cgy2_as for CGY 2) and puts for every visible dot the first opaque sprite pixel in SATB order into a stack array. A sprite pixel has the index 256 | palette << 4 | px, px 0 being transparent (H7-24; plane k is SGk at +16k words, H7-24), the pattern base word is
  * ((PC & ~m) >> 1) << 6 with m = CGX ? 2 : 0 | CGY 1 ? 4 : CGY 2 or 3 ? 12 : 0 (PC bits 10-1 are VRAM address bits 15-6, H7-21), cell (cx, cy) is at base + cx * $40 + cy * $80 and row r of a cell is at +r (H7-22, H7-23), and the leftmost pixel of a row is bit 15 (ASSUMED LED-VID-0011, the one statement marked below). A flip mirrors the whole
- * combined sprite. The dot X - 32 + t is drawn only if it lies in the active window (H7-13: the origin (32, 64) is the display top-left). The composition in ds_vid_render lets the sprite dot replace the background dot when its SPBG bit is 1 or the background dot is transparent (px 0, or BB off) (H7-21). Every VRAM word is read through the bounds-checked accessor; no slot
- * limit, overflow or collision exists yet (plan 04.1-02).
+ * combined sprite. The dot X - 32 + t is drawn only if it lies in the active window (H7-13: the origin (32, 64) is the display top-left). The composition in ds_vid_render lets the sprite dot replace the background dot when its SPBG bit is 1 or the background dot is transparent (px 0, or BB off) (H7-21). Every VRAM word is read through the bounds-checked accessor.
+ * Plan 04.1-02 adds the slot limit, OVERFLOW and COLLISION (D-160; MAN H7-19, H7-4; ASSUMED LED-VID-0011, LED-VID-0012). From HSR and HDR at the line event d = HDW + 1 and e = HDE + HSW + HDS + 3 (characters); entries 0 to 2d (2d + 1 of them, or all 64 when d >= 32) are searched and the slots are min(16, 2 * (e - 2)) (0 when e <= 2), one statement marked below. The scan runs in index order and never stops early: a covering entry
+ * is taken when used + need <= slots (need 1 for a 16-wide sprite, 2 for a 32-wide one); a 32-wide sprite with one slot left is taken as its left cell only; any other covering entry is dropped; a drop or a half-drop sets OVERFLOW (a 17th covering sprite sets it, the H7-4 'more than 17' being read as the misprint). An entry off the window still takes its slots. COLLISION is set when the pixel of a taken sprite 0 is opaque at a dot of the
+ * active window where a taken entry of another SATB index is also opaque (the two cells of one sprite never collide). The record carries slots_used, OVERFLOW (flag b6) and COLLISION (flag b7) whatever the IE bits say; ev_line (beam.c) keeps them in sprite_pend for the status bits it raises at the end of the window.
  * The render function takes a CONST instance and a stack record and can write no machine state: the record is a pure function of the state at the line event (R1), and what the fold does with the record (emit or drop) changes nothing in the instance (D-164).
  * The layout is a project definition, not a hardware claim (LED-VID-0018, ER-13). The header offsets are asserted below.
  */
@@ -71,6 +73,8 @@ _Static_assert(OFF_VDW == OFF_VPR + 2u && OFF_VCR == OFF_VDW + 2u && OFF_MWR == 
 #define FLAG_SB 0x08u
 #define FLAG_UNMODELLED 0x10u
 #define FLAG_CLIPPED 0x20u
+#define FLAG_OVERFLOW 0x40u
+#define FLAG_COLLISION 0x80u
 
 /* the vertical state VDW: a line in it is a display line (D-139) */
 #define V_STATE_VDW 1u
@@ -156,6 +160,11 @@ static void active_window(const struct ds_instance *inst, uint32_t *x, uint32_t 
 #define SPR_ENTRIES 64u
 #define SPR_ORIGIN_Y 64u
 #define SPR_ORIGIN_X 32u
+#define SPR_SLOTS_MAX 16u
+/* bits of a dot word of struct ds_vid_spr besides the winner (bit 15 SPBG, bit 8 present, bits 7-0 the index): bit 14 sprite 0 is opaque here, bit 13 another taken entry is opaque here (the two give COLLISION) */
+#define SPR_DOT_PRESENT 0x0100u
+#define SPR_DOT_S0 0x4000u
+#define SPR_DOT_OTHER 0x2000u
 static const uint8_t spr_height[4] = {16u, 32u, 64u, 64u};
 
 /* SATB word w of the 256 (byte 2w low, byte 2w+1 high; D-159) */
@@ -172,10 +181,21 @@ void ds_vid_sprites(const struct ds_instance *inst, struct ds_vid_spr *spr)
     uint32_t aw = 0u;
     uint32_t clipped = 0u;
     uint32_t line = (uint32_t)inst->display_k + SPR_ORIGIN_Y;
+    uint32_t hsr = (uint32_t)inst->vdc_reg[REG_HSR];
+    uint32_t hdr = (uint32_t)inst->vdc_reg[REG_HDR];
+    uint32_t d = (hdr & 0x7Fu) + 1u;
+    uint32_t e = ((hdr >> 8u) & 0x7Fu) + (hsr & 0x1Fu) + ((hsr >> 8u) & 0x7Fu) + 3u;
+    uint32_t searched = d >= 32u ? SPR_ENTRIES : 2u * d + 1u;
+    uint32_t slots;
+    uint32_t used = 0u;
+    uint32_t over = 0u;
     uint32_t s;
     uint32_t j;
 
     spr->covering = 0u;
+    spr->slots = 0u;
+    spr->overflow = 0u;
+    spr->collision = 0u;
     spr->on = 0u;
     if ((uint32_t)inst->v_state != V_STATE_VDW || ((uint32_t)inst->vdc_reg[REG_CR] & CR_SB) == 0u) { /* with SB clear, or off a display line, the sprite stage produces nothing (D-160) */
         return;
@@ -185,7 +205,8 @@ void ds_vid_sprites(const struct ds_instance *inst, struct ds_vid_spr *spr)
     for (j = 0u; j < aw; j++) {
         spr->dot[j] = 0u;
     }
-    for (s = 0u; s < SPR_ENTRIES; s++) {
+    slots = e <= 2u ? 0u : (2u * (e - 2u) < 16u ? 2u * (e - 2u) : 16u); /* the slot count of H7-19 as ONE statement: min(16, 2 * (e - 2)), 0 when e <= 2 */
+    for (s = 0u; s < searched; s++) {
         uint32_t y = satb_word(inst, 4u * s) & 0x3FFu;
         uint32_t x = satb_word(inst, 4u * s + 1u) & 0x3FFu;
         uint32_t pc = satb_word(inst, 4u * s + 2u) & 0x7FFu;
@@ -201,6 +222,8 @@ void ds_vid_sprites(const struct ds_instance *inst, struct ds_vid_spr *spr)
         uint32_t m = (cgx != 0u ? 0x002u : 0u) | (cls == 1u ? 0x004u : (cls >= 2u ? 0x00Cu : 0u));
         uint32_t base = ((pc & ~m) >> 1u) << 6u;
         uint32_t width = cgx != 0u ? 32u : 16u;
+        uint32_t need = cgx != 0u ? 2u : 1u;
+        uint32_t tmax = width;
         uint32_t row;
         uint32_t pw[4] = {0u, 0u, 0u, 0u};
         uint32_t sc;
@@ -209,6 +232,16 @@ void ds_vid_sprites(const struct ds_instance *inst, struct ds_vid_spr *spr)
             continue;
         }
         spr->covering = (uint8_t)((uint32_t)spr->covering + 1u);
+        if (used + need <= slots) { /* the whole sprite is taken */
+            used += need;
+        } else if (need == 2u && used + 1u == slots) { /* one slot left for a 32-wide sprite: only its left cell is taken (ASSUMED LED-VID-0011) and OVERFLOW is set (ASSUMED LED-VID-0012) */
+            used += 1u;
+            tmax = 16u;
+            over = 1u;
+        } else { /* dropped for lack of slots: it draws nothing and sets OVERFLOW, but the scan goes on (the entries after it are judged the same way) */
+            over = 1u;
+            continue;
+        }
         row = yflip != 0u ? h - 1u - (line - y) : line - y;
         for (sc = 0u; sc < width; sc++) { /* sc is the column in the sprite's own pattern; X-flip mirrors the whole combined sprite, so the dot is the mirrored column */
             uint32_t t = xflip != 0u ? width - 1u - sc : sc;
@@ -224,16 +257,29 @@ void ds_vid_sprites(const struct ds_instance *inst, struct ds_vid_spr *spr)
                     pw[k] = (uint32_t)ds_vdc_vram_read(inst, cell + 16u * k);
                 }
             }
-            if (dx < SPR_ORIGIN_X || dx - SPR_ORIGIN_X >= aw) { /* drawn only inside the active window (D-159) */
+            if (t >= tmax || dx < SPR_ORIGIN_X || dx - SPR_ORIGIN_X >= aw) { /* drawn only inside the active window (D-159), and only the cells that got a slot */
                 continue;
             }
             sbit = 15u - (sc & 15u); /* ASSUMED LED-VID-0011: the leftmost pixel of a pattern row is bit 15 (the one statement of the sprite bit order) */
             px = ((pw[0] >> sbit) & 1u) | (((pw[1] >> sbit) & 1u) << 1u) | (((pw[2] >> sbit) & 1u) << 2u) | (((pw[3] >> sbit) & 1u) << 3u);
-            if (px != 0u && spr->dot[dx - SPR_ORIGIN_X] == 0u) { /* px 0 is transparent; the first opaque pixel in SATB order wins (D-160, H7-19) */
-                spr->dot[dx - SPR_ORIGIN_X] = (uint16_t)((spbg << 15u) | 0x100u | (pal << 4u) | px);
+            if (px != 0u) { /* px 0 is transparent and takes no part in a collision (ASSUMED LED-VID-0012) */
+                uint32_t cur = (uint32_t)spr->dot[dx - SPR_ORIGIN_X];
+
+                cur |= s == 0u ? SPR_DOT_S0 : SPR_DOT_OTHER;
+                if ((cur & SPR_DOT_PRESENT) == 0u) { /* the first opaque pixel in SATB order wins (D-160, H7-19) */
+                    cur |= (spbg << 15u) | SPR_DOT_PRESENT | (pal << 4u) | px;
+                }
+                spr->dot[dx - SPR_ORIGIN_X] = (uint16_t)cur;
             }
         }
     }
+    for (j = 0u; j < aw; j++) { /* COLLISION: sprite 0 and another taken entry are both opaque at one dot of the window */
+        if (((uint32_t)spr->dot[j] & (SPR_DOT_S0 | SPR_DOT_OTHER)) == (SPR_DOT_S0 | SPR_DOT_OTHER)) {
+            spr->collision = 1u;
+        }
+    }
+    spr->slots = (uint8_t)(used < SPR_SLOTS_MAX ? used : SPR_SLOTS_MAX);
+    spr->overflow = (uint8_t)over;
 }
 
 uint32_t ds_vid_render(const struct ds_instance *inst, uint64_t origin, const struct ds_vid_spr *spr, uint8_t *rec)
@@ -276,9 +322,9 @@ uint32_t ds_vid_render(const struct ds_instance *inst, uint64_t origin, const st
     put_le(rec, OFF_BORDER, (uint64_t)pal_entry(inst, BORDER_ENTRY), 2u);
     put_le(rec, OFF_ACTIVE_K, display ? (uint64_t)inst->display_k : (uint64_t)0xFFFFu, 2u); /* the display line index inside VDW, 0xFFFF on every other line (plan 04-08) */
     put_le(rec, OFF_V_STATE, (uint64_t)inst->v_state, 1u);
-    put_le(rec, OFF_FLAGS, (display ? (uint64_t)FLAG_ACTIVE : UINT64_C(0)) | (display && burst != 0u ? (uint64_t)FLAG_BURST : UINT64_C(0)) | (bb != 0u ? (uint64_t)FLAG_BB : UINT64_C(0)) | (sb != 0u ? (uint64_t)FLAG_SB : UINT64_C(0)) | (unmodelled != 0u ? (uint64_t)FLAG_UNMODELLED : UINT64_C(0)) | (clipped != 0u ? (uint64_t)FLAG_CLIPPED : UINT64_C(0)), 1u);
+    put_le(rec, OFF_FLAGS, (display ? (uint64_t)FLAG_ACTIVE : UINT64_C(0)) | (display && burst != 0u ? (uint64_t)FLAG_BURST : UINT64_C(0)) | (bb != 0u ? (uint64_t)FLAG_BB : UINT64_C(0)) | (sb != 0u ? (uint64_t)FLAG_SB : UINT64_C(0)) | (unmodelled != 0u ? (uint64_t)FLAG_UNMODELLED : UINT64_C(0)) | (clipped != 0u ? (uint64_t)FLAG_CLIPPED : UINT64_C(0)) | (spr->on != 0u && spr->overflow != 0u ? (uint64_t)FLAG_OVERFLOW : UINT64_C(0)) | (spr->on != 0u && spr->collision != 0u ? (uint64_t)FLAG_COLLISION : UINT64_C(0)), 1u);
     put_le(rec, OFF_LINE_DIRTY, (uint64_t)inst->line_dirty, 1u);
-    put_le(rec, OFF_SLOTS, UINT64_C(0), 1u);
+    put_le(rec, OFF_SLOTS, spr->on != 0u ? (uint64_t)spr->slots : UINT64_C(0), 1u); /* the slots taken on this line, 0 to 16 (D-161); 0 with SB clear */
     put_le(rec, OFF_COVERING, (uint64_t)spr->on != UINT64_C(0) ? (uint64_t)spr->covering : UINT64_C(0), 1u); /* the SATB entries that cover this line, counted by ds_vid_sprites (D-161); 0 with SB clear */
     put_le(rec, OFF_VERSION, (uint64_t)DS_VIDREC_VERSION, 1u);
     put_le(rec, OFF_RCR, (uint64_t)inst->rcr_counter, 2u);
@@ -301,7 +347,7 @@ uint32_t ds_vid_render(const struct ds_instance *inst, uint64_t origin, const st
             } else {
                 idx = bg_index(inst, bat_w, (bxr_line + j) & col_mask, row);
             }
-            if (spr->on != 0u && spr->dot[j] != 0u && ((uint32_t)(spr->dot[j] >> 15u) != 0u || bb == 0u || (idx & 0xFu) == 0u)) { /* the winning sprite pixel replaces the dot when its SPBG bit is 1 or the background dot is transparent (px 0, or BB off) (MAN H7-21) */
+            if (spr->on != 0u && ((uint32_t)spr->dot[j] & SPR_DOT_PRESENT) != 0u && ((uint32_t)(spr->dot[j] >> 15u) != 0u || bb == 0u || (idx & 0xFu) == 0u)) { /* the winning sprite pixel replaces the dot when its SPBG bit is 1 or the background dot is transparent (px 0, or BB off) (MAN H7-21) */
                 idx = (uint32_t)spr->dot[j] & 0x1FFu;
             }
         }

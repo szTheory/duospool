@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The sprite slot, overflow and collision scene (plan 04.1-02; D-137, D-155, D-159, D-160, D-161, D-169, D-171, D-172, ER-10, ER-11, ER-12): the authored fixture fixtures/src/spr_limit.s draws 16, 17 and 18 sprites on one display line, the same 16 and 18 with the blanking fields HDE 1 (e = 8) and HDE 5 (e = 12), a 32-wide sprite with one slot left, a narrow display (d = 28)
+# with sprites at the entries 55 to 63, and a 32 x 64 sprite 0
+# with colliders, and the runner kind video (tests/conformance/videokinds.c) attaches a vid sink and a dev sink, runs the guest to the end of its DSV1 verdict and judges the line records by group, with the offsets written in that file, never from a core header. Role: literal (D-172). The literals are not in this file: they live in fixtures/src/spr_limit.vexp (hand-derived
+# rows, the derivation in its comments).
+# Class of each group (ER-10, the weakest class of the inputs of a row wins): the 16 and 18 sprite rows, the 12-slot and cap rows and the search count rows are MAN H7-19 (and H7-24 for the index values, H7-13 for the coordinates); the 17 sprite rows are ASSUMED LED-VID-0012 (H7-4 says more than 17, H7-19 says 17 or more); the left-cell-only rule is ASSUMED LED-VID-0011; the
+# collision rows are MAN H7-4 for sprite 0 over an opaque sprite and ASSUMED LED-VID-0012 for the rest.
+# The evidence text prints video_sha256=... E0 repeatability: no sprite-accurate, overflow timing, collision timing or hardware claim, and the word pass is not a support claim.
+id = "video_spr_limit"
+kind = "video"
+fixture = "authored:spr-limit"
+request = ""
+expect = "rom=spr-limit;id=26;scene=video_spr_limit"
+meaning = "A guest that copies a sprite attribute table into the SATB by DMA makes the core emit line records that show 16 sprites on a line taking 16 slots and 18 sprites dropping two for lack of slots with OVERFLOW set (MAN H7-19, H7-24), E0 repeatability"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+checks = 4

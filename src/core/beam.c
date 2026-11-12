@@ -9,6 +9,7 @@
  * EV_VD and EV_RCR of the line follow at their offsets and raise VD and RR through ds_vdc_flag, whose enable gate is read at that instant (D-144). Plan 04-10 adds the DMA: the closed form of the VRAM-to-VRAM transfer and the DS time are applied in time order before every event and at the target stamp (item 1 of D-138), the burst
  * latch, the cancel at display start and the start of a pending transfer are at EV_LINE (dma_line), and the SATB copy is at the VBlank state entry. Plan 04-09 gives a display line its active window in the record from HSR, HDR and the divider latched here (vid.c, D-140). The positions are modelling assumptions (ASSUMED LED-
  * IRQ-0001, LED-IRQ-0010, LED-VID-0004), not hardware measurements.
+ * Plan 04.1-02 raises the two sprite flags: ev_line keeps the collision and overflow of a display line in sprite_pend (bit 0 CR, bit 1 OR) and its EV_RCR raises them through ds_vdc_flag, gated by CR bits 0 and 1 at that instant (D-160, ASSUMED LED-VID-0012).
  * Plan 04-03 added the power-on state (ds_vdc_poweron) and the state layout of the instance (ds_core.h).
  */
 #include <stddef.h>
@@ -29,8 +30,8 @@ enum { SLOT_CR = 5, SLOT_RCR = 6, SLOT_MWR = 9, SLOT_HSR = 10, SLOT_HDR = 11, SL
 enum { CR_BB_SB = 0xC0, DCR_DSR = 0x10 };
 /* the register slot of BYR: the background row counter of this file's ev_line steps it (D-156) */
 enum { SLOT_BYR = 8 };
-/* the status flag numbers of ds_vdc_flag (D-144): RR is bit 2 and VD bit 5 */
-enum { FLAG_RR = 2, FLAG_VD = 5 };
+/* the status flag numbers of ds_vdc_flag (D-144): CR (the collision) is bit 0, OR (the overflow) bit 1, RR bit 2 and VD bit 5 */
+enum { FLAG_CR = 0, FLAG_OR = 1, FLAG_RR = 2, FLAG_VD = 5 };
 
 /* the origin of line k on the grid; k is bounded by the caller (the fold from its own count, the restore rule from machine_time / line_mclk + 2), so the product stays inside 64 bits for every machine time a run can reach */
 static uint64_t line_origin(uint64_t k)
@@ -233,7 +234,8 @@ static void ev_line(struct ds_instance *inst, struct ds_obs_log *obs)
         }
     }
     schedule_offsets(inst);
-    ds_vid_sprites(inst, &spr); /* the STATE part of the line (D-155): sprite evaluation runs at every EV_LINE with or without a sink (plan 04.1-02 raises the collision and overflow flags from it); it reads the instance and writes the stack only */
+    ds_vid_sprites(inst, &spr); /* the STATE part of the line (D-155): sprite evaluation runs at every EV_LINE with or without a sink; it reads the instance and writes the stack only */
+    inst->sprite_pend = (uint8_t)(spr.on != 0u ? (uint32_t)spr.collision | ((uint32_t)spr.overflow << 1u) : 0u); /* the collision (bit 0, the CR status bit) and the overflow (bit 1, the OR status bit) of a display line wait for its EV_RCR (D-160); nothing is pending after a line that is not a display line or has SB clear */
     if (obs != NULL && obs->vid.on) { /* the want_pixels gate: the record is built and offered only when a vid sink is attached; nothing the line does to the instance depends on it */
         uint8_t rec[DS_VID_MAX_REC_BYTES];
         uint32_t n = ds_vid_render(inst, line_origin(k), &spr, rec);
@@ -272,6 +274,13 @@ void ds_vdc_advance(struct ds_instance *inst, uint64_t stamp, struct ds_obs_log 
             if ((uint32_t)inst->rcr_counter == ((uint32_t)inst->vdc_reg[SLOT_RCR] & 0x3FFu)) {
                 ds_vdc_flag(inst, (uint32_t)FLAG_RR);
             }
+            if (((uint32_t)inst->sprite_pend & 1u) != 0u) { /* the sprite flags of the displayed line at the end of its window, each gated by its CR enable bit at this instant (D-160, D-144; the position inside the line is not modelled, ASSUMED LED-VID-0012) */
+                ds_vdc_flag(inst, (uint32_t)FLAG_CR);
+            }
+            if (((uint32_t)inst->sprite_pend & 2u) != 0u) {
+                ds_vdc_flag(inst, (uint32_t)FLAG_OR);
+            }
+            inst->sprite_pend = 0u;
             inst->stage = next_stage(inst, (uint32_t)STAGE_RCR);
             break;
         default:

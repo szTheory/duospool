@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# spr_limit.checks - one row per CHECK of fixtures/src/spr_limit.s (D-125, plan 04.1-02). Columns separated by one TAB: check index (1-based), slug, class tag, meaning.
+# Class tags: MAN:<page> (a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model>, ASSUMED:<LED-id>.
+# Checks 1 and 2 are readbacks of what the guest wrote against an additive sum (the palette), so they hold under every power-on policy (D-167). Checks 3 and 4 are the status byte the guest reads after one clean frame of each sprite scene (the SATB is written first and copied by DMA before the sprites are switched on, so the byte does not depend on the power-on content).
+# The 16 and 18 point rows are MAN H7-19. The raster, the slot counts and the flags of the records are judged from the line records by the video case (fixtures/src/spr_limit.vexp). A pass is not a support claim (ER-4).
+id=26
+checks=4
+1	pal-low-sum	GUEST:pal-bijection	The 512 palette entry low bytes equal the additive running sum E(i + 1) = (E(i) + 91) & 511 from E(0) = 17, a different computation from the multiplicative writer
+2	pal-bit8-sum	GUEST:pal-bijection	The 512 palette entry bit 8 values equal the same running sum
+3	or-clear-16	MAN:H7-19	16 sprites cover one line with 16 slots (HDE 3, e = 10): no OR flag, the status read after a clean frame is $00
+4	or-set-18	MAN:H7-19	18 sprites cover one line with 16 slots: OR is set, bit 1 alone

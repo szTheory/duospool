@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The record fault sweep of the scene video_spr_limit of the spr_limit ROM (plan 04.1-02; D-171, D-172, ER-10, ER-11): the runner kind video_fault_sweep runs the guest of the video case once, captures the raw records and the dev log, and for every group of the scene applies each fault the group declares in kills= to a copy of the records in memory
+# (F0 perturbs the first number of the first row of the group; F1 shifts the dots of the focus line one dot, F2 swaps two index bits, F3 drops the first active line, F4 duplicates a line, F7 zeroes every non-zero index and F8 swaps two adjacent lines) and requires the group to come out as a failure. A group that a declared fault leaves green, or on which the fault cannot act,
+# is VIDEO_GROUP_VACUOUS and fails the case.
+# A group whose only kill is F0 proves only that its comparison is live (amendment A7). E0: a mechanism that shows each literal comparison live, no claim about any video, and the word pass is not a support claim.
+id = "video_fault_sweep_spr_limit"
+kind = "video_fault_sweep"
+fixture = "authored:spr-limit"
+request = ""
+expect = "rom=spr-limit;id=26;scene=video_spr_limit"
+meaning = "Every group of the video_spr_limit turns into a failure under each record fault it declares (a pixel shifted, every index zeroed, a line dropped, duplicated or swapped, a perturbed literal), so no literal group of the scene is vacuous, E0"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+checks = 4
