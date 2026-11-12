@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 4
 current_phase_name: VCE/VDC Raw Video
-current_plan: 10
+current_plan: 11
 status: executing
-stopped_at: Completed 04-07-PLAN.md
-last_updated: "2026-11-12T08:51:37.943Z"
+stopped_at: Completed 04-08-PLAN.md
+last_updated: "2026-11-12T09:23:50.115Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 3 complete, transitioned to Phase 4
-state_head: 574db2a4dd7628517a82afcf0a2fe1c1febdccd9
+state_head: f510be4186952654fd97bc844f1d7e6ea667e12c
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 91
-  completed_plans: 81
+  completed_plans: 82
   percent: 50
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 4 (VCE/VDC Raw Video) — READY TO EXECUTE
-Current Plan: 10
+Current Plan: 11
 Total Plans in Phase: 19
 Status: Ready to execute
 Last activity: 2026-11-11 — Phase 3 complete, transitioned to Phase 4
@@ -139,6 +139,7 @@ Progress: [█████░░░░░] 50%
 | Phase 04 P05 | about 4h | 3 tasks | 22 files |
 | Phase 4 P06 | 39min | 3 tasks | 31 files |
 | Phase 04 P07 | 52min | 3 tasks | 39 files |
+| Phase 04 P08 | 28min | 2 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -298,6 +299,8 @@ Recent decisions affecting current work:
 - [Phase 04]: F-42 ruling (04-07): the video-check gate is ONE stage (stage_video_check runs the checker then the tests/video mini-roots, worst code wins), so the gate has 57 stages
 - [Phase 04]: 04-07: a video group has one class, so vce_pal has six groups (struct, frame, div, divline, border, dirty); the STRUCT check list is extended in vexp-rules.awk and videokinds.c together; faults act at the focus record of a group and F4 inserts a copy of the previous record
 - [Phase 04]: 04-07: the toy cross-rules of video-check run only where a root has a toy registry (VIDEO_TOY_EXEMPT or tests/controls); the golden digest of video_vce_pal_golden is E0 repeatability, repinned by any plan that changes the vce_pal records
+- [Phase 04]: 04-08: v_togo counts the lines of a vertical state still to come after the current line; the VBlank state entry is the transition out of VDW and a frame wrap that cuts VDW raises no VD (LED-IRQ-0001)
+- [Phase 04]: 04-08: model_param_vdc judges the VD (+96) and RR (-1365) status-read stamp shifts from the dev log within 15 master clocks, the longest foreground-loop instruction (ASSUMED LED-IRQ-0001, LED-IRQ-0010)
 
 ### Pending Todos
 
@@ -321,6 +324,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12T08:51:37.534Z
-Stopped at: Completed 04-07-PLAN.md
+Last session: 2026-11-12T09:23:49.674Z
+Stopped at: Completed 04-08-PLAN.md
 Resume file: None
