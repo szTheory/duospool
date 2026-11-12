@@ -927,7 +927,7 @@ static int ob_exec(struct ctx *c, const struct ob_src *src, uint64_t until, cons
             check(c, ob_header_consistent(m.isk->header, cf->icap, &iseq), msg);
             snprintf(msg, sizeof msg, "the dev header of the %s sink in mode %s is not a consistent count (count = min(seq, capacity), lost = seq - count)", cf->name, md->name);
             check(c, ob_header_consistent(m.dsk->header, cf->dcap, &dseq), msg);
-            snprintf(msg, sizeof msg, "the vid header of the %s sink in mode %s is not a consistent count of whole records (count, lost = seq - count, bytes = their sum within the capacity, a zero word, the record walk lands on bytes)", cf->name, md->name);
+            snprintf(msg, sizeof msg, "the vid header of the %s sink in mode %s is not a consistent count of whole records (count, lost, bytes, zero word, record walk)", cf->name, md->name);
             check(c, ob_vheader_consistent(m.vsk->header, vrec, cf->vcap, &vseq, &vstored), msg);
             snprintf(msg, sizeof msg, "the insn header of the %s sink in mode %s does not count one offer per executed instruction of the call (steps that continue a block transfer are not instructions)", cf->name, md->name);
             check(c, iseq == res.steps - (st.cont - cont0), msg);
