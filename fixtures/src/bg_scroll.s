@@ -5,9 +5,10 @@
 ; The guest maps the hardware page at logical $0000 (MPR0 = $FF), selects the high speed, writes the vertical setup (VPR $0F02, VDW 239, VCR 4), the 256-wide horizontal setup (HSR $0202, HDR $031F), MWR 0 (a 32 x 32 BAT), BXR = BYR = 0 and CR = $0000 (burst frames), then the palette P(i) = (91 * i + 17) & 511 (VCE_WRITE_P91 of vce.inc), a 32 x 32
 ; BAT and four solid tiles, reads the tiles and the palette back (checks 1 to 4, GUEST) and sets CR BB (the background is drawn from the next frame, whose display line 0 latches the burst state as !(BB || SB), D-157).
 ; The tiles are 16 words each from word $1000 (code $100 to $103, H7-15: the BAT of the 64 x 64 phase fills the words below $1000), all solid so that no bit order, byte order or flip changes them (ER-12): code $100 pixel 15, $101 pixel 12, $102 pixel 3, $103 pixel 0 (index 0 whatever the bank, H7-18).
-; The 32 x 32 BAT (H7-14: word 0 is the top-left character, +1 to the right, +$20 per row; bank in bits 15-12, code in bits 11-0): the word of BAT row r and column c is the code $100 + (c & 3) in the bank 1 for r < 8 and the bank 2 for r >= 8. A line of the display therefore shows, from the left edge and in tiles of 8 dots, the four indices of its bank in the order
-; pixel 15, 12, 3, 0 repeated: bank 1 gives 31, 28, 19, 0 and bank 2 gives 47, 44, 35, 0. The period is 4 tiles = 32 dots, so a horizontal scroll of 16 dots (two tiles) gives the same row whichever way the scroll runs and whether or not the 256-dot virtual line wraps: the row of the latch rows is direction-independent (ER-12).
-; Latch phase (the frames the scene video_bg_scroll judges): CR BB, two frames, a counted delay (BS_ALIGN) that puts the next write inside a display line, then four register writes at counted distances: BXR = 16 in line n1, BXR = 0 six lines later, BYR = 63 in line n2 thirty lines later, BYR = 0 eight lines later, then one frame. The writes are placed by the counted
+; The 32 x 32 BAT (H7-14: word 0 is the top-left character, +1 to the right, +$20 per row; bank in bits 15-12, code in bits 11-0): the word of BAT row r and column c is the code $100 + (c & 3) in the bank 1 for r < 8 and the bank (r & 3) + 2 for r >= 8 (2, 3, 4, 5, 2, ...). A line of the display therefore shows, from the left edge and in tiles of 8 dots, the
+; four indices of its bank in the order
+; pixel 15, 12, 3, 0 repeated: bank 1 gives 31, 28, 19, 0, bank 2 gives 47, 44, 35, 0 and so on (index = 16 * bank + pixel, 0 for the tile of pixel 0). The period is 4 tiles = 32 dots, so a horizontal scroll of 16 dots (two tiles) gives the same row whichever way the scroll runs and whether or not the 256-dot virtual line wraps: the row of the latch rows is direction-independent (ER-12).
+; Latch phase (the frames the scene video_bg_scroll judges): CR BB, two frames, a counted delay (BS_ALIGN) that puts the next write inside a display line, then four register writes at counted distances: BXR = 16 in line n1, BXR = 0 six lines later, BYR = 63 in line n2 thirty lines later, BYR = 0 twenty lines later, then one frame. The writes are placed by the counted
 ; delays only (the guest polls no status, so the device log stays small); the line each write falls in is found by the judge from the stamp of the write in the dev log against the origins of the records (never from this file), and a write nearer than 250 master clocks to a line origin is refused by the judge (Pitfall 2). Register write numbers of the guest,
 ; counted from 0: BXR 0 is the setup, 1 is
 ; 16, 2 is 0, 3 is 500; BYR 0 is the setup, 1 is 63, 2 is 0, 3 is 300; the VDC CR 0 is the setup and 1 is BB.
@@ -30,7 +31,7 @@ BS_T = $2431
 
 ; BS_ALIGN_N and BS_ALIGN_M: the counted delay (BG_HOLD) that puts the first latch write inside a display line, at least 250 master clocks from both line origins. The value is a calibration of the counted sequence of this file, never a literal of any row: a write placed wrongly is refused by the judge.
 BS_ALIGN_N = 2
-BS_ALIGN_M = 100
+BS_ALIGN_M = 112
 
 ; BS_LINES n: a counted delay of n lines of 455 CPU cycles (1,365 master clocks at the high speed, ASSUMED LED-VID-0001, never judged from this count) between the start of one VDC_REG write (15 cycles) and the start of the next one of the same shape, so the second write falls at about the same place of its line as the first. 1542 * N + 6 * M + 2 + 15 = 455 * n.
         .macro BS_LINES n
@@ -75,10 +76,18 @@ fixture_main:
         VDC_REG BG_R_MAWR, 0
         VDC_SEL BG_R_VWR
         ldy #0
-rows32: lda #$11
+rows32: lda #$11                        ; bank 1, code high nibble 1
         cpy #8
         bcc hi32
-        lda #$21
+        tya
+        and #3
+        clc
+        adc #2                          ; the bank is (r & 3) + 2 from row 8 on: 2, 3, 4, 5, 2, ...
+        asl a
+        asl a
+        asl a
+        asl a
+        ora #$01
 hi32:   sta a:BS_HI
         ldx #0
 cols32: txa
@@ -133,7 +142,7 @@ tloop:  lda a:VDC_LO
         VDC_REG BG_R_BXR, 0             ; BXR write 2: back to 0 from the next line
         BS_LINES 30
         VDC_REG BG_R_BYR, 63            ; BYR write 1: the next line shows virtual row 63 + 1 = 64 (H7-7)
-        BS_LINES 8
+        BS_LINES 20
         VDC_REG BG_R_BYR, 0             ; BYR write 2: the next line shows virtual row 0 + 1
         BG_FRAME
 ; the wrap phase: the 64 x 64 BAT (the bank is column >> 2, the code low byte is (c + r) & 3, the code high nibble 1), then SCREEN 101, BXR 500 and BYR 300, four frames

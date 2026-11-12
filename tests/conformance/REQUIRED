@@ -305,3 +305,11 @@ video_bg_basic_golden
 mutate_sweep_bg_basic
 bg_scroll
 video_bg_scroll
+video_bg_scroll_asym
+video_fault_sweep_bg_scroll
+video_fault_sweep_bg_scroll_asym
+mutate_sweep_bg_scroll
+bg_enab
+video_bg_enab
+video_fault_sweep_bg_enab
+mutate_sweep_bg_enab

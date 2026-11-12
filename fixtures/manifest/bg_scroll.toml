@@ -10,7 +10,7 @@ source = "fixtures/src/bg_scroll.s"
 recipe = "bg-scroll: ca65 --cpu huc6280 -D ROMBANKS=32 -I fixtures/lib -o build/gate/fx/bg-scroll.o fixtures/src/bg_scroll.s; ld65 -C fixtures/lib/hucard.cfg -D ROMBANKS=32 -o build/gate/fixtures/bg-scroll.pce build/gate/fx/bg-scroll.o"
 toolchain = "cc65 V2.19 (ca65 prints V2.18; identity by encoding-matrix bytes, plan 03-08), Homebrew bottle 2.19 locally, hashed by sha256sum or shasum -a 256"
 size = 262144
-sha256 = "7212a0f04350d0a122a7f770ddcba94756f8fad9b672bb3609fa99a68157e4ff"
+sha256 = "88caba46cb2d304e6ef4514c44322327b4e964e4709a3b22651a9eb0f06f624d"
 licence = "0BSD"
 notices = "none: assembled at gate time from the project-owned sources fixtures/src/bg_scroll.s and fixtures/lib/*.inc and hucard.cfg (0BSD); no HuC, PCEAS or cc65 library or startup code, no emulator code, no game content"
 redistribution = "generated-not-committed"
