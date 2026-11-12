@@ -371,6 +371,7 @@ int dsv1_done(const struct ds_instance *inst, void *ctx);
 void kind_chunk_equiv(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 uint64_t rp_seed(unsigned index);
 void rp_build(unsigned char *img, uint64_t seed);
+void rp_build_vdc(unsigned char *img, uint64_t seed); /* the vdc_random_regs programs (plan 04-13): bank 0 only, hardware page mapped, VDC and VCE accesses, block transfers and waits */
 const char *boot_random(const unsigned char *img, const char *request, struct booted *b, const struct ds_instance **inst);
 
 /* the mutation sweep (sweepkinds.c, plan 03-10): every literal of the DCK1 table of a built image is flipped in an in-memory copy and must flip exactly its own check */
@@ -407,6 +408,8 @@ int list_fixtures(const size_t *sweep, size_t nsweep);
 void kind_vdc_fold(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_vid_noninterference(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_snapshot_restore_video(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_vdc_random_regs(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_vdc_poweron_policy_diff(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_vdc_vram(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-06: the VRAM words of the instance bytes against literals of the case (D-175 (c)) */
 void kind_vdc_vram_sweep(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-06: all 65,536 word addresses through the accessor pair and the port (D-147) */
 void kind_vdc_regmask(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-06: the register masks, the AR width, the reserved ARs and the status read (D-144, D-146) */

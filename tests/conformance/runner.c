@@ -1049,6 +1049,8 @@ static const struct {
     {"vdc_fold", kind_vdc_fold, 0},
     {"vid_noninterference", kind_vid_noninterference, 0},
     {"snapshot_restore_video", kind_snapshot_restore_video, 0},
+    {"vdc_random_regs", kind_vdc_random_regs, 0},
+    {"vdc_poweron_policy_diff", kind_vdc_poweron_policy_diff, 0},
     {"vdc_vram", kind_vdc_vram, 0},
     {"vdc_vram_sweep", kind_vdc_vram_sweep, 0},
     {"vdc_regmask", kind_vdc_regmask, 0},

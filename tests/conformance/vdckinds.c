@@ -16,6 +16,13 @@
  *   snapshot_restore_video    expect = rom=NAME;schedules=1364,1366,7;stride=N (until_mclk needed): the fixture is run on each schedule (calls to the deadlines j * size) with a vid sink on every call; at every stop of the schedules 1364 and 1366, which fall at every phase inside a line, and at every stride-th stop and
  *                             at every stop whose machine time is a multiple of 1365 (a pending line event at the machine time itself) of the schedule 7, the machine is snapshotted, restored into a fresh poisoned boot of the same image (member by member equal to the source) and the run goes on with the target. The concatenated
  *                             stream bytes, the digest, the machine time, the steps and the verdict RAM of every schedule equal those of the uninterrupted run (D-137). A case that restored at no stop at a multiple of 1365 is a guest_failure: the tie would be untested.
+ *   vdc_random_regs           expect = programs=N;seed=N (until_mclk needed; plan 04-13, D-175, T-04-44): N in-process programs (rp_build_vdc in randprog.c) that write random values to every VDC register through AR and the data port,
+ *                             to the VCE window, to the DMA triggers and through block transfers, with random waits, each run to the deadline with a vid sink of the closed-form capacity: ds_run stops at the deadline, no record is lost, the count equals
+ *                             floor((M - 1) / 1365) + 1, every record is whole and every border, index and colour value is below 512. Meant for the sanitizer preset as much as the gate preset; E0 (no crash, no out-of-range value, termination), nothing is
+ *                             compared with any oracle.
+ *   vdc_poweron_policy_diff   expect = roms=NAME@FRAME,...;control=NAME@FRAME (until_mclk needed; plan 04-13, D-167, Pitfall 13, T-04-45): each named fixture runs under the three policies with a vid sink; the verdict RAM and every
+ *                             record from the first judged frame FRAME on must be byte for byte equal (the frames before it are setup frames and may differ); the control image (vce-pal-nopal, whose palette is never initialised) must show a different border in
+ *                             the window between the zero policy and each v3 seed, which shows the guard can fail. E0.
  * The policy list of this file (zero, seeded-prng-v3 seed 1, seeded-prng-v3 seed 2) is the default list of a guest case (D-167); vd_policy_request appends a fragment to the request of a case as kind_guest does.
  */
 #include <stddef.h>
@@ -2405,4 +2412,374 @@ void kind_vdc_snapshot_mid_dma(const struct kase *k, struct ctx *c, char *got, s
     }
     free(snap);
     snprintf(got, gotcap, "stops=%u restored=%u", n, restored);
+}
+
+/* ---- kind vdc_poweron_policy_diff (plan 04-13; D-167, Pitfall 13, T-04-45) ---- */
+
+#define VP_ITEMS_MAX 8u
+#define VP_O_FRAME 8u    /* the layout of D-161 as this file knows it (hand-written, ER-13) */
+#define VP_O_ACTIVE_W 24u
+#define VP_O_BORDER 26u
+#define VP_MIN_WINDOW 262u /* a window of fewer records than one frame of 262 lines would prove too little */
+
+struct vp_item {
+    char rom[48];
+    uint64_t from; /* the first frame of the judged window: the setup frames before it may differ between policies, every record from it on must not */
+};
+
+static int vp_item(char *text, struct vp_item *it)
+{
+    char *at = strchr(text, '@');
+
+    if (at == NULL || at == text || (size_t)(at - text) >= sizeof it->rom) {
+        return -1;
+    }
+    *at = '\0';
+    if (strspn(text, "abcdefghijklmnopqrstuvwxyz0123456789-") != strlen(text) || parse_u64(at + 1, &it->from) != 0) {
+        return -1;
+    }
+    memcpy(it->rom, text, strlen(text) + 1u);
+    return 0;
+}
+
+/* the records of two streams, walked; wa and wb are the record pointer arrays (count entries each). Out: the number of records at or after frame `from` that are not byte for byte equal (nd), the number of those whose border differs (nb), the records in the window (nw), the last frame holding any difference and the number of records anywhere that differ (nall) */
+static void vp_compare(const uint8_t *const *ra, const uint8_t *const *rb, uint32_t count, uint64_t from, uint64_t *nd, uint64_t *nb, uint64_t *nw, uint64_t *last, uint64_t *nall)
+{
+    uint32_t k;
+
+    *nall = 0u;
+    *nd = 0u;
+    *nb = 0u;
+    *nw = 0u;
+    *last = 0u;
+    for (k = 0u; k < count; k++) {
+        uint32_t la = vd_u16(ra[k] + VD_O_REC_BYTES);
+        uint32_t lb = vd_u16(rb[k] + VD_O_REC_BYTES);
+        uint64_t frame = (uint64_t)vd_u32(ra[k] + VP_O_FRAME);
+        int same = la == lb && memcmp(ra[k], rb[k], (size_t)la) == 0;
+
+        if (frame >= from) {
+            (*nw)++;
+            if (!same) {
+                (*nd)++;
+            }
+            if (vd_u16(ra[k] + VP_O_BORDER) != vd_u16(rb[k] + VP_O_BORDER)) {
+                (*nb)++;
+            }
+        }
+        if (!same) {
+            *last = frame;
+            (*nall)++;
+        }
+    }
+}
+
+/* one fixture under the three policies; control = 0: the verdict RAM and every record of the window must be equal under the three policies; control = 1: the border of some record of the window must differ between the zero policy and each seed. 0 on success, -1 on a harness error */
+static int vp_one(struct ctx *c, const struct vp_item *it, int control, uint64_t until, uint64_t *window_out, uint64_t *border_out, uint64_t *last_out)
+{
+    struct vn_run run[VD_POLICIES];
+    const uint8_t **rec[VD_POLICIES];
+    unsigned p;
+    int rc = 0;
+    uint64_t cap = vd_stream_cap(until);
+    uint64_t maxlast = 0u;
+    uint64_t anyall = 0u;
+
+    memset(run, 0, sizeof run);
+    memset(rec, 0, sizeof rec);
+    for (p = 0u; p < VD_POLICIES && rc == 0; p++) {
+        char request[256];
+
+        if (vd_policy_request(p, "", request, sizeof request) != 0 || vn_exec(c, it->rom, request, until, VN_LARGE, (uint32_t)cap, &run[p]) != 0) {
+            rc = -1;
+            break;
+        }
+        if (run[p].lost != 0u || run[p].stream == NULL || !run[p].header_ok || run[p].count == 0u) {
+            harness_error(c, "a run of the vdc_poweron_policy_diff kind lost a record, stored none, or its sink header disagreed: the comparison would be incomplete (D-162)");
+            rc = -1;
+            break;
+        }
+        rec[p] = (const uint8_t **)malloc((size_t)run[p].count * sizeof *rec[p]);
+        if (rec[p] == NULL) {
+            harness_error(c, "out of memory for the record table of the vdc_poweron_policy_diff kind");
+            rc = -1;
+            break;
+        }
+        if (vd_walk(run[p].stream, run[p].bytes, (uint64_t)run[p].count, (const uint8_t **)rec[p]) != 0) {
+            harness_error(c, "a stream of the vdc_poweron_policy_diff kind does not walk to its byte count: the record lengths disagree (D-161)");
+            rc = -1;
+            break;
+        }
+    }
+    for (p = 1u; p < VD_POLICIES && rc == 0; p++) {
+        uint64_t nd = 0u;
+        uint64_t nb = 0u;
+        uint64_t nw = 0u;
+        uint64_t last = 0u;
+        uint64_t nall = 0u;
+        char msg[300];
+
+        snprintf(msg, sizeof msg, "%s under %s: the machine time, the step count or the number of records differs from the zero policy run, so the two runs are not comparable record by record", it->rom, vd_policy_name(p));
+        check(c, run[p].time == run[0].time && run[p].steps == run[0].steps && run[p].count == run[0].count && run[p].bytes == run[0].bytes, msg);
+        if (run[p].count != run[0].count) {
+            continue;
+        }
+        vp_compare((const uint8_t *const *)rec[0], (const uint8_t *const *)rec[p], run[0].count, it->from, &nd, &nb, &nw, &last, &nall);
+        if (nall > 0u && last >= maxlast) {
+            maxlast = last;
+        }
+        anyall += nall;
+        snprintf(msg, sizeof msg, "%s: the window from frame %llu holds %llu records, fewer than one frame of %u lines: it would prove too little", it->rom, (unsigned long long)it->from, (unsigned long long)nw, VP_MIN_WINDOW);
+        check(c, nw >= (uint64_t)VP_MIN_WINDOW, msg);
+        if (nw > *window_out) {
+            *window_out = nw;
+        }
+        if (last > *last_out) {
+            *last_out = last;
+        }
+        if (control == 0) {
+            snprintf(msg, sizeof msg, "%s under %s: the verdict RAM (the DSV1 bytes) differs from the zero policy run (D-167: a guest result must not depend on the power-on policy)", it->rom, vd_policy_name(p));
+            check(c, memcmp(run[p].verdict, run[0].verdict, V_SIZE) == 0, msg);
+            snprintf(msg, sizeof msg, "%s under %s: %llu records at or after frame %llu differ from the zero policy run (the last frame holding any difference is %llu): the power-on policy reaches the judged window (D-167)", it->rom, vd_policy_name(p), (unsigned long long)nd, (unsigned long long)it->from, (unsigned long long)last);
+            check(c, nd == 0u, msg);
+        } else {
+            snprintf(msg, sizeof msg, "%s under %s: the border of no record at or after frame %llu differs from the zero policy run, so the control cannot show the guard fail: the palette entry the border reads is initialised or the policies do not differ", it->rom, vd_policy_name(p), (unsigned long long)it->from);
+            check(c, nb > 0u, msg);
+            *border_out += nb;
+        }
+    }
+    if (rc == 0 && control == 0) {
+        char msg[300];
+
+        snprintf(msg, sizeof msg, "%s: the first judged frame %llu is not the first frame after the last record that differs between policies (%s): a later one would hide records from the guard, an earlier one is a record that differs", it->rom, (unsigned long long)it->from, anyall > 0u ? "a record differs up to a frame that the window must follow" : "no record differs, so the window starts at frame 0");
+        check(c, it->from == (anyall > 0u ? maxlast + 1u : 0u), msg);
+    }
+    for (p = 0u; p < VD_POLICIES; p++) {
+        free((void *)rec[p]);
+        free(run[p].stream);
+    }
+    return rc;
+}
+
+void kind_vdc_poweron_policy_diff(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    char list[PK_LIST_MAX];
+    char *rest = list;
+    char *item;
+    struct vp_item roms[VP_ITEMS_MAX];
+    struct vp_item ctl;
+    unsigned nroms = 0u;
+    unsigned seen = 0u;
+    unsigned i;
+    uint64_t until = 0u;
+    uint64_t window = 0u;
+    uint64_t borders = 0u;
+    uint64_t last = 0u;
+    uint64_t clast = 0u;
+    uint64_t cwindow = 0u;
+
+    memset(&ctl, 0, sizeof ctl);
+    if (!k->has[K_EXPECT] || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until < 100000u || vd_stream_cap(until) == 0u || pk_copy_text(k->val[K_EXPECT], list, sizeof list) != 0) {
+        harness_error(c, "a vdc_poweron_policy_diff case needs until_mclk and expect = roms=NAME@FRAME,NAME@FRAME;control=NAME@FRAME");
+        return;
+    }
+    while ((item = pk_next_item(&rest, ';')) != NULL) {
+        if (strncmp(item, "roms=", 5u) == 0 && (seen & 1u) == 0u) {
+            char *r2 = item + 5;
+            char *w;
+            int bad = 0;
+
+            while (!bad && (w = pk_next_item(&r2, ',')) != NULL) {
+                bad = nroms >= VP_ITEMS_MAX || vp_item(w, &roms[nroms]) != 0;
+                nroms += bad ? 0u : 1u;
+            }
+            if (bad || nroms == 0u) {
+                seen = 0u;
+                break;
+            }
+            seen |= 1u;
+        } else if (strncmp(item, "control=", 8u) == 0 && (seen & 2u) == 0u && vp_item(item + 8, &ctl) == 0) {
+            seen |= 2u;
+        } else {
+            seen = 0u;
+            break;
+        }
+    }
+    if (seen != 3u || nroms == 0u) {
+        harness_error(c, "a vdc_poweron_policy_diff case needs until_mclk and expect = roms=NAME@FRAME,NAME@FRAME;control=NAME@FRAME (each name once)");
+        return;
+    }
+    for (i = 0u; i < nroms && !c->harness; i++) {
+        if (vp_one(c, &roms[i], 0, until, &window, &borders, &last) != 0) {
+            return;
+        }
+    }
+    if (!c->harness && vp_one(c, &ctl, 1, until, &cwindow, &borders, &clast) != 0) {
+        return;
+    }
+    snprintf(got, gotcap, "roms=%u window=%llu last=%llu border=%llu", nroms, (unsigned long long)window, (unsigned long long)last, (unsigned long long)borders);
+}
+
+/* ---- kind vdc_random_regs (plan 04-13; D-175, T-04-44) ---- */
+
+#define VR_REC_AW_MAX 682u /* the widest active window, in dots (D-161) */
+
+struct vr_stat {
+    unsigned programs;
+    unsigned with_active;   /* programs that emitted at least one record with the active flag */
+    unsigned with_burst;
+    uint64_t records;
+    uint64_t values;
+};
+
+/* the records of one stream: every record is whole, its border, indices and colour values are below 512, its active width is within the longest and its length holds its arrays; the stream walks to the byte count */
+static int vr_check_stream(struct ctx *c, unsigned index, const uint8_t *bytes, uint64_t stored, uint64_t count, struct vr_stat *st)
+{
+    const uint8_t *rec;
+    uint64_t off = 0u;
+    uint64_t k;
+    int active = 0;
+    int burst = 0;
+    char msg[240];
+
+    for (k = 0u; k < count; k++) {
+        uint32_t rb;
+        uint32_t aw;
+        uint32_t j;
+        int ok;
+
+        if (off + (uint64_t)VD_REC_MIN > stored) {
+            snprintf(msg, sizeof msg, "program %u: record %llu starts past the stored bytes", index, (unsigned long long)k);
+            check(c, 0, msg);
+            return -1;
+        }
+        rec = bytes + off;
+        rb = vd_u16(rec + VD_O_REC_BYTES);
+        aw = vd_u16(rec + VP_O_ACTIVE_W);
+        ok = rb >= VD_REC_MIN && rb <= VD_REC_MAX && off + (uint64_t)rb <= stored && aw <= VR_REC_AW_MAX && 64u + 4u * aw <= rb && vd_u16(rec + VP_O_BORDER) < 512u;
+        for (j = 0u; ok && j < 2u * aw; j++) { /* the index array, then the colour array */
+            ok = vd_u16(rec + 64u + 2u * j) < 512u;
+            st->values++;
+        }
+        snprintf(msg, sizeof msg, "program %u: record %llu has a length, an active width, a border, an index or a colour value out of range (a value of 512 or more, or arrays that do not fit the record)", index, (unsigned long long)k);
+        check(c, ok, msg);
+        if (!ok) {
+            return -1;
+        }
+        active = active || aw > 0u;
+        burst = burst || (rec[31] & 0x02u) != 0u; /* the burst flag (bit 1 of flags, D-161) */
+        off += (uint64_t)rb;
+    }
+    snprintf(msg, sizeof msg, "program %u: the records do not add up to the stored byte count", index);
+    check(c, off == stored, msg);
+    st->records += count;
+    st->with_active += active ? 1u : 0u;
+    st->with_burst += burst ? 1u : 0u;
+    return 0;
+}
+
+void kind_vdc_random_regs(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    char list[PK_LIST_MAX];
+    char *rest = list;
+    char *item;
+    unsigned seen = 0u;
+    unsigned programs = 0u;
+    uint64_t seed0 = 0u;
+    uint64_t until = 0u;
+    uint64_t cap;
+    unsigned char *img;
+    unsigned pi;
+    struct vr_stat st;
+    uint8_t prev[DS_DIGEST_BYTES];
+
+    memset(&st, 0, sizeof st);
+    memset(prev, 0, sizeof prev);
+    if (!k->has[K_EXPECT] || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until < 100000u || vd_stream_cap(until) == 0u || pk_copy_text(k->val[K_EXPECT], list, sizeof list) != 0) {
+        harness_error(c, "a vdc_random_regs case needs until_mclk and expect = programs=N;seed=N");
+        return;
+    }
+    while ((item = pk_next_item(&rest, ';')) != NULL) {
+        uint64_t v = 0u;
+
+        if (strncmp(item, "programs=", 9u) == 0 && (seen & 1u) == 0u && parse_u64(item + 9, &v) == 0 && v >= 1u && v <= 256u) {
+            programs = (unsigned)v;
+            seen |= 1u;
+        } else if (strncmp(item, "seed=", 5u) == 0 && (seen & 2u) == 0u && parse_u64(item + 5, &seed0) == 0) {
+            seen |= 2u;
+        } else {
+            seen = 0u;
+            break;
+        }
+    }
+    if (seen != 3u) {
+        harness_error(c, "a vdc_random_regs case needs until_mclk and expect = programs=N;seed=N");
+        return;
+    }
+    cap = vd_stream_cap(until);
+    img = (unsigned char *)malloc(RP_IMAGE_BYTES);
+    if (img == NULL) {
+        harness_error(c, "out of memory for the random program image");
+        return;
+    }
+    for (pi = 0u; pi < programs && !c->harness; pi++) {
+        struct booted b;
+        const struct ds_instance *ci = NULL;
+        struct ds_run_request rq;
+        struct ds_run_result res;
+        struct ds_vid_sink vsk;
+        uint8_t *block;
+        uint64_t sx = seed0 + (uint64_t)pi * UINT64_C(0xD6E8FEB86659FD93);
+        uint64_t seed = vd_mix(&sx);
+        const char *err;
+        char msg[260];
+        uint8_t dig[DS_DIGEST_BYTES];
+        uint32_t reason;
+
+        rp_build_vdc(img, seed);
+        err = boot_random(img, "", &b, &ci);
+        if (err != NULL) {
+            harness_error(c, err);
+            break;
+        }
+        block = (uint8_t *)malloc((size_t)cap);
+        if (block == NULL) {
+            release_boot(&b);
+            harness_error(c, "out of memory for the vid sink of the vdc_random_regs kind");
+            break;
+        }
+        memset(&vsk, 0, sizeof vsk);
+        vsk.bytes = block;
+        vsk.capacity = (uint32_t)cap;
+        memset(&rq, 0, sizeof rq);
+        rq.struct_size = (uint32_t)sizeof rq;
+        rq.until_mclk = until;
+        rq.vid = &vsk;
+        memset(&res, 0, sizeof res);
+        reason = ds_run((struct ds_instance *)(void *)b.mem, &rq, &res);
+        snprintf(msg, sizeof msg, "program %u: ds_run did not stop at the deadline (a stop reason other than until) or stopped more than 16384 master clocks past it (the longest step of these programs is a 64-byte block transfer)", pi);
+        check(c, reason == (uint32_t)DS_RUN_REASON_UNTIL && res.machine_time >= until && res.machine_time - until < 16384u, msg);
+        snprintf(msg, sizeof msg, "program %u: the digest of the instance was refused", pi);
+        check(c, ds_digest(ci, dig) == 0u, msg);
+        snprintf(msg, sizeof msg, "program %u: the digest of the instance equals that of the program before it, so the programs do not reach distinct machine states (a vacuous run)", pi);
+        check(c, pi == 0u || memcmp(dig, prev, DS_DIGEST_BYTES) != 0, msg);
+        memcpy(prev, dig, DS_DIGEST_BYTES);
+        {
+            uint32_t cnt = vd_u32(vsk.header);
+            uint32_t lost = vd_u32(vsk.header + 4);
+            uint64_t seq = vd_u64(vsk.header + 8);
+            uint64_t nb = vd_u64(vsk.header + 16);
+
+            snprintf(msg, sizeof msg, "program %u: the vid sink lost a record or its header disagrees with the closed form of the line count (lost %u, count %u, seq %llu, lines due %llu)", pi, lost, cnt, (unsigned long long)seq, (unsigned long long)vd_lines_due(res.machine_time));
+            check(c, lost == 0u && (uint64_t)cnt == seq && seq == vd_lines_due(res.machine_time) && nb <= cap && vd_u64(vsk.header + 24) == 0u, msg);
+            if (lost == 0u && nb <= cap) {
+                (void)vr_check_stream(c, pi, block, nb, (uint64_t)cnt, &st);
+            }
+        }
+        st.programs++;
+        free(block);
+        release_boot(&b);
+    }
+    free(img);
+    snprintf(got, gotcap, "programs=%u records=%llu active=%u burst=%u", st.programs, (unsigned long long)st.records, st.with_active, st.with_burst);
 }

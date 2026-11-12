@@ -315,3 +315,6 @@ video_fault_sweep_bg_enab
 mutate_sweep_bg_enab
 chunk_equiv_video_bg_scroll
 snapshot_restore_video_bg
+vdc_random_regs
+vdc_poweron_policy_diff
+chunk_equiv_random32_video

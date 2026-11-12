@@ -87,8 +87,10 @@ delay:  dex
         CHECK_LIT 6                     ; check 6 ASSUMED:LED-VID-0016 $0407 reads $FF
         lda a:VCE_MIR_CR
         CHECK_LIT 7                     ; check 7 ASSUMED:LED-VID-0016 $0408 reads $FF
-; the 512 entries, product by shift and add
+; the 512 entries, product by shift and add (the variant vce-pal-nopal, assembled with -D NOPAL, leaves this block out: the palette is never initialised, so border entry $100 keeps its power-on value, which the zero and seeded-prng-v3 policies give differently; plan 04-13, D-167, Pitfall 13)
+        .ifndef NOPAL
         VCE_WRITE_P91
+        .endif
 ; read entry 0 back (H6-5: CTA low, CTA high, then the data low byte first)
         VCE_CTA 0
         lda a:VCE_CTW_LO

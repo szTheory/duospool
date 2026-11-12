@@ -47,6 +47,7 @@ usage() {
 # the variants list: STEM NAME ROMBANKS FLAGS, one image per line, built from fixtures/src/STEM.s with its own ROMBANKS and the extra ca65 flags (plan 03-05, D-124; the ROMBANKS column is plan 03-20, D-127). NAME is a-z 0-9 and hyphens
 # (F2) and ROMBANKS a number of 8 KiB banks; a stem with no line here has only its own image (32 banks). The four ds-proto variants are the DSV1 protocol controls (see fixtures/lib/verdict.inc); the two mmu-mpr variants are the
 # 384 KiB and 1 MiB images of the memory-map fixture, whose literals that differ by image size come from conditional assembly on ROMBANKS in the one source. The two cpu-blk variants (plan 03-25) are the 65536-byte long transfer (-D LEN0) and the interrupt around a 4096-byte transfer (-D BLK_IRQ) of the block-transfer fixture. The vdc-irq-263 variant (plan 04-17, F-38) is the 263-line image of the interrupt measurements (-D LINES=263), whose only difference is the frame-period literal.
+# The vce-pal-nopal variant (plan 04-13, D-167, Pitfall 13) is the vce_pal image with the palette-initialisation block left out (-D NOPAL): a control image whose border differs between the power-on policies, so the policy guard can fail; it carries no DSV1 judgement.
 variants='ds_proto ds-proto-predone 32 -D DSV_PREDONE
 ds_proto ds-proto-nodone 32 -D DSV_NODONE
 ds_proto ds-proto-badsum 32 -D DSV_BADSUM
@@ -55,7 +56,8 @@ mmu_mpr mmu-mpr-384k 48
 mmu_mpr mmu-mpr-1m 128
 cpu_blk cpu-blk-len0 32 -D LEN0
 cpu_blk cpu-blk-irq 32 -D BLK_IRQ
-vdc_irq vdc-irq-263 32 -D LINES=263'
+vdc_irq vdc-irq-263 32 -D LINES=263
+vce_pal vce-pal-nopal 32 -D NOPAL'
 
 src=$root/fixtures/src
 out=$root/build/gate

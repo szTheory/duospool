@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The power-on policy guard (plan 04-13; D-167, D-175, Pitfall 13, T-04-45): the runner kind vdc_poweron_policy_diff (tests/conformance/vdckinds.c) runs every video fixture (the fixtures that have a .vexp file) under the zero policy and under seeded-prng-v3 with seeds 1 and 2, with a vid sink, to one deadline. The verdict RAM (the DSV1
+# bytes) and every line record from the first judged frame on (the number after the at sign) must be byte for byte equal under the three policies: a fixture writes every VRAM, SATB and palette cell its judged lines read before they are judged, so the power-on content must not reach a judged record. The frames before that number are the
+# setup frames of the fixture, in which an uninitialised cell may show. The control image vce-pal-nopal is the vce_pal fixture with the palette initialisation left out: its border entry keeps the power-on value, so the border of some record in the window must DIFFER between the zero policy and each seed, which shows
+# that the guard can fail (it is a guard that passes on every input otherwise). The first judged frame of a fixture is a calibration read from its own run and a later one only weakens the case, so the case also requires a window of at least one frame (262 records). Evidence tier E0: the core compared with itself under three policies;
+# no literal comes from a DuoSpool run, no accuracy or hardware claim, and the word pass is not a support claim.
+id = "vdc_poweron_policy_diff"
+kind = "vdc_poweron_policy_diff"
+fixture = "none"
+request = ""
+expect = "roms=vce-pal@5,vce-dot@1,bg-basic@2,bg-scroll@2,bg-enab@2;control=vce-pal-nopal@0"
+meaning = "Under the zero policy and two seeded-prng-v3 seeds the five video fixtures give the same verdict RAM and the same line records from the first judged frame on, while the vce_pal image whose palette is never initialised gives a different border, so the power-on guard is shown able to fail, E0 repeatability"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 6000000
