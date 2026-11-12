@@ -181,7 +181,7 @@ Plans:
   3. A fixture writes the scanline and phase of raster-compare and VBlank interrupts into guest RAM. The recorded values agree with the modelled position for the profile's line count. They are labelled a modelling assumption, not a hardware claim, until a primary manual page or an owner-approved capture settles C3.
   4. All 512 9-bit palette entries round-trip through write and readback in guest RAM. A dot-clock change, including one mid-frame, shows up as changed per-line geometry in the raw record and is never normalised to a fixed width.
   5. A raw-video hash counts as a verdict only when paired with a semantic literal assertion, and that assertion is shown to fail when the renderer is deliberately broken.
-**Plans**: 14/19 plans executed in 18 sequential waves, listed in execution order (context waves W1-W8 of 04-CONTEXT; the cut line is checkpoint 04-13, after which W7 would become Phase 4.1; 04-17 is a planned split of 04-08; 04-18 and 04-19 are stop-rule splits of 04-03 and 04-04)
+**Plans**: 15/19 plans executed in 18 sequential waves, listed in execution order (context waves W1-W8 of 04-CONTEXT; the cut line is checkpoint 04-13, after which W7 would become Phase 4.1; 04-17 is a planned split of 04-08; 04-18 and 04-19 are stop-rule splits of 04-03 and 04-04)
 
 Plans:
 - [x] 04-01-PLAN.md - W1: evidence data: ER-1 page-image reads, cites, ledger entries and amendments, claim words (data only)
@@ -198,7 +198,7 @@ Plans:
 - [x] 04-09-PLAN.md - W4: active window geometry and dot clock, mid-frame change visible in the records
 - [x] 04-10-PLAN.md - W4: VRAM-to-SATB and VRAM-to-VRAM DMA, BURST flag, restore divisor guards
 - [x] 04-11-PLAN.md - W5: background renderer: BAT, tiles, palette banks, border
-- [ ] 04-12-PLAN.md - W5: scroll latch, enables, burst frame, bg fixtures and toy
+- [x] 04-12-PLAN.md - W5: scroll latch, enables, burst frame, bg fixtures and toy
 - [ ] 04-13-PLAN.md - W6: Checkpoint A (cut line): full verification, timing record, owner cut-line inputs
 - [ ] 04-14-PLAN.md - W7: sprite decode and drawing
 - [ ] 04-15-PLAN.md - W7: slot limit, overflow, collision, status flags into guest RAM
@@ -261,6 +261,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phases 4 and 5
 | 1. Owner Decisions, Claim Ledger and Toolchain Spike | 12/12 | Complete    | 2026-11-09 |
 | 2. Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate | 22/22 | Complete    | 2026-11-10 |
 | 3. HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad | 38/38 | Complete    | 2026-11-11 |
-| 4. VCE/VDC Raw Video | 14/19 | In Progress | - |
+| 4. VCE/VDC Raw Video | 15/19 | In Progress | - |
 | 5. PSG Raw Audio | 0/TBD | Not started | - |
 | 6. Headless Runner, Installed-Consumer Proof and Staged Verification | 0/TBD | Not started | - |

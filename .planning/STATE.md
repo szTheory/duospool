@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 4
 current_phase_name: VCE/VDC Raw Video
-current_plan: 15
+current_plan: 16
 status: executing
-stopped_at: Completed 04-11-PLAN.md
-last_updated: "2026-11-12T12:46:40.125Z"
+stopped_at: Completed 04-12-PLAN.md
+last_updated: "2026-11-12T13:49:44.733Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 3 complete, transitioned to Phase 4
-state_head: 9bc7a293c880b7cd385ca8f32ee92fcd689390e2
+state_head: f92f1625fd5a941113a474cabbac0ed2e0fd238c
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 91
-  completed_plans: 86
+  completed_plans: 87
   percent: 50
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 4 (VCE/VDC Raw Video) — READY TO EXECUTE
-Current Plan: 15
+Current Plan: 16
 Total Plans in Phase: 19
 Status: Ready to execute
 Last activity: 2026-11-11 — Phase 3 complete, transitioned to Phase 4
@@ -144,6 +144,7 @@ Progress: [█████░░░░░] 50%
 | Phase 04 P09 | about 3 h | 3 tasks | 29 files |
 | Phase 04 P10 | about 2h | 3 tasks | 37 files |
 | Phase 04 P11 | about 50 min | 3 tasks | 30 files |
+| Phase 4 P12 | 1h | 3 tasks | 30 files |
 
 ## Accumulated Context
 
@@ -316,6 +317,9 @@ Recent decisions affecting current work:
 - [Phase 04]: The SATB copy is made at the VBlank state entry EV_LINE and DS is due 256 * 4 * lat_div master clocks later, an assumed modelling choice (LED-VID-0013)
 - [Phase 04]: 04-11: bg_y stepped at each display line in beam.c and set by a BYR write in vdc.c; bxr_line a local of vid.c; BB and SB flags on every record; UNMODELLED on every record while the latched MWR has VM or SM set
 - [Phase 04]: 04-11: ROWS selector gains ;frame=F and STRUCT check frame_flags; guest frames counted by delays (polling fills the 16,384-record device log)
+- [Phase 4]: 04-12: BXR latch rows use a 16-dot shift over a 32-dot period row, so the next-line rows are MAN H7-7 and direction-independent; direction and the 64x64 wrap are a separate ASSUMED LED-VID-0010 scene
+- [Phase 4]: 04-12: a latch row finds its line by counting record origins before the dev-log write stamp, with a 250-clock margin guard as a harness failure; toy vid-scroll-latch removes the BYR counter reload (D-173 wording unobservable under R1)
+- [Phase 4]: 04-12: the burst frame and the backdrop index are classed ASSUMED LED-VID-0010, not MAN H7-6 (burst timing and backdrop colour are withheld words)
 
 ### Pending Todos
 
@@ -339,6 +343,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12T12:46:39.756Z
-Stopped at: Completed 04-11-PLAN.md
+Last session: 2026-11-12T13:49:42.375Z
+Stopped at: Completed 04-12-PLAN.md
 Resume file: None
