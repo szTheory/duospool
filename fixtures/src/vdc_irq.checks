@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# vdc_irq.checks - one row per CHECK of fixtures/src/vdc_irq.s (D-125, plan 04-17). Columns separated by one TAB: check index (1-based), slug, class tag, meaning, and for the raw measurement rows a fifth column, the word observe (D-169, F-41).
+# Class tags: MAN:<page> (a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model>, ASSUMED:<LED-id>. Rows 1 and 2 assume no constant: the interval of eight lines against eight times the interval of one line, from the same spin counter. The tolerance is derived in the source: a sample is within 1.33 iterations of its event (the
+# event-to-boundary wait is under 5 cycles and the difference of two
+# boundaries is within 4 cycles of 6 times the counted iterations), so the interval of 8 lines is within 1.33 and eight times the one-line interval within 8 * 1.33 iterations, 12 in all. Rows 3 to 6 use the 1365-clock line and the frame length of the bound profile (ASSUMED LED-VID-0001, ER-3: the 3-clock cycle, the entry cycles of LED-CPU-0009 and the window
+# penalty of LED-CPU-0017 also enter K).
+# The raw measurements (rows 13 to 16) are judged by the agreement kind vdc_irq_agree, never by a literal copied from a run. A pass is not a support claim (ER-4); the positions are modelling assumptions and no absolute line is observed.
+id=18
+checks=16
+1	ratio-8-lines-f0	GUEST:ratio-8-lines	The iterations from RCR = 100 to RCR = 108 equal 8 times those from RCR = 100 to RCR = 101 within 12 iterations (frame 0): no constant is assumed
+2	ratio-8-lines-f1	GUEST:ratio-8-lines	The same ratio in the second cycle
+3	line-period-100-f0	ASSUMED:LED-VID-0001	The iterations from RCR = 100 to RCR = 200 (100 lines) are 100 * 1365 / 18 within 2 (frame 0)
+4	line-period-100-f1	ASSUMED:LED-VID-0001	The same in frame 1
+5	frame-period-4	ASSUMED:LED-VID-0001	The iterations from the first RCR = 64 to the fifth (4 frames) are 4 * frame_lines * 1365 / 18 within 2
+6	vd-follows-last-rcr	ASSUMED:LED-VID-0001	In each of four frames the handler of the last display line RCR read RR alone, the next handler read VD alone, and its sample is 1 to 151 iterations (under two lines of 1365 clocks) after the first
+7	event-statuses	MAN:H7-4	Every handler of four cycles read the one flag of its event: RR ($04) for an RCR event and VD ($20) for the VBlank event
+8	last-rcr-status	MAN:H7-4	The status read in the handler of the last display line RCR (frame 0) is $04: RR alone
+9	vd-status	MAN:H7-4	The status read in the next handler (frame 0) is $20: VD alone
+10	status-bits-67	ASSUMED:LED-VID-0015	Bits 6 and 7 of every status byte read in four cycles are 0
+11	cycle-count	GUEST:cycle-count	The guest ended the chain itself at the start of the fifth cycle: the cycle counter is 4
+12	no-ack-reentry	ASSUMED:LED-IRQ-0009	A handler that does not read the status is entered again and again, as the level stays: five entries, the fifth acknowledges
+13	gap-vd-f0	ASSUMED:LED-IRQ-0001	Iterations from the sample of the last display line RCR handler to that of the VD handler, frame 0 (the position of VD relative to RCR; judged by vdc_irq_agree)	observe
+14	gap-vd-f1	ASSUMED:LED-IRQ-0001	The same, frame 1	observe
+15	gap-hit-lo	ASSUMED:LED-IRQ-0010	Iterations from the VD sample of frame 0 to the sample of the first RCR = 64 of frame 1 (the counter origin line), low byte	observe
+16	gap-hit-hi	ASSUMED:LED-IRQ-0010	The same, high byte	observe

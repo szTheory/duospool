@@ -269,3 +269,11 @@ video_judge_forms
 vdc_stat
 mutate_sweep_vdc_stat
 model_param_vdc
+vdc_irq
+vdc_irq_263
+mutate_sweep_vdc_irq
+mutate_sweep_vdc_irq_263
+vdc_irq_agree
+vdc_irq_agree_263
+vdc_irq_agree_hdw
+vdc_irq_agree_lb

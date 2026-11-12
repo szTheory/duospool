@@ -68,6 +68,10 @@ Filled by the planner and executors. Requirement rows (VID-01..VID-06 with liter
 | A10 | D-174 loop cost and check (4) | 24-bit add and P <= 12 cycles cannot both hold branch-free; the loop is inc a / bra (6 cycles, 18 clocks), the 24-bit clc/adc sum runs in the handlers. The +-1.5-iteration windows for 245, 341, 1,610 clocks are disjoint only if the last-display-line handler returns before VD (under 81 cycles); 04-17 records whether it held | 04-17 |
 | A11 | vce_pal div before the CR $01 write | The fixture writes CR $00, waits at least 5,460 master clocks (speed stated in its comment), then writes CR $01; div 4 rows are judged only between that write and CR $01, never on records resting on the power-on CR (LED-PROF-0003) | 04-04, 04-07 |
 
+**A10 outcome (plan 04-17, the separation held).** The handler of the last display line (h_last in fixtures/src/vdc_irq.s) is interrupt entry 8 + vector jump 7 + body 44 + RTI 7 = 66 cycles, summed from tests/oracle/huc6280-opcodes.tsv in the source comment and asserted at link time to be at most 72. With a wait of under 5 cycles before the entry it returns under 71 cycles
+after the RCR event, before VD, which comes 81.7 cycles later by default. The gaps measured by the guest in iterations of 18 master clocks are 14, 19 and 90 for the default rows, vd_irq_phase = hdw_start and rcr_origin = line_before: three disjoint windows, each within 1.5 iterations of the hand-derived 245, 341 and 1,610 master clocks. E0/E2 modelling assumption (ASSUMED LED-
+IRQ-0001, LED-IRQ-0010); the handler cost itself rests on ASSUMED LED-CPU-0009 (entry cycles) and LED-CPU-0017 (window penalty). The ratio check assumes no constant (GUEST).
+
 ## Wave 0 Requirements
 
 - [ ] `H7-` and `H6-` cite labels accepted by the fixture lint rules, rows in `cites.txt`, both manuals named in `TOOLS.md` (04-01)

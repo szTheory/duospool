@@ -3162,3 +3162,258 @@ void kind_video_out_rights(const struct kase *k, struct ctx *c, char *got, size_
     }
     snprintf(got, gotcap, "items=%u", n);
 }
+
+/*
+ * ---- vdc_irq_agree (plan 04-17; D-174, D-136, ER-3, ER-10, F-41; ASSUMED LED-IRQ-0001, LED-IRQ-0010, LED-VID-0001, LED-CPU-0009, LED-CPU-0017) ----
+ *   vdc_irq_agree   expect = rom=NAME;id=N;gap=N;hit=N;next=N;tol=N;brk=N;row=N, request = the model binding of the case ("" or model.NAME=VALUE), keys until_mclk and checks.
+ * The guest (fixtures/src/vdc_irq.s) records in guest RAM, as observe rows ROW to ROW + 3, the iterations (6 CPU cycles = 18 master clocks each) from the sample of the handler of the last display line RCR to that of the VBlank handler in two frames (rows ROW and ROW + 1) and from the VD sample of frame 0 to the
+ * sample of the first RCR = 64 of frame 1 (rows ROW + 2, ROW + 3, low and high byte). This kind runs the ROM under the three default power-on policies, requires the DSV1 block to be a consistent pass (all binding-independent guest checks) and the same bytes under the three policies, takes the status reads of the VDC from the dev log of the first run
+ * (the handler read: phys $1FE000, kind READ, with its access stamp; the read is 9 cycles into every measured handler, so two read stamps differ by the difference of the handler boundaries) and judges, in master clocks and never as an absolute line:
+ *   - the model against the literals of the case: gap is the hand-derived time from the RCR event of the last display line to the VD event (245 with the default rows, 341 with vd_irq_phase = hdw_start, 1610 with rcr_origin = line_before: (2 + 31 + 2) * 8 * 4 = 1120 and 1365 - 1120 = 245, plus 24 * 4, plus one line) and hit is the time from the VD event to the RCR = 64
+     event of the next frame; the VD read stamp minus the last-display-line read stamp
+ *     is within brk of gap (the wait from an event to the instruction boundary that takes it is at least 1 and under 5 cycles, so two waits differ by under 4 cycles = 12 master clocks) and the stamp of the read of the first RCR = 64 handler of frame 1 (next reads after the VD read) minus the VD read stamp is within brk of hit;
+ *   - the guest against the dev log: 18 * iterations is within brk of the read stamp difference (the difference of two handler boundaries is 6 * g cycles plus 0 or plus or minus 4, spin.inc), the instrument bracket;
+ *   - the guest against the literals: 18 * iterations is within tol of gap or hit, tol = 27 master clocks = 1.5 iterations (the plan window of D-174 check 4), which is the sum of the two bounds above, 24, with a margin.
+ * Evidence E0/E2: the model compared with hand-derived literals and with the guest's own count of machine time; the literals are modelling assumptions and not hardware facts. Hardware claim: none.
+ * The guest not finishing, or any of its checks failing, is guest_failure (a toy that moves the RCR origin must turn this red); a lost dev record or a ROM that cannot be booted is harness_failure.
+ */
+#define IA_DEV_CAP 16384u
+#define IA_PHYS_STATUS 0x1FE000u
+#define IA_POLICIES 3u
+#define IA_ITER_CLK 18u
+
+struct ia_expect {
+    char rom[64];
+    uint64_t id;
+    uint64_t gap;
+    uint64_t hit;
+    uint64_t next;
+    uint64_t tol;
+    uint64_t brk;
+    uint64_t row;
+    unsigned seen;
+};
+
+static int ia_parse(const char *text, struct ia_expect *e)
+{
+    char list[256];
+    char *rest = list;
+    char *item;
+    static const char *const names[] = {"id", "gap", "hit", "next", "tol", "brk", "row"};
+    uint64_t *slot[7];
+    unsigned i;
+
+    memset(e, 0, sizeof *e);
+    slot[0] = &e->id;
+    slot[1] = &e->gap;
+    slot[2] = &e->hit;
+    slot[3] = &e->next;
+    slot[4] = &e->tol;
+    slot[5] = &e->brk;
+    slot[6] = &e->row;
+    if (strlen(text) >= sizeof list) {
+        return -1;
+    }
+    memcpy(list, text, strlen(text) + 1u);
+    while ((item = pk_next_item(&rest, ';')) != NULL) {
+        int matched = 0;
+
+        if (strncmp(item, "rom=", 4u) == 0) {
+            if ((e->seen & 256u) != 0u || strlen(item + 4) == 0u || strlen(item + 4) >= sizeof e->rom) {
+                return -1;
+            }
+            memcpy(e->rom, item + 4, strlen(item + 4) + 1u);
+            e->seen |= 256u;
+            continue;
+        }
+        for (i = 0u; i < 7u; i++) {
+            size_t n = strlen(names[i]);
+
+            if (strncmp(item, names[i], n) == 0 && item[n] == '=') {
+                if ((e->seen & (1u << i)) != 0u || parse_u64(item + n + 1, slot[i]) != 0 || *slot[i] > UINT64_C(100000)) {
+                    return -1;
+                }
+                e->seen |= 1u << i;
+                matched = 1;
+            }
+        }
+        if (!matched) {
+            return -1;
+        }
+    }
+    return e->seen == 383u && e->row >= 1u && e->row + 3u <= 96u && e->next >= 1u && e->next <= 255u && e->tol >= 1u && e->tol <= 54u && e->brk >= 1u && e->brk <= 24u ? 0 : -1;
+}
+
+/* run the ROM once over the request; dsk is the dev sink of the first run (NULL for the others); the DSV1 block is copied to blk; NULL on success, else a harness text */
+static const char *ia_exec(struct ctx *c, const char *rom, const char *request, uint64_t until, struct ds_dev_sink *dsk, uint8_t *blk)
+{
+    struct booted b;
+    const struct ds_instance *ci = NULL;
+    struct ds_run_request rq;
+    struct ds_run_result res;
+    const char *err = boot_built_rom(rom, request, &b, &ci);
+
+    if (err != NULL) {
+        return err;
+    }
+    memset(&rq, 0, sizeof rq);
+    memset(&res, 0, sizeof res);
+    rq.struct_size = (uint32_t)sizeof rq;
+    rq.until_mclk = until;
+    rq.dev = dsk;
+    (void)ds_run((struct ds_instance *)(void *)b.mem, &rq, &res);
+    note_run(c, res.machine_time, res.reason);
+    if (res.reason != (uint32_t)DS_RUN_REASON_UNTIL) {
+        release_boot(&b);
+        return "a vdc_irq_agree run did not reach its deadline: ds_run refused the request or stopped for another reason";
+    }
+    memcpy(blk, ci->ram8k + V_OFF, V_SIZE);
+    release_boot(&b);
+    return NULL;
+}
+
+static int64_t ia_diff(uint64_t a, uint64_t b)
+{
+    return a >= b ? (int64_t)(a - b) : -(int64_t)(b - a);
+}
+
+static int64_t ia_abs(int64_t v)
+{
+    return v < 0 ? -v : v;
+}
+
+void kind_vdc_irq_agree(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    struct ia_expect e;
+    uint64_t until = 0u;
+    uint64_t checks = 0u;
+    uint8_t blk[IA_POLICIES][V_SIZE];
+    struct ds_dev_sink *dsk = (struct ds_dev_sink *)calloc(1u, sizeof *dsk);
+    unsigned char *drec = (unsigned char *)calloc((size_t)IA_DEV_CAP, VK_DEV_REC);
+    uint64_t *rst = (uint64_t *)calloc((size_t)IA_DEV_CAP, sizeof *rst);
+    uint8_t *rval = (uint8_t *)calloc((size_t)IA_DEV_CAP, 1u);
+    char req[256];
+    char msg[360];
+    const char *err = NULL;
+    uint32_t count;
+    uint32_t i;
+    uint32_t nrd = 0u;
+    uint32_t vd[2] = {0u, 0u};
+    unsigned nvd = 0u;
+    unsigned p;
+    int64_t d1[2];
+    int64_t d2;
+    uint64_t g1[2];
+    uint64_t g2;
+
+    if (dsk == NULL || drec == NULL || rst == NULL || rval == NULL) {
+        err = "out of memory for the dev sink of a vdc_irq_agree run";
+    } else if (!k->has[K_EXPECT] || !k->has[K_UNTIL_MCLK] || !k->has[K_CHECKS] || !k->has[K_REQUEST] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || parse_u64(k->val[K_CHECKS], &checks) != 0 || ia_parse(k->val[K_EXPECT], &e) != 0 || checks > 96u) {
+        err = "a vdc_irq_agree case needs until_mclk, checks, request and expect = rom=NAME;id=N;gap=N;hit=N;next=N;tol=N;brk=N;row=N (every item once, tol at most 54, brk at most 24)";
+    }
+    if (err == NULL) {
+        dsk->records = drec;
+        dsk->capacity = IA_DEV_CAP;
+        for (p = 0u; p < IA_POLICIES && err == NULL; p++) {
+            struct ctx s;
+            char gotj[96];
+
+            if (vd_policy_request(p, k->val[K_REQUEST], req, sizeof req) != 0) {
+                err = "the request of a vdc_irq_agree case with a power-on policy does not fit";
+                break;
+            }
+            err = ia_exec(c, e.rom, req, until, p == 0u ? dsk : NULL, blk[p]);
+            if (err != NULL) {
+                break;
+            }
+            memset(&s, 0, sizeof s);
+            judge_dsv1(&s, blk[p], (unsigned)e.id, (unsigned)checks, gotj, sizeof gotj);
+            if (s.harness) {
+                err = "the DSV1 block of a vdc_irq_agree run is not consistent with the case (id or checks)";
+            } else if (s.failed || s.timeout) {
+                snprintf(msg, sizeof msg, "the guest under policy %s: %s", vd_policy_name(p), s.why);
+                check(c, 0, msg);
+                snprintf(got, gotcap, "guest not a pass under %s", vd_policy_name(p));
+                err = "";
+            }
+        }
+    }
+    if (err != NULL && err[0] != '\0') {
+        free(dsk);
+        free(drec);
+        free(rst);
+        free(rval);
+        harness_error(c, err);
+        return;
+    }
+    if (err != NULL) { /* the guest itself failed: guest_failure, nothing more to judge */
+        free(dsk);
+        free(drec);
+        free(rst);
+        free(rval);
+        return;
+    }
+    count = vk_u32(dsk->header);
+    if (vk_u32(dsk->header + 4) != 0u) {
+        free(dsk);
+        free(drec);
+        free(rst);
+        free(rval);
+        harness_error(c, "the dev sink of a vdc_irq_agree run lost a record: the status read stamps are the evidence here and would be incomplete");
+        return;
+    }
+    for (i = 0u; i < count && i < IA_DEV_CAP; i++) {
+        const unsigned char *r = drec + (size_t)i * VK_DEV_REC;
+
+        if ((uint32_t)r[13] == (uint32_t)DS_DEV_READ && vk_u32(r + 8) == IA_PHYS_STATUS) {
+            rst[nrd] = vk_u64(r);
+            rval[nrd] = r[12];
+            if ((r[12] & 0x20u) != 0u && nvd < 2u) {
+                vd[nvd++] = nrd;
+            }
+            nrd++;
+        }
+    }
+    free(dsk);
+    free(drec);
+    for (p = 1u; p < IA_POLICIES; p++) {
+        snprintf(msg, sizeof msg, "the DSV1 block under policy %s differs from the one under zero: the measurement reads power-on state", vd_policy_name(p));
+        check(c, memcmp(blk[0], blk[p], V_SIZE) == 0, msg);
+    }
+    check(c, nvd == 2u && vd[0] >= 1u && vd[1] >= 1u && (uint64_t)vd[0] + e.next < nrd, "the dev log has fewer than two status reads with the VD bit set, or no read after the first of them: the stamps cannot be taken");
+    if (c->failed != 0) {
+        free(rst);
+        free(rval);
+        snprintf(got, gotcap, "dev stamps missing");
+        return;
+    }
+    d1[0] = ia_diff(rst[vd[0]], rst[vd[0] - 1u]);
+    d1[1] = ia_diff(rst[vd[1]], rst[vd[1] - 1u]);
+    d2 = ia_diff(rst[vd[0] + (uint32_t)e.next], rst[vd[0]]);
+    g1[0] = blk[0][V_OBS + e.row - 1u];
+    g1[1] = blk[0][V_OBS + e.row];
+    g2 = (uint64_t)blk[0][V_OBS + e.row + 1u] | ((uint64_t)blk[0][V_OBS + e.row + 2u] << 8u);
+    for (i = 0u; i < 2u; i++) {
+        int64_t gc = (int64_t)(g1[i] * IA_ITER_CLK);
+
+        snprintf(msg, sizeof msg, "frame %u: the model's last-display-line RCR to VD read stamp difference is %lld master clocks, the case literal is %llu within +-%llu (ASSUMED LED-IRQ-0001, LED-IRQ-0010)", (unsigned)i, (long long)d1[i], (unsigned long long)e.gap, (unsigned long long)e.brk);
+        check(c, ia_abs(d1[i] - (int64_t)e.gap) <= (int64_t)e.brk, msg);
+        snprintf(msg, sizeof msg, "frame %u: the guest counted %llu iterations (%lld master clocks) but the dev log says %lld, outside the instrument bracket of +-%llu", (unsigned)i, (unsigned long long)g1[i], (long long)gc, (long long)d1[i], (unsigned long long)e.brk);
+        check(c, ia_abs(gc - d1[i]) <= (int64_t)e.brk, msg);
+        snprintf(msg, sizeof msg, "frame %u: the guest counted %llu iterations (%lld master clocks) from the last-display-line RCR to VD, the window is %llu +-%llu", (unsigned)i, (unsigned long long)g1[i], (long long)gc, (unsigned long long)e.gap, (unsigned long long)e.tol);
+        check(c, ia_abs(gc - (int64_t)e.gap) <= (int64_t)e.tol, msg);
+    }
+    {
+        int64_t gc = (int64_t)(g2 * IA_ITER_CLK);
+
+        snprintf(msg, sizeof msg, "the model's VD to first RCR = 64 read stamp difference of the next frame is %lld master clocks, the case literal is %llu within +-%llu (ASSUMED LED-IRQ-0010, LED-VID-0001)", (long long)d2, (unsigned long long)e.hit, (unsigned long long)e.brk);
+        check(c, ia_abs(d2 - (int64_t)e.hit) <= (int64_t)e.brk, msg);
+        snprintf(msg, sizeof msg, "the guest counted %llu iterations (%lld master clocks) from VD to the RCR = 64 of the next frame but the dev log says %lld, outside the instrument bracket of +-%llu", (unsigned long long)g2, (long long)gc, (long long)d2, (unsigned long long)e.brk);
+        check(c, ia_abs(gc - d2) <= (int64_t)e.brk, msg);
+        snprintf(msg, sizeof msg, "the guest counted %llu iterations (%lld master clocks) from VD to the RCR = 64 of the next frame, the window is %llu +-%llu", (unsigned long long)g2, (long long)gc, (unsigned long long)e.hit, (unsigned long long)e.tol);
+        check(c, ia_abs(gc - (int64_t)e.hit) <= (int64_t)e.tol, msg);
+    }
+    snprintf(got, gotcap, "g1=%llu,%llu g2=%llu d1=%lld,%lld d2=%lld", (unsigned long long)g1[0], (unsigned long long)g1[1], (unsigned long long)g2, (long long)d1[0], (long long)d1[1], (long long)d2);
+    free(rst);
+    free(rval);
+}
