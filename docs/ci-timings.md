@@ -996,3 +996,107 @@ is applied here and no case beyond those the plan lists was added. Per case user
 The sum of the new and the changed cases is about 2.3 s of user CPU more than before (1.25 s new cases, 1.0 s for `vdc_stat` and its sweep, the rest for the policy diff and the toy), against a stage of 60 to 90 s on this machine: about 3 percent. The toy
 `vid-spr-limit` runs 4 cases and one extra toy binary build. `conformance` read 88 s on the full gate run at the second task commit and 155 s at the third (other jobs were running on the machine; the trigger is 60 s); `sh scripts/check --timing` read 424 s and 479 s user CPU on those runs (the trigger of D-180 is 150 s). Both
 triggers were already over at 04.1-01, so this plan only adds to a recorded excess; the efficiency review after the first CI run decides what to stage.
+
+## Phase 4.1 close-out (plan 04.1-03; local runs, not CI runs)
+
+CI for Phase 4.1: unverified: no push is authorised (D-64). Phase 4 (pull request 3, run 43275379025) has its CI record above; nothing of Phase 4.1 and nothing of the parallel second awk job (quick task 261112-ci-parallel-awk) has run on a GitHub runner, and this section makes no CI claim.
+Every figure below is a local run on the owner's development machine (Apple M5 Pro, 18 cores, macOS, BWK awk, Apple clang, cmake) on 2026-11-12 at the tree of `e353d8e`, whose code equals the close of plan 04.1-02. No time here is a pass or fail criterion; the evidence tier of every run is E0, repeatability.
+**The machine was shared and never quiet: the one-minute load average read 25.3 at the start of the gate run and 33.1 after it** (the highest of the three phases that were measured), so the user CPU and the stage seconds below are upper figures and are not comparable with a quiet run.
+
+| Run | What | Result | Wall s | User CPU s | System s | Load average (1 min) |
+|-----|------|--------|--------|------------|----------|----------------------|
+| 1 | `sh scripts/check --timing`, warm tree | PASS, 57 stages | 766.9 | 413.2 | 125.8 | 25.3 at start, 33.1 at end |
+| 2 | `sh scripts/check --selftest` | PASS, 174 mutations, no FAIL | 394.3 | 61.6 | 113.6 | 33.1 at start |
+| 3 | `dash scripts/check` (the gate under a second shell) | PASS, 57 stages | 731.0 | 435.1 | 124.7 | not recorded at start, 21.6 at end |
+| 4 | `sh scripts/audit-history --range f9d9d69..HEAD` (`f9d9d69` is the commit before the first commit of plan 04.1-01) | clean | | | | 12 commits, 101 blobs, 2,075 blob-path pairs |
+| 5 | `sh scripts/linux-repro`, all six default parts, one-off container run (linux/amd64 under emulation), see the table below | PASS, `LINUX_REPRO RESULT PASS` | 4,867 | | | host load about 20 |
+
+Run 5 in detail (Ubuntu 24.04.5, cmake 3.28.3; one-off local runs, not CI claims; the working tree at `e353d8e` was copied into the container at the start, so every part judged the README and ledger texts of this plan; only this section, `04.1-VALIDATION.md` and the SUMMARY were written afterwards):
+
+| Part | Awk, compiler | Result | Detail |
+|------|---------------|--------|--------|
+| `default-awk` | mawk 1.3.4, gcc 13.3 | PASS | the whole gate, 57 stages, in 1,299 s, and `--selftest` |
+| `mawk` | mawk 1.3.4, clang 18.1.3 | PASS | the gate in 978 s and `--selftest` |
+| `gawk` | gawk 5.2.1, gcc 13.3 | PASS | the gate in 1,019 s and `--selftest` |
+| `gate-gcc` | gcc 13.3, `-std=c11 -pedantic -Wall -Wextra -Wconversion -Wshadow -Werror` | PASS | build of the preset |
+| `gate-clang` | clang 18.1.3, the same flags | PASS | build of the preset |
+| `core-boundary-gcc` | gcc 13.3 | PASS | `STATUS core-boundary ok` |
+
+The second awk is covered by the `mawk` and `gawk` parts (BWK awk on the development machine, mawk and gawk in the container); no awk-specific defect showed.
+
+Sizes against the ROM shapes of `scripts/audit-history`: none of the 62 files added or changed since `f9d9d69` has a size of at least 4,096 that is a multiple of 8,192 or 512 more than one (the shapes ROM-SIZE-8K and ROM-SIZE-HDR); the largest file
+added or grown in Phase 4.1 is `tests/conformance/videokinds.c` (194,574 bytes, from 189,578) and the largest new file is `fixtures/src/spr_basic.vexp` (14,062 bytes). No ROM-like file exists: the sprite fixtures are assembled in the gate and never
+committed.
+
+### The stage seconds of this run
+
+Whole seconds from the gate's own clock (57 stages, sum 766): the stages over 20 s are `sanitizers` 303, `determinism` 103, `conformance` 91, `fixtures` 65 and `named-controls` 41; every other stage is 16 s or less. All 57:
+preflight 0, ledger-entries 2, ledger-negatives 4, ledger-samples 0, decision-records 1, decision-negatives 2, profile-records 0, profile-negatives 3, filename-controls 1, empty-expect-controls 0, provenance 1, provenance-negatives 5, licences 12, licence-negatives 3, protocol-order 1, protocol-negatives 13,
+score-controls 1, results 1, results-negatives 1, ingest-controls 3, flatten-controls 2, cancel-controls 2, outcome-controls 1, rights-tree 8, rights-negatives 16, audit-synthetic 16, inventory 11, inventory-negatives 2, fixture-lint 0, fixture-lint-negatives 2, video-check 9, input-check 0, input-check-negatives 2,
+xasm 0, opcode-oracle 0, opcode-oracle-negatives 1, xasm-negatives 1, workflow 0, workflow-negatives 3, docs-claims 1, docs-claims-negatives 1, ci-timings-controls 0, fixture-build 3, build 1, outcome-sync 0, conformance 91, sanitizers 303, excluded-mode-controls 1, record-lint 0, record-lint-negatives 5,
+core-boundary 9, core-boundary-negatives 7, determinism 103, determinism-negatives 1, fixtures 65, fixture-negatives 4, named-controls 41.
+
+### Checkpoint A, the 04.1-01 levers and this run side by side
+
+| Measure | Checkpoint A, run D (quietest, load 7) | 04.1-01 start (`f9d9d69`) | 04.1-01 after lever (3) | 04.1-01 close (Task 4) | 04.1-02 close (Task 3) | This run (load 25 to 33) |
+|---------|----------------------------------------|---------------------------|-------------------------|------------------------|------------------------|--------------------------|
+| `sh scripts/check --timing` wall s | 321.2 | 461.6 | 393.3 | 307.1 | not recorded | 766.9 |
+| user CPU s | 262.4 | 344.3 | 309.1 | 249.5 | 479 | 413.2 |
+| `conformance` stage s | 62 | 86 | 86 | 59 | 155 | 91 |
+| `sanitizers` stage s | 146 | not recorded | not recorded | not recorded | 369 | 303 |
+| `determinism` stage s | 52 | not recorded | not recorded | not recorded | not recorded | 103 |
+| REQUIRED ids | 315 | 318 | 318 | 326 | 330 | 330 |
+
+The columns come from different load levels (7 to 33), so the rows do not rank the code; the per case figures below are the stable measure of what Phase 4.1 added. The best figures of the phase are the 04.1-01 close (249.5 s user CPU, `conformance`
+59 s, during a plan whose runs read a load of 10 to 22) and checkpoint A run D (262.4 s, 62 s); this run is the worst because the machine was the busiest.
+
+### What the sprite cases added
+
+Phase 4.1 added 12 REQUIRED ids (318 to 330), 2 guest ROMs (34 to 36 of the limit 40; the image of `bg_enab` was edited, not added), one toy (the 26th control, `vid-spr-limit`, the tenth and last video toy of D-173) and 6 checks to `vdc_stat` (21 to
+27). User CPU of one `ds_runner --only ID` run each, gate preset, warm tree, at load 18 to 25 (the same method as the 04.1-02 table; only the ratios mean anything):
+
+| Case | User CPU s | Note |
+|------|-----------|------|
+| `spr_basic` (6 checks, 3 policies) | 0.14 | |
+| `video_spr_basic_solid` | 0.11 | 2 policies |
+| `video_fault_sweep_spr_basic` | 0.06 | |
+| `mutate_sweep_spr_basic` | 0.20 | one run per check and the unmutated image |
+| `video_spr_basic_asym` | 0.10 | |
+| `video_fault_sweep_spr_basic_asym` | 0.05 | |
+| `vdc_satb_data_spr` | 0.09 | |
+| `video_spr_basic_golden` | 0.09 | |
+| `spr_limit` (8 checks, 3 policies) | 0.17 | |
+| `video_spr_limit` | 0.18 | |
+| `video_fault_sweep_spr_limit` | 0.11 | |
+| `mutate_sweep_spr_limit` | 0.47 | 9 runs |
+| the 12 new cases | 1.77 | about 2 percent of the 91 s `conformance` stage |
+| `vdc_stat` (27 checks) | 0.14 | changed: was 21 checks |
+| `mutate_sweep_vdc_stat` (28 runs) | 1.22 | changed: was 22 runs |
+| `vdc_poweron_policy_diff` (7 ROMs) | 1.68 | changed: `spr-basic` and `spr-limit` added |
+
+The 12 new cases cost 1.77 s of user CPU in all. The three changed cases cost 3.0 s now; what Phase 4.1 added to them is not separable (the figures of the 04.1-02 table were 0.14 s and 0.76 s for `vdc_stat` and its sweep before the OR and CR rows,
+and no figure was taken for the policy diff before). Levers (2) and (3) of 04.1-01 removed about 2.8 s of user CPU, so the net effect of Phase 4.1 on the plain-preset cases is within a few seconds of zero. Under the sanitizers each case costs about 3
+to 4 times its plain figure, and the sprite pass runs once per displayed line only while a scene has SB set, so the quiet gate grew by a few seconds, not by a stage of its own. The sprite cost cannot be read from the stage seconds above, which move
+by 30 to 50 percent with the load.
+
+### D-176 and D-180 trigger status after the levers
+
+| Trigger | Measure | Result |
+|---------|---------|--------|
+| `conformance` over 60 s (D-176) | 59 s at the 04.1-01 close (load 10 to 22), 62 s at checkpoint A (load 7), 91 s in this run (load 25 to 33) | **fired on a loaded machine, borderline on a quieter one**; levers (1), (2) and (3) are applied, lever (4) is recorded and not applied (it would remove a REQUIRED case from the PR evidence for 0.35 s) |
+| CI job over 600 s with lever (1) not recovering it (D-176) | Phase 4: 853 s (run 43275379025, before the parallel second awk job); Phase 4.1: **unmeasured** (no push, D-64) | Phase 4 fired (recorded above); Phase 4.1 unverified |
+| warm quiet gate over 150 s user CPU (D-180) | 249.5 s (04.1-01 close), 262.4 s (checkpoint A run D), 413.2 s (this run) | **fired**, 1.7 to 2.8 times the threshold; no quiet-machine figure exists and none was waited for |
+| more than two revision plans | 0 revision plans in Phase 4.1 (04.1-04 and 04.1-05 unused) | not fired |
+
+Nothing is weakened by any trigger: no stage, control, selftest or case was skipped, shortened or removed to save time, and no time is ever a gate failure.
+
+### Efficiency review inputs for the first CI run that includes Phase 4.1 (AGENTS.md: review after each CI run)
+
+- **Record on the first run after an owner-authorised push:** the three job times (`gate-gawk`, `gate-mawk` and the aggregator `gate`) against the 440 to 550 s expected for the two work jobs, the per stage seconds of the `Gate` step
+  (`scripts/ci-timings` prints them), and whether the aggregator is named `gate`. The Phase 4 job was 853 s as one job; the 12 new cases add under 2 s of user CPU to `conformance`, which is inside the 23 percent run-to-run spread seen on the runner.
+- **`sanitizers` is still the largest stage** (303 s here, 172 s on the runner at Phase 4): lever (2) is already applied to every video run (two policies), so the remaining candidates are a skip in the second awk run (needs a skip mechanism, which the fail-closed rule discourages) and nothing cheaper; the sprite cases add under 2 s of it.
+- **The schedule 3072 can be restored** to `chunk_equiv_video_vce_pal`, `chunk_equiv_video_bg_scroll` and `chunk_equiv_random32_video` at about 0.1 s if the CI job time is acceptable (lever (3) measured about 0.1 s, inside the noise).
+- **`conformance` and the toys:** 26 toy controls run only their EXPECT cases; lever (1) keeps the cold compile out of the CI case. The 04.1-02 toy added one binary build and 4 EXPECT cases.
+- **The second awk and Linux runs** are whole-gate runs: the Linux container parts above are local one-offs (about 75 minutes for all six under emulation) and are not in the CI job, so they cost no CI time; the two awk implementations on the runner are the parallel jobs of the quick task, unverified until pushed.
+- **The best remaining lever on the evidence so far** is the same as at the Phase 4 review: the parallel second awk job, already applied and unverified. A skip of `sanitizers` in the second awk run is the next, and it needs the owner's decision on the fail-closed rule.
+- Nothing was weakened to save seconds, and no workflow file changed in this plan.
