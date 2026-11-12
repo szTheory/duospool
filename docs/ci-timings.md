@@ -630,3 +630,149 @@ What this plan's own cases cost, measured one at a time with `ds_runner --only I
 - **The sanitize preset is now the largest stage (88 s, 39 percent of the gate wall time).** It repeats the conformance cases under ASan and UBSan; the five new cases cost about 10 s of it. Lever, if the CI job nears 600 s: run the video fixtures under the sanitizers with two policies, the second D-176 lever. Not applied: one local run is not a CI measurement, and no stage was weakened.
 - **D-176 levers in order, not applied:** (1) link the toy executables against a shared archive of the runner objects and recompile only the mutated core unit (CMake only); (2) run video fixtures under two policies (zero and one v3 seed). The conformance stage is under its 60 s trigger, and the CI job is unmeasured for Phase 4, so neither is applied.
 - **Nothing was weakened.** No stage, control or selftest that existed before this plan was skipped, shortened or removed to save time. The one run length that was cut (`snapshot_restore_video`, above) belongs to a case this plan added, and the cut case keeps every stop of its two line-sized schedules.
+
+## Checkpoint A (plan 04-13; local runs, not CI runs)
+
+CI for Phase 4: unverified: no push authorised (D-64). Nothing of Phase 4 has run on a GitHub runner and this section makes no CI claim. It is the checkpoint A record (the cut line of D-180) that D-176 asks plan 04-13 for: the cost of the gate after the background half of the video work (plans 04-01 to 04-12, 04-17 to 04-19 and the three tasks of 04-13), the quiet measure of
+research F-8, the staging
+levers of D-176, and the cut-line triggers, each as fired, not fired or unmeasured. The cut itself is decided by the orchestrator and the owner, not here.
+
+Measured on 2026-11-12 on the owner's development machine (Apple M5 Pro, 18 cores, macOS 26.6.2, BWK awk 20200816, Apple clang 21, cmake 4.4.3). **The machine was shared with unrelated jobs and was never quiet: the one-minute load average read between 11 and 43 during these runs.** No quiet window was available and none was waited for, as asked. User CPU is much less sensitive
+to load than wall time, but not
+insensitive (the same gate read 301 s, 374 s and 467 s of user CPU in three runs at load 11 to 43), so every figure below is recorded as measured and is load-dependent.
+
+| Run | What | Wall s | User CPU s | System s | Load average (1 min) at start and end |
+|-----|------|--------|------------|----------|---------------------------------------|
+| A | `/usr/bin/time -p sh scripts/check --timing`, warm tree, at `2872067` (task 1 of this plan); the F-8 quiet measure | 397.3 | 301.3 | 79.1 | 21.3 and 14.7 |
+| B | the same at `d831680` (lever 1 applied; its first build of the new object libraries is inside this run) | 469.9 | 374.4 | 60.1 | 11.0 and 13.5 |
+| dash | `/usr/bin/time -p dash scripts/check` at `2872067` | 388.7 | 291.0 | 67.2 | not recorded |
+| C | a gate run at `a9f690d` that overlapped the Linux container run; contended, not used for any trigger | 1016.9 | 467.5 | 123.6 | high (container emulation) |
+
+All 57 stages passed in every run (`video-check` is the 57th stage, added in Phase 4). Seconds per stage (whole seconds from the gate's own clock; run A and run B above; the 04-05 spike section above has the same stage names with 56 stages and, at that time, a gate of 224 s wall and 178.6 s user CPU):
+
+| # | Stage | Run A s | Run B s |
+|---|-------|---------|---------|
+| 1 | preflight | 0 | 0 |
+| 2 | ledger-entries | 2 | 1 |
+| 3 | ledger-negatives | 3 | 1 |
+| 4 | ledger-samples | 1 | 1 |
+| 5 | decision-records | 0 | 0 |
+| 6 | decision-negatives | 2 | 1 |
+| 7 | profile-records | 0 | 0 |
+| 8 | profile-negatives | 3 | 1 |
+| 9 | filename-controls | 0 | 0 |
+| 10 | empty-expect-controls | 1 | 1 |
+| 11 | provenance | 1 | 0 |
+| 12 | provenance-negatives | 2 | 1 |
+| 13 | licences | 4 | 2 |
+| 14 | licence-negatives | 1 | 0 |
+| 15 | protocol-order | 0 | 1 |
+| 16 | protocol-negatives | 8 | 4 |
+| 17 | score-controls | 1 | 0 |
+| 18 | results | 0 | 0 |
+| 19 | results-negatives | 0 | 1 |
+| 20 | ingest-controls | 2 | 1 |
+| 21 | flatten-controls | 2 | 0 |
+| 22 | cancel-controls | 2 | 2 |
+| 23 | outcome-controls | 0 | 0 |
+| 24 | rights-tree | 4 | 2 |
+| 25 | rights-negatives | 7 | 4 |
+| 26 | audit-synthetic | 8 | 5 |
+| 27 | inventory | 9 | 6 |
+| 28 | inventory-negatives | 2 | 1 |
+| 29 | fixture-lint | 0 | 0 |
+| 30 | fixture-lint-negatives | 2 | 2 |
+| 31 | video-check | 4 | 2 |
+| 32 | input-check | 0 | 0 |
+| 33 | input-check-negatives | 3 | 1 |
+| 34 | xasm | 0 | 0 |
+| 35 | opcode-oracle | 0 | 0 |
+| 36 | opcode-oracle-negatives | 0 | 1 |
+| 37 | xasm-negatives | 2 | 1 |
+| 38 | workflow | 0 | 0 |
+| 39 | workflow-negatives | 2 | 1 |
+| 40 | docs-claims | 0 | 0 |
+| 41 | docs-claims-negatives | 1 | 1 |
+| 42 | ci-timings-controls | 0 | 0 |
+| 43 | fixture-build | 3 | 1 |
+| 44 | build | 1 | 1 |
+| 45 | outcome-sync | 0 | 0 |
+| 46 | conformance | 84 | 67 |
+| 47 | sanitizers | 152 | 216 |
+| 48 | excluded-mode-controls | 1 | 1 |
+| 49 | record-lint | 0 | 1 |
+| 50 | record-lint-negatives | 1 | 6 |
+| 51 | core-boundary | 3 | 4 |
+| 52 | core-boundary-negatives | 4 | 6 |
+| 53 | determinism | 55 | 95 |
+| 54 | determinism-negatives | 0 | 1 |
+| 55 | fixtures | 6 | 13 |
+| 56 | fixture-negatives | 0 | 2 |
+| 57 | named-controls | 8 | 11 |
+| | sum of stage seconds | 397 | 470 |
+
+The warm target of 120 s (D-132) is missed again, as it was at Phase 3 close and at the 04-05 spike. Compared with the spike (six plans done: conformance 45 s, sanitizers 88 s, determinism 36 s, user CPU 178.6 s) the growth sits in the same three stages: `conformance` 67 to 84 s, `sanitizers` 152 to 216 s and `determinism` 55 to 95 s, with every other stage at 11 s or less.
+The wall figures of those three stages
+swing by a factor of 1.4 between runs A and B on the same code, which is the load, not the code.
+
+Where the `conformance` stage goes (warm tree, `ds_runner` alone with the same arguments as the gate, 315 RESULT lines): 51.2 s wall and 48.2 s user for the cases, so the other 24 s of the stage (72.5 s user for `sh scripts/check --stage conformance` at load 13) are the toy controls (25 toys, each run on its EXPECT cases only), the hash sweep and the host hash steps. This
+plan's own new cases cost, one at a time with
+`ds_runner --only ID` in the gate preset: `vdc_poweron_policy_diff` 1.1 s user (5 fixtures and the control under 3 policies, 6 million clocks each), `vdc_random_regs` 0.3 s (32 programs), `chunk_equiv_random32_video` 1.5 s; the VDC and VCE traffic that `rp_build` now carries leaves `chunk_equiv_random32` at 3.0 s and `observer_random` at 4.1 s. The two largest cases of the phase so far are
+`snapshot_restore_video_bg` (6.4 s) and `snapshot_restore_video` (2.3 s).
+
+### D-176 staging levers (trigger: the CI job over 600 s, or `conformance` over 60 s)
+
+The `conformance` trigger fired: the stage read about 67 s after plan 04-12 (orchestrator note), 84 s in run A and 67 s in run B (79.4 s wall and 72.5 s user for the stage alone at load 13). The CI job time is unmeasured (no push). The levers are applied in order, each in a separate commit that weakens no evidence:
+
+| Lever | Trigger | Status | Before and after |
+|-------|---------|--------|------------------|
+| (1) link the toys against shared object libraries (CMake only) | fired (`conformance` over 60 s) | **applied** in `d831680` | cold build of the 25 `ds_toy_*` targets in a fresh directory (1,200 compile steps before, 73 after): 8.4 s wall and 47.1 s user CPU before, 0.8 s and 3.3 s after; all 25 controls stay RED_OK with the identical listing in `build/gate/controls.txt` |
+with the identical listing in `build/gate/controls.txt` |
+| (2) video fixtures under two policies instead of three | fired, not applied | recorded | drops the third policy from the restore, non-interference and observer runs of video fixtures: about 4 to 5 s of the stage by the timings above, not enough alone for a 67 to 84 s stage to reach 60 s, and it removes seed 2 runs from evidence; `vdc_poweron_policy_diff` would cover the power-on dimension |
+the power-on dimension |
+| (3) drop one chunk schedule from the video cases | fired, not applied | recorded | each video chunk case costs under 1 s except the restore cases; the saving is smaller than (2). |
+| (4) move the Linux container run and `vdc_random_regs` to a scheduled job | not reached | recorded | `vdc_random_regs` costs 0.3 s plain and about 1 s sanitized; the container run is already a local one-off outside the CI job. |
+
+Lever (1) does not shorten a warm local gate (a warm toy build compiles only the mutated units, so the stage reads the same within load noise); it removes the cold compile of every toy, which is the CI case (a fresh clone) and every edit of a runner header, which used to recompile every runner unit once per toy. Whether it recovers anything on a runner is for the first CI run
+to say (unmeasured, D-64).
+`timeout-minutes` stays 20. Nothing was weakened: no stage, control, selftest or case was skipped, shortened or removed to save time; `chunk_equiv_random32_video` and `vdc_poweron_policy_diff` are additions.
+
+### Cut-line record (D-180)
+
+| Trigger | Measure | Result |
+|---------|---------|--------|
+| more than two plans needed a revision plan | revision plans created to fix a defect found in review or verification: 0 (04-20 and 04-21 are unused; 04-17 is a planned split and 04-18 and 04-19 are stop-rule splits, which do not count) | **not fired** |
+| the warm quiet gate over 150 s | user CPU of one `sh scripts/check --timing` run: 301.3 s (run A) and 374.4 s (run B), at load 11 to 43; the 04-05 spike had read 178.6 s with six plans done | **fired** (twice the threshold; not a quiet-machine figure, so load-dependent) |
+| the CI job over 600 s with lever (1) not recovering it | no push is authorised (D-64) | **unmeasured** |
+| the owner prefers an earlier pull request | a question for the orchestrator | **unmeasured here** |
+
+Recommendation: take the cut. One trigger is measured as fired, on a figure that would have to be inflated by half again by the load to fall under the threshold, and the spike at plan 04-05 was already over it with a third of the phase done. If the cut is taken, plans 04-14 to 04-16 become 4.1-01 to 4.1-03 of an inserted Phase 4.1 (the orchestrator inserts it), the README and
+04-VALIDATION.md text written in this plan is the Phase 4 close-out
+for the background scope, and VID-06 stays open for the sprite rows (plan-check info 4).
+
+### Other results recorded at the checkpoint
+
+Each result below is a local one-off on the development machine, not a CI claim; no CI run exists.
+
+| Check | Result | Detail |
+|-------|--------|--------|
+| `sh scripts/check` (the runs A and B above) | PASS, 57 stages | warm; see the tables |
+| `dash scripts/check` | PASS | 388.7 s wall and 291.0 s user at `2872067`, and again 478.9 s wall and 335.6 s user on the tree after the ledger and README promotions (load 15 to 20) |
+| `sh scripts/check --selftest` | PASS | 145 mutations PASS, no FAIL; 60 s wall |
+| `sh scripts/audit-history --range 925662a..HEAD` | clean | 59 commits, 606 blobs, 2,252 blob-path pairs, at `2872067`; the commits after it are re-audited in the plan SUMMARY |
+| `sh scripts/linux-repro`, part `default-awk` (stock mawk 1.3.4, gcc 13) | PASS | the whole gate (57 stages) in 1,489 s and `--selftest` (145) in the container |
+| part `mawk` (mawk 1.3.4, clang 18) | PASS | gate in 960 s and `--selftest` |
+| part `gawk` (gawk 5.2.1, gcc 13) | PASS | gate in 805 s and `--selftest` |
+| part `gate-gcc` (`-std=c11 -pedantic -Wall -Wextra -Wconversion -Wshadow -Werror`) | PASS | |
+| part `gate-clang` (clang 18, the same flags) | PASS | |
+| part `core-boundary-gcc` | PASS | |
+
+The six parts ran under emulation (linux/amd64 on an arm64 host), 4,572 s in all, on the tree of this plan with its ledger, README and VALIDATION edits (the CMake change of lever 1 and every C change of the plan were in it); only this section of `docs/ci-timings.md` was written afterwards.
+
+### Efficiency review inputs (AGENTS.md: review after each CI run; no CI run exists yet)
+
+- **`sanitizers` is the largest stage** (152 s and 216 s, 33 to 46 percent of the wall time): it reruns the conformance cases under ASan and UBSan. The cheapest next lever is lever (2) applied to the sanitize preset only (video fixtures under two policies), which keeps the plain-preset evidence whole; not applied here, one local run under load is not a CI measurement.
+- **`determinism` is the second** (55 to 95 s, it builds and runs the gate twice to compare); unchanged by this plan.
+- **Toy controls:** lever (1) removes the cold compile (43.8 s of user CPU); the 25 toys still run their EXPECT cases only.
+- **The second-awk and Linux runs** are whole-gate runs in a container under emulation (see the table above) and stay local one-offs, not CI jobs.
+- Nothing was weakened to save seconds.
