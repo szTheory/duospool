@@ -348,8 +348,6 @@ enum ds_constant {
 #define DS_ADDER_VDC_ACCESS ((uint32_t)DS_CONST_vdc_vce_penalty_cycles) /* constants.def: one CPU cycle, at the speed the instruction started at, per bus access to physical $1FE000-$1FE7FF (the VDC and VCE windows), zero-page-mapped, block and ST accesses included; charged in the bus before the device sees it (D-107, ASSUMED LED-CPU-0017) */
 /* the value an unmapped read returns (D-104) */
 #define DS_UNMAPPED_READ ((uint32_t)DS_CONST_unmapped_read) /* constants.def */
-/* the stub read of the hardware-page window whose device does not exist yet (D-104, ASSUMED LED-CPU-0012): the VDC window until plan 04-06 (the VCE window is a device since plan 04-04) */
-#define DS_VDC_STUB_READ 0x00u
 
 typedef int (*ds_stop_fn)(const struct ds_instance *inst, void *ctx);
 

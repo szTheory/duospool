@@ -30,6 +30,9 @@
  * vce_div_cr0 .. vce_div_cr3         the dot clock divider chosen by the two low bits of the VCE control register (plan 04-04; D-141): 4 and 3 for 00 and 01 are the manual's division ratios (MAN H6-3, LED-VID-0017), 2 and 2 for 10 and 11 are community reports (ASSUMED LED-VID-0002)
  * vce_unused_read                    the byte a read of a VCE register that has no read (CR, CTA, $0401, $0406, $0407) returns (plan 04-04; D-152, ASSUMED LED-VID-0016): 255
  * vce_data_hi_unused_or              the bits OR-ed over bit 0 of a read of the colour table high byte, the seven bits the table does not hold (plan 04-04; D-153, ASSUMED LED-VID-0016): 254
+ * vdc_vram_words                    the number of 16-bit words of VRAM the accessor pair holds (plan 04-06; D-147, ASSUMED LED-VID-0007): 32768, a community figure (H7-12 allows a block length of 64K words, no page held states the installed size); a word address at or above it is out of range
+ * vdc_oob_read                       the word a VRAM read at an out-of-range word address returns (plan 04-06; D-147, ASSUMED LED-VID-0007): 0; a write there is dropped
+ * vdc_bsy_level                      the level of bit 6 (BSY) of the status read (plan 04-06; D-144, D-145, LED-VID-0015 deferred): 0, no bus-arbitration model exists, so the bit never reads busy
  * pad_settle_mclk                     master clocks of settling after a write of the latch (plan 03-29; D-115, LED-IO-0004): 0, so a read sees the level of the input schedule at its own access stamp; the read looks up the schedule this many master clocks earlier
  */
 DS_CONST(cycle_mclk_low, 12, "LED-CPU-0003")
@@ -60,3 +63,6 @@ DS_CONST(vce_div_cr2, 2, "LED-VID-0002")
 DS_CONST(vce_div_cr3, 2, "LED-VID-0002")
 DS_CONST(vce_unused_read, 255, "LED-VID-0016")
 DS_CONST(vce_data_hi_unused_or, 254, "LED-VID-0016")
+DS_CONST(vdc_vram_words, 32768, "LED-VID-0007")
+DS_CONST(vdc_oob_read, 0, "LED-VID-0007")
+DS_CONST(vdc_bsy_level, 0, "LED-VID-0015")

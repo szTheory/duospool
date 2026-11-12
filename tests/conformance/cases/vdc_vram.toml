@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The VRAM words the guest wrote, read from the instance bytes (plan 04-06; D-148, D-175 (c), ER-10, T-04-23): the runner kind vdc_vram (tests/conformance/vdckinds.c) boots the authored vdc_reg image, runs it to the end of its DSV1 verdict under each of the three default power-on policies (zero, seeded-prng-v3 seed 1 and 2) and
+# assembles every listed word byte by byte from the 65,536 VRAM bytes of the instance (word w = byte 2w | byte 2w+1 << 8), with no use of the port read path or of the accessor, against the literal of the case. The literals are restated from fixtures/src/vdc_reg.s: the guest wrote the word $1234 at word address $0100 and the word $5678 at
+# $0101 through ST0, ST1 and ST2 (MAN H7-5: the high byte write of VWR stores the word at MAWR and steps MAWR by 1; MAN H8-8 for the ST triple). A word stored at another address or with its bytes swapped fails here even if the guest reads the same value back through VRR. The toy vrr-no-readahead does not change these words, so this case
+# stays green under it (its literal case is vdc_reg). Evidence tier E0: no accuracy, compatibility or hardware claim, and the word pass is not a support claim.
+id = "vdc_vram"
+kind = "vdc_vram"
+fixture = "authored:vdc-reg"
+request = ""
+expect = "rom=vdc-reg;words=0x0100:0x1234,0x0101:0x5678"
+meaning = "The two words the vdc_reg guest wrote through ST0, ST1 and ST2 sit at their VRAM word addresses in the instance bytes under three power-on policies, E0 repeatability"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 2000000

@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# vdc_reg.checks - one row per CHECK of fixtures/src/vdc_reg.s (D-125, plan 04-06). Columns separated by one TAB: check index (1-based), slug, class tag, meaning.
+# Class tags: MAN:<page> (a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model>, ASSUMED:<LED-id>. First slice: two words written through ST0, ST1 and ST2 (H8-8) and read back through VRR in guest RAM (H7-5, H7-25).
+# A pass is not a support claim (ER-4).
+id=16
+checks=4
+1	vrr-first-low	MAN:H7-5	After the high byte write of MARR starts the read, the first VRR low read returns the low byte $34 of the word $1234 the guest wrote at $0100
+2	vrr-first-high	MAN:H7-25	The first VRR high read returns the high byte $12 of the same word
+3	vrr-second-low	MAN:H7-5	The high byte read of VRR triggered the next word: the second VRR low read returns the low byte $78 of the word $5678 written at $0101
+4	vrr-second-high	MAN:H7-25	The second VRR high read returns the high byte $56

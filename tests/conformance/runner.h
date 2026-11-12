@@ -398,6 +398,7 @@ int list_fixtures(const size_t *sweep, size_t nsweep);
 void kind_vdc_fold(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_vid_noninterference(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_snapshot_restore_video(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_vdc_vram(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-06: the VRAM words of the instance bytes against literals of the case (D-175 (c)) */
 const char *vd_policy_name(unsigned i);
 int vd_policy_request(unsigned i, const char *base, char *out, size_t cap);
 int vd_compose_request(const char *base, const char *fragment, char *out, size_t cap); /* the request with one policy fragment appended: the observer kind uses it for its policies key */

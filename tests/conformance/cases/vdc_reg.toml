@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The VDC register and VRAM interface seen from the guest (plan 04-06; D-146, D-148, D-149, D-169, D-170, D-175 (b), ER-4, ER-5, ER-10): the authored fixture fixtures/src/vdc_reg.s is assembled by ca65 in the gate (never committed), boots on the core, writes VRAM words through ST0, ST1 and ST2 (H8-8), starts the read
+# with the high byte write of MARR and reads the words back through VRR by LDA (H7-5, H7-25), and writes a DSV1 verdict block that the runner judges from raw RAM. The case has no policies key, so the guest kind runs the ROM under its default policy list (zero, seeded-prng-v3 seed 1, seed 2), and the check bytes must be equal in
+# all three: every word the guest reads, it wrote first (D-167). The literals come from the manual pages (the value the guest wrote comes back through the documented register steps); none comes from DuoSpool output. The runner kind vdc_vram (case vdc_vram) reads the same words from the instance VRAM bytes, so a symmetric
+# write and read bug of the port cannot cancel (D-175 (c)). The toy vrr-no-readahead (a read operation that never loads the buffer) turns this case guest_failure. Evidence tier E0: no accuracy, compatibility or hardware claim, and the word pass is not a support claim.
+id = "vdc_reg"
+kind = "guest"
+fixture = "authored:vdc-reg"
+request = ""
+expect = "id=16"
+meaning = "The authored vdc_reg fixture writes VRAM words through ST0, ST1 and ST2, starts the read with the high byte write of MARR and reads them back through VRR (the high byte read triggers the next word), passing checks of class MAN, identical under three power-on policies"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 2000000
+checks = 4

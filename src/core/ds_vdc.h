@@ -8,7 +8,7 @@
  * pending query, at the existing sample stamp (cpu.c); (3) at the end of every step with the stamp machine_time_after - 1, inside ds_cpu_step_obs (cpu.c, F-9, F-28). Every fold target is therefore a function of the instruction stream alone, so chunking, restore at a stop
  * and an attached sink cannot change what is folded.
  * VCE and VDC state changes ONLY inside the fold and the register write handlers; every other function of the machine reads state. The pure queries (ds_irq_pending_query among them) are valid for a FOLDED instance: they read the stored fields and not the stamp (F-21).
- * Plan 04-02 declares the entry points and defines only the inert ds_vdc_advance (no VDC state exists yet); the others are defined by the plans that own their state (VCE 04-03, VDC 04-04 on) and their signatures may be refined there.
+ * Plan 04-02 declares the entry points and defines only the inert ds_vdc_advance (no VDC state exists yet); the others are defined by the plans that own their state (VCE 04-04, the VDC port and registers 04-06 in vdc.c) and their signatures may be refined there.
  */
 #ifndef DS_VDC_H
 #define DS_VDC_H
@@ -22,8 +22,12 @@
 /* fold the VDC and VCE to the stamp (inclusive): process every event with time <= stamp in time order; obs is the observer log the line records are emitted to, or NULL (D-137, D-164: it is passed to the emitter and read for nothing else) */
 void ds_vdc_advance(struct ds_instance *inst, uint64_t stamp, struct ds_obs_log *obs);
 
-/* raise one VDC status flag (the fold and the write handlers only) */
+/* raise one VDC status flag (the fold and the write handlers only): the single status setter, with the enable gate of D-144 (vdc.c; its callers arrive in plan 04-08) */
 void ds_vdc_flag(struct ds_instance *inst, uint32_t bit);
+
+/* the ONE bounds-checked VRAM accessor pair (plan 04-06; D-147, ASSUMED LED-VID-0007): every access to VRAM goes through it. A word address at or above DS_CONST_vdc_vram_words reads DS_CONST_vdc_oob_read and a write there is dropped, for every 32-bit argument; word w is byte 2w | byte 2w+1 << 8 */
+uint16_t ds_vdc_vram_read(const struct ds_instance *inst, uint32_t word);
+void ds_vdc_vram_write(struct ds_instance *inst, uint32_t word, uint16_t value);
 
 /* a register read or write of the VDC window (reg = A1-A0) and of the VCE window (reg = A2-A0) at the access stamp, after the fold; a read of a window register may change the status flags, a write changes registers */
 uint8_t ds_vdc_read(struct ds_instance *inst, uint32_t reg, uint64_t stamp);

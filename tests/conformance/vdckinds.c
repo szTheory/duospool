@@ -1111,3 +1111,153 @@ void kind_snapshot_restore_video(const struct kase *k, struct ctx *c, char *got,
     }
     snprintf(got, gotcap, "restores=%u at_grid=%u mid_line=%u", total, grid, mid);
 }
+
+/* ---- vdc_vram (plan 04-06; D-148, D-175 (c), T-04-23) ---- */
+
+#define VV_WORDS_MAX 128u
+#define VV_ITEM_ROM 1u
+#define VV_ITEM_WORDS 2u
+
+struct vv_expect {
+    char rom[48];
+    unsigned n;
+    uint32_t addr[VV_WORDS_MAX];
+    uint32_t value[VV_WORDS_MAX];
+};
+
+/* words=A:V,A:V,...: word addresses below $8000 (the stored words) and 16-bit values, decimal or 0x hex; at least one, at most VV_WORDS_MAX, no address twice */
+static int vv_parse_words(char *list, struct vv_expect *e)
+{
+    char *rest = list;
+    char *w;
+
+    e->n = 0u;
+    while ((w = pk_next_item(&rest, ',')) != NULL) {
+        char *colon = strchr(w, ':');
+        uint64_t a = 0u;
+        uint64_t v = 0u;
+        unsigned j;
+
+        if (colon == NULL || e->n >= VV_WORDS_MAX) {
+            return -1;
+        }
+        *colon = '\0';
+        if (parse_u64(w, &a) != 0 || parse_u64(colon + 1, &v) != 0 || a >= (uint64_t)DS_CONST_vdc_vram_words || v > 0xFFFFu) {
+            return -1;
+        }
+        for (j = 0u; j < e->n; j++) {
+            if (e->addr[j] == (uint32_t)a) {
+                return -1;
+            }
+        }
+        e->addr[e->n] = (uint32_t)a;
+        e->value[e->n] = (uint32_t)v;
+        e->n++;
+    }
+    return e->n > 0u ? 0 : -1;
+}
+
+static int vv_parse(const char *text, struct vv_expect *e)
+{
+    char list[PK_LIST_MAX];
+    char *rest = list;
+    char *item;
+    unsigned seen = 0u;
+
+    memset(e, 0, sizeof *e);
+    if (pk_copy_text(text, list, sizeof list) != 0) {
+        return -1;
+    }
+    while ((item = pk_next_item(&rest, ';')) != NULL) {
+        char *eq = strchr(item, '=');
+        unsigned bit;
+
+        if (eq == NULL) {
+            return -1;
+        }
+        *eq = '\0';
+        if (strcmp(item, "rom") == 0) {
+            bit = VV_ITEM_ROM;
+            if (strlen(eq + 1) == 0u || strlen(eq + 1) >= sizeof e->rom || strspn(eq + 1, "abcdefghijklmnopqrstuvwxyz0123456789-") != strlen(eq + 1)) {
+                return -1;
+            }
+            memcpy(e->rom, eq + 1, strlen(eq + 1) + 1u);
+        } else if (strcmp(item, "words") == 0) {
+            bit = VV_ITEM_WORDS;
+            if (vv_parse_words(eq + 1, e) != 0) {
+                return -1;
+            }
+        } else {
+            return -1;
+        }
+        if ((seen & bit) != 0u) {
+            return -1;
+        }
+        seen |= bit;
+    }
+    return seen == (VV_ITEM_ROM | VV_ITEM_WORDS) ? 0 : -1;
+}
+
+/*
+ * vdc_vram: the VRAM words the guest wrote, read from the instance bytes (D-175 (c)). The fixture runs to the end of its DSV1 verdict under each of the three default policies; every listed word, assembled here byte by byte from the 65,536 VRAM bytes (word w = byte 2w | byte 2w+1 << 8, no accessor and no
+ * port read path of the core is used), must equal the literal of the case, which is restated from the fixture source (a value the guest writes, class MAN H7-5 or the class of its row; never read from a DuoSpool run). A symmetric write/read bug of the port cannot cancel here: a word stored at the wrong address or
+ * with the bytes swapped reads wrong from the bytes, whatever the guest reads back. Evidence tier E0; no accuracy or hardware claim.
+ */
+void kind_vdc_vram(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    struct vv_expect e;
+    uint64_t until = 0u;
+    unsigned p;
+    unsigned words = 0u;
+
+    if (!k->has[K_EXPECT] || vv_parse(k->val[K_EXPECT], &e) != 0 || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until < 1000u) {
+        harness_error(c, "a vdc_vram case needs until_mclk and expect = rom=NAME;words=ADDR:VALUE,ADDR:VALUE,... (word addresses below $8000, every address once, at most 128 words)");
+        return;
+    }
+    for (p = 0u; p < (unsigned)VD_POLICIES && !c->harness; p++) {
+        char request[256];
+        struct booted b;
+        const struct ds_instance *ci = NULL;
+        struct ds_run_request rq;
+        struct ds_run_result res;
+        const char *err;
+        unsigned j;
+
+        if (vd_policy_request(p, k->has[K_REQUEST] ? k->val[K_REQUEST] : "", request, sizeof request) != 0) {
+            harness_error(c, "the request of a vdc_vram case does not fit with a policy fragment");
+            return;
+        }
+        err = boot_built_rom(e.rom, request, &b, &ci);
+        if (err != NULL) {
+            harness_error(c, err);
+            return;
+        }
+        memset(&rq, 0, sizeof rq);
+        memset(&res, 0, sizeof res);
+        rq.struct_size = (uint32_t)sizeof rq;
+        rq.until_mclk = until;
+        rq.stop = dsv1_done;
+        if (ds_run((struct ds_instance *)(void *)b.mem, &rq, &res) == (uint32_t)DS_RUN_REASON_REFUSED) {
+            release_boot(&b);
+            harness_error(c, "ds_run refused the request of a vdc_vram case");
+            return;
+        }
+        note_run(c, res.machine_time, res.reason);
+        if (!dsv1_done(ci, NULL)) {
+            release_boot(&b);
+            harness_error(c, "the guest of a vdc_vram case did not reach the end of its DSV1 verdict before until_mclk: its words are not final");
+            return;
+        }
+        for (j = 0u; j < e.n; j++) {
+            uint32_t w = e.addr[j];
+            uint32_t have = (uint32_t)ci->vdc_vram[2u * w] | ((uint32_t)ci->vdc_vram[2u * w + 1u] << 8u);
+            char msg[200];
+
+            snprintf(msg, sizeof msg, "policy %s: VRAM word $%04X holds $%04X, the case lists $%04X", vd_policy_name(p), (unsigned)w, (unsigned)have, (unsigned)e.value[j]);
+            check(c, have == e.value[j], msg);
+            words++;
+        }
+        release_boot(&b);
+    }
+    snprintf(got, gotcap, "words=%u policies=%u", words, (unsigned)VD_POLICIES);
+}

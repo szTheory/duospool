@@ -39,6 +39,8 @@
 # rcr_counter 16384, frame_lines 262 and display_k 0xFFFF at their stream offsets, F-11); the 92255-byte stream it wrote hashes to the new digest under shasum -a 256. The profile and content hashes did not change. Evidence tier E0.
 # Plan 04-04 (the tracer; D-136, D-141, D-152, D-153) added eight rows to src/core/constants.def, written here by hand from the def: raster_phase_mclk and line_sample_offset_mclk (0, LED-VID-0004), vce_div_cr0 and vce_div_cr1 (4 and 3, LED-VID-0017), vce_div_cr2 and vce_div_cr3 (2 and 2, LED-VID-0002),
 # vce_unused_read and vce_data_hi_unused_or (255 and 254, LED-VID-0016), so [constants] has 28 rows and [withheld] gained LED-VID-0004, LED-VID-0016 and LED-VID-0017 (30 ids in sorted order; LED-VID-0002 was present). Not copied from printer output. The format version, the epoch, the digest and the profile and content hashes did not change. Evidence tier E0.
+# Plan 04-06 (the VDC interface; D-144, D-147) added three rows to src/core/constants.def, written here by hand from the def: vdc_vram_words and vdc_oob_read (32768 and 0, LED-VID-0007) and vdc_bsy_level (0, LED-VID-0015),
+# so [constants] has 31 rows and [withheld] gained LED-VID-0007 and LED-VID-0015 (32 ids in sorted order). Not copied from printer output. The format version, the epoch, the digest and the profile and content hashes did not change. Evidence tier E0.
 [record]
 format_version = 7
 
@@ -117,7 +119,7 @@ value = "seeded-prng-v1"
 bound_by = "run-request"
 
 [withheld]
-count = 30
+count = 32
 id_1 = "LED-AUD-0001"
 id_2 = "LED-CPU-0003"
 id_3 = "LED-CPU-0004"
@@ -146,8 +148,10 @@ id_25 = "LED-VID-0001"
 id_26 = "LED-VID-0002"
 id_27 = "LED-VID-0003"
 id_28 = "LED-VID-0004"
-id_29 = "LED-VID-0016"
-id_30 = "LED-VID-0017"
+id_29 = "LED-VID-0007"
+id_30 = "LED-VID-0015"
+id_31 = "LED-VID-0016"
+id_32 = "LED-VID-0017"
 
 [content]
 sha256 = "dea83b86f5837a056859d5cf1ff5db8612092a2855be3e5da32ed277fc5f37e0"
@@ -223,6 +227,9 @@ vce_div_cr2 = "2 LED-VID-0002"
 vce_div_cr3 = "2 LED-VID-0002"
 vce_unused_read = "255 LED-VID-0016"
 vce_data_hi_unused_or = "254 LED-VID-0016"
+vdc_vram_words = "32768 LED-VID-0007"
+vdc_oob_read = "0 LED-VID-0007"
+vdc_bsy_level = "0 LED-VID-0015"
 
 [run]
 reason = "none"

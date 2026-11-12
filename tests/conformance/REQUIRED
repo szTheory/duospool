@@ -257,3 +257,5 @@ observer_vce_pal
 vid_noninterference
 snapshot_restore_video
 video_out_rights
+vdc_reg
+vdc_vram
