@@ -34,6 +34,8 @@
  *        ds_runner --cases FILE --fixtures   prints NAME SIZE for every recipe the gate emits, cases and sweep (fixlist.c, plan 17)
  *        ds_runner --cases FILE --trace-out CASE_ID   writes build/gate/traces/CASE_ID.insn and .dev (the instruction trace and the device log of the case's image, run to its deadline) and prints only record counts, sizes and sha256 values;
  *                     refused (exit 2) unless the case's fixture is an authored image listed in build/gate/fixtures-authored.used or a synthetic recipe, or when CASE_ID is not [a-z][a-z0-9_]* (obskinds.c, plan 03-19; D-120); the directory must exist
+ *        ds_runner --cases FILE --video-out CASE_ID   writes build/gate/video/CASE_ID.dsvr (the canonical video stream: "duospool-video" NUL, u32 version, the records) and CASE_ID.tsv (one row per line, pixels as run-length groups) for a case of kind video and prints only ids, counts, sizes and sha256 values;
+ *                     refused (exit 2) unless the fixture is an authored image listed in build/gate/fixtures-authored.used or a synthetic recipe, the case is a video case, and CASE_ID is [a-z0-9_]+ (videokinds.c, plan 04-05; D-162, D-163); the directory must exist
  *   scripts/conformance-run compares --hash with the host sha tool over --emit for every sweep length (HASH_SWEEP_MISMATCH).
  * exit : 0 every case ran and RUNNER_DONE was printed (the verdict is the ingest's), 2 usage or harness error (no case ran)
  */
@@ -1040,6 +1042,7 @@ static const struct {
     {"spin_forever", kind_spin, 0},
     {"guest", kind_guest, 0},
     {"video", kind_video, 0},
+    {"video_out_rights", kind_video_out_rights, 0},
     {"vdc_fold", kind_vdc_fold, 0},
     {"vid_noninterference", kind_vid_noninterference, 0},
     {"snapshot_restore_video", kind_snapshot_restore_video, 0},
@@ -1253,17 +1256,18 @@ int main(int argc, char **argv)
             oracle_path = argv[++a];
         } else if (strcmp(argv[a], "--bank-oracle") == 0 && a + 1 < argc) {
             bank_oracle_path = argv[++a];
-        } else if (cpukinds_arg(argc, argv, &a) || obskinds_arg(argc, argv, &a) || inputkinds_arg(argc, argv, &a)) {
+        } else if (cpukinds_arg(argc, argv, &a) || obskinds_arg(argc, argv, &a) || videokinds_arg(argc, argv, &a) || inputkinds_arg(argc, argv, &a)) {
             continue;
         } else {
             cases_path = NULL;
             break;
         }
     }
-    if (cases_path == NULL || (evdir == NULL && !list_fx && trace_out_id == NULL)) {
+    if (cases_path == NULL || (evdir == NULL && !list_fx && trace_out_id == NULL && video_out_id == NULL)) {
         emit_err("usage: ds_runner --cases FILE --evidence-dir DIR [--profile-tsv FILE] [--rules-fields FILE]\n"
                         "                 [--oracle FILE] [--bank-oracle FILE] [--opcode-tsv FILE] [--inputs FILE] [--exclude-ids FILE] [--only ID] [--marker-seed N] [--records DIR] [--golden-dir DIR]\n"
                         "       ds_runner --cases FILE --trace-out CASE_ID   (writes build/gate/traces/CASE_ID.insn and .dev for an authored or synthetic case)\n"
+                        "       ds_runner --cases FILE --video-out CASE_ID   (writes build/gate/video/CASE_ID.dsvr and .tsv for a video case of an authored or synthetic fixture)\n"
                         "       ds_runner --sweep-lengths | --spec | --emit RECIPE | --hash RECIPE\n");
         return 2;
     }
@@ -1287,6 +1291,9 @@ int main(int argc, char **argv)
     }
     if (trace_out_id != NULL) {
         return trace_out_main();
+    }
+    if (video_out_id != NULL) {
+        return video_out_main();
     }
     if (exclude_path != NULL) {
         char *xt = read_file(exclude_path);

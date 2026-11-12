@@ -1831,6 +1831,12 @@ static int trace_fixture_permit(const char *fixture)
     return synth_size(fixture) != 0u ? TR_OK : TR_NOT_PERMITTED;
 }
 
+/* 1 when the fixture key is an authored image listed in the gate's authored list or a synthetic recipe: the rights rule of every file output of the runner (--trace-out here, --video-out in videokinds.c since plan 04-05) */
+int output_fixture_permitted(const char *fixture)
+{
+    return trace_fixture_permit(fixture) == TR_OK;
+}
+
 /* the paths the runner derives from a valid id: 0 on success */
 static int trace_paths(const char *id, char *insn, char *dev, size_t cap)
 {

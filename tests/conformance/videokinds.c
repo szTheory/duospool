@@ -469,6 +469,26 @@ static void vk_hex(const uint8_t *d, char *out)
     out[2u * DS_SHA256_BYTES] = '\0';
 }
 
+/* the canonical stream of D-163: "duospool-video" NUL, u32 1 (little-endian), then the records back to back; a heap block of 19 + vbytes bytes (NULL when out of memory), freed by the caller */
+static uint8_t *vk_stream(const uint8_t *vbuf, uint64_t vbytes)
+{
+    uint8_t *stream = (uint8_t *)malloc((size_t)(19u + vbytes));
+
+    if (stream == NULL) {
+        return NULL;
+    }
+    memcpy(stream, "duospool-video", 14u);
+    stream[14] = 0u;
+    stream[15] = 1u;
+    stream[16] = 0u;
+    stream[17] = 0u;
+    stream[18] = 0u;
+    if (vbytes > 0u) { /* a copy of zero bytes still must not get a null pointer */
+        memcpy(stream + 19, vbuf, (size_t)vbytes);
+    }
+    return stream;
+}
+
 void kind_video(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
 {
     struct vk_expect e;
@@ -615,18 +635,11 @@ void kind_video(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
         }
         guest++;
         /* the stream of D-163 and its digest: E0 repeatability, printed beside the literal verdict and never a verdict itself (ER-11) */
-        stream = (uint8_t *)malloc((size_t)(19u + vbytes));
+        stream = vk_stream(vbuf, vbytes);
         if (stream == NULL) {
             harness_error(c, "out of memory for the video stream");
             goto done;
         }
-        memcpy(stream, "duospool-video", 14u);
-        stream[14] = 0u;
-        stream[15] = 1u;
-        stream[16] = 0u;
-        stream[17] = 0u;
-        stream[18] = 0u;
-        memcpy(stream + 19, vbuf, (size_t)vbytes);
         ds_sha256(stream, (size_t)(19u + vbytes), digest);
         free(stream);
         vk_hex(digest, hex);
@@ -641,4 +654,367 @@ done:
     free(drec);
     free(vbuf);
     free((void *)recp);
+}
+
+/* ---- --video-out and kind video_out_rights (plan 04-05; D-162, D-163, T-04-17, T-04-19) ----
+ * The runner writes the video stream of a case only for `--video-out CASE_ID`, only for a case of kind video whose fixture is an authored image listed in build/gate/fixtures-authored.used (written by scripts/fixture-build in the same gate run) or a synthetic recipe, only to build/gate/video/ID.dsvr (the canonical stream of D-163) and ID.tsv (one row per line, pixels as run-length groups), paths
+ * the runner builds itself from an id of the form [a-z0-9_]+; nothing reaches stdout but ids, counts, sizes and sha256 values. The run is the run of the case (the same image, request, deadline and stop callback, with the vid sink alone: the sink never changes machine state, D-164), so the stream is the stream the case judged. scripts/conformance-run recomputes the SHA-256 of the written .dsvr
+ * file with a host tool and compares it with the video_sha256 of the evidence file of the case (the external recomputation of T-04-19). Evidence tier E0. */
+
+#define VO_DIR "build/gate/video/"
+#define VO_ID_MAX 64u
+
+const char *video_out_id;
+
+int videokinds_arg(int argc, char **argv, int *a)
+{
+    if (strcmp(argv[*a], "--video-out") == 0 && *a + 1 < argc) {
+        video_out_id = argv[*a + 1];
+        *a += 1;
+        return 1;
+    }
+    return 0;
+}
+
+enum { VO_OK = 0, VO_BAD_ID = 1, VO_NO_CASE = 2, VO_NOT_PERMITTED = 3, VO_NOT_VIDEO = 4, VO_NO_DEADLINE = 5, VO_FAILED = 6 };
+
+static const char *vo_reason(int r)
+{
+    switch (r) {
+    case VO_BAD_ID:
+        return "the id is not of the form [a-z0-9_]+ with at most 64 characters";
+    case VO_NO_CASE:
+        return "no case carries that id";
+    case VO_NOT_PERMITTED:
+        return "the fixture of the case is neither an authored image listed in build/gate/fixtures-authored.used nor a synthetic recipe";
+    case VO_NOT_VIDEO:
+        return "the case is not a video case";
+    case VO_NO_DEADLINE:
+        return "the case has no until_mclk to run to";
+    default:
+        return "the video stream could not be produced";
+    }
+}
+
+static int vo_id_valid(const char *id)
+{
+    size_t n = strlen(id);
+
+    return n >= 1u && n <= VO_ID_MAX && strspn(id, "abcdefghijklmnopqrstuvwxyz0123456789_") == n;
+}
+
+/* the paths the runner derives from a valid id: 0 on success */
+static int vo_paths(const char *id, char *dsvr, char *tsv, size_t cap)
+{
+    int a;
+    int b;
+
+    if (!vo_id_valid(id)) {
+        return -1;
+    }
+    a = snprintf(dsvr, cap, VO_DIR "%s.dsvr", id);
+    b = snprintf(tsv, cap, VO_DIR "%s.tsv", id);
+    return a > 0 && b > 0 && (size_t)a < cap && (size_t)b < cap ? 0 : -1;
+}
+
+/* the checks that come before any file is opened: the id, the case, its fixture (T-04-17: authored and listed, or synthetic), its kind and its deadline */
+static int vo_request(const char *id, const struct kase **kout, uint64_t *until)
+{
+    size_t i;
+
+    if (!vo_id_valid(id)) {
+        return VO_BAD_ID;
+    }
+    for (i = 0u; i < case_count(); i++) {
+        const struct kase *k = case_get(i);
+
+        if (strcmp(k->val[K_ID], id) == 0) {
+            if (!k->has[K_FIXTURE] || !output_fixture_permitted(k->val[K_FIXTURE])) {
+                return VO_NOT_PERMITTED;
+            }
+            if (!k->has[K_KIND] || strcmp(k->val[K_KIND], "video") != 0) {
+                return VO_NOT_VIDEO;
+            }
+            if (!k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], until) != 0 || *until == 0u) {
+                return VO_NO_DEADLINE;
+            }
+            *kout = k;
+            return VO_OK;
+        }
+    }
+    return VO_NO_CASE;
+}
+
+/* the text form of the stream (D-163): one tab-separated row per record, after one header row of the column names; the pixels of a row are run-length groups COUNT*INDEX/COLOUR (the index array and the colour array of the record, equal neighbours grouped), empty for a record with no active window. Offsets are those of this file. 0 on success */
+static int vo_write_tsv(const char *path, const uint8_t *vbuf, uint64_t vbytes, uint64_t count, uint64_t *rows)
+{
+    FILE *fp = fopen(path, "wb");
+    uint64_t off = 0u;
+    uint64_t k;
+    int ok = fp != NULL;
+
+    *rows = 0u;
+    if (fp == NULL) {
+        return -1;
+    }
+    ok = fprintf(fp, "frame\tline\torigin\tdiv\tvce_cr\tborder\tactive_w\tline_dirty\tflags\tpixels\n") > 0;
+    for (k = 0u; k < count && ok; k++) {
+        const uint8_t *r = vbuf + off;
+        uint32_t rb;
+        uint32_t aw;
+        uint32_t d;
+        int first = 1;
+
+        if (off + (uint64_t)VK_HDR > vbytes) {
+            ok = 0;
+            break;
+        }
+        rb = vk_u16(r + VK_O_REC_BYTES);
+        aw = vk_u16(r + VK_O_ACTIVE_W);
+        if (rb < VK_HDR || rb > VK_MAX_REC || off + (uint64_t)rb > vbytes || aw > VK_MAX_DOTS || VK_HDR + 4u * aw > rb) {
+            ok = 0;
+            break;
+        }
+        ok = fprintf(fp, "%u\t%u\t%llu\t%u\t%u\t%u\t%u\t%u\t%u\t", (unsigned)vk_u32(r + VK_O_FRAME), (unsigned)vk_u16(r + VK_O_LINE), (unsigned long long)vk_u64(r + VK_O_ORIGIN), (unsigned)r[VK_O_DIV], (unsigned)r[21], (unsigned)vk_u16(r + VK_O_BORDER), (unsigned)aw,
+                     (unsigned)r[VK_O_LINE_DIRTY], (unsigned)r[31])
+             > 0;
+        d = 0u;
+        while (d < aw && ok) {
+            uint32_t idx = vk_u16(r + VK_HDR + 2u * d);
+            uint32_t col = vk_u16(r + VK_HDR + 2u * aw + 2u * d);
+            uint32_t run = 1u;
+
+            while (d + run < aw && vk_u16(r + VK_HDR + 2u * (d + run)) == idx && vk_u16(r + VK_HDR + 2u * aw + 2u * (d + run)) == col) {
+                run++;
+            }
+            ok = fprintf(fp, "%s%u*%u/%u", first ? "" : ",", (unsigned)run, (unsigned)idx, (unsigned)col) > 0;
+            first = 0;
+            d += run;
+        }
+        ok = ok && fputc('\n', fp) != EOF;
+        off += (uint64_t)rb;
+        (*rows)++;
+    }
+    ok = ok && off == vbytes;
+    return fclose(fp) == 0 && ok ? 0 : -1;
+}
+
+/* the line of one written file: its count (records or rows), size and the SHA-256 of its bytes (data, len) */
+static void vo_print(const char *id, const char *what, const char *label, uint64_t n, const uint8_t *data, size_t len)
+{
+    uint8_t digest[DS_SHA256_BYTES];
+    char hex[2u * DS_SHA256_BYTES + 1u];
+
+    ds_sha256(data, len, digest);
+    vk_hex(digest, hex);
+    emit_out("VIDEO %s %s %s=%llu bytes=%llu sha256=%s\n", id, what, label, (unsigned long long)n, (unsigned long long)len, hex);
+}
+
+/* the text file at path (no NUL byte in it): the line of its rows; 0 on success */
+static int vo_print_tsv(const char *id, const char *path, uint64_t rows)
+{
+    char *text = read_file(path);
+
+    if (text == NULL) {
+        return -1;
+    }
+    vo_print(id, "tsv", "rows", rows, (const uint8_t *)text, strlen(text));
+    free(text);
+    return 0;
+}
+
+/* the whole request: validate, run the case's image to its deadline with the vid sink, write the two files; 0 or a VO_ code (nothing is opened before the request is permitted) */
+static int vo_do(const char *id)
+{
+    const struct kase *k = NULL;
+    uint64_t until = 0u;
+    char dpath[128];
+    char tpath[128];
+    struct vk_expect e;
+    struct booted b;
+    const struct ds_instance *ci = NULL;
+    struct ds_vid_sink *vsk = NULL;
+    uint8_t *vbuf = NULL;
+    uint8_t *stream = NULL;
+    struct ds_run_request rq;
+    struct ds_run_result res;
+    uint64_t vcap;
+    uint64_t vbytes = 0u;
+    uint64_t count = 0u;
+    uint64_t rows = 0u;
+    const char *err;
+    int r = vo_request(id, &k, &until);
+
+    if (r != VO_OK) {
+        return r;
+    }
+    if (vo_paths(id, dpath, tpath, sizeof dpath) != 0) {
+        return VO_BAD_ID;
+    }
+    if (!k->has[K_EXPECT] || vk_parse(k->val[K_EXPECT], &e) != 0) {
+        return VO_FAILED;
+    }
+    vcap = (vk_count_closed_form(until) + 1u) * (uint64_t)VK_MAX_REC;
+    if (vcap > (uint64_t)DS_VID_SINK_MAX_BYTES) {
+        return VO_FAILED;
+    }
+    err = boot_built_rom(e.rom, k->has[K_REQUEST] ? k->val[K_REQUEST] : "", &b, &ci);
+    if (err != NULL) {
+        return VO_FAILED;
+    }
+    vsk = (struct ds_vid_sink *)calloc(1u, sizeof *vsk);
+    vbuf = (uint8_t *)calloc((size_t)vcap, 1u);
+    if (vsk == NULL || vbuf == NULL) {
+        r = VO_FAILED;
+    } else {
+        vsk->bytes = vbuf;
+        vsk->capacity = (uint32_t)vcap;
+        memset(&rq, 0, sizeof rq);
+        memset(&res, 0, sizeof res);
+        rq.struct_size = (uint32_t)sizeof rq;
+        rq.until_mclk = until;
+        rq.stop = dsv1_done; /* the stop of the case run: the same run, so the same stream */
+        rq.vid = vsk;
+        if (ds_run((struct ds_instance *)(void *)b.mem, &rq, &res) == (uint32_t)DS_RUN_REASON_REFUSED || vk_u32(vsk->header + 4) != 0u) {
+            r = VO_FAILED;
+        } else {
+            count = (uint64_t)vk_u32(vsk->header);
+            vbytes = vk_u64(vsk->header + 16);
+            stream = vk_stream(vbuf, vbytes);
+            if (stream == NULL || vbytes > vcap) {
+                r = VO_FAILED;
+            } else {
+                FILE *fp = fopen(dpath, "wb");
+
+                if (fp == NULL || fwrite(stream, 1u, (size_t)(19u + vbytes), fp) != (size_t)(19u + vbytes) || fclose(fp) != 0 || vo_write_tsv(tpath, vbuf, vbytes, count, &rows) != 0) {
+                    r = VO_FAILED;
+                } else {
+                    vo_print(id, "dsvr", "records", count, stream, (size_t)(19u + vbytes));
+                    if (vo_print_tsv(id, tpath, rows) != 0) {
+                        r = VO_FAILED;
+                    }
+                }
+            }
+        }
+    }
+    free(stream);
+    free(vsk);
+    free(vbuf);
+    release_boot(&b);
+    return r;
+}
+
+int video_out_main(void)
+{
+    int r = vo_do(video_out_id);
+
+    if (r != VO_OK) {
+        emit_err("HARNESS --video-out refused: %s\n", vo_reason(r));
+        return 2;
+    }
+    return 0;
+}
+
+/* a file at path exists and can be opened for reading */
+static int vo_file_exists(const char *path)
+{
+    FILE *fp = fopen(path, "rb");
+
+    if (fp == NULL) {
+        return 0;
+    }
+    fclose(fp);
+    return 1;
+}
+
+/*
+ * kind video_out_rights: expect is a list of items separated by ';', each value at most 40 characters, at least one of each of the five kinds (the lists of trace_out_rights, cloned):
+ *   allow_fixture=KEY  the fixture key is permitted (authored and listed, or a synthetic recipe)      deny_fixture=KEY  it is not (an unlisted authored image, none, a path, a commercial name)
+ *   allow_case=ID      the request for the case passes every check that comes before a file is opened, and the paths are build/gate/video/ID.dsvr and .tsv with no further slash
+ *   deny_case=ID       the request is refused (a case whose fixture is not permitted, a case that is not a video case, or no such case) and no file appears        bad_id=ID  the id is not of the form [a-z0-9_]+ and is refused with no path built and no file at any naive join
+ * Nothing is written by this kind: the writing of an allowed request is the --video-out run of scripts/conformance-run, whose digest it recomputes with a host tool. E0: the rule is a literal one of this plan (T-04-17).
+ */
+void kind_video_out_rights(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    char list[PK_LIST_MAX];
+    char *rest = list;
+    char *item;
+    unsigned classes = 0u;
+    unsigned n = 0u;
+    char msg[160];
+
+    if (pk_copy_text(k->val[K_EXPECT], list, sizeof list) != 0) {
+        harness_error(c, "the video_out_rights expect list is too long");
+        return;
+    }
+    while ((item = pk_next_item(&rest, ';')) != NULL) {
+        char *eq = strchr(item, '=');
+        const char *v;
+        char dpath[128];
+        char tpath[128];
+
+        if (eq == NULL || strlen(eq + 1) > 40u) {
+            harness_error(c, "a video_out_rights item is KEY=VALUE with a value of at most 40 characters");
+            return;
+        }
+        *eq = '\0';
+        v = eq + 1;
+        n++;
+        if (strcmp(item, "allow_fixture") == 0) {
+            classes |= 1u;
+            snprintf(msg, sizeof msg, "the fixture key %s is refused but is authored and listed or a synthetic recipe", v);
+            check(c, output_fixture_permitted(v), msg);
+        } else if (strcmp(item, "deny_fixture") == 0) {
+            classes |= 2u;
+            snprintf(msg, sizeof msg, "the fixture key %s is permitted but is neither authored and listed nor a synthetic recipe", v);
+            check(c, !output_fixture_permitted(v), msg);
+        } else if (strcmp(item, "allow_case") == 0) {
+            const struct kase *kk = NULL;
+            uint64_t until = 0u;
+            int ok;
+
+            classes |= 4u;
+            snprintf(msg, sizeof msg, "the video request for case %s is refused before any file is opened", v);
+            check(c, vo_request(v, &kk, &until) == VO_OK, msg);
+            ok = vo_paths(v, dpath, tpath, sizeof dpath) == 0 && strncmp(dpath, VO_DIR, strlen(VO_DIR)) == 0 && strncmp(tpath, VO_DIR, strlen(VO_DIR)) == 0 && strchr(dpath + strlen(VO_DIR), '/') == NULL && strchr(tpath + strlen(VO_DIR), '/') == NULL
+                 && strstr(dpath, "..") == NULL && strstr(tpath, "..") == NULL;
+            snprintf(msg, sizeof msg, "the paths of case %s are not directly under build/gate/video/", v);
+            check(c, ok, msg);
+        } else if (strcmp(item, "deny_case") == 0) {
+            int before;
+            int r1;
+
+            classes |= 8u;
+            snprintf(dpath, sizeof dpath, VO_DIR "%s.dsvr", v);
+            snprintf(tpath, sizeof tpath, VO_DIR "%s.tsv", v);
+            before = vo_file_exists(dpath) || vo_file_exists(tpath); /* a file of an earlier explicit request (or of a case-folded name on a case-insensitive filesystem) may be there: the refusal must not create one */
+            r1 = vo_do(v);
+            snprintf(msg, sizeof msg, "the video request for case %s was not refused with the not-permitted, not-video or no-such-case reason", v);
+            check(c, r1 == VO_NOT_PERMITTED || r1 == VO_NOT_VIDEO || r1 == VO_NO_CASE, msg);
+            snprintf(msg, sizeof msg, "a refused video request for case %s left a file", v);
+            check(c, before || (!vo_file_exists(dpath) && !vo_file_exists(tpath)), msg);
+        } else if (strcmp(item, "bad_id") == 0) {
+            char dpath2[128];
+            int before;
+
+            classes |= 16u;
+            snprintf(dpath, sizeof dpath, VO_DIR "%s.dsvr", v);
+            snprintf(dpath2, sizeof dpath2, "%s.dsvr", v);
+            snprintf(tpath, sizeof tpath, VO_DIR "%s.tsv", v);
+            before = vo_file_exists(dpath) || vo_file_exists(dpath2) || vo_file_exists(tpath);
+            snprintf(msg, sizeof msg, "the id '%s' was accepted or a path was built for it", v);
+            check(c, !vo_id_valid(v) && vo_paths(v, dpath, tpath, sizeof dpath) != 0 && vo_do(v) == VO_BAD_ID, msg);
+            snprintf(dpath, sizeof dpath, VO_DIR "%s.dsvr", v);
+            snprintf(msg, sizeof msg, "a refused id '%s' left a file at a naive join of the id", v);
+            check(c, before || (!vo_file_exists(dpath) && !vo_file_exists(dpath2) && !vo_file_exists(tpath)), msg);
+        } else {
+            harness_error(c, "a video_out_rights item is allow_fixture, deny_fixture, allow_case, deny_case or bad_id");
+            return;
+        }
+    }
+    if (classes != 31u) {
+        harness_error(c, "a video_out_rights case needs at least one item of each of the five kinds");
+        return;
+    }
+    snprintf(got, gotcap, "items=%u", n);
 }

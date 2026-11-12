@@ -17,5 +17,5 @@ meaning = "64 seeded random partitions of three frames of fold stamps equal one 
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-VID-0004"]
 until_mclk = 4000000

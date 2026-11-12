@@ -8,9 +8,9 @@ status = "assumed"
 sources = ["FACT|H6-3|fCLOCK is 6fsc for CR contents 00h and 01h; the 1365-clock line itself is on no page held", "REPORT|pcetech.txt|1365 master clocks per line, a community figure", "CODE|MAME header and Geargrafx|1365 master clocks per line", "UNKNOWN|H6-6|the sync generator page is absent from the HuC6260 copy"]
 evidence = []
 disagreement = "two emulators change the dot clock inside a line (C11) while this model applies a change from the next line; the power-on phase of the raster is unknown and is taken as 0; the manual pages held give fCLOCK = 6fsc and no line length"
-pinning_test = "PENDING:4"
+pinning_test = "TEST:vdc_fold"
 updated = "2026-11-11"
-assumption = "line_mclk = 1365 and raster_phase_mclk = 0 are named constants labelled assumed; 1365 = 6 x 227.5 uses the NTSC line length of 227.5 fsc, which no page held states. The pin is a later Phase 4 plan."
+assumption = "line_mclk = 1365 and raster_phase_mclk = 0 are named constants labelled assumed; 1365 = 6 x 227.5 uses the NTSC line length of 227.5 fsc, which no page held states. The pin is the case vdc_fold (plan 04-05: composable fold, the write-at-the-event tie rule, the closed-form line count; repeatability only, status stays assumed)."
 revisit_phase = 4
 withheld = ["raster-accurate", "dot-accurate", "any sub-line timing claim", "any absolute line or phase claim"]
 origin = "04-CONTEXT D-136"

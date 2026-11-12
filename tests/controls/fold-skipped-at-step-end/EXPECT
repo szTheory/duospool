@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Case ids that must come out guest_failure on the toy, one per line.
+# This toy mutates src/core/cpu.c and lists no literal-role case on purpose (04-VALIDATION.md, amendment A5): video_vce_pal was run under the toy and is NOT guest_failure (every one of its literal rows still passes; the case ends harness_failure because no record lies a whole line after the last palette write when the closing fold is skipped), so no literal group fails reliably under it.
+# Its liveness rests on the equivalence and composition cases below, which turn guest_failure on the toy: the streams of the chunk schedules differ from the run and the line count is not the closed form, the next-event invariant fails after a step, and the sink matrix, the restore chain and the sink-off comparison see the missing lines.
+chunk_equiv_video_vce_pal
+vdc_fold
+observer_vce_pal
+vid_noninterference
+snapshot_restore_video

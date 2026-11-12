@@ -13,6 +13,7 @@
 #        conformance-run filter-cases CASES_TSV IDS_FILE OUT_TSV
 #        conformance-run snapshot-host-hash EVIDENCE_DIR
 #        conformance-run trace-out-check BD
+#        conformance-run video-out-check BD
 #        conformance-run supervise --ids FILE --out FILE [--wall N] -- CMD ARGS...
 # run mode (D-60, D-85): everything lives under build/NAME (default gate, the build directory of the preset NAME). The steps are
 #   (the runner also gets --records DIR/records, made empty on every run, and --golden-dir tests/conformance/golden: see plan 14, D-84b, D-86; and --inputs DIR/inputs.tsv, plan 03-27)
@@ -79,7 +80,7 @@ LC_ALL=C; export LC_ALL
 here=$(cd "$(dirname "$0")" && pwd)
 
 usage() {
-  echo "usage: conformance-run run [--preset NAME] | sanitize | fixtures [--only NAME] | control DIR | control-signal DIR SIG | filter-cases CASES_TSV IDS_FILE OUT_TSV | snapshot-host-hash EVIDENCE_DIR | trace-out-check BD | supervise --ids FILE --out FILE [--wall N] -- CMD ARGS..." >&2
+  echo "usage: conformance-run run [--preset NAME] | sanitize | fixtures [--only NAME] | control DIR | control-signal DIR SIG | filter-cases CASES_TSV IDS_FILE OUT_TSV | snapshot-host-hash EVIDENCE_DIR | trace-out-check BD | video-out-check BD | supervise --ids FILE --out FILE [--wall N] -- CMD ARGS..." >&2
   exit 2
 }
 
@@ -204,7 +205,7 @@ run_mode() {
   mkdir -p "$bd" || { echo "HARNESS_ERROR cannot create $bd" >&2; exit 2; }
   rm -rf "$bd/exclude-ids.txt" "$bd/cases.tsv" "$bd/ids.txt" "$bd/results.txt" "$bd/evidence" "$bd/records" "$bd/r1.tsv" "$bd/rules-fields.txt" "$bd/oracle.tsv" "$bd/oracle.err" "$bd/bankclass.tsv" "$bd/bankclass.err" "$bd/inputs.tsv" "$bd/inputs.err"
   # the traces of an earlier explicit --trace-out run (plan 03-19; D-120): the cases write none, and trace_out_check below requires the directory to be absent until it makes it itself (the gate mode only: the sanitize mode makes none)
-  if [ "$mode" != sanitize ]; then rm -rf build/gate/traces; fi
+  if [ "$mode" != sanitize ]; then rm -rf build/gate/traces build/gate/video; fi # the video dir of an earlier explicit --video-out run is removed the same way (plan 04-05)
 
   flatten_cases "$bd"
   flatten_inputs "$bd"
@@ -313,6 +314,7 @@ run_mode() {
     exit 0
   fi
   trace_out_check "$bd"
+  video_out_check "$bd"
   controls_mode "$preset" "$bd"
   echo "STATUS conformance ok n=$n"
   exit 0
@@ -369,6 +371,74 @@ trace_out_check() {
     fi
   done
   echo "TRACE_OUT ds_proto insn dev ok"
+}
+
+# video_out_check BD (plan 04-05; D-162, D-163, T-04-17, T-04-19): the runner writes a video stream only on an explicit --video-out. The cases that just ran must have left no build/gate/video; then the explicit request for the authored video case video_vce_pal must print exactly two lines (the .dsvr stream: record count, size, sha256; the .tsv:
+# rows, size, sha256), the two files must exist with the size and the SHA-256 that a host tool measures (the printed values are not trusted), the stream must hold at least one record and its host SHA-256 must equal the video_sha256 the case run printed in its evidence file (the external recomputation: the digest of the stream is not
+# taken from the core's own hash alone), the .tsv must have one row per record after its header row, and five refused requests (an id with a slash and dot-dot, an upper-case id, a case whose fixture is none, a case that is not a video case, no such case) must exit 2 and add no file. Any fault is exit 1 with a VIDEO_OUT_ code, a missing tool exit 2.
+video_out_check() {
+  vo_bd=$1
+  vo_dir=build/gate/video
+  vo_id=video_vce_pal
+  if [ -e "$vo_dir" ]; then
+    echo "VIDEO_OUT_UNREQUESTED the cases created $vo_dir without --video-out"
+    exit 1
+  fi
+  mkdir -p "$vo_dir" || { echo "HARNESS_ERROR cannot create $vo_dir" >&2; exit 2; }
+  pick_sha_tool
+  if "$vo_bd/ds_runner" --cases "$vo_bd/cases.tsv" --video-out "$vo_id" > "$vo_bd/video-out.txt" 2> "$vo_bd/video-out.err"; then vo_r=0; else vo_r=$?; fi
+  if [ "$vo_r" -ne 0 ]; then
+    cat "$vo_bd/video-out.err"
+    echo "VIDEO_OUT_FAILED the explicit --video-out $vo_id exited $vo_r"
+    exit 1
+  fi
+  if [ "$(wc -l < "$vo_bd/video-out.txt" | tr -d ' ')" -ne 2 ]; then
+    echo "VIDEO_OUT_STDOUT the video request printed other than its two summary lines"
+    exit 1
+  fi
+  vo_line=$(grep "^VIDEO $vo_id dsvr records=" "$vo_bd/video-out.txt" || true)
+  vo_recs=$(printf '%s\n' "$vo_line" | sed -n 's/^VIDEO [a-z0-9_]* dsvr records=\([0-9][0-9]*\) bytes=[0-9][0-9]* sha256=[0-9a-f]\{64\}$/\1/p')
+  vo_bytes=$(printf '%s\n' "$vo_line" | sed -n 's/^.* bytes=\([0-9][0-9]*\) sha256=.*$/\1/p')
+  vo_sha=$(printf '%s\n' "$vo_line" | sed -n 's/^.* sha256=\([0-9a-f]\{64\}\)$/\1/p')
+  vo_tline=$(grep "^VIDEO $vo_id tsv rows=" "$vo_bd/video-out.txt" || true)
+  vo_rows=$(printf '%s\n' "$vo_tline" | sed -n 's/^VIDEO [a-z0-9_]* tsv rows=\([0-9][0-9]*\) bytes=[0-9][0-9]* sha256=[0-9a-f]\{64\}$/\1/p')
+  vo_tbytes=$(printf '%s\n' "$vo_tline" | sed -n 's/^.* bytes=\([0-9][0-9]*\) sha256=.*$/\1/p')
+  vo_tsha=$(printf '%s\n' "$vo_tline" | sed -n 's/^.* sha256=\([0-9a-f]\{64\}\)$/\1/p')
+  if [ -z "$vo_recs" ] || [ -z "$vo_bytes" ] || [ -z "$vo_sha" ] || [ -z "$vo_rows" ] || [ -z "$vo_tbytes" ] || [ -z "$vo_tsha" ] || [ ! -f "$vo_dir/$vo_id.dsvr" ] || [ ! -f "$vo_dir/$vo_id.tsv" ]; then
+    echo "VIDEO_OUT_SHAPE a summary line or a file of $vo_id is missing or malformed"
+    exit 1
+  fi
+  # a stream of a program that ran holds at least one record: a writer that wrote nothing (no sink attached, no step run) satisfies size 19 and the hash of the bare header, so it is refused here
+  if [ "$vo_recs" -lt 1 ]; then
+    echo "VIDEO_OUT_EMPTY the video stream of $vo_id holds no record: a writer that records nothing is dead, not a pass"
+    exit 1
+  fi
+  vo_host_bytes=$(wc -c < "$vo_dir/$vo_id.dsvr" | tr -d ' ')
+  vo_host_sha=$($sha_tool "$vo_dir/$vo_id.dsvr" | awk '{ print $1 }')
+  vo_host_tbytes=$(wc -c < "$vo_dir/$vo_id.tsv" | tr -d ' ')
+  vo_host_tsha=$($sha_tool "$vo_dir/$vo_id.tsv" | awk '{ print $1 }')
+  if [ "$vo_host_bytes" != "$vo_bytes" ] || [ "$vo_host_sha" != "$vo_sha" ] || [ "$vo_bytes" -lt $(( 19 + vo_recs * 64 )) ] || [ "$vo_host_tbytes" != "$vo_tbytes" ] || [ "$vo_host_tsha" != "$vo_tsha" ]; then
+    echo "VIDEO_OUT_MISMATCH the printed size or sha256 of $vo_id.dsvr or $vo_id.tsv differs from the host tools, or the stream is shorter than 19 + 64 bytes per record"
+    exit 1
+  fi
+  if [ "$vo_rows" != "$vo_recs" ] || [ "$(wc -l < "$vo_dir/$vo_id.tsv" | tr -d ' ')" -ne $(( vo_recs + 1 )) ]; then
+    echo "VIDEO_OUT_ROWS the tsv of $vo_id does not hold one row per record after its header row"
+    exit 1
+  fi
+  # the external recomputation (T-04-19): the SHA-256 the host tool computes over the written stream file equals the video_sha256 the video case printed in its evidence file
+  vo_case_sha=$(sed -n 's/^video_sha256=\([0-9a-f]\{64\}\) .*$/\1/p' "$vo_bd/evidence/$vo_id.txt" | head -n 1)
+  if [ -z "$vo_case_sha" ] || [ "$vo_case_sha" != "$vo_host_sha" ]; then
+    echo "VIDEO_OUT_DIGEST the host SHA-256 of $vo_id.dsvr is not the video_sha256 of the evidence file of the case $vo_id"
+    exit 1
+  fi
+  for vo_bad in '../x' 'Video_vce_pal' run_refuse_memory_invalid vce_pal no_such_case; do
+    if "$vo_bd/ds_runner" --cases "$vo_bd/cases.tsv" --video-out "$vo_bad" > /dev/null 2> /dev/null; then vo_r=0; else vo_r=$?; fi
+    if [ "$vo_r" -ne 2 ] || [ "$(ls "$vo_dir" | wc -l | tr -d ' ')" -ne 2 ]; then
+      echo "VIDEO_OUT_REFUSAL a refused request '$vo_bad' did not exit 2 or left a file"
+      exit 1
+    fi
+  done
+  echo "VIDEO_OUT $vo_id dsvr tsv ok"
 }
 
 # sanitize_compiler BD (D-55): choose the compiler of the sanitize preset and export it as CC. Darwin: /usr/bin/clang, because Homebrew
@@ -839,6 +909,7 @@ case $1 in
   control-signal) shift; [ $# -eq 2 ] || usage; control_mode "$1" "$2" ;;
   filter-cases) shift; [ $# -eq 3 ] || usage; filter_cases "$1" "$2" "$3"; exit 0 ;;
   snapshot-host-hash) shift; [ $# -eq 1 ] || usage; snapshot_host_hash "$1"; exit 0 ;;
+  video-out-check) shift; [ $# -eq 1 ] || usage; video_out_check "$1"; exit 0 ;; # the entry of the video --video-out step (plan 04-05), run from the repository root against a built gate directory
   trace-out-check) shift; [ $# -eq 1 ] || usage; trace_out_check "$1"; exit 0 ;; # the entry the selftest trace-out-empty drives with a shim runner in a scratch directory
   supervise) shift ;;
   *) usage ;;

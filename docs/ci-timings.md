@@ -536,3 +536,97 @@ README claim-word rules and their controls). What only the owner can do or confi
 6. **`CLAUDE.md` Technology Stack section** still reads as an unadopted Rust proposal ("research proposal, NOT a decision") while decision 0001
    governs the language and build system. Recorded only; it was not edited.
 7. **Optional WLA-DX:** whether to record a `BRK` exception so the optional cross-check can print `equal` (see above).
+
+## Phase 4 measurement spike (plan 04-05; a local run, not a CI run)
+
+CI for Phase 4: unverified, pending owner push authorisation (D-64). Nothing of Phase 4 has run on a GitHub runner and this section makes no CI claim. It is the one measurement D-176 asks plan 04-05 for: the cost of the gate after the first video slice (plans 04-01 to 04-04, 04-18 and 04-19, and the tasks of 04-05), the quiet measure that research F-8 defines for the cut-line trigger, and the
+comparison with the D-176 estimates.
+
+Measured on 2026-11-12 on the owner's development machine (Apple M5 Pro, 18 cores, macOS 26.6.2, BWK awk 20200816, Apple clang 21, cmake 4.4.3), on commit `33bb17e` plus the uncommitted files of plan 04-05 Task 3 (the two toys, the `--video-out` rule and its case, the ledger pin), warm tree (`build/` present), with `/usr/bin/time -l sh scripts/check --timing`, once.
+The machine is shared with unrelated jobs and was not quiet: load average 11.2 9.0 8.1 at the start and 14.4 10.4 8.8 at the end. All 56 stages passed.
+
+| Measure | This run | Phase 3 run A (W8 section) | D-176 estimate |
+|---------|----------|----------------------------|----------------|
+| Wall time of `sh scripts/check --timing` | 224 s | 193 s | +35 s central (+20 to +60) over the Phase 3 gate at the end of Phase 4 |
+| User CPU (`time -l`), the quiet measure of F-8 | 178.6 s (system 39.6 s) | 129 s (system 56 s) | not estimated; the cut line of D-180 reads "warm quiet gate over 150 s" |
+| `conformance` stage | 45 s | 31 s (33 s in the CI row) | about 47 s central, 60 s high, staging trigger 60 s |
+| `sanitizers` stage | 88 s | 52 s | not estimated |
+| `determinism` stage | 36 s | 30 s | not estimated |
+
+Verdicts, recorded and never failed (D-60, D-63): the warm target of 120 s (D-132) is missed again (it was missed at Phase 3 close, and even the user CPU of run A was above it). By the F-8 measure the cut-line trigger, user CPU over 150 s, is **over** at 178.6 s: +49.6 s of user CPU and +31 s of wall time since the Phase 3 baseline, with six of the 19 plans of Phase 4 done and the seventh in progress, so the D-176 central
+estimate of +35 s wall for the whole phase is already used up in user CPU terms. The growth is mostly two stages: `sanitizers` (+36 s: the conformance cases run again under ASan and UBSan) and `conformance` (+14 s), then `determinism` (+6 s); every other stage is 5 s or less in both runs. The machine was loaded, so a quieter run would read lower in wall time, but the user CPU, which the loaded
+machine inflates much less, is the number the trigger uses, and one run is all this spike makes. The conformance stage, 45 s, is under the 60 s staging trigger of D-176. The decision on the cut line is plan 04-11's (the check point), not this plan's.
+
+Seconds per stage (whole seconds from the gate's own clock, so 0 means under a second; run A is the macOS run A of the W8 table above, same 56 stage names):
+
+| # | Stage | Run A s | This run s |
+|---|-------|---------|------------|
+| 1 | preflight | 0 | 1 |
+| 2 | ledger-entries | 1 | 0 |
+| 3 | ledger-negatives | 2 | 1 |
+| 4 | ledger-samples | 1 | 1 |
+| 5 | decision-records | 0 | 0 |
+| 6 | decision-negatives | 1 | 1 |
+| 7 | profile-records | 1 | 0 |
+| 8 | profile-negatives | 1 | 1 |
+| 9 | filename-controls | 1 | 0 |
+| 10 | empty-expect-controls | 0 | 0 |
+| 11 | provenance | 0 | 1 |
+| 12 | provenance-negatives | 2 | 0 |
+| 13 | licences | 3 | 2 |
+| 14 | licence-negatives | 1 | 1 |
+| 15 | protocol-order | 0 | 0 |
+| 16 | protocol-negatives | 6 | 4 |
+| 17 | score-controls | 1 | 0 |
+| 18 | results | 0 | 0 |
+| 19 | results-negatives | 0 | 0 |
+| 20 | ingest-controls | 2 | 1 |
+| 21 | flatten-controls | 1 | 1 |
+| 22 | cancel-controls | 1 | 1 |
+| 23 | outcome-controls | 1 | 0 |
+| 24 | rights-tree | 2 | 2 |
+| 25 | rights-negatives | 7 | 4 |
+| 26 | audit-synthetic | 5 | 4 |
+| 27 | inventory | 5 | 4 |
+| 28 | inventory-negatives | 1 | 1 |
+| 29 | fixture-lint | 0 | 0 |
+| 30 | fixture-lint-negatives | 1 | 1 |
+| 31 | input-check | 0 | 1 |
+| 32 | input-check-negatives | 2 | 1 |
+| 33 | xasm | 0 | 0 |
+| 34 | opcode-oracle | 0 | 0 |
+| 35 | opcode-oracle-negatives | 1 | 0 |
+| 36 | xasm-negatives | 0 | 1 |
+| 37 | workflow | 0 | 0 |
+| 38 | workflow-negatives | 1 | 1 |
+| 39 | docs-claims | 0 | 0 |
+| 40 | docs-claims-negatives | 1 | 0 |
+| 41 | ci-timings-controls | 0 | 1 |
+| 42 | fixture-build | 1 | 1 |
+| 43 | build | 0 | 0 |
+| 44 | outcome-sync | 0 | 0 |
+| 45 | conformance | 31 | 45 |
+| 46 | sanitizers | 52 | 88 |
+| 47 | excluded-mode-controls | 1 | 0 |
+| 48 | record-lint | 0 | 0 |
+| 49 | record-lint-negatives | 1 | 1 |
+| 50 | core-boundary | 3 | 2 |
+| 51 | core-boundary-negatives | 4 | 2 |
+| 52 | determinism | 30 | 36 |
+| 53 | determinism-negatives | 0 | 0 |
+| 54 | fixtures | 6 | 5 |
+| 55 | fixture-negatives | 1 | 1 |
+| 56 | named-controls | 10 | 6 |
+| | sum of stage seconds | 192 | 224 |
+
+What this plan's own cases cost, measured one at a time with `ds_runner --only ID` (macOS gate preset, then the sanitize preset): `vdc_fold` 0.33 s and 1.2 s, `observer_vce_pal` 0.74 s and 2.6 s (three policies, three modes, five sink configurations), `vid_noninterference` 0.17 s and 0.6 s, `snapshot_restore_video` 2.2 s and 5.4 s, `chunk_equiv_video_vce_pal` 0.10 s and 0.38 s,
+`video_out_rights` and the `--video-out` step well under a second; about 3.6 s and 10 s together. The two new toys each recompile one core unit and run their EXPECT cases (five and three cases), which is inside the `conformance` stage.
+
+### Efficiency review of the spike (decisions)
+
+- **`snapshot_restore_video` is the largest new case and was cut once already.** A restore costs about 0.7 ms (a 92 KB snapshot, the poison, the restore and the member compare), so restoring at every stop of the 1364 and 1366 schedules over the whole 4,000,000-clock run was 20,352 restores and 83 s. Two changes made it 2.2 s: the restored target is now the instance the chain left
+  one restore ago (no boot per restore), and the case runs the first 600,000 clocks (about 440 lines, which hold both control register writes and the start of the palette writer), where every stop of the two line-sized schedules is still restored and the 7-clock schedule is restored at every 251st stop and at every stop that falls on a multiple of 1365 (75 stops over the three policies). Not
+  reduced further: it is 5 percent of the `conformance` stage. The first lever if the stage nears 60 s is `until_mclk` 600,000 to 300,000 on this case.
+- **The sanitize preset is now the largest stage (88 s, 39 percent of the gate wall time).** It repeats the conformance cases under ASan and UBSan; the five new cases cost about 10 s of it. Lever, if the CI job nears 600 s: run the video fixtures under the sanitizers with two policies, the second D-176 lever. Not applied: one local run is not a CI measurement, and no stage was weakened.
+- **D-176 levers in order, not applied:** (1) link the toy executables against a shared archive of the runner objects and recompile only the mutated core unit (CMake only); (2) run video fixtures under two policies (zero and one v3 seed). The conformance stage is under its 60 s trigger, and the CI job is unmeasured for Phase 4, so neither is applied.
+- **Nothing was weakened.** No stage, control or selftest that existed before this plan was skipped, shortened or removed to save time. The one run length that was cut (`snapshot_restore_video`, above) belongs to a case this plan added, and the cut case keeps every stop of its two line-sized schedules.

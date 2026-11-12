@@ -230,6 +230,11 @@ void kind_spin(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 /* the guest kind (guestkinds.c since plan 03-04): boots a built authored ROM, runs it with ds_run and judges its DSV1 verdict block from raw RAM */
 void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_video(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* videokinds.c (plan 04-04): a guest ROM run with a vid and a dev sink, its DSV1 verdict and the raw video records judged by literal rows, the stream digest beside them (E0) */
+/* plan 04-05 (D-162, D-163, T-04-17, T-04-19): the --video-out ID option (videokinds.c), the same shape as --trace-out: video_out_id is its value (NULL when not given), videokinds_arg parses it, video_out_main runs the request (exit status 0, or 2 for a refusal or a fault) and kind_video_out_rights judges the rule without writing a file */
+extern const char *video_out_id;
+int videokinds_arg(int argc, char **argv, int *a);
+int video_out_main(void);
+void kind_video_out_rights(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 /* the model parameter kinds (guestkinds.c, plan 03-17): ds_model_set refusals with the instance unchanged, and the deferred coverage of model_refusals.def and the rows of model_params.def */
 void kind_model_refuse(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_model_refusal_coverage(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
@@ -347,6 +352,7 @@ void kind_observer(const struct kase *k, struct ctx *c, char *got, size_t gotcap
 void kind_dev_log(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_vid_chan_append(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_trace_out_rights(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+int output_fixture_permitted(const char *fixture); /* 1 for an authored image listed in build/gate/fixtures-authored.used or a synthetic recipe: the rights rule of --trace-out and --video-out (plan 04-05) */
 /* the stop callback that holds once the guest has set the DSV1 done state with its complement (a speed aid only, D-95: the deadline stays the hard bound) */
 int dsv1_done(const struct ds_instance *inst, void *ctx);
 
