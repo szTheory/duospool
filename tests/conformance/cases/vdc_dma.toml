@@ -16,6 +16,6 @@ meaning = "The authored vdc_dma fixture drives the VRAM-to-VRAM transfer: 64 wor
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-VID-0014"]
 until_mclk = 2500000
 checks = 24

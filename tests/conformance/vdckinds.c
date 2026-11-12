@@ -2176,3 +2176,233 @@ void kind_vdc_advance_pure(const struct kase *k, struct ctx *c, char *got, size_
     check(c, st.cancels >= (unsigned)(scen / 16u) && st.completes >= (unsigned)(scen / 4u) && st.pendings >= (unsigned)(scen / 16u), "the scenarios crossed too few cancels, completions or pending starts: the case could pass without the display-start rules");
     snprintf(got, gotcap, "n=%u smp=%u cancel=%u done=%u pend=%u", st.scenarios, st.samples, st.cancels, st.completes, st.pendings);
 }
+
+/* ---- vdc_satb_data (plan 04-10; D-150, D-175 (c), T-04-36; E0) ---- */
+
+/*
+ * vdc_satb_data: the SATB words the VRAM-to-SATB copy stored, read from the instance bytes (D-175 (c)). The SATB is not CPU-readable (MAN H7-20), so the guest judges only the DS flag and this kind reads the 512 SATB bytes: expect = rom=NAME;satb=W0:STEP:COUNT, the words (W0 + STEP * i) & $FFFF for i below COUNT (256), the multiplication the assembler of the
+ * fixture forms its pattern with (restated from fixtures/src/vdc_satb.s; the guest's own check is the DS flag). The fixture runs to the end of its DSV1 verdict under each of the three default power-on policies and every word, assembled here byte by byte (word i = byte 2i | byte 2i+1 << 8, no accessor and no port path), must equal the pattern: a copy that did not run, ran from
+ * the wrong address, stored the bytes swapped or from the first pattern instead of the rewritten source fails. Evidence tier E0; no accuracy or hardware claim.
+ */
+void kind_vdc_satb_data(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    char rom[48];
+    unsigned long long w0 = 0u;
+    unsigned long long step = 0u;
+    unsigned long long count = 0u;
+    uint64_t until = 0u;
+    unsigned p;
+    unsigned words = 0u;
+    const char *e = k->has[K_EXPECT] ? k->val[K_EXPECT] : "";
+
+    if (!k->has[K_EXPECT] || sscanf(e, "rom=%47[a-z0-9-];satb=%llu:%llu:%llu", rom, &w0, &step, &count) != 4 || w0 > 0xFFFFu || step > 0xFFFFu || count != 256u || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until < 1000u) {
+        harness_error(c, "a vdc_satb_data case needs until_mclk and expect = rom=NAME;satb=W0:STEP:256 (decimal numbers: the first word, the step and the word count)");
+        return;
+    }
+    for (p = 0u; p < (unsigned)VD_POLICIES && !c->harness; p++) {
+        char request[256];
+        struct booted b;
+        const struct ds_instance *ci = NULL;
+        struct ds_run_request rq;
+        struct ds_run_result res;
+        const char *err;
+        unsigned j;
+
+        if (vd_policy_request(p, k->has[K_REQUEST] ? k->val[K_REQUEST] : "", request, sizeof request) != 0) {
+            harness_error(c, "the request of a vdc_satb_data case does not fit with a policy fragment");
+            return;
+        }
+        err = boot_built_rom(rom, request, &b, &ci);
+        if (err != NULL) {
+            harness_error(c, err);
+            return;
+        }
+        memset(&rq, 0, sizeof rq);
+        memset(&res, 0, sizeof res);
+        rq.struct_size = (uint32_t)sizeof rq;
+        rq.until_mclk = until;
+        rq.stop = dsv1_done;
+        if (ds_run((struct ds_instance *)(void *)b.mem, &rq, &res) == (uint32_t)DS_RUN_REASON_REFUSED) {
+            release_boot(&b);
+            harness_error(c, "ds_run refused the request of a vdc_satb_data case");
+            return;
+        }
+        note_run(c, res.machine_time, res.reason);
+        if (!dsv1_done(ci, NULL)) {
+            release_boot(&b);
+            harness_error(c, "the guest of a vdc_satb_data case did not reach the end of its DSV1 verdict before until_mclk: its SATB is not final");
+            return;
+        }
+        for (j = 0u; j < (unsigned)count; j++) {
+            uint32_t want = (uint32_t)((w0 + step * (unsigned long long)j) & 0xFFFFu);
+            uint32_t have = (uint32_t)ci->vdc_satb[2u * j] | ((uint32_t)ci->vdc_satb[2u * j + 1u] << 8u);
+            char msg[200];
+
+            snprintf(msg, sizeof msg, "policy %s: SATB word %u holds $%04X, the pattern has $%04X", vd_policy_name(p), j, (unsigned)have, (unsigned)want);
+            check(c, have == want, msg);
+            words++;
+        }
+        release_boot(&b);
+    }
+    snprintf(got, gotcap, "words=%u policies=%u", words, (unsigned)VD_POLICIES);
+}
+
+/* ---- vdc_snapshot_mid_dma (plan 04-10; D-151, D-150, D-166, D-175; E0) ---- */
+
+/*
+ * vdc_snapshot_mid_dma: restores taken in the middle of a VRAM-to-VRAM transfer (forward and reverse), in the wait for DS after a SATB copy, and between the DVSSR high byte write and the VBlank that carries it out continue to the same end as the uninterrupted run. expect = stops=ROM:KIND,ROM:KIND,... with the KINDs fwd (a transfer
+ * running with 8 to 40 words done and DCR bits 2 and 3 clear), rev (a transfer running with 1 to 3 words done and DCR bit 2 or 3 set), ds (a SATB copy done and DS not yet raised) and arm (the DVSSR high byte written, the copy not yet made). Each stop is chosen by machine state, not by time. For each stop the machine is run to it under a seeded-prng-v3 request, snapshotted,
+ * restored into a twin booted under another seed and poisoned first, the restored instance must equal the source in every restorable member (VRAM and SATB among them), and the target run to the deadline must equal the uninterrupted run in machine time, steps, verdict RAM, digest and every member (D-166 pass 1 validation is what this relies on: dma_done, the word time, the time windows).
+ */
+struct sm_stop {
+    char rom[48];
+    char kind[8];
+};
+
+static int sm_stop_cb(const struct ds_instance *inst, void *ctx)
+{
+    const struct sm_stop *sp = (const struct sm_stop *)ctx;
+    uint32_t dcr = (uint32_t)inst->vdc_reg[15];
+
+    if (strcmp(sp->kind, "fwd") == 0) {
+        return inst->dma_state == 2u && (dcr & 0x0Cu) == 0u && inst->dma_done >= 8u && inst->dma_done <= 40u;
+    }
+    if (strcmp(sp->kind, "rev") == 0) {
+        return inst->dma_state == 2u && (dcr & 0x0Cu) != 0u && inst->dma_done >= 1u && inst->dma_done <= 3u;
+    }
+    if (strcmp(sp->kind, "ds") == 0) {
+        return inst->satb_done_valid == 1u;
+    }
+    return inst->satb_pending == 1u;
+}
+
+static int sm_parse(const char *text, struct sm_stop *out, unsigned cap, unsigned *n)
+{
+    char list[PK_LIST_MAX];
+    char *rest = list;
+    char *item;
+
+    *n = 0u;
+    if (pk_copy_text(text, list, sizeof list) != 0 || strncmp(list, "stops=", 6u) != 0) {
+        return -1;
+    }
+    rest = list + 6;
+    while ((item = pk_next_item(&rest, ',')) != NULL) {
+        char *colon = strchr(item, ':');
+
+        if (colon == NULL || *n >= cap || (size_t)(colon - item) >= sizeof out[0].rom || strlen(colon + 1) >= sizeof out[0].kind || strspn(item, "abcdefghijklmnopqrstuvwxyz0123456789-:") != strlen(item)) {
+            return -1;
+        }
+        *colon = '\0';
+        memcpy(out[*n].rom, item, strlen(item) + 1u);
+        memcpy(out[*n].kind, colon + 1, strlen(colon + 1) + 1u);
+        if (strcmp(out[*n].kind, "fwd") != 0 && strcmp(out[*n].kind, "rev") != 0 && strcmp(out[*n].kind, "ds") != 0 && strcmp(out[*n].kind, "arm") != 0) {
+            return -1;
+        }
+        (*n)++;
+    }
+    return *n > 0u ? 0 : -1;
+}
+
+void kind_vdc_snapshot_mid_dma(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    static const char *const req_src = "bind.powerup_policy=seeded-prng-v3;seed=5";
+    static const char *const req_twin = "bind.powerup_policy=seeded-prng-v3;seed=6";
+    struct sm_stop stops[8];
+    unsigned n = 0u;
+    unsigned i;
+    unsigned restored = 0u;
+    uint64_t until = 0u;
+    uint8_t *snap;
+
+    if (!k->has[K_EXPECT] || sm_parse(k->val[K_EXPECT], stops, 8u, &n) != 0 || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until < 1000u) {
+        harness_error(c, "a vdc_snapshot_mid_dma case needs until_mclk and expect = stops=ROM:KIND,... with KIND fwd, rev, ds or arm (at most 8)");
+        return;
+    }
+    snap = (uint8_t *)malloc(ds_snapshot_size());
+    if (snap == NULL) {
+        harness_error(c, "out of memory for the snapshot of the vdc_snapshot_mid_dma stops");
+        return;
+    }
+    for (i = 0u; i < n && !c->harness; i++) {
+        struct booted br;
+        struct booted bs;
+        struct booted bt;
+        const struct ds_instance *ref = NULL;
+        const struct ds_instance *cs = NULL;
+        const struct ds_instance *ct = NULL;
+        struct ds_run_request rq;
+        struct ds_run_result res;
+        uint64_t ref_steps;
+        uint64_t steps1;
+        uint8_t ref_digest[DS_DIGEST_BYTES];
+        uint8_t dig[DS_DIGEST_BYTES];
+        const char *err;
+        const char *diff;
+        char msg[240];
+
+        err = boot_built_rom(stops[i].rom, req_src, &br, &ref);
+        if (err != NULL) {
+            harness_error(c, err);
+            break;
+        }
+        memset(&rq, 0, sizeof rq);
+        memset(&res, 0, sizeof res);
+        rq.struct_size = (uint32_t)sizeof rq;
+        rq.until_mclk = until;
+        snprintf(msg, sizeof msg, "stop %u (%s %s): the uninterrupted run did not end on its deadline", i, stops[i].rom, stops[i].kind);
+        check(c, ds_run((struct ds_instance *)(void *)br.mem, &rq, &res) == (uint32_t)DS_RUN_REASON_UNTIL, msg);
+        ref_steps = res.steps;
+        check(c, ds_digest(ref, ref_digest) == 0u, "the digest of an uninterrupted run was refused");
+        err = boot_built_rom(stops[i].rom, req_src, &bs, &cs);
+        if (err == NULL) {
+            err = boot_built_rom(stops[i].rom, req_twin, &bt, &ct);
+            if (err != NULL) {
+                release_boot(&bs);
+            }
+        }
+        if (err != NULL) {
+            release_boot(&br);
+            harness_error(c, err);
+            break;
+        }
+        memset(&rq, 0, sizeof rq);
+        memset(&res, 0, sizeof res);
+        rq.struct_size = (uint32_t)sizeof rq;
+        rq.until_mclk = until;
+        rq.stop = sm_stop_cb;
+        rq.stop_ctx = &stops[i];
+        snprintf(msg, sizeof msg, "stop %u (%s %s): the run did not stop at the machine state the stop names", i, stops[i].rom, stops[i].kind);
+        check(c, ds_run((struct ds_instance *)(void *)bs.mem, &rq, &res) == (uint32_t)DS_RUN_REASON_CALLBACK, msg);
+        steps1 = res.steps;
+        if (!c->failed) {
+            snprintf(msg, sizeof msg, "stop %u (%s %s): ds_snapshot of the source was refused", i, stops[i].rom, stops[i].kind);
+            check(c, ds_snapshot((struct ds_instance *)(void *)bs.mem, snap, ds_snapshot_size(), NULL) == (uint32_t)DS_SNAPREF_NONE, msg);
+            snap_poison((struct ds_instance *)(void *)bt.mem, 0xA5u);
+            snprintf(msg, sizeof msg, "stop %u (%s %s): ds_restore refused the snapshot of a machine in the state the stop names", i, stops[i].rom, stops[i].kind);
+            check(c, ds_restore((struct ds_instance *)(void *)bt.mem, snap, ds_snapshot_size()) == (uint32_t)DS_SNAPREF_NONE, msg);
+            diff = snap_first_diff(ct, cs);
+            snprintf(msg, sizeof msg, "stop %u (%s %s): the restored instance differs from the source in the member %s", i, stops[i].rom, stops[i].kind, diff != NULL ? diff : "-");
+            check(c, diff == NULL, msg);
+            memset(&rq, 0, sizeof rq);
+            memset(&res, 0, sizeof res);
+            rq.struct_size = (uint32_t)sizeof rq;
+            rq.until_mclk = until;
+            snprintf(msg, sizeof msg, "stop %u (%s %s): the restored target did not run on to the deadline", i, stops[i].rom, stops[i].kind);
+            check(c, ds_run((struct ds_instance *)(void *)bt.mem, &rq, &res) == (uint32_t)DS_RUN_REASON_UNTIL, msg);
+            snprintf(msg, sizeof msg, "stop %u (%s %s): the machine time or the step count of the restored chain differs from the uninterrupted run", i, stops[i].rom, stops[i].kind);
+            check(c, ct->machine_time == ref->machine_time && steps1 + res.steps == ref_steps, msg);
+            snprintf(msg, sizeof msg, "stop %u (%s %s): the verdict RAM or the digest of the restored chain differs from the uninterrupted run", i, stops[i].rom, stops[i].kind);
+            check(c, memcmp(ct->ram8k + V_OFF, ref->ram8k + V_OFF, V_SIZE) == 0 && ds_digest(ct, dig) == 0u && memcmp(dig, ref_digest, DS_DIGEST_BYTES) == 0, msg);
+            diff = snap_first_diff(ct, ref);
+            snprintf(msg, sizeof msg, "stop %u (%s %s): the member %s of the restored chain differs from the uninterrupted run (VRAM, SATB and the DMA state included)", i, stops[i].rom, stops[i].kind, diff != NULL ? diff : "-");
+            check(c, diff == NULL, msg);
+            restored++;
+        }
+        release_boot(&bs);
+        release_boot(&bt);
+        release_boot(&br);
+    }
+    free(snap);
+    snprintf(got, gotcap, "stops=%u restored=%u", n, restored);
+}

@@ -8,7 +8,7 @@ status = "assumed"
 sources = ["FACT|H7-4 H7-11 H7-12|no end status when a display cycle cancels a transfer, SI/D and DI/D 0 increments 1 decrements, LENR = M-1 up to 64K words, vertical blanking or burst only, LENR high-byte trigger", "CODE|Mednafen MAME Geargrafx|transfer speed and overrun handling differ"]
 evidence = []
 disagreement = "an overrun at display start is cancelled, resumed, run through or made instant depending on the source; the manual says the rest is not transferred in the next period"
-pinning_test = "PENDING:4"
+pinning_test = "TEST:vdc_dma"
 updated = "2026-11-11"
 assumption = "IW never applies to the transfer, 4 dots per word and pending-until-the-bus-is-free are modelling choices outside the E1 part; the overrun fixture checks the first words moved and DV never set, with no count."
 revisit_phase = 4

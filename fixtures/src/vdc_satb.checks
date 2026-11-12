@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# vdc_satb.checks - one row per CHECK of fixtures/src/vdc_satb.s (D-125, plan 04-10). Columns separated by one TAB: check index (1-based), slug, class tag, meaning, and for a raw measurement row a fifth column, the word observe (D-169, F-41).
+# Class tags: MAN:<page> (a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model>, ASSUMED:<LED-id>. The high byte trigger, the following-VBlank start and the 256-word copy are H7-12, the status layout and the clear on read H7-4, DCR bits H7-11; that DS follows the copy and when is a modelling choice of LED-VID-0013 (VL1: no duration is
+# claimed). SATB words are judged by the runner kind vdc_satb_data, never by this guest (H7-20). A pass is not a support claim (ER-4).
+id=21
+checks=9
+1	dvssr-lsb-arms-nothing	MAN:H7-12	A DVSSR low byte write alone starts nothing: after the next VBlank and the wait the status is $20, VD alone and no DS
+2	dvssr-msb-waits	MAN:H7-12	A DVSSR high byte write is carried out at the beginning of the following vertical blanking: mid-frame the status is $00
+3	ds-set	ASSUMED:LED-VID-0013	After that VBlank and the wait the status is $28: VD and DS, with DCR bit 0 set
+4	ds-read-clears	MAN:H7-4	A status read clears bits 0 to 5: the second read is $00
+5	copy-once	MAN:H7-12	With nothing re-armed the next VBlank copies nothing: the status is $20
+6	ds-gated-clear	ASSUMED:LED-VID-0013	With DCR bit 0 clear a re-armed copy raises no DS: the status is $20
+7	dsr-repeat	ASSUMED:LED-VID-0013	With DCR bit 4 and bit 0 set the copy repeats at the next VBlank without a new write: $28
+8	ds-poll-count	ASSUMED:LED-VID-0013	The number of polls from a VBlank until DS appears, recorded (VL1: no duration claim; judged by no literal)	observe
+9	dsr-repeat-new-source	ASSUMED:LED-VID-0013	After the source block is rewritten the repeat copy at the next VBlank raises DS again: $28

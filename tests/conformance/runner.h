@@ -413,6 +413,8 @@ void kind_vdc_regmask(const struct kase *k, struct ctx *c, char *got, size_t got
 void kind_model_param_vdc(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-08: the VD and RR status-read stamps of the vdc_stat guest under the default and the two bound model rows (D-143, D-168) */
 void kind_vdc_irq_agree(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-17: the guest-recorded RCR to VD and VD to RCR = 64 intervals against the dev log read stamps and the hand-derived literals of the case (D-174, ER-3, ER-10) */
 void kind_vdc_advance_pure(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-10: the DMA closed form against a naive per-clock model over seeded random stamp partitions that cross display starts (D-151, D-175) */
+void kind_vdc_satb_data(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-10: the 256 SATB words of the instance bytes against the source pattern (D-150, D-175 (c)) */
+void kind_vdc_snapshot_mid_dma(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-10: restores in the middle of a VRAM transfer, a SATB wait and the arming window continue to the same end (D-151, D-166) */
 const char *vd_policy_name(unsigned i);
 int vd_policy_request(unsigned i, const char *base, char *out, size_t cap);
 int vd_compose_request(const char *base, const char *fragment, char *out, size_t cap); /* the request with one policy fragment appended: the observer kind uses it for its policies key */

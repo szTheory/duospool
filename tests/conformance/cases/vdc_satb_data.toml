@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The SATB words the VRAM-to-SATB copy stored, read from the instance bytes (plan 04-10; D-150, D-175 (c), ER-10, T-04-36): the SATB is not CPU-readable (MAN H7-20), so the runner kind vdc_satb_data (tests/conformance/vdckinds.c) boots the authored vdc_satb image, runs it to the end of its DSV1 verdict under each of the three default power-on policies (zero, seeded-
+# prng-v3 seed 1 and 2) and assembles
+# every one of the 256 SATB words byte by byte from the instance (word i = byte 2i | byte 2i+1 << 8) against the pattern the guest rewrote its source block with last: word i = ($A5A5 + $F1 * i) & $FFFF (the multiplication of fixtures/src/vdc_satb.s, restated here). The first pattern, word i = ($1234 + $F7 * i) & $FFFF, was copied earlier and replaced by the repeat copy
+# of the rewritten source (DCR bit 4),
+# so a copy that did not run, ran from the wrong address, stored the bytes swapped, or did not repeat after the source changed fails here although the guest sees only the DS flag. Evidence tier E0: no accuracy, compatibility or hardware claim, and the word pass is not a support claim.
+id = "vdc_satb_data"
+kind = "vdc_satb_data"
+fixture = "authored:vdc-satb"
+request = ""
+expect = "rom=vdc-satb;satb=42405:241:256"
+meaning = "The 256 SATB words of the instance equal the pattern the vdc_satb guest rewrote its source block with, under three power-on policies: the copy ran from the right address, kept the byte order and repeated after the source changed, E0 repeatability"
+required = true
+control = false
+expect_outcome = "pass"
+pins = ["LED-VID-0013"]
+until_mclk = 4500000

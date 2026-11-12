@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Restores in the middle of the DMA machinery (plan 04-10; D-150, D-151, D-166, D-175, T-04-35): the runner kind vdc_snapshot_mid_dma (tests/conformance/vdckinds.c) runs the authored vdc_dma image to a state chosen by machine state, not by time, with a VRAM-to-VRAM transfer running forward (8 to 40 words done) and one running with a decrementing source or destination (1
+# to 3 words done), and the vdc_satb image to the
+# wait for DS after a copy (the copy made, DS not yet raised) and to the window between the DVSSR high byte write and the VBlank that carries it out; at each stop the machine is snapshotted, restored into a twin booted under another power-on seed and poisoned first, the restored instance must equal the source in every restorable member (VRAM and SATB among them), and
+# the target run to the deadline must equal the uninterrupted run in machine time,
+# steps, verdict RAM, digest and every member. The restore rules of the DMA members (dma_done, the word time, the time windows) are what the restore relies on (D-166). Evidence tier E0: no accuracy, compatibility or hardware claim, and the word pass is not a support claim.
+id = "vdc_snapshot_mid_dma"
+kind = "vdc_snapshot_mid_dma"
+fixture = "authored:vdc-dma"
+request = ""
+expect = "stops=vdc-dma:fwd,vdc-dma:rev,vdc-satb:ds,vdc-satb:arm"
+meaning = "Restoring in the middle of a forward and of a reverse VRAM-to-VRAM transfer, in the wait for DS after a SATB copy and between the DVSSR high byte write and the VBlank continues to the same machine time, verdict, VRAM, SATB and digest as the uninterrupted run, E0 repeatability"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4500000

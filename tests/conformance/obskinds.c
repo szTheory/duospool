@@ -11,7 +11,7 @@
  *                     hand, the seven spare bytes zero), and the bytes of the record memory past the count and the guard bytes around it must still hold their poison (the core wrote nothing else, and
  *                     never read the header: a poisoned header gives the same result). A capacity of 0 and of 1, a small capacity that drops (drop-newest, lost counted) and a large one that does not are the shapes.
  *   opcode_exercise   a deferred kind (evaluated after the case loop, the D-86 pattern, so its RESULT line comes before RUNNER_DONE). It runs the ROM of every case of kind guest once (one run per distinct
- *                     ROM and request, to the case's until_mclk or the DSV1 done state, whichever comes first) with an insn sink of 262144 records and collects the set of opcodes the records show as executed.
+ *                     ROM and request, to the case's until_mclk or the DSV1 done state, whichever comes first) with an insn sink of 1048576 records (raised from 262144 by plan 04-10: the polling guests of the DMA fixtures execute more than a quarter of a million instructions before their verdict) and collects the set of opcodes the records show as executed.
  *                     The defined opcodes of the core's table (ds_cpu_op_defined: 234 rows, checked against the manual transcription by scripts/opcode-check) that no fixture executed are written to the
  *                     evidence file of the case, sixteen to a line. expect is mode=report (the case passes and records the count: the inventory is a measurement) or mode=require;exclude=0xNN,0xNN,...
  *                     (every unexercised defined opcode not in the exclude list is a guest_failure; plan 03-14 switches the case to require). A sink that lost a record (lost != 0) is harness_failure,
@@ -301,7 +301,7 @@ void kind_insn_sink_shapes(const struct kase *k, struct ctx *c, char *got, size_
 
 /* ---- kind opcode_exercise (deferred) ---- */
 
-#define OX_SINK_RECORDS 262144u
+#define OX_SINK_RECORDS 1048576u
 #define OX_ROMS_MAX 32u
 #define OX_PER_LINE 16u
 

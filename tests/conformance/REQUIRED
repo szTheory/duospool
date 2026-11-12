@@ -290,3 +290,7 @@ vdc_dma
 vdc_dma_vram
 mutate_sweep_vdc_dma
 vdc_advance_pure
+vdc_satb
+mutate_sweep_vdc_satb
+vdc_satb_data
+vdc_snapshot_mid_dma

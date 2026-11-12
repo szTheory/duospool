@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The VDC VRAM-to-SATB transfer seen from the guest (plan 04-10; D-150, D-169, D-170, D-175, ER-4, ER-10): the authored fixture fixtures/src/vdc_satb.s is assembled by ca65 in the gate (never committed), uploads a 256-word pattern to VRAM, sets a vertical setup, arms the copy with the DVSSR high byte and judges the DS flag of the status register after the VBlank that
+# carries it out
+# (the SATB is not CPU-readable, H7-20): a low byte write alone arms nothing, the high byte waits for the following VBlank, DS follows the copy and is gated by DCR bit 0, nothing re-armed copies nothing, DCR bit 4 repeats the copy each VBlank, and a rewritten source is copied again. The polls until DS appears are an observe row (VL1: no duration claim).
+# The case has no policies key, so the guest kind runs the ROM under its default policy list (zero, seeded-prng-v3 seed 1, seed 2) and the check bytes must be equal in all three: every judged byte is a status flag byte (D-167). The literals come from the manual pages H7-4, H7-11, H7-12 or the assumed ledger entry LED-VID-0013, never from DuoSpool output. The SATB words
+# are judged by the runner kind vdc_satb_data (case vdc_satb_data).
+# Evidence tier E0: no accuracy, compatibility or hardware claim, and the word pass is not a support claim.
+id = "vdc_satb"
+kind = "guest"
+fixture = "authored:vdc-satb"
+request = ""
+expect = "id=21;observe=8:policy"
+meaning = "The authored vdc_satb fixture arms the VRAM-to-SATB copy with the DVSSR high byte: a low byte alone arms nothing, the copy waits for the following VBlank, DS follows it gated by DCR bit 0 and cleared by the read, nothing re-armed copies nothing, DCR bit 4 repeats it and a rewritten source is copied again; 9 checks of classes MAN and ASSUMED, identical under three power-on policies"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4500000
+checks = 9

@@ -5,7 +5,7 @@
 ; The guest maps the hardware page at logical $0000 (MPR0 = $FF), so the VDC status and address register is at logical $0000 and the interrupt request register $1403 at logical $1403.
 ; It installs its own IRQ1 handler into the RAM vector slot before CLI (startup.inc, F-40), sets a vertical sum of 264 lines (VPR = $0F02, VDW = 239, VCR = 4, D-139: more than the frame length, so the cycle never repeats inside a frame), HDS = 2, HDW = 31 and RCR = 100, and never asserts an absolute line or frame number (D-136).
 ; The waits are counted loops or polls of the request register, the rows judge status bytes and the order of events, not positions. The interrupt handler reads $1403, then the status, then $1403 again and the status a second time, and stores the four bytes in a log in work RAM; the foreground reads the log.
-; The RR and VD rows (DS and DV join in plan 04-10, OR and CR in plan 04-15). A: with every enable clear and the I flag set a wait of more than two frames passes, so RCR matches and VBlanks happened with their enables clear: the status reads $00 (check 1).
+; The RR and VD rows, then the DV and DS rows of plan 04-10 (OR and CR join in plan 04-15). A: with every enable clear and the I flag set a wait of more than two frames passes, so RCR matches and VBlanks happened with their enables clear: the status reads $00 (check 1).
 ; B: with only CR bit 3 set (VD) the request register polled in the foreground shows the IRQ1 level (check 2), the status shows bit 5 alone although RCR matches pass with CR bit 2 clear (check 3), the read ends the level (check 4) and clears the flag (check 5). C: the next VBlank is taken as IRQ1 and the handler reads the same status and runs once (checks 6, 7).
 ; D: synchronised on that VBlank, CR bit 2 (RR) is set after the earlier RCR matches passed and the status still reads $00 (check 8: enabling later never creates a flag); the next RCR match is taken as IRQ1 and the handler sees bit 2 alone, the level, the cleared second read and the dropped level (checks 9 to 13).
 ; E: with the I flag set a wait of 1.2 frames passes with RR enabled and VD not: the flag is raised again after the acknowledge and bit 5 stays clear although a VBlank passed (check 14). Check 15: bits 6 and 7 of every status byte read are 0.
@@ -14,12 +14,13 @@
         .setcpu "huc6280"
 
 DSV_ID = 17
-DSV_CHECKS = 15
+DSV_CHECKS = 21
 
         .include "startup.inc"
         .include "verdict.inc"
         .include "check.inc"
         .include "vdc.inc"
+        .include "vdma.inc"
 
         CHECK_TABLE DSV_CHECKS
         LIT 1, $00                ; MAN:H7-4 with every enable clear an RCR match and a VBlank leave the status at 0: more than two frames pass with the I flag set and the status read gives $00
@@ -37,6 +38,12 @@ DSV_CHECKS = 15
         LIT 13, $02               ; ASSUMED:LED-IRQ-0009 the handler has run twice in all: once for the VBlank and once for the RCR match, and was not entered again
         LIT 14, $04               ; ASSUMED:LED-VID-0001 after the acknowledge the next RCR match raises RR again, and a VBlank that passes with CR bit 3 clear leaves bit 5 clear: 1.2 frames later the status reads $04
         LIT 15, $00               ; ASSUMED:LED-VID-0015 bits 6 and 7 of every status byte read are 0: the OR of the foreground reads and of the four handler reads, masked with $C0
+        LIT 16, $00               ; MAN:H7-4 with DCR bit 1 clear the end of a VRAM-to-VRAM transfer sets no DV: with every CR enable clear and the flags cleared the status read after the transfer is $00
+        LIT 17, $10               ; MAN:H7-4 with DCR bit 1 set the end of a transfer sets DV, bit 4 of the status, alone: $10
+        LIT 18, $00               ; MAN:H7-4 the status read cleared DV: the next read is $00
+        LIT 19, $20               ; ASSUMED:LED-VID-0013 a VRAM-to-SATB copy carried out at a VBlank with DCR bit 0 clear sets no DS: after the VBlank and a wait the status is $20, VD alone (bit 5)
+        LIT 20, $28               ; ASSUMED:LED-VID-0013 with DCR bit 0 set the same copy sets DS, bit 3: the status is $28, VD and DS
+        LIT 21, $00               ; MAN:H7-4 the status read cleared DS and VD: the next read is $00
 
 IRQ_REQ = $1403                 ; $1403 with MPR0 = $FF: the request register
 H_COUNT = $2440                 ; how often the IRQ1 handler ran
@@ -180,6 +187,39 @@ zlog:   stz a:LOG,x                     ; the log is cleared: work RAM holds dra
         ora a:LOG+7
         and #$C0
         CHECK_LIT 15
+; ---- F: DV gated by DCR bit 1, cleared by the read (plan 04-10): a transfer of 4 words in burst (CR bits 7 and 6 clear), judged by the status alone ----
+        VDC_REG 5, $0000                ; CR = 0: no enable; the RR and VD flags that the sections above left are cleared by the read
+        READ_STATUS
+        VDC_REG VR_DCR, $0000
+        VDMA_GO $1000, $1100, 3
+        VDMA_DELAY 20
+        READ_STATUS
+        CHECK_LIT 16                    ; no DV with the enable clear
+        VDC_REG VR_DCR, DCR_DV
+        VDMA_GO $1000, $1100, 3
+        VDMA_DELAY 20
+        READ_STATUS
+        CHECK_LIT 17                    ; DV alone
+        READ_STATUS
+        CHECK_LIT 18                    ; cleared by the read
+; ---- G: DS gated by DCR bit 0, cleared by the read (plan 04-10): a VRAM-to-SATB copy armed by the DVSSR high byte is carried out at the next VBlank ----
+        VDC_REG VR_DCR, $0000
+        VDC_REG 5, $0008                ; CR bit 3: VD enabled, to find the VBlank
+        WAIT_LEVEL
+        READ_STATUS                     ; acknowledge: the next wait is for a new VBlank
+        VDC_REG VR_DVSSR, $1000         ; the high byte write arms the copy of the next VBlank
+        WAIT_LEVEL
+        WAITK 2                         ; 9216 master clocks: more than the DS time of the copy
+        READ_STATUS
+        CHECK_LIT 19                    ; VD alone with DCR bit 0 clear
+        VDC_REG VR_DCR, DCR_DS
+        VDC_REG VR_DVSSR, $1000
+        WAIT_LEVEL
+        WAITK 2
+        READ_STATUS
+        CHECK_LIT 20                    ; VD and DS
+        READ_STATUS
+        CHECK_LIT 21                    ; cleared by the read
         rts
 
 ; the IRQ1 handler: the request register, the status (the acknowledge), the request register again, the status again; the four bytes go to the log. A and X are saved, Y is not used
