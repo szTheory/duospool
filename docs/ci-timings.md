@@ -84,7 +84,7 @@ different job, not a deletion.
   of a job (AGENTS.md, "CI and release: review efficiency after every run"). The result of each review, including "nothing to change", is recorded
   here next to the row it is about.
 - Revisit caching when any single step exceeds 30 seconds. Until then there is no cache: measure first.
-- Review the gate job's `timeout-minutes` limit (D-61; 10 until plan 03-33, 20 since) against each recorded critical path. The second gate run and
+- Review the gate job's `timeout-minutes` limit (D-61; 10 until plan 03-33, 20 since, then 25 per work job and 5 for the aggregator in the parallel-job change below, unverified on CI) against each recorded critical path. The second gate run and
   the two compiler runs add to the job, so the limit may be too tight or needlessly loose.
 - Time is a record and a warning, never a failure of the gate (D-60).
 
@@ -831,3 +831,68 @@ The six parts ran under emulation (linux/amd64 on an arm64 host), 4,572 s in all
 - **Toy controls:** lever (1) removes the cold compile (43.8 s of user CPU); the 25 toys still run their EXPECT cases only.
 - **The second-awk and Linux runs** are whole-gate runs in a container under emulation (see the table above) and stay local one-offs, not CI jobs.
 - Nothing was weakened to save seconds.
+
+## Parallel second awk job (quick task, unverified on CI until pushed)
+
+CI evidence for this change: **unverified until the owner authorises a push** (D-64). Nothing below has run on a GitHub runner. The workflow change, the `workflow-check` rules and the
+numbers in the "expected" column are local work and an estimate; the "before" column is measured. The evidence tier of any later run stays E0, repeatability.
+
+**What changed in `.github/workflows/gate.yml`** (quick task 261112-ci-parallel-awk). The efficiency review of the first Phase 4 run named the parallel second awk job as the best lever (runner minutes unchanged, critical path cut). It is applied as three jobs:
+
+| Job | Name | Steps | Timeout |
+|-----|------|-------|---------|
+| `gate-gawk` | `gate-gawk` | checkout, tool versions, cc65 install, `Gate` (image default awk, gawk on the 2026-11 image), `Range audit` (pull requests only), gcc build and conformance | 25 min |
+| `gate-mawk` | `gate-mawk` | checkout, tool versions, cc65 install, the gate under the other awk through the unchanged PATH shim and apt fallback (mawk on that image), clang build and conformance | 25 min |
+| `gate` | `gate` | `needs` both, `if: always()`, one step that fails unless `needs.gate-gawk.result` and `needs.gate-mawk.result` are both exactly `success`; no checkout | 5 min |
+
+The compiler steps are split so that the two jobs balance on the measured numbers (gate plus range audit plus gcc build in one, second awk run plus clang build in the other). The clang step
+still runs under the default awk, as it did as a step of the single job, so no evidence moved. The mawk-versus-gawk selection logic is unchanged: it compares the default awk with `gawk` and
+uses the other one, and the apt fallback for a missing second awk is still explicit and fail-closed. No action was added, `actions/checkout` is still pinned to the same full SHA,
+`permissions: contents: read` is at the top and in each job, and there is no cache.
+
+**Required check name: the owner hand-off is unchanged.** The branch ruleset on `main` still requires the check named `gate` (pending hand-off 3, "Pending hand-offs" above). The aggregator
+job is named exactly `gate`, so the check the ruleset names exists under the same name; `gate-gawk` and `gate-mawk` are new check names that the ruleset does not need to list. The aggregator
+uses `if: always()` and reads each result because a needed job that was skipped or cancelled makes a needs-only job skip, and a skipped required check reads as passing; only the result
+`success` passes. No setting was changed and none is requested by this change. Whether a ruleset that already requires `gate` matches the aggregator is only confirmed by a real run after the
+owner pushes.
+
+**Before (measured) and expected after (estimate).** Seconds, from the two Phase 4 runs on identical code (run 43275379025 and run 43278274460, same runner image; run-to-run spread was 23 percent):
+
+| Step | Run 1 | Run 2 | New home |
+|------|-------|-------|----------|
+| Set up job, checkout, tool versions | 3 | 5 | both jobs (paid twice) |
+| Install cc65 | 10 | 10 | both jobs (paid twice) |
+| Gate (gawk) | 339 | 419 | `gate-gawk` |
+| Range audit | 15 | 18 | `gate-gawk` |
+| gcc build and conformance | 74 | 93 | `gate-gawk` |
+| clang build and conformance | 80 | 120 | `gate-mawk` |
+| Second awk gate run (mawk) | 330 | 381 | `gate-mawk` |
+| Job, one job (the critical path) | 853 | 1048 | |
+
+| | Run 1 basis | Run 2 basis |
+|---|---|---|
+| `gate-gawk` expected | 3 + 10 + 339 + 15 + 74 = 441 | 5 + 10 + 419 + 18 + 93 = 545 |
+| `gate-mawk` expected | 3 + 10 + 330 + 80 = 423 | 5 + 10 + 381 + 120 = 516 |
+| `gate` aggregator (runner start, two echo and test lines) | about 5 to 10 | about 5 to 10 |
+| Run wall, expected (before: 856 and 1051) | about 450 | about 555 |
+| Total runner seconds, expected (before: 853 and 1048) | about 870 | about 1075 |
+
+The critical path falls by about 400 s on run 1 numbers and about 500 s on run 2 numbers (about 47 percent). The first estimate of about 520 s (all four serial steps of the first job in one
+job, the second awk run in the other) is the worse split; this split is better balanced (within 20 to 30 s of each other). Total runner minutes stay about the same (the duplicated checkout,
+tool versions and cc65 install add about 13 to 15 s, the aggregator a few more). Job startup and queueing for a second runner are not in the estimate; a busy hosted pool could add to it. The
+25 minute limit is about 2.7 times the slower expected job (the old 20 minute limit was 1.14 times the slower measured run), and `timeout-minutes` now exists on every job.
+
+**What to check on the first run after a push:** both work jobs and the aggregator appear and the aggregator's name is `gate`; the longer of the two work jobs against 440 to 550 s; the cc65
+and checkout cost twice; the aggregator going red when a work job is forced to fail (a one-off and read-only observation, not a requirement); and the awk of each job in the `Tool versions`
+summary and the `Gate under the other awk` log. `scripts/ci-timings` already prints one `name=seconds` entry per job, so no tool change is needed to record the row.
+
+**`workflow-check` after this change.** New rules: every job needs `timeout-minutes` from 1 to 30 (`WF_NO_TIMEOUT`), a `runs-on`, its own `permissions: contents: read`, and, unless it is
+`gate`, a checkout and a step that runs `sh scripts/check`; the cc65 install must come before the gate command in each job that runs it; the job `gate` must be named `gate`, need exactly the
+other jobs, carry `if: always()`, test each needed result with `test "$VAR" = success`, and run nothing else and skip nothing (`WF_AGGREGATOR`). The 14 older mini-roots were regenerated from
+the new file (each differs from it by the same mutation as before; `ok-gate` is byte-identical), 17 mini-roots were added (31 in all), and 14 selftests (`mutation-workflow-timeout`,
+`-job-runner`, `-job-perm`, `-job-checkout`, `-job-gate`, `-agg-missing`, `-agg-name`, `-agg-if`, `-agg-needs`, `-agg-result`, `-agg-line`, `-agg-oneline`, `-agg-step-if`, `-agg-skipped`)
+each delete one tagged rule line and show the control flip. `mutation-workflow-agg-skipped` is the aggregator that treats a skipped job as success turning a control red.
+
+**Not applied here, still open:** pairing the second awk run with clang (changes what a failure says), a skip of `sanitizers` in the second run (needs a skip mechanism), and running the gcc
+and clang steps as their own jobs (each would pay set-up again and the two work jobs are already balanced). The caching verdict (no candidate) and "nothing was weakened" stand: no stage,
+control, selftest or case was removed, and both awk implementations and both compilers still run the same steps as before.
