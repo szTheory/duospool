@@ -3,16 +3,18 @@
 ;
 ; vdc_stat.s - the VDC status register and IRQ1 seen from the guest (plan 04-08; D-138, D-139, D-142, D-143, D-144, D-169, D-170, ER-10, F-40, H7-4, H7-7, H7-13). It is assembled by ca65 in the gate and never committed as a binary. The helpers are the macros of fixtures/lib/vdc.inc.
 ; The guest maps the hardware page at logical $0000 (MPR0 = $FF), so the VDC status and address register is at logical $0000 and the interrupt request register $1403 at logical $1403.
-; It installs its own IRQ1 handler into the RAM vector slot before CLI (startup.inc, F-40), sets a vertical sum of 264 lines (VPR = $0F02, VDW = 239, VCR = 4, D-139: more than the frame length, so the cycle never repeats inside a frame)
-; and RCR = 100, and never asserts an absolute line or frame number (D-136): the waits are counted loops, the rows judge status bytes and the order of events, not positions. The interrupt handler reads $1403, then the status, then $1403 again and the status a second time, and stores the four bytes in a log in work RAM; the foreground reads the log.
-; This slice (the tracer of plan 04-08): the RR row.
-; With CR bit 2 clear and the I flag set a counted wait of more than two frames passes, so an RCR match has happened with its enable clear (the status reads $00, H7-4).
-; The I flag is set so that a flag the gate let through would stay in the status and not be taken by the handler first. Then CR bit 2 is set, the RCR match raises RR and the handler reads $04, and a second read returns $00 (H7-4: the read clears).
-; Every cell the checks read is written by the fixture first, and the registers are 0 at power-on under every policy (D-167), so the check bytes are equal under every power-on policy. The classes: MAN (H7-4: flag layout, flag set only when its enable is set, cleared by the read). No HuC, PCEAS, emulator or cc65 library code.
+; It installs its own IRQ1 handler into the RAM vector slot before CLI (startup.inc, F-40), sets a vertical sum of 264 lines (VPR = $0F02, VDW = 239, VCR = 4, D-139: more than the frame length, so the cycle never repeats inside a frame), HDS = 2, HDW = 31 and RCR = 100, and never asserts an absolute line or frame number (D-136).
+; The waits are counted loops or polls of the request register, the rows judge status bytes and the order of events, not positions. The interrupt handler reads $1403, then the status, then $1403 again and the status a second time, and stores the four bytes in a log in work RAM; the foreground reads the log.
+; The RR and VD rows (DS and DV join in plan 04-10, OR and CR in plan 04-15). A: with every enable clear and the I flag set a wait of more than two frames passes, so RCR matches and VBlanks happened with their enables clear: the status reads $00 (check 1).
+; B: with only CR bit 3 set (VD) the request register polled in the foreground shows the IRQ1 level (check 2), the status shows bit 5 alone although RCR matches pass with CR bit 2 clear (check 3), the read ends the level (check 4) and clears the flag (check 5). C: the next VBlank is taken as IRQ1 and the handler reads the same status and runs once (checks 6, 7).
+; D: synchronised on that VBlank, CR bit 2 (RR) is set after the earlier RCR matches passed and the status still reads $00 (check 8: enabling later never creates a flag); the next RCR match is taken as IRQ1 and the handler sees bit 2 alone, the level, the cleared second read and the dropped level (checks 9 to 13).
+; E: with the I flag set a wait of 1.2 frames passes with RR enabled and VD not: the flag is raised again after the acknowledge and bit 5 stays clear although a VBlank passed (check 14). Check 15: bits 6 and 7 of every status byte read are 0.
+; Every cell the checks read is written by the fixture first, and the registers are 0 at power-on under every policy (D-167), so the check bytes are equal under every power-on policy.
+; The classes: MAN (H7-4: flag layout, a flag set only when its enable is set, cleared by the read), ASSUMED LED-IRQ-0009 (the IRQ1 level follows the status, delivered once), ASSUMED LED-VID-0001 (rows that need the frame to be longer than the sync distance: checks 8 and 14), ASSUMED LED-VID-0015 (BSY reads 0). No HuC, PCEAS, emulator or cc65 library code.
         .setcpu "huc6280"
 
 DSV_ID = 17
-DSV_CHECKS = 3
+DSV_CHECKS = 15
 
         .include "startup.inc"
         .include "verdict.inc"
@@ -20,14 +22,28 @@ DSV_CHECKS = 3
         .include "vdc.inc"
 
         CHECK_TABLE DSV_CHECKS
-        LIT 1, $00                ; MAN:H7-4 with CR bit 2 clear an RCR match leaves the status at 0: more than two frames pass with RCR = 100 and the status read gives $00
-        LIT 2, $04                ; MAN:H7-4 with CR bit 2 set the RCR match sets bit 2 (RR) of the status and nothing else: the handler reads $04
-        LIT 3, $00                ; MAN:H7-4 a read of the status clears bits 0 to 5: the second read in the handler gives $00
+        LIT 1, $00                ; MAN:H7-4 with every enable clear an RCR match and a VBlank leave the status at 0: more than two frames pass with the I flag set and the status read gives $00
+        LIT 2, $02                ; ASSUMED:LED-IRQ-0009 with VD set and not yet read, bit 1 of $1403 (the IRQ1 level) reads 1 and bit 0 reads 0 (the VDC drives no IRQ2)
+        LIT 3, $20                ; MAN:H7-4 the VBlank flag is bit 5 of the status and no other bit: CR bit 2 is clear, so the RCR matches that pass leave bit 2 clear
+        LIT 4, $00                ; ASSUMED:LED-IRQ-0009 after the status read the IRQ1 level reads 0 again: bits 1 and 0 of $1403 are 0
+        LIT 5, $00                ; MAN:H7-4 a read of the status clears bits 0 to 5: the second read gives $00
+        LIT 6, $20                ; MAN:H7-4 the next VBlank is taken as IRQ1 and the first status read in the handler gives $20
+        LIT 7, $01                ; ASSUMED:LED-IRQ-0009 the status read ends the level, so the handler ran once and was not entered again
+        LIT 8, $00                ; ASSUMED:LED-VID-0001 CR bit 2 set after RCR matches passed with it clear: the status read at once gives $00 (enabling later creates no flag; the next match is far from the VBlank this fixture is synchronised on)
+        LIT 9, $04                ; MAN:H7-4 with CR bit 2 set the next RCR match is taken as IRQ1 and the first status read in the handler gives $04: bit 2 (RR) alone
+        LIT 10, $00               ; MAN:H7-4 the second status read in the handler gives $00
+        LIT 11, $02               ; ASSUMED:LED-IRQ-0009 in the handler, before the status read, bit 1 of $1403 reads 1 and bit 0 reads 0
+        LIT 12, $00               ; ASSUMED:LED-IRQ-0009 in the handler, after the status read, bits 1 and 0 of $1403 read 0
+        LIT 13, $02               ; ASSUMED:LED-IRQ-0009 the handler has run twice in all: once for the VBlank and once for the RCR match, and was not entered again
+        LIT 14, $04               ; ASSUMED:LED-VID-0001 after the acknowledge the next RCR match raises RR again, and a VBlank that passes with CR bit 3 clear leaves bit 5 clear: 1.2 frames later the status reads $04
+        LIT 15, $00               ; ASSUMED:LED-VID-0015 bits 6 and 7 of every status byte read are 0: the OR of the foreground reads and of the four handler reads, masked with $C0
 
 IRQ_REQ = $1403                 ; $1403 with MPR0 = $FF: the request register
 H_COUNT = $2440                 ; how often the IRQ1 handler ran
 H_IDX = $2441                   ; the byte offset of the next log entry
-LOG = $2442                     ; the log, 4 bytes per handler run: $1403 before the status read, the first status read, $1403 after it, the second status read (16 bytes)
+ST_OR = $2442                   ; the OR of every status byte the foreground read
+T_ST = $2443                    ; the status byte just read
+LOG = $2444                     ; the log, 4 bytes per handler run: $1403 before the status read, the first status read, $1403 after it, the second status read (16 bytes)
 
 ; DELAY k: a counted delay of 6 * k CPU cycles (LDY # is 2, each DEY is 2 and each taken BNE is 4, the last BNE 2): k from 1 to 255. Clobbers Y
         .macro DELAY k
@@ -37,16 +53,17 @@ l:      dey
         bne l
         .endmacro
 
-; WAIT_FRAMES: a counted wait of 205 delays of 1530 cycles plus the DEX and BNE of the outer loop, 314,880 CPU cycles: at the high speed (3 master clocks per cycle) 944,640 master clocks, more than two frames of 262 lines of 1365 master clocks (ASSUMED LED-VID-0001; the number is a wait bound, no row judges a position). Clobbers X and Y
-        .macro WAIT_FRAMES
+; WAITK n: a counted wait of n delays of 1530 cycles plus the DEX and BNE of the outer loop (1536 cycles each): at the high speed (3 master clocks per cycle) 4608 master clocks per step. n = 205 is 944,640 master clocks, more than two frames of 262 lines of 1365 master clocks (ASSUMED LED-VID-0001);
+; n = 95 is 437,760, 1.2 frames. The numbers are wait bounds, no row judges a position. Clobbers X and Y
+        .macro WAITK n
         .local w
-        ldx #205
+        ldx #(n)
 w:      DELAY 255
         dex
         bne w
         .endmacro
 
-; WAIT_COUNT n: spin until the handler has run n times, bounded at about 1.6 frames at the high speed (a machine that raises no flag fails a check, it does not hang). The loop is lda abs, cmp #, bcs, dex, bne: its longest instruction is 5 cycles. Clobbers A, X and Y
+; WAIT_COUNT n: spin until the handler has run n times, bounded at about 1.6 frames at the high speed (a machine that raises no flag fails a check, it does not hang). The loop is lda abs, cmp #, bcs, dex, bne: its longest instruction is 5 cycles (15 master clocks at the high speed). Clobbers A, X and Y
         .macro WAIT_COUNT n
         .local w, done
         ldx #0
@@ -61,11 +78,36 @@ w:      lda a:H_COUNT
 done:
         .endmacro
 
+; WAIT_LEVEL: poll the request register until the IRQ1 level reads 1, bounded at about 1.6 frames. A poll changes nothing (D-110). Clobbers A, X and Y
+        .macro WAIT_LEVEL
+        .local w, done
+        ldx #0
+        ldy #50
+w:      lda a:IRQ_REQ
+        and #$02
+        bne done
+        dex
+        bne w
+        dey
+        bne w
+done:
+        .endmacro
+
+; READ_STATUS: A = the status (a read clears bits 0 to 5); the byte is also ORed into ST_OR for check 15. Clobbers A
+        .macro READ_STATUS
+        lda a:VDC_AR
+        sta a:T_ST
+        ora a:ST_OR
+        sta a:ST_OR
+        lda a:T_ST
+        .endmacro
+
 fixture_main:
         lda #$FF
         tam #$01                        ; MPR0 = $FF: logical $0000-$1FFF is the hardware page
         stz a:H_COUNT
         stz a:H_IDX
+        stz a:ST_OR
         ldx #15
 zlog:   stz a:LOG,x                     ; the log is cleared: work RAM holds drawn bytes under a seeded power-on policy
         dex
@@ -81,20 +123,63 @@ zlog:   stz a:LOG,x                     ; the log is cleared: work RAM holds dra
         VDC_REG 10, $0200               ; HSR: HSW = 0, HDS = 2
         VDC_REG 11, $001F               ; HDR: HDW = 31, HDE = 0
         VDC_REG 6, 100                  ; RCR = 100
-        VDC_REG 5, $0000                ; CR = 0: no interrupt enable set
-; ---- the RR row: the enable clear (the I flag stays set, so a flag that the gate let through would stay in the status for this read), then set ----
-        WAIT_FRAMES
-        lda a:VDC_AR                    ; the status after the RCR matches of more than two frames passed with CR bit 2 clear
+        VDC_REG 5, $0000                ; CR = 0: no interrupt enable set; the I flag stays set (reset code) until section C
+; ---- A: every enable clear (the I flag stays set, so a flag that the gate let through would stay in the status for this read) ----
+        WAITK 205
+        READ_STATUS
         CHECK_LIT 1
-        VDC_REG 5, $0004                ; CR bit 2 set: RR enabled
-        cli                             ; the handler is installed: the next RCR match is taken as IRQ1
+; ---- B: VD enabled, RR not; the level and the status polled in the foreground ----
+        VDC_REG 5, $0008                ; CR bit 3 set: VD enabled
+        WAIT_LEVEL
+        lda a:IRQ_REQ
+        and #$03
+        CHECK_LIT 2                     ; the level before the status read
+        READ_STATUS
+        CHECK_LIT 3
+        lda a:IRQ_REQ
+        and #$03
+        CHECK_LIT 4                     ; the level after the status read
+        READ_STATUS
+        CHECK_LIT 5                     ; the second status read
+; ---- C: the next VBlank is taken as IRQ1 ----
+        cli                             ; the handler is installed: the next VBlank is taken as IRQ1
         WAIT_COUNT 1
         sei
-        VDC_REG 5, $0000                ; no more interrupt enables before the checks and the seal
         lda a:LOG+1
-        CHECK_LIT 2                     ; the first status read of the handler
-        lda a:LOG+3
-        CHECK_LIT 3                     ; the second status read of the handler
+        CHECK_LIT 6                     ; the first status read of the handler
+        lda a:H_COUNT
+        CHECK_LIT 7                     ; the handler ran once
+; ---- D: synchronised on that VBlank: RR enabled late, then taken as IRQ1 ----
+        VDC_REG 5, $0004                ; CR bit 2 set and bit 3 clear: RR enabled, VD not
+        READ_STATUS
+        CHECK_LIT 8                     ; enabling later created no flag
+        cli
+        WAIT_COUNT 2
+        sei
+        lda a:LOG+5
+        CHECK_LIT 9                     ; the first status read of the second handler run
+        lda a:LOG+7
+        CHECK_LIT 10                    ; the second status read of the second handler run
+        lda a:LOG+4
+        and #$03
+        CHECK_LIT 11                    ; the level before the read, in the handler
+        lda a:LOG+6
+        and #$03
+        CHECK_LIT 12                    ; the level after the read, in the handler
+        lda a:H_COUNT
+        CHECK_LIT 13                    ; the handler ran twice in all
+; ---- E: the flag raised again after the acknowledge; VD gated by its enable ----
+        WAITK 95
+        READ_STATUS
+        CHECK_LIT 14
+; ---- bits 6 and 7 of every status byte read ----
+        lda a:ST_OR
+        ora a:LOG+1
+        ora a:LOG+3
+        ora a:LOG+5
+        ora a:LOG+7
+        and #$C0
+        CHECK_LIT 15
         rts
 
 ; the IRQ1 handler: the request register, the status (the acknowledge), the request register again, the status again; the four bytes go to the log. A and X are saved, Y is not used

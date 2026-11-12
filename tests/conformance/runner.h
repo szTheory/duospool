@@ -405,6 +405,7 @@ void kind_snapshot_restore_video(const struct kase *k, struct ctx *c, char *got,
 void kind_vdc_vram(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-06: the VRAM words of the instance bytes against literals of the case (D-175 (c)) */
 void kind_vdc_vram_sweep(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-06: all 65,536 word addresses through the accessor pair and the port (D-147) */
 void kind_vdc_regmask(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-06: the register masks, the AR width, the reserved ARs and the status read (D-144, D-146) */
+void kind_model_param_vdc(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-08: the VD and RR status-read stamps of the vdc_stat guest under the default and the two bound model rows (D-143, D-168) */
 const char *vd_policy_name(unsigned i);
 int vd_policy_request(unsigned i, const char *base, char *out, size_t cap);
 int vd_compose_request(const char *base, const char *fragment, char *out, size_t cap); /* the request with one policy fragment appended: the observer kind uses it for its policies key */

@@ -1637,3 +1637,203 @@ void kind_vdc_regmask(const struct kase *k, struct ctx *c, char *got, size_t got
     release_boot(&b);
     snprintf(got, gotcap, "assertions=%u", checks);
 }
+
+/* ---- model_param_vdc (plan 04-08; D-142, D-143, D-168, ER-10, ASSUMED LED-IRQ-0001 and LED-IRQ-0010) ----
+ *   model_param_vdc   expect = rom=NAME;vd_shift=N;rr_shift=N;tol=N, request = "A||B" (until_mclk needed). The ROM (the vdc_stat guest) is run three times with the dev sink: with the default request, with A (model.vd_irq_phase=hdw_start) and with B (model.rcr_origin=line_before).
+ *   In each run the status reads of the VDC window ($1FE000, kind R, with the stamp of the access) are taken from the dev log: the VD stamp is the stamp of the LAST read whose value has bit 5 set (the read in the IRQ1 handler of the VBlank interrupt; the foreground read before it also has bit 5), the RR stamp that of the FIRST read whose value has bit 2 set (the read in the handler of the RCR interrupt).
+ *   The stamps are judged from the dev log and the literals of the case, never from a literal copied out of the core: the VD stamp of run A minus that of the default run is vd_shift (+96: the window start of HDS = 2 at divider 4 is (2 + 1) * 8 * 4 master clocks after the line start, ASSUMED LED-IRQ-0001) and the RR stamp of run B minus that of the default run is rr_shift (-1365: the
+ *   origin line is one line earlier, so the same RCR value matches one line sooner, ASSUMED LED-IRQ-0010), each within plus or minus tol master clocks. tol is the longest instruction of the foreground wait loop of the fixture, lda abs of 5 cycles at 3 master clocks (15): an interrupt is taken at the first instruction boundary after the event, so the stamp of the handler read moves by the shift
+ *   less than one instruction. The two cross rows hold the other parameter fixed: the VD stamp of run B and the RR stamp of run A equal those of the default run within tol (each parameter moves its own event only). Evidence E0: the model compared with the case's own literals; no hardware or accuracy claim.
+ */
+#define MV_DEV_CAP 512u
+#define MV_PHYS_STATUS 0x1FE000u
+
+struct mv_stamps {
+    uint64_t vd;
+    uint64_t rr;
+    int have_vd;
+    int have_rr;
+};
+
+/* run the ROM over the request with a dev sink and take the two status read stamps; 0 on success, else a harness text in err */
+static const char *mv_run(const char *rom, const char *request, uint64_t until, struct ctx *c, struct mv_stamps *out)
+{
+    struct booted b;
+    const struct ds_instance *ci = NULL;
+    struct ds_run_request rq;
+    struct ds_run_result res;
+    struct ds_dev_sink *dsk = (struct ds_dev_sink *)calloc(1u, sizeof *dsk);
+    unsigned char *drec = (unsigned char *)calloc((size_t)MV_DEV_CAP, DS_DEV_RECORD_BYTES);
+    const char *err;
+    uint32_t count;
+    uint32_t i;
+
+    memset(out, 0, sizeof *out);
+    if (dsk == NULL || drec == NULL) {
+        free(dsk);
+        free(drec);
+        return "out of memory for the dev sink of a model_param_vdc run";
+    }
+    err = boot_built_rom(rom, request, &b, &ci);
+    if (err != NULL) {
+        free(dsk);
+        free(drec);
+        return err;
+    }
+    dsk->records = drec;
+    dsk->capacity = MV_DEV_CAP;
+    memset(&rq, 0, sizeof rq);
+    memset(&res, 0, sizeof res);
+    rq.struct_size = (uint32_t)sizeof rq;
+    rq.until_mclk = until;
+    rq.dev = dsk;
+    (void)ds_run((struct ds_instance *)(void *)b.mem, &rq, &res);
+    note_run(c, res.machine_time, res.reason);
+    release_boot(&b);
+    count = vd_u32(dsk->header);
+    if (res.reason != (uint32_t)DS_RUN_REASON_UNTIL || vd_u32(dsk->header + 4) != 0u) {
+        free(dsk);
+        free(drec);
+        return "a model_param_vdc run did not reach its deadline or the dev sink lost a record: the log is the evidence here and would be incomplete";
+    }
+    for (i = 0u; i < count; i++) {
+        const unsigned char *r = drec + (size_t)i * DS_DEV_RECORD_BYTES;
+
+        if ((uint32_t)r[13] == (uint32_t)DS_DEV_READ && vd_u32(r + 8) == MV_PHYS_STATUS) {
+            uint64_t stamp = vd_u64(r);
+
+            if ((r[12] & 0x20u) != 0u) {
+                out->vd = stamp;
+                out->have_vd = 1;
+            }
+            if ((r[12] & 0x04u) != 0u && !out->have_rr) {
+                out->rr = stamp;
+                out->have_rr = 1;
+            }
+        }
+    }
+    free(dsk);
+    free(drec);
+    return NULL;
+}
+
+/* the signed difference a - b as int64 without overflow (the stamps are far below 2^62) */
+static int64_t mv_diff(uint64_t a, uint64_t b)
+{
+    return a >= b ? (int64_t)(a - b) : -(int64_t)(b - a);
+}
+
+static int64_t mv_abs(int64_t v)
+{
+    return v < 0 ? -v : v;
+}
+
+/* one signed decimal number: an optional minus and digits; 0 on success */
+static int mv_parse_signed(const char *v, int64_t *out)
+{
+    uint64_t u = 0u;
+    int neg = v[0] == '-';
+
+    if (parse_u64(v + (neg ? 1 : 0), &u) != 0 || u > UINT64_C(1000000000)) {
+        return -1;
+    }
+    *out = neg ? -(int64_t)u : (int64_t)u;
+    return 0;
+}
+
+void kind_model_param_vdc(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    char rom[64];
+    char req_a[128];
+    char req_b[128];
+    const char *sep;
+    const char *p;
+    uint64_t until = 0u;
+    uint64_t tol_u = 0u;
+    int64_t vd_shift = 0;
+    int64_t rr_shift = 0;
+    int have_rom = 0;
+    int have_vd = 0;
+    int have_rr = 0;
+    int have_tol = 0;
+    struct mv_stamps base;
+    struct mv_stamps run_a;
+    struct mv_stamps run_b;
+    const char *err;
+    char msg[320];
+    int64_t tol;
+    int64_t d;
+
+    if (!k->has[K_EXPECT] || !k->has[K_REQUEST] || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until < 1000u) {
+        harness_error(c, "a model_param_vdc case needs until_mclk, request = A||B and expect = rom=NAME;vd_shift=N;rr_shift=N;tol=N");
+        return;
+    }
+    sep = strstr(k->val[K_REQUEST], "||");
+    if (sep == NULL || (size_t)(sep - k->val[K_REQUEST]) >= sizeof req_a || strlen(sep + 2) >= sizeof req_b || strstr(sep + 2, "||") != NULL) {
+        harness_error(c, "the request of a model_param_vdc case is exactly two requests separated by ||");
+        return;
+    }
+    memcpy(req_a, k->val[K_REQUEST], (size_t)(sep - k->val[K_REQUEST]));
+    req_a[sep - k->val[K_REQUEST]] = '\0';
+    memcpy(req_b, sep + 2, strlen(sep + 2) + 1u);
+    for (p = k->val[K_EXPECT]; *p != '\0';) {
+        const char *end = strchr(p, ';');
+        size_t n = end != NULL ? (size_t)(end - p) : strlen(p);
+        char item[80];
+
+        if (n == 0u || n >= sizeof item) {
+            harness_error(c, "a model_param_vdc expect item is empty or too long");
+            return;
+        }
+        memcpy(item, p, n);
+        item[n] = '\0';
+        if (strncmp(item, "rom=", 4u) == 0 && !have_rom && n - 4u < sizeof rom) {
+            memcpy(rom, item + 4, n - 4u + 1u);
+            have_rom = 1;
+        } else if (strncmp(item, "vd_shift=", 9u) == 0 && !have_vd && mv_parse_signed(item + 9, &vd_shift) == 0) {
+            have_vd = 1;
+        } else if (strncmp(item, "rr_shift=", 9u) == 0 && !have_rr && mv_parse_signed(item + 9, &rr_shift) == 0) {
+            have_rr = 1;
+        } else if (strncmp(item, "tol=", 4u) == 0 && !have_tol && parse_u64(item + 4, &tol_u) == 0 && tol_u <= 21u) {
+            have_tol = 1;
+        } else {
+            harness_error(c, "a model_param_vdc expect item is unknown, repeated or out of range (tol is at most 21 master clocks)");
+            return;
+        }
+        p = end != NULL ? end + 1 : p + n;
+    }
+    if (!have_rom || !have_vd || !have_rr || !have_tol) {
+        harness_error(c, "a model_param_vdc expect needs rom, vd_shift, rr_shift and tol");
+        return;
+    }
+    tol = (int64_t)tol_u;
+    err = mv_run(rom, "", until, c, &base);
+    if (err == NULL) {
+        err = mv_run(rom, req_a, until, c, &run_a);
+    }
+    if (err == NULL) {
+        err = mv_run(rom, req_b, until, c, &run_b);
+    }
+    if (err != NULL) {
+        harness_error(c, err);
+        return;
+    }
+    check(c, base.have_vd && base.have_rr && run_a.have_vd && run_a.have_rr && run_b.have_vd && run_b.have_rr, "a run of the guest has no status read in the dev log with bit 5 (VD) or bit 2 (RR) set: the stamps cannot be taken");
+    if (c->failed != 0) {
+        snprintf(got, gotcap, "stamps missing");
+        return;
+    }
+    d = mv_diff(run_a.vd, base.vd);
+    snprintf(msg, sizeof msg, "vd_irq_phase=hdw_start moved the VD status-read stamp by %lld master clocks against the default run, the case says %lld within +-%lld (ASSUMED LED-IRQ-0001)", (long long)d, (long long)vd_shift, (long long)tol);
+    check(c, mv_abs(d - vd_shift) <= tol, msg);
+    d = mv_diff(run_b.rr, base.rr);
+    snprintf(msg, sizeof msg, "rcr_origin=line_before moved the RR status-read stamp by %lld master clocks against the default run, the case says %lld within +-%lld (ASSUMED LED-IRQ-0010)", (long long)d, (long long)rr_shift, (long long)tol);
+    check(c, mv_abs(d - rr_shift) <= tol, msg);
+    d = mv_diff(run_b.vd, base.vd);
+    snprintf(msg, sizeof msg, "rcr_origin=line_before moved the VD status-read stamp by %lld master clocks: the other parameter must leave it within +-%lld", (long long)d, (long long)tol);
+    check(c, mv_abs(d) <= tol, msg);
+    d = mv_diff(run_a.rr, base.rr);
+    snprintf(msg, sizeof msg, "vd_irq_phase=hdw_start moved the RR status-read stamp by %lld master clocks: the other parameter must leave it within +-%lld", (long long)d, (long long)tol);
+    check(c, mv_abs(d) <= tol, msg);
+    snprintf(got, gotcap, "vd_shift=%lld rr_shift=%lld tol=%lld", (long long)mv_diff(run_a.vd, base.vd), (long long)mv_diff(run_b.rr, base.rr), (long long)tol);
+}
