@@ -8,7 +8,7 @@ status = "assumed"
 sources = ["FACT|H7-4 H7-6 H7-11|status bit layout, a bit is set when an interrupt enabled by CR or DCR occurs, all but BSY clear on read, IE bits 0-3, DCR bits 0-1", "CODE|three emulators|agree on set-if-enabled"]
 evidence = []
 disagreement = "none recorded for set-if-enabled; enabling later never creates a flag and disabling later never clears one; H7-4 calls BSY the inverse of the /BUSY pin and this model holds it at a constant 0"
-pinning_test = "PENDING:4"
+pinning_test = "TEST:vdc_stat"
 updated = "2026-11-11"
 assumption = "The reading 'set only when enabled at the event instant' is outside the E1 part; BSY = 0 is a modelling constant (vdc_bsy_level), not a page fact."
 revisit_phase = 4

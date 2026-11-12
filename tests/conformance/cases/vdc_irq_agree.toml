@@ -20,6 +20,6 @@ meaning = "The guest-recorded RCR to VD interval (245 master clocks) and VD to R
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-IRQ-0001"]
 until_mclk = 2100000
 checks = 16

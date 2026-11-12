@@ -26,6 +26,8 @@
  *                 (id=1;observe=3:0x16). An index without an item is harness_failure (observe-missing), an item for a check that is not an observe row too (observe-unlisted).
  *                 Plan 03-24 (D-127): observe=IDX:policy marks a row whose byte legitimately reads power-on state (recorded, exempt from the cross-policy equality, compared with no value), and the mode policy-diff=IDX with observe=IDX:differs is the
  *                 negative control of that equality: the byte of every policy after the first must DIFFER from the first one, so a fixture that stopped reading the power-on state turns the case guest_failure (policy-diff).
+ *                 Plan 04-17 (D-173, F-4): the item judge=A-B (1 to 255, A at most B, once) judges only the checks A to B (the group of one case, for example the assumption-free ratio rows) while the DSV1 integrity (magic, state, complement, version, count, id, checksum, trailer, summary recomputed over all checks, reserved bytes) is still verified in full;
+ *                 the checks outside A to B may read $46 and the case still passes. A B above the checks count is harness_failure.
  *                 Power-on policies (plan 03-11; D-127): the ROM is booted and run once per policy of the list (the optional key policies, request fragments separated by ||, or the built-in default of zero, seeded-prng-v3 seed 1 and
  *                 seeded-prng-v3 seed 2, plan 04-18; plan 03-24 had v2), and the DSV1 result bytes +10..+6F and observed bytes +80..+DF of every run must equal those of the first run; the first difference is a guest_failure naming the check.
  *                 The RESULT line of a guest case ends machine_time=N stop=REASON (D-95, F11).
@@ -74,6 +76,12 @@ static void fault(struct ctx *c, const char *what)
 
 /* the verdict block that the run left in b (256 bytes); want_id and want_checks come from the case. Sets exactly one outcome on c. */
 void judge_dsv1(struct ctx *c, const uint8_t *b, unsigned want_id, unsigned want_checks, char *got, size_t gotcap)
+{
+    judge_dsv1_range(c, b, want_id, want_checks, 0u, 0u, got, gotcap);
+}
+
+/* judge_dsv1 with the judge=A-B item of plan 04-17 (D-173, F-4): when lo is not 0 only the checks lo to hi (1-based, inclusive) have to read $50; every structural fault, the summary, the checksum and the state are still verified over all checks, so a group of checks can be judged alone while the block stays proven whole */
+void judge_dsv1_range(struct ctx *c, const uint8_t *b, unsigned want_id, unsigned want_checks, unsigned lo, unsigned hi, char *got, size_t gotcap)
 {
     unsigned state = b[4];
     unsigned nchk = b[7];
@@ -169,6 +177,9 @@ void judge_dsv1(struct ctx *c, const uint8_t *b, unsigned want_id, unsigned want
     }
     snprintf(got, gotcap, "pass=%u fail=%u notrun=%u", npass, nfail, nnot);
     for (i = 0u; i < nchk; i++) {
+        if (lo != 0u && (i + 1u < lo || i + 1u > hi)) {
+            continue; /* judge=A-B: this check belongs to another group of the case */
+        }
         snprintf(msg, sizeof msg, "check %u of the guest did not pass (result byte $%02x)", i + 1u, (unsigned)b[V_RES + i]);
         check(c, b[V_RES + i] == R_PASS, msg);
     }
@@ -270,6 +281,22 @@ static int parse_item(char *item, struct guest_expect *e, int *seen_mode, int *s
         e->outcome[colon - item] = '\0';
         memcpy(e->reason, colon + 1, strlen(colon + 1) + 1u);
         e->mode = MODE_VERDICT;
+        return 0;
+    }
+    if (strncmp(item, "judge=", 6u) == 0) {
+        unsigned a = 0u;
+        unsigned b = 0u;
+        char *dash = strchr(item + 6, '-');
+
+        if (e->jlo != 0u || dash == NULL) {
+            return -1;
+        }
+        *dash = '\0';
+        if (parse_idx(item + 6, &a) != 0 || parse_idx(dash + 1, &b) != 0 || a > b) {
+            return -1;
+        }
+        e->jlo = a;
+        e->jhi = b;
         return 0;
     }
     if (strncmp(item, "policy-diff=", 12u) == 0) {
@@ -1099,7 +1126,12 @@ static int guest_once(const struct gstate *g, struct ctx *c, struct ctx *judged,
             return 0;
         }
     }
-    judge_dsv1(judged, inst->ram8k + V_OFF, (unsigned)ex->id, (unsigned)g->checks, got, gotcap);
+    if (ex->jhi > (unsigned)g->checks) {
+        harness_error(judged, "the judge=A-B item of the expect names a check above the checks count of the case");
+        release_boot(&b);
+        return 0;
+    }
+    judge_dsv1_range(judged, inst->ram8k + V_OFF, (unsigned)ex->id, (unsigned)g->checks, ex->jlo, ex->jhi, got, gotcap);
     if (!judged->harness && !judged->failed && !judged->timeout) {
         observe_judge(judged, inst->ram8k + V_OFF, ex, g->ol);
     }

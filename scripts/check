@@ -1535,7 +1535,34 @@ selftest() {
       && [ "$(grep -c -F -e '--cases "$cm_bd/cases.tsv"' "$here/conformance-run" || true)" -eq 0 ] \
       && [ "$(grep -c -F -e '--ids "$cm_bd/ids.txt"' "$here/conformance-run" || true)" -eq 0 ] \
       && [ "$(grep -c -F -e 'filter_cases "$cm_bd/cases.tsv"' "$here/conformance-run" || true)" -eq 1 ]; then wire_ok=1; fi
-    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 2 ] && [ ! -e "$tf/out2.tsv" ] && grep -q 'HARNESS_ERROR' "$tmp/st.err" && [ "$wire_ok" -eq 1 ]; then
+    # the second EXPECT column pass (plan 04-17; D-173, F-4, F-43): a canned EXPECT with one red id and one pass id is split by the toy-expect mode into the union, the red and the pass lists; an unknown second column, a pass id that no REQUIRED line names and a toy with no red id are each exit 2 and leave no list;
+    # the toy-verdict mode wants guest_failure for the red id and pass for the pass id, so a pass id that fails or a red id that passes is exit 1. Mutated (the line that sends a second column to the pass list now ignores it): the pass list is empty and the same call no longer gives it.
+    printf '# a red id and a stays-green id\nalpha\nbeta\tpass\n' > "$tf/ex.txt"
+    printf 'alpha\nbeta\n' > "$tf/req.txt"
+    printf 'alpha\n' > "$tf/req2.txt"
+    printf 'alpha\nbeta\tfail\n' > "$tf/exbad.txt"
+    printf 'beta\tpass\n' > "$tf/exnored.txt"
+    printf 'RESULT alpha guest_failure assertions=1 evidence=x\nRESULT beta pass assertions=1 evidence=x\nRUNNER_DONE 2\n' > "$tf/res-ok.txt"
+    printf 'RESULT alpha guest_failure assertions=1 evidence=x\nRESULT beta guest_failure assertions=1 evidence=x\nRUNNER_DONE 2\n' > "$tf/res-bad1.txt"
+    printf 'RESULT alpha pass assertions=1 evidence=x\nRESULT beta pass assertions=1 evidence=x\nRUNNER_DONE 2\n' > "$tf/res-bad2.txt"
+    col_alive=0
+    if sh "$here/conformance-run" toy-expect "$tf/ex.txt" "$tf/cx" "$tf/req.txt" > /dev/null 2>&1 && [ "$(tr '\n' ' ' < "$tf/cx.ids")" = "alpha beta " ] && [ "$(tr '\n' ' ' < "$tf/cx.pass")" = "beta " ] && [ "$(tr '\n' ' ' < "$tf/cx.red")" = "alpha " ]; then col_alive=1; fi
+    if sh "$here/conformance-run" toy-expect "$tf/exbad.txt" "$tf/cb1" "$tf/req.txt" > /dev/null 2>&1 || [ -e "$tf/cb1.ids" ]; then col_alive=0; fi
+    if sh "$here/conformance-run" toy-expect "$tf/ex.txt" "$tf/cb2" "$tf/req2.txt" > /dev/null 2>&1 || [ -e "$tf/cb2.ids" ]; then col_alive=0; fi
+    if sh "$here/conformance-run" toy-expect "$tf/exnored.txt" "$tf/cb3" "$tf/req.txt" > /dev/null 2>&1 || [ -e "$tf/cb3.ids" ]; then col_alive=0; fi
+    if ! sh "$here/conformance-run" toy-verdict "$tf/res-ok.txt" "$tf/cx.red" "$tf/cx.pass" > /dev/null 2>&1; then col_alive=0; fi
+    if sh "$here/conformance-run" toy-verdict "$tf/res-bad1.txt" "$tf/cx.red" "$tf/cx.pass" > /dev/null 2>&1; then col_alive=0; fi
+    if sh "$here/conformance-run" toy-verdict "$tf/res-bad2.txt" "$tf/cx.red" "$tf/cx.pass" > /dev/null 2>&1; then col_alive=0; fi
+    coltok='if (NF == 2) { print $1 > pass } else { print $1 > red; nred++ }'
+    colbefore=$(grep -c -F -e "$coltok" "$here/conformance-run" || true)
+    sed 's/if (NF == 2) { print \$1 > pass } else {/if (0) { print \$1 > pass } else {/' "$here/conformance-run" > "$cp_dir/conformance-run.col"
+    colafter=$(grep -c -F -e "$coltok" "$cp_dir/conformance-run.col" || true)
+    col_mut_dead=0
+    if sh "$cp_dir/conformance-run.col" toy-expect "$tf/ex.txt" "$tf/cm" "$tf/req.txt" > /dev/null 2>&1 && [ "$(tr '\n' ' ' < "$tf/cm.pass")" != "beta " ]; then col_mut_dead=1; fi
+    col_wire=0
+    if [ "$(grep -c -F -e 'toy_expect "${cm_dir}EXPECT"' "$here/conformance-run" || true)" -eq 1 ] && [ "$(grep -c -F -e 'toy_verdict "$cm_out"' "$here/conformance-run" || true)" -eq 1 ] && [ "$(grep -c -F -e '$cm_name.pass' "$here/conformance-run" || true)" -ge 1 ]; then col_wire=1; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 2 ] && [ ! -e "$tf/out2.tsv" ] && grep -q 'HARNESS_ERROR' "$tmp/st.err" && [ "$wire_ok" -eq 1 ] \
+      && [ "$col_alive" -eq 1 ] && [ "$colbefore" -eq 1 ] && [ "$colafter" -eq 0 ] && [ "$col_mut_dead" -eq 1 ] && [ "$col_wire" -eq 1 ]; then
       echo "SELFTEST mutation-toy-filter PASS"
     else
       echo "SELFTEST mutation-toy-filter FAIL"; failed=1

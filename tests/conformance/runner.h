@@ -293,6 +293,7 @@ const char *boot_content(const char *request, size_t len, struct booted *b, cons
  *   observe=IDX:differs     (plan 03-24) only in a case that carries policy-diff=IDX for the same IDX: the byte of every policy after the first must differ from the byte of the first one
  *   policy-diff=IDX         (plan 03-24, guest only) the policy-diff negative control: the case must also carry observe=IDX:differs, and every other observe row of the case is observe=IDX:policy or has a value. A fixture that initialised the row before observing
  *                           it makes the case guest_failure, which shows that the comparison across policies can see a difference
+ *   judge=A-B               (plan 04-17, guest only) judge only the checks A to B (see guestkinds.c); the integrity of the whole block is still verified
  *   exclude=IDX,IDX,...     the checks a mutation sweep skips (strictly ascending), which must equal the observe rows of the fixture (mutate_sweep only)
  *   fail-set=IDX,IDX,...    (plan 03-29, guest only) a control-shaped case: the guest must finish with a consistent block in which exactly the checks listed (strictly ascending, 1 to 255) read $46 and every other check $50; any other set, a result byte that is neither, or a structural fault of the
  *                           block is a failure of the case. The pad negative controls use it (none, wrong, late: the declared set is the fact under test, the verdict of the guest is E0 data)
@@ -318,6 +319,8 @@ struct guest_expect {
         unsigned value;
     } obs[GE_ITEMS_MAX];
     unsigned pdiff; /* policy-diff=IDX (0 when the case has no such item) */
+    unsigned jlo;   /* judge=A-B (plan 04-17): only the checks jlo to jhi are judged; jlo is 0 when the case has no such item */
+    unsigned jhi;
     unsigned nex;
     unsigned ex[GE_ITEMS_MAX];
     unsigned nfail; /* fail-set=IDX,... (MODE_FAILSET) */
@@ -336,6 +339,8 @@ const char *read_observe(const char *rom, struct obs_list *out);
 int parse_guest_expect(const char *text, struct guest_expect *e); /* 0 on success */
 /* judge the DSV1 block b (256 bytes of raw work RAM) on c: exactly one outcome; got receives the observed summary */
 void judge_dsv1(struct ctx *c, const uint8_t *b, unsigned want_id, unsigned want_checks, char *got, size_t gotcap);
+/* the same with the judge=A-B range of plan 04-17: lo 0 judges every check, otherwise only the checks lo to hi (1-based) have to pass; the structural verification covers all checks */
+void judge_dsv1_range(struct ctx *c, const uint8_t *b, unsigned want_id, unsigned want_checks, unsigned lo, unsigned hi, char *got, size_t gotcap);
 /* a protocol-control case: s is the scratch context the judge filled; c passes only on the declared outcome and a reason containing the declared word */
 void expect_verdict(struct ctx *c, const struct ctx *s, const struct guest_expect *e, char *got, size_t gotcap);
 /* every observe row of the fixture needs an observe=IDX:VALUE item and every item an observe row: harness_failure (observe-missing, observe-unlisted) on t otherwise */
