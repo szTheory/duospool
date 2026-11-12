@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The VDC register and VRAM interface seen from the guest (plan 04-06; D-146, D-148, D-149, D-169, D-170, D-175 (b), ER-4, ER-5, ER-10): the authored fixture fixtures/src/vdc_reg.s is assembled by ca65 in the gate (never committed), is booted on the core, writes VRAM words through ST0, ST1 and ST2 (H8-8), through the window mirrors and through a TIA upload,
+# starts reads with the high byte write of MARR and reads the words back through VRR by LDA (H7-5, H7-25), and writes a DSV1 verdict block that the runner judges from raw RAM. The 37 checks cover the buffer (the CPU receives the old
+# word), the mirrors, the AR width (H7-3), $0001, the idle status, the IW steps of VWR and VRR (H7-7), the lone low byte writes and reads, the write latch,
+# the out-of-range word addresses and the wrap of MAWR, a reserved register, the ST triple with MPR0 mapped to work RAM against the sta triple (H8-8), a 32-word TIA upload checked against an additive running sum (GUEST vram-sum) and a TAI readback (ASSUMED
+# LED-CPU-0008). The case has no policies key, so the guest kind runs the ROM under its default policy list (zero, seeded-prng-v3 seed 1, seed 2), and the check bytes must be equal in all three:
+# every word the guest reads, it wrote first (D-167). The classes: MAN (page-stated triggers, steps, widths, the high byte of the status word, the ST triple), GUEST (the upload), ASSUMED LED-VID-0006, LED-VID-0007, LED-VID-0015 and
+# LED-CPU-0008 (modelling choices). The literals come from the manual pages, the guest's own arithmetic or the ledger entry; none comes from DuoSpool output.
+# The runner kind vdc_vram (case vdc_vram) reads the same words from the instance VRAM bytes, so a symmetric write and read bug of the port cannot cancel (D-175 (c)). The toy vrr-no-readahead (a read operation that never loads the buffer) turns this
+# case guest_failure; the sweep mutate_sweep_vdc_reg flips every literal. Evidence tier E0: no accuracy, compatibility or hardware claim, and the word pass is not a support claim.
+id = "vdc_reg"
+kind = "guest"
+fixture = "authored:vdc-reg"
+request = ""
+expect = "id=16"
+meaning = "The authored vdc_reg fixture drives the VDC register interface through ST0, ST1, ST2, sta and block transfers (VWR, MARR and VRR triggers, buffer, mirrors, AR width, IW steps, write latch, out-of-range words, a reserved register, a 32-word TIA upload and a TAI readback), 37 passing checks of classes MAN, GUEST and ASSUMED, identical under three power-on policies"
+required = true
+control = false
+expect_outcome = "pass"
+pins = ["LED-VID-0006"]
+until_mclk = 2000000
+checks = 37

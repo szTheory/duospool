@@ -19,13 +19,17 @@
 #define DS_MAPPER_NAME_MAX 16u
 #define DS_CONTENT_ID_BYTES 32u
 /* behaviour epoch (D-53): bumped by any change that can alter what a run observes; goldens compare it, never a build id */
-#define DS_BEHAVIOUR_EPOCH 4u
-/* the version of the power-on policy table that the record prints next to the policy name is ds_policy_version() of ds_poweron.h (D-50, D-134): 1 for zero and seeded-prng-v1, 2 for seeded-prng-v2 */
+#define DS_BEHAVIOUR_EPOCH 5u
+/* the version of the power-on policy table that the record prints next to the policy name is ds_policy_version() of ds_poweron.h (D-50, D-134): 1 for zero and seeded-prng-v1, 2 for seeded-prng-v2, 3 for seeded-prng-v3 */
 /* field_index of a result that names no profile field */
 #define DS_NO_FIELD 0xffffffffu
 /* power-on state (D-50): the 8 KiB work RAM and the 8 mapping registers */
 #define DS_RAM8K_BYTES 8192u
 #define DS_MPR_COUNT 8u
+/* the byte arrays of the VCE and VDC state (plan 04-03; D-147, D-153): the 512 palette entries of 9 bits stored as 1,024 bytes, the 32,768 words of VRAM and the 256 words of the SATB */
+#define DS_PAL_BYTES 1024u
+#define DS_VRAM_BYTES 65536u
+#define DS_SATB_BYTES 512u
 
 /* ---- refusals (refusals.def) ---- */
 
@@ -137,10 +141,11 @@ struct ds_instance {
     /* power-on state (D-50, D-75, D-91): the work RAM and the mapping registers; none of it is a hardware claim (LED-PROF-0002) */
     uint8_t ram8k[DS_RAM8K_BYTES];
     uint8_t mpr[DS_MPR_COUNT]; /* MPR0 to MPR6 are 0 under zero and seeded-prng-v1 and drawn under seeded-prng-v2, MPR7 is $00 at reset under every policy (D-114) */
-    uint32_t powerup_policy;   /* enum ds_policy of ds_poweron.h: 1 zero, 2 seeded-prng-v1, 3 seeded-prng-v2 */
+    uint32_t powerup_policy;   /* enum ds_policy of ds_poweron.h: 1 zero, 2 seeded-prng-v1, 3 seeded-prng-v2, 4 seeded-prng-v3 */
     uint32_t has_seed;         /* 1 when the request carried a seed */
     uint64_t powerup_seed;     /* the seed of the run, 0 when has_seed is 0 */
-    /* the declared IRQ1 and IRQ2 test stimulus (plan 03-22, irq.c; D-112, ER-5): up to DS_IRQ_STIM_MAX events, slot i holding the machine time at which line irq_stim_line[i] (1 or 2, 0 = an unused slot) takes the level irq_stim_level[i] (0 or 1). Written only by ds_irq_stim_set before the first step; the level of a line at a stamp is a pure function of these arrays. A test hook, never a claim about the VDC. The three arrays are one live span of 160 bytes (region IRQS) and the 8-byte times come first so that the span sits on the 8-byte boundary after the power-up seed */
+    /* the declared IRQ1 and IRQ2 test stimulus (plan 03-22, irq.c; D-112, ER-5): up to DS_IRQ_STIM_MAX events, slot i holding the machine time at which line irq_stim_line[i] (1 or 2, 0 = an unused slot) takes the level irq_stim_level[i] (0 or 1). Written only by ds_irq_stim_set before the first step; the level of a line at a stamp is a pure function of these arrays. A test
+     * hook, never a claim about the VDC. The three arrays are one live span of 160 bytes (region IRQS) and the 8-byte times come first so that the span sits on the 8-byte boundary after the power-up seed */
     uint64_t irq_stim_at[DS_IRQ_STIM_MAX];
     uint8_t irq_stim_line[DS_IRQ_STIM_MAX];
     uint8_t irq_stim_level[DS_IRQ_STIM_MAX];
@@ -150,12 +155,14 @@ struct ds_instance {
     struct ds_input_event input_ev[DS_INPUT_MAX];
     uint32_t input_count;
     uint32_t input_reserved;
-    /* the timer (plan 03-21, timer.c; D-109): timer_origin is the master-clock stamp of the last prescaler step boundary the state was folded to, or of the start write; timer_counter is the 7-bit counter value at timer_origin, timer_reload the 7-bit reload register and timer_enabled the start bit. All four are region TIMR of the digest (plan 03-22); the counter and the reload register are what the power-on policy made them, the start bit is 0 at reset (H8-18) */
+    /* the timer (plan 03-21, timer.c; D-109): timer_origin is the master-clock stamp of the last prescaler step boundary the state was folded to, or of the start write; timer_counter is the 7-bit counter value at timer_origin, timer_reload the 7-bit reload register and timer_enabled the start bit. All four are region TIMR of the digest (plan 03-22); the counter and the reload
+     * register are what the power-on policy made them, the start bit is 0 at reset (H8-18) */
     uint64_t timer_origin;
     uint8_t timer_counter;
     uint8_t timer_reload;
     uint8_t timer_enabled;
-    /* the interrupt controller (plans 03-21 and 03-22, irq.c; D-110, D-111): irq_disable holds the three bits of the disable register $1402 (1 = disabled, bit 0 IRQ2D, bit 1 IRQ1D, bit 2 TIQD; 0 at reset, H8-16), tiq_latch the TIQ request bit (0 at reset, H8-15) and irq_i_sample the selected value of the model parameter irq_i_sample (an index into its allowed list, 0 = pre = the default; set only by ds_model_set before the first step: the row of model_params.def). The three are region IRQC */
+    /* the interrupt controller (plans 03-21 and 03-22, irq.c; D-110, D-111): irq_disable holds the three bits of the disable register $1402 (1 = disabled, bit 0 IRQ2D, bit 1 IRQ1D, bit 2 TIQD; 0 at reset, H8-16), tiq_latch the TIQ request bit (0 at reset, H8-15) and irq_i_sample the selected value of the model parameter irq_i_sample (an index into its allowed list, 0 = pre =
+     * the default; set only by ds_model_set before the first step: the row of model_params.def). The three are region IRQC */
     uint8_t irq_disable;
     uint8_t tiq_latch;
     uint8_t irq_i_sample;
@@ -167,11 +174,13 @@ struct ds_instance {
     uint8_t s;
     uint8_t p;
     uint8_t speed; /* 0 low (the power-up speed), 1 high (D-90, D-114) */
-    /* bus state (plan 03-16, region BUS0 of the digest; D-104, D-105): io_buffer is the last byte that crossed the data bus in a read or write of the windows $0800-$17FF of the hardware page, mpr_latch the byte of TAM and TMA (plan 03-17); both are constant 0 at power-on under every policy. tma_zero is the selected value of the model parameter tma_zero (plan 03-17, model_params.def): an index into its allowed list, 0 = bus_latch = the default, so a zeroed instance holds the default; set only by ds_model_set before the first step */
+    /* bus state (plan 03-16, region BUS0 of the digest; D-104, D-105): io_buffer is the last byte that crossed the data bus in a read or write of the windows $0800-$17FF of the hardware page, mpr_latch the byte of TAM and TMA (plan 03-17); both are constant 0 at power-on under every policy. tma_zero is the selected value of the model parameter tma_zero (plan 03-17,
+     * model_params.def): an index into its allowed list, 0 = bus_latch = the default, so a zeroed instance holds the default; set only by ds_model_set before the first step */
     uint8_t io_buffer;
     uint8_t mpr_latch;
     uint8_t tma_zero;
-    /* the block transfer in progress (plan 03-25, cpu.c; D-92, D-100): blk_active is 1 between the prologue step and the epilogue step of TII, TDD, TIN, TIA or TAI and 0 otherwise; blk_opcode is that instruction's opcode ($73, $C3, $D3, $E3, $F3, else 0), blk_toggle the alternation state of TIA and TAI (0: the next byte adds one, 1: it subtracts one), blk_remaining the bytes still to move (0 to 65536: the length operand 0 is 65536 and is turned into it by the prologue; 0 while active means the epilogue is next) and blk_src and blk_dst the 16-bit source and destination addresses (the hidden SH:X and DH:Y registers of H8-6). Every field is 0 when no transfer is active. The eleven bytes are region BLKT */
+    /* the block transfer in progress (plan 03-25, cpu.c; D-92, D-100): blk_active is 1 between the prologue step and the epilogue step of TII, TDD, TIN, TIA or TAI and 0 otherwise; blk_opcode is that instruction's opcode ($73, $C3, $D3, $E3, $F3, else 0), blk_toggle the alternation state of TIA and TAI (0: the next byte adds one, 1: it subtracts one), blk_remaining the bytes
+     * still to move (0 to 65536: the length operand 0 is 65536 and is turned into it by the prologue; 0 while active means the epilogue is next) and blk_src and blk_dst the 16-bit source and destination addresses (the hidden SH:X and DH:Y registers of H8-6). Every field is 0 when no transfer is active. The eleven bytes are region BLKT */
     uint8_t blk_active;
     uint8_t blk_opcode;
     uint8_t blk_toggle;
@@ -185,6 +194,58 @@ struct ds_instance {
     uint8_t rom[DS_ROM_CAP];
     /* explicit tail padding (plan 03-30; D-122): the struct is 8-byte aligned and the ROM array ends 6 bytes short of the next multiple of 8, so the padding is a member of its own and the tiling list below can name every byte of the instance. Zero from the zeroing of ds_boot, in no region of the stream */
     uint8_t tail_pad[6];
+    /*
+     * The VCE and VDC state of Phase 4 (plan 04-03; D-165, D-166, D-167, F-10), appended after tail_pad so that the line above stays byte for byte. The block starts at an 8-aligned offset and is declared region by region (VDC0, BEAM, VDMA, VCE0, then the three byte arrays), each region one contiguous live span carried whole by its payload.
+     * The members of a region are ordered so that none needs padding: the one-byte members stand where they restore the alignment of the next member (the stream order of serial.c is another order, written field by field). Every byte is 0 at boot under every policy except rcr_counter (a constant), frame_lines (the bound lines_per_frame) and display_k (0xFFFF), and, under
+     * seeded-prng-v3 only, the palette, VRAM and SATB bytes (poweron.c).
+     * This plan stores the state and carries it through the digest and the snapshot; the behaviour that reads and writes it lands in the plans that follow.
+     */
+    /* VDC0, 45 bytes: the 20 register slots R00 to R13 (R03 and R04 stay 0; the masks of D-146 are judged on restore), the read buffer, the address register, the status flags and the write latch */
+    uint16_t vdc_reg[20];
+    uint16_t vdc_rdbuf;
+    uint8_t vdc_ar;
+    uint8_t vdc_status;
+    uint8_t vdc_wlatch;
+    /*
+     * BEAM, 33 bytes (D-138 to D-143): stage 0 EV_LINE next, 1 EV_VD next, 2 EV_RCR next; v_state 0 VDS, 1 VDW, 2 VCR, 3 VSW with v_togo lines left in it (at most 512, F-1); burst the burst latch; line_idx the next line whose EV_LINE is pending; display_k the display line (0xFFFF outside VDW); rcr_counter the RCR counter (16384 at power-on); frame_lines the bound
+     * lines_per_frame; bg_y the BYR counter; mwr_active the MWR value
+     * latched at VBlank entry; vd_off and rcr_off the event offsets in master clocks (0xFFFF none); line_dirty and sprite_pend the record flags; lat_div the divider latched at EV_LINE (0 only before line 0); vd_pending the VD event is outstanding; vd_irq_phase and rcr_origin the selections of the two model rows of model_params.def (flat members named as the rows: model.c writes inst->name, F-10)
+     */
+    uint8_t stage;
+    uint8_t v_state;
+    uint8_t burst;
+    uint64_t line_idx;
+    uint16_t v_togo;
+    uint16_t display_k;
+    uint16_t rcr_counter;
+    uint16_t frame_lines;
+    uint16_t bg_y;
+    uint16_t mwr_active;
+    uint16_t vd_off;
+    uint16_t rcr_off;
+    uint8_t line_dirty;
+    uint8_t sprite_pend;
+    uint8_t lat_div;
+    uint8_t vd_pending;
+    uint8_t vd_irq_phase;
+    uint8_t rcr_origin;
+    /* VDMA, 25 bytes: the SATB copy (pending flag; the DS completion time and its validity) and the VRAM-to-VRAM transfer (dma_state 0 idle, 1 pending, 2 running; the start time, the master clocks per word and the words done) */
+    uint8_t satb_pending;
+    uint8_t satb_done_valid;
+    uint64_t satb_done_at;
+    uint64_t dma_start;
+    uint32_t dma_done;
+    uint16_t dma_word_mclk;
+    uint8_t dma_state;
+    /* VCE0, 3 bytes: the control register and the colour table address (9 bits) */
+    uint8_t vce_cr;
+    uint16_t vce_cta;
+    /* PALT 1,024 bytes (entry i is byte 2i | byte 2i+1 << 8), VRAM 65,536 bytes (word w is byte 2w | byte 2w+1 << 8) and SATB 512 bytes: byte arrays so that the live span equals the stream payload on every host (D-147) */
+    uint8_t vce_pal[DS_PAL_BYTES];
+    uint8_t vdc_vram[DS_VRAM_BYTES];
+    uint8_t vdc_satb[DS_SATB_BYTES];
+    /* explicit trailing padding of the Phase 4 block (the block is 67,178 bytes, which is 2 modulo 8): in no region of the stream, zero from the zeroing of ds_boot, an identity member of the restore evidence like tail_pad */
+    uint8_t vid_pad[6];
 };
 
 /* the stimulus arrays, the timer block, the controller bytes, the CPU block, the bus block and the block transfer state have no padding and sit in the order of the declarations (the digest regions IRQS, TIMR, IRQC, CPU0, BUS0 and BLKT are each one live span, serial.c): the stimulus times follow the power-up seed, and the ROM array follows the block transfer state */
@@ -226,10 +287,17 @@ _Static_assert(offsetof(struct ds_instance, rom) == offsetof(struct ds_instance,
     X(input_ev) X(input_count) X(input_reserved) X(timer_origin) X(timer_counter) X(timer_reload) X(timer_enabled) \
     X(irq_disable) X(tiq_latch) X(irq_i_sample) X(pc) X(a) X(x) X(y) X(s) X(p) X(speed) \
     X(io_buffer) X(mpr_latch) X(tma_zero) X(blk_active) X(blk_opcode) X(blk_toggle) X(blk_remaining) X(blk_src) X(blk_dst) \
-    X(o_latch) X(slot_type) X(rom) X(tail_pad)
+    X(o_latch) X(slot_type) X(rom) X(tail_pad) \
+    X(vdc_reg) X(vdc_rdbuf) X(vdc_ar) X(vdc_status) X(vdc_wlatch) \
+    X(stage) X(v_state) X(burst) X(line_idx) X(v_togo) X(display_k) X(rcr_counter) X(frame_lines) X(bg_y) X(mwr_active) X(vd_off) X(rcr_off) \
+    X(line_dirty) X(sprite_pend) X(lat_div) X(vd_pending) X(vd_irq_phase) X(rcr_origin) \
+    X(satb_pending) X(satb_done_valid) X(satb_done_at) X(dma_start) X(dma_done) X(dma_word_mclk) X(dma_state) \
+    X(vce_cr) X(vce_cta) X(vce_pal) X(vdc_vram) X(vdc_satb) X(vid_pad)
 #define DS_TILING_SIZE(m) +sizeof(((struct ds_instance *)0)->m)
 _Static_assert(0u DS_INSTANCE_TILING(DS_TILING_SIZE) == sizeof(struct ds_instance), "the tiling list does not account for every byte of struct ds_instance: a member without an entry, an entry without a member, or implicit padding");
 _Static_assert(offsetof(struct ds_instance, tail_pad) == offsetof(struct ds_instance, rom) + DS_ROM_CAP, "padding between the ROM and the tail padding");
+_Static_assert(offsetof(struct ds_instance, vdc_reg) == offsetof(struct ds_instance, tail_pad) + 6u && offsetof(struct ds_instance, vdc_reg) % 8u == 0u, "the Phase 4 block does not follow tail_pad at an 8-aligned offset");
+_Static_assert(offsetof(struct ds_instance, vid_pad) + sizeof(((struct ds_instance *)0)->vid_pad) == sizeof(struct ds_instance), "vid_pad is not the last member of the instance");
 
 struct ds_boot_request {
     uint32_t struct_size; /* sizeof(struct ds_boot_request) */
@@ -287,9 +355,6 @@ enum ds_constant {
 #define DS_ADDER_VDC_ACCESS ((uint32_t)DS_CONST_vdc_vce_penalty_cycles) /* constants.def: one CPU cycle, at the speed the instruction started at, per bus access to physical $1FE000-$1FE7FF (the VDC and VCE windows), zero-page-mapped, block and ST accesses included; charged in the bus before the device sees it (D-107, ASSUMED LED-CPU-0017) */
 /* the value an unmapped read returns (D-104) */
 #define DS_UNMAPPED_READ ((uint32_t)DS_CONST_unmapped_read) /* constants.def */
-/* the stub reads of the hardware-page windows whose device does not exist yet (D-104, ASSUMED LED-CPU-0012): the VDC window until Phase 4 and the VCE window until Phase 4 */
-#define DS_VDC_STUB_READ 0x00u
-#define DS_VCE_STUB_READ 0xFFu
 
 typedef int (*ds_stop_fn)(const struct ds_instance *inst, void *ctx);
 
@@ -308,12 +373,13 @@ enum ds_run_refusal {
 /* "run.NAME" for a run refusal number, "ok" for DS_RUNREF_NONE, NULL for a number that is not a member */
 const char *ds_run_refusal_name(uint32_t number);
 
-/* the instruction sink and the device-register sink of ds_obs.h (plans 03-10 and 03-19) and the running log of one ds_run call, whose layouts live there */
+/* the instruction sink, the device-register sink and the video sink of ds_obs.h (plans 03-10, 03-19 and 04-02) and the running log of one ds_run call, whose layouts live there */
 struct ds_insn_sink;
 struct ds_dev_sink;
+struct ds_vid_sink;
 struct ds_obs_log;
 
-/* the run request: an absolute deadline in master clocks, never a budget (D-93); insn is the caller-owned instruction sink and dev the caller-owned device-register sink (NULL = none, ds_obs.h) */
+/* the run request: an absolute deadline in master clocks, never a budget (D-93); insn is the caller-owned instruction sink, dev the caller-owned device-register sink and vid the caller-owned video sink, appended last in plan 04-02 (NULL = none, ds_obs.h) */
 struct ds_run_request {
     uint32_t struct_size; /* sizeof(struct ds_run_request) */
     uint32_t reserved;    /* must be 0 */
@@ -322,6 +388,7 @@ struct ds_run_request {
     void *stop_ctx;
     struct ds_insn_sink *insn;
     struct ds_dev_sink *dev;
+    struct ds_vid_sink *vid;
 };
 
 struct ds_run_result {
@@ -338,7 +405,7 @@ struct ds_run_result {
  * Run the machine in whole instructions until machine time reaches until_mclk (UNTIL) or the stop callback holds (CALLBACK). A deadline at or
  * below the current machine time returns UNTIL with zero steps. Stops only fall between steps, so the end time can pass the deadline by less
  * than ds_max_step_mclk(). No state lives outside the instance between steps: run(N) then run(M) equals run(M) from the start (D-92).
- * A NULL instance or request, a wrong struct_size, a nonzero reserved, a sink with a capacity above DS_SINK_MAX_RECORDS (sink_unsupported), a sink that overlaps the call's own memory, the other sink or itself or is misaligned (memory_invalid) and a deadline that would wrap machine time are
+ * A NULL instance or request, a wrong struct_size, a nonzero reserved, a sink with a capacity above DS_SINK_MAX_RECORDS or DS_VID_SINK_MAX_BYTES (sink_unsupported), a sink that overlaps the call's own memory, another sink or itself or is misaligned (memory_invalid) and a deadline that would wrap machine time are
  * refused with REFUSED and a refusal code; the instance is then unchanged. Returns the reason, also written to result when it is not NULL.
  */
 uint32_t ds_run(struct ds_instance *inst, const struct ds_run_request *request, struct ds_run_result *result);
@@ -383,6 +450,8 @@ void ds_mpr_write(struct ds_instance *inst, uint32_t index, uint8_t value); /* t
  * ds_irq_write stores the disable bits (reg 2) or acknowledges TIQ (reg 3: any write clears the TIQ request only, the IRQ levels are inputs) after folding the timer to the stamp.
  * ds_irq_pending_query is the pure query of what is pending at the stamp, after the disable mask: bit 0 IRQ2, bit 1 IRQ1, bit 2 TIQ (the layout of the request register), 0 when nothing is deliverable. ds_irq_pending is the pure sample:
  * 0 when nothing is pending, else the logical address of the vector's low byte of the winner (TIQ $FFFA, then IRQ1 $FFF8, then IRQ2 $FFF6, H8-13); the caller applies the I flag.
+ * Since plan 04-08 the IRQ1 level is the declared stimulus level OR (vdc_status & $3F) != 0 (D-144). The VDC part reads the STORED status and ignores the stamp, so ds_irq_pending_query is valid for a FOLDED instance only: the timer part is inclusive at the stamp, the VDC part is as far as the last fold went (F-21).
+ * The fold to the stamp runs before every read of $1403 and every interrupt sample; a stop callback that calls the query at machine_time sees the VDC as of machine_time - 1, and a new test must never query at a stamp past the fold.
  */
 uint32_t ds_irq_read(const struct ds_instance *inst, uint32_t reg, uint64_t stamp);
 void ds_irq_write(struct ds_instance *inst, uint32_t reg, uint8_t value, uint64_t stamp);

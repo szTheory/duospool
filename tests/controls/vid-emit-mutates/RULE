@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Toy control (D-164, D-173, F-7, T-04-18; a toy of the Phase 4 set): a video record writer that changes machine state, made from the live src/core/vid.c by scripts/control-mutate. The anchor is the statement of ds_vid_render that stores the border value of a record (the render function is the only code that runs when a vid sink is attached and does not run without one, the want_pixels gate of
+# the fold); the replacement does the same and then adds one to the low byte of palette entry $100 of the instance through a cast away from const, which exists only in the generated toy (the live render function takes a const instance and cannot write it, which the compiler enforces and which is why no core-boundary rule exists, F-7). With a vid sink in the request the toy
+# leaves another palette, another border in the next record and another digest than the run without a sink, so the cases in EXPECT must come out guest_failure on the toy: video_vce_pal (the border literal row, 273, is judged on records whose border the toy shifts), observer_vce_pal (the run with every sink against the run with none) and vid_noninterference (a vid-only sink
+# against no sink). The real core passes all three (REQUIRED cases).
+tag=rule-vid-emit-mutates
+file=src/core/vid.c
+anchor=put_le(rec, OFF_BORDER, (uint64_t)pal_entry(inst, BORDER_ENTRY), 2u);
+replace=put_le(rec, OFF_BORDER, (uint64_t)pal_entry(inst, BORDER_ENTRY), 2u); ((struct ds_instance *)(void *)inst)->vce_pal[(BORDER_ENTRY << 1u) & (DS_PAL_BYTES - 1u)] = (uint8_t)(inst->vce_pal[(BORDER_ENTRY << 1u) & (DS_PAL_BYTES - 1u)] + 1u);

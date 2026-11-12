@@ -11,21 +11,23 @@
  *                     hand, the seven spare bytes zero), and the bytes of the record memory past the count and the guard bytes around it must still hold their poison (the core wrote nothing else, and
  *                     never read the header: a poisoned header gives the same result). A capacity of 0 and of 1, a small capacity that drops (drop-newest, lost counted) and a large one that does not are the shapes.
  *   opcode_exercise   a deferred kind (evaluated after the case loop, the D-86 pattern, so its RESULT line comes before RUNNER_DONE). It runs the ROM of every case of kind guest once (one run per distinct
- *                     ROM and request, to the case's until_mclk or the DSV1 done state, whichever comes first) with an insn sink of 262144 records and collects the set of opcodes the records show as executed.
+ *                     ROM and request, to the case's until_mclk or the DSV1 done state, whichever comes first) with an insn sink of 1048576 records (raised from 262144 by plan 04-10: the polling guests of the DMA fixtures execute more than a quarter of a million instructions before their verdict) and collects the set of opcodes the records show as executed.
  *                     The defined opcodes of the core's table (ds_cpu_op_defined: 234 rows, checked against the manual transcription by scripts/opcode-check) that no fixture executed are written to the
  *                     evidence file of the case, sixteen to a line. expect is mode=report (the case passes and records the count: the inventory is a measurement) or mode=require;exclude=0xNN,0xNN,...
  *                     (every unexercised defined opcode not in the exclude list is a guest_failure; plan 03-14 switches the case to require). A sink that lost a record (lost != 0) is harness_failure,
  *                     because the inventory would be incomplete: the log is evidence here (D-119). E0: the inventory says which opcodes the fixtures execute, nothing about what they check.
  *   observer          (plan 03-19) the non-interference matrix: fixture = authored:NAME, until_mclk, expect = compare=verdict,machine_time,stops,digest, sinks = the configurations besides off (large, drop4, poison, cap0, cap1; large is
  *                     required: it is the log every other configuration is compared with), chunks = the run modes (whole first; chunk:N runs N calls to equal parts of the deadline; stop:K holds the stop callback at its K-th call).
- *                     In each mode the machine is run once with no sink (the reference) and once per configuration with BOTH sinks (insn and dev); every run must give the reference stop reason, machine time, steps, overshoot,
+ *                     In each mode the machine is run once with no sink (the reference) and once per configuration with ALL THREE sinks (insn, dev and, since plan 04-02, vid, whose byte capacity is the closed form of the deadline for large, the first four record sizes of the large run for drop4); every run must give the reference stop reason, machine time, steps, overshoot,
  *                     verdict RAM (the DSV1 block), digest and stop sequence (the count and an FNV-1a fold of the machine time, pc, registers and bus latch at every call of the stop callback). The sinks themselves are checked too: headers
  *                     consistent (count = min(seq, capacity), lost = seq - count, insn seq = steps), the guard bytes and the record memory past the count untouched (a poisoned header never read), the records of a limited sink the
  *                     first records of the large sink, and, in a chunked run, the logs accumulated over the chunks equal the logs of the whole run. A large sink that lost a record is harness_failure (the log is evidence here).
+ *                     Plan 04-05: the offered number seq of the large vid sink of every mode equals the closed form floor((M - 1) / 1365) + 1 of the machine time of its run (ASSUMED LED-VID-0004, LED-VID-0001), and the optional case key policies (request fragments separated by ||, as in a guest case) runs the whole matrix once under each fragment.
  *                     E0: the core is compared with itself (non-interference), nothing here is an oracle. A hook that changes machine state turns this red (the trace-hook-mutates toy).
- *   dev_log           (plan 03-19) expect = mode=guest;rom=NAME;rec=PC:KIND:PHYS:VALUE:CYCLE;rec=... (until_mclk required; CYCLE is the zero-based cycle of the access inside its instruction, plan 03-21): the built ROM runs to the deadline with an insn sink and a dev sink; the dev log must hold exactly the listed records in order,
+ *   dev_log           (plan 03-19) expect = mode=guest;rom=NAME;rec=PC:KIND:PHYS:VALUE:CYCLE;rec=... (until_mclk required; CYCLE is the zero-based cycle of the access inside its instruction, plan 03-21,
+ *                     with the suffix H for an instruction run at the high speed, 3 master clocks per cycle, plan 04-19): the built ROM runs to the deadline with an insn sink and a dev sink; the dev log must hold exactly the listed records in order,
  *                     each with the stamp of the insn record at that pc, the pc, kind (W, R, ST), physical address, value (a number, or A for the A register in that insn record), the flags the address implies and zero spare bytes; or
- *                     mode=windows;rom=NAME: the accesses of every window driven through the bus choke point, which logs the writes of windows 0 to 5, the reads of window 4 and the ST physical writes and nothing else, and
+ *                     mode=windows;rom=NAME: the accesses of every window driven through the bus choke point, which logs the writes of windows 0 to 5, the reads of windows 0, 1 and 4 (plan 04-19, D-149) and the ST physical writes and nothing else, and
  *                     the drop-newest arithmetic of the hook. E0, with literals from the case (PC, physical address and immediates from the fixture source and the hardware manual), none from DuoSpool output.
  *   trace_out_rights  (plan 03-19) the rule of the --trace-out option, below.
  */
@@ -299,8 +301,8 @@ void kind_insn_sink_shapes(const struct kase *k, struct ctx *c, char *got, size_
 
 /* ---- kind opcode_exercise (deferred) ---- */
 
-#define OX_SINK_RECORDS 262144u
-#define OX_ROMS_MAX 32u
+#define OX_SINK_RECORDS 1048576u
+#define OX_ROMS_MAX 40u
 #define OX_PER_LINE 16u
 
 struct ox_rom {
@@ -409,7 +411,7 @@ void kind_opcode_exercise(const struct kase *k, struct ctx *c, char *got, size_t
     }
     nroms = ox_collect(roms);
     if (nroms < 1) {
-        harness_error(c, nroms < 0 ? "more than 32 distinct guest ROMs: raise OX_ROMS_MAX" : "no guest case with an authored ROM and an until_mclk was found");
+        harness_error(c, nroms < 0 ? "more than 40 distinct guest ROMs: raise OX_ROMS_MAX" : "no guest case with an authored ROM and an until_mclk was found");
         return;
     }
     sink = (struct ds_insn_sink *)calloc(1u, sizeof *sink);
@@ -498,9 +500,12 @@ void kind_opcode_exercise(const struct kase *k, struct ctx *c, char *got, size_t
 /* ---- kind observer: the non-interference matrix (plan 03-19; D-119, D-131, CORE-06, T-03-53) ---- */
 
 #define OB_INSN_LARGE 262144u /* records: more than any run of the matrix executes, so a large sink never drops */
-#define OB_DEV_LARGE 4096u
+#define OB_DEV_LARGE 16384u /* records: the logged reads of windows 0 and 1 (plan 04-19, D-149, F-45) make the 32 random programs offer up to 10,980 dev records in a large run (measured once with a counter that was removed), above the 4096 of Phase 3; the rule that a large sink never loses a record is unchanged */
+#define OB_VID_LARGE (16u * 1024u * 1024u) /* bytes: the ceiling of a large vid sink (the closed form of D-137 for the deadline is used when it is smaller, ob_matrix) */
+#define OB_VID_LINE_MAX 2792u              /* DS_VID_MAX_REC_BYTES: the longest record */
 #define OB_CHUNKS_MAX 64u
 #define OB_MODES_MAX 6u
+#define OB_POLICIES_MAX 4u /* the request fragments of the policies key of an observer case (plan 04-05) */
 #define OB_CFG_MAX 6u
 #define OB_FNV_BASIS UINT64_C(14695981039346656037)
 #define OB_FNV_PRIME UINT64_C(1099511628211)
@@ -513,15 +518,17 @@ struct ob_cfg {
     uint32_t dcap;
     int poison;
     int large; /* 1 for the two configurations that never drop (large and poison): the kind lowers their instruction capacity to what the deadline can execute, see ob_cfg_fit */
+    uint32_t vcap; /* the byte capacity of the vid sink (plan 04-02, F-31): fixed for cap0 and cap1; for the large configurations the matrix sets it to the closed form of the deadline (the lines due times the longest record) and for drop4 to the sum of the first four record sizes of the large run (0 while no record exists) */
+    int vfour;     /* 1 for drop4: vcap is taken from the large run of the same mode */
 };
 
 static const struct ob_cfg ob_cfgs[OB_CFG_MAX] = {
-    {"off", 0, 0u, 0u, 0, 0},
-    {"large", 1, OB_INSN_LARGE, OB_DEV_LARGE, 0, 1},
-    {"drop4", 1, 4u, 4u, 0, 0},
-    {"poison", 1, OB_INSN_LARGE, OB_DEV_LARGE, 1, 1},
-    {"cap0", 1, 0u, 0u, 1, 0}, /* a non-NULL record pointer and a poisoned header with capacity 0 */
-    {"cap1", 1, 1u, 1u, 1, 0},
+    {"off", 0, 0u, 0u, 0, 0, 0u, 0},
+    {"large", 1, OB_INSN_LARGE, OB_DEV_LARGE, 0, 1, 0u, 0},
+    {"drop4", 1, 4u, 4u, 0, 0, 0u, 1},
+    {"poison", 1, OB_INSN_LARGE, OB_DEV_LARGE, 1, 1, 0u, 0},
+    {"cap0", 1, 0u, 0u, 1, 0, 0u, 0}, /* a non-NULL record pointer and a poisoned header with capacity 0 */
+    {"cap1", 1, 1u, 1u, 1, 0, 1u, 0},
 };
 
 /* a run mode: one call to the deadline (whole), N calls to equal parts of it (chunk) or one call whose stop callback holds at its K-th invocation (stop) */
@@ -576,6 +583,15 @@ struct ob_log {
     uint64_t seq;
 };
 
+/* a copy of what the vid sink held after a run (or the bytes accumulated over the calls of a chunked run): count whole records in bytes stored bytes, and the header numbers (plan 04-02) */
+struct ob_vlog {
+    unsigned char *rec;
+    uint32_t count;
+    uint32_t lost;
+    uint64_t seq;
+    uint64_t bytes;
+};
+
 /* where the program of a run comes from (plan 03-26): a built authored image (rom), or the in-process random program of an index (randprog.c); k is the case, whose request is booted over and whose irq_stim is declared to every boot */
 struct ob_src {
     const char *rom;
@@ -583,6 +599,7 @@ struct ob_src {
     unsigned index;
     const unsigned char *img; /* the image of the random program, built once for the runs of the whole matrix */
     const struct kase *k;
+    const char *request;      /* the request text every boot of the matrix uses: the case's request, with the power-on policy fragment of the policies key appended (plan 04-05) */
 };
 
 /* the observable outcome of one run: everything a sink must not change, plus the two logs; bstops counts the calls that took a step and ended inside a block transfer and pstops those of them with the timer interrupt and IRQ2 both pending at the stop stamp */
@@ -596,24 +613,30 @@ struct ob_out {
     uint64_t cont; /* steps that continued a block transfer: executed steps without an instruction offer to the instruction sink */
     struct ob_log ilog;
     struct ob_log dlog;
+    struct ob_vlog vlog;
 };
 
 static void ob_out_free(struct ob_out *o)
 {
     free(o->ilog.rec);
     free(o->dlog.rec);
+    free(o->vlog.rec);
     o->ilog.rec = NULL;
     o->dlog.rec = NULL;
+    o->vlog.rec = NULL;
 }
 
 /* the memory of the sinks of one run: the two sink structs and the record blocks with guard bytes either side, all poisoned or zero as the configuration says */
 struct ob_mem {
     struct ds_insn_sink *isk;
     struct ds_dev_sink *dsk;
+    struct ds_vid_sink *vsk;
     unsigned char *iblock;
     unsigned char *dblock;
+    unsigned char *vblock;
     size_t ibytes;
     size_t dbytes;
+    size_t vbytes;
     int poison;
 };
 
@@ -621,8 +644,10 @@ static void ob_mem_free(struct ob_mem *m)
 {
     free(m->isk);
     free(m->dsk);
+    free(m->vsk);
     free(m->iblock);
     free(m->dblock);
+    free(m->vblock);
     memset(m, 0, sizeof *m);
 }
 
@@ -640,20 +665,27 @@ static int ob_mem_make(struct ob_mem *m, const struct ob_cfg *cf)
     m->dbytes = (size_t)(cf->dcap != 0u ? cf->dcap : 1u) * (size_t)DS_DEV_RECORD_BYTES;
     m->isk = (struct ds_insn_sink *)calloc(1u, sizeof *m->isk);
     m->dsk = (struct ds_dev_sink *)calloc(1u, sizeof *m->dsk);
+    m->vsk = (struct ds_vid_sink *)calloc(1u, sizeof *m->vsk);
+    m->vbytes = (size_t)(cf->vcap != 0u ? cf->vcap : 1u);
     m->iblock = (unsigned char *)malloc(m->ibytes + 2u * OBS_GUARD);
     m->dblock = (unsigned char *)malloc(m->dbytes + 2u * OBS_GUARD);
-    if (m->isk == NULL || m->dsk == NULL || m->iblock == NULL || m->dblock == NULL) {
+    m->vblock = (unsigned char *)malloc(m->vbytes + 2u * OBS_GUARD);
+    if (m->isk == NULL || m->dsk == NULL || m->vsk == NULL || m->iblock == NULL || m->dblock == NULL || m->vblock == NULL) {
         ob_mem_free(m);
         return -1;
     }
     memset(m->iblock, fill, m->ibytes + 2u * OBS_GUARD);
     memset(m->dblock, fill, m->dbytes + 2u * OBS_GUARD);
+    memset(m->vblock, fill, m->vbytes + 2u * OBS_GUARD);
     memset(m->isk->header, fill, sizeof m->isk->header);
     memset(m->dsk->header, fill, sizeof m->dsk->header);
+    memset(m->vsk->header, fill, sizeof m->vsk->header);
     m->isk->records = m->iblock + OBS_GUARD;
     m->isk->capacity = cf->icap;
     m->dsk->records = m->dblock + OBS_GUARD;
     m->dsk->capacity = cf->dcap;
+    m->vsk->bytes = m->vblock + OBS_GUARD;
+    m->vsk->capacity = cf->vcap;
     return 0;
 }
 
@@ -733,6 +765,86 @@ static int ob_header_consistent(const unsigned char *header, uint32_t cap, uint6
     return (uint64_t)count == want && (uint64_t)lost == s - want;
 }
 
+/* the vid header of one call (plan 04-02; D-162, F-2, F-31): 32 bytes, the byte capacity, and for the records a walk of the stored bytes. count = whole records stored, bytes = their sum (at most the capacity), lost = seq - count, the zero word is zero; the walk reads
+ * the rec_bytes field (+16, u16) of each stored record and must land exactly on bytes after count records, each between 64 and the longest record. The offered number is returned in *seq and the stored byte count in *stored. */
+static int ob_vheader_consistent(const unsigned char *header, const unsigned char *bytes, uint32_t cap, uint64_t *seq, uint64_t *stored)
+{
+    uint32_t count = get_u32(header);
+    uint32_t lost = get_u32(header + 4);
+    uint64_t s = get_u64(header + 8);
+    uint64_t used = get_u64(header + 16);
+    uint64_t at = 0u;
+    uint32_t n;
+
+    *seq = s;
+    *stored = used;
+    if ((uint64_t)count > s || (uint64_t)lost != s - (uint64_t)count || used > (uint64_t)cap || get_u64(header + 24) != 0u || (count == 0u) != (used == 0u)) {
+        return 0;
+    }
+    for (n = 0u; n < count; n++) {
+        uint32_t rb = at + 18u <= used ? get_u16(bytes + at + 16u) : 0u;
+
+        if (rb < (uint32_t)DS_VID_REC_HEADER_BYTES || rb > (uint32_t)OB_VID_LINE_MAX || at + (uint64_t)rb > used) {
+            return 0;
+        }
+        at += (uint64_t)rb;
+    }
+    return at == used;
+}
+
+/* the whole records of a large vid log that fit a byte capacity, drop-newest with a sticky full flag: the count and the byte sum (the first record that does not fit ends the walk: a smaller later one is lost too) */
+static void ob_vfit(const struct ob_vlog *large, uint64_t cap, uint32_t *count, uint64_t *bytes)
+{
+    uint64_t used = 0u;
+    uint32_t n = 0u;
+
+    while (n < large->count) {
+        uint64_t rb = (uint64_t)get_u16(large->rec + used + 16u);
+
+        if (used + rb > cap) {
+            break;
+        }
+        used += rb;
+        n++;
+    }
+    *count = n;
+    *bytes = used;
+}
+
+/* the byte capacity of the 4-record configuration: the sizes of the first four records of the large run (fewer when it holds fewer, 0 while no record exists), F-2 */
+static uint32_t ob_vfour(const struct ob_vlog *large)
+{
+    uint32_t n = 0u;
+    uint32_t first = large->count < 4u ? large->count : 4u;
+    uint64_t used = 0u;
+
+    while (n < first) {
+        used += (uint64_t)get_u16(large->rec + used + 16u);
+        n++;
+    }
+    return (uint32_t)used;
+}
+
+/* append the bytes of one call (nbytes of them, count records) to an accumulated vid log of at most cap bytes: 0 on success */
+static int ob_vlog_append(struct ob_vlog *acc, uint32_t cap, const unsigned char *rec, uint64_t nbytes, uint32_t count)
+{
+    if (acc->rec == NULL) {
+        acc->rec = (unsigned char *)malloc((size_t)(cap != 0u ? cap : 1u));
+        if (acc->rec == NULL) {
+            return -1;
+        }
+    }
+    if (acc->bytes + nbytes > (uint64_t)cap) {
+        return -1;
+    }
+    if (nbytes > 0u) { /* a copy of zero bytes still must not get a null pointer */
+        memcpy(acc->rec + (size_t)acc->bytes, rec, (size_t)nbytes);
+    }
+    acc->bytes += nbytes;
+    acc->count += count;
+    return 0;
+}
+
 /* one run of the machine under one configuration and mode: 0 on success (checks made on c), -1 after a harness error. A whole or stop run is one ds_run call; a chunk run is o->n calls to equal parts of the deadline. */
 static int ob_exec(struct ctx *c, const struct ob_src *src, uint64_t until, const struct ob_cfg *cf, const struct ob_mode *md, struct ob_out *o)
 {
@@ -750,7 +862,7 @@ static int ob_exec(struct ctx *c, const struct ob_src *src, uint64_t until, cons
     uint32_t refusal = 0u;
     uint32_t input_refusal = 0u;
     char msg[200];
-    const char *err = src->random ? boot_random(src->img, src->k->val[K_REQUEST], &b, &ci) : boot_built_rom(src->rom, src->k->val[K_REQUEST], &b, &ci);
+    const char *err = src->random ? boot_random(src->img, src->request, &b, &ci) : boot_built_rom(src->rom, src->request, &b, &ci);
     int rc = 0;
 
     memset(o, 0, sizeof *o);
@@ -792,6 +904,7 @@ static int ob_exec(struct ctx *c, const struct ob_src *src, uint64_t until, cons
         rq.stop_ctx = &st;
         rq.insn = m.isk;
         rq.dev = m.dsk;
+        rq.vid = m.vsk;
         cont0 = st.cont;
         reason = ds_run(w, &rq, &res);
         if (reason == (uint32_t)DS_RUN_REASON_REFUSED) {
@@ -808,13 +921,18 @@ static int ob_exec(struct ctx *c, const struct ob_src *src, uint64_t until, cons
         if (cf->on && m.isk != NULL) {
             uint64_t iseq = 0u;
             uint64_t dseq = 0u;
+            uint64_t vseq = 0u;
+            uint64_t vstored = 0u;
             const unsigned char *irec = m.iblock + OBS_GUARD;
             const unsigned char *drec = m.dblock + OBS_GUARD;
+            const unsigned char *vrec = m.vblock + OBS_GUARD;
 
             snprintf(msg, sizeof msg, "the insn header of the %s sink in mode %s is not a consistent count (count = min(seq, capacity), lost = seq - count)", cf->name, md->name);
             check(c, ob_header_consistent(m.isk->header, cf->icap, &iseq), msg);
             snprintf(msg, sizeof msg, "the dev header of the %s sink in mode %s is not a consistent count (count = min(seq, capacity), lost = seq - count)", cf->name, md->name);
             check(c, ob_header_consistent(m.dsk->header, cf->dcap, &dseq), msg);
+            snprintf(msg, sizeof msg, "the vid header of the %s sink in mode %s is not a consistent count of whole records (count, lost, bytes, zero word, record walk)", cf->name, md->name);
+            check(c, ob_vheader_consistent(m.vsk->header, vrec, cf->vcap, &vseq, &vstored), msg);
             snprintf(msg, sizeof msg, "the insn header of the %s sink in mode %s does not count one offer per executed instruction of the call (steps that continue a block transfer are not instructions)", cf->name, md->name);
             check(c, iseq == res.steps - (st.cont - cont0), msg);
             if (md->kind == OBM_CHUNK && cf->large) { /* the large and the poisoned sink: their accumulated logs are compared in the kind */
@@ -822,6 +940,12 @@ static int ob_exec(struct ctx *c, const struct ob_src *src, uint64_t until, cons
                     harness_error(c, "the accumulated log of a chunked run overflowed or could not be allocated");
                     rc = -1;
                 }
+                if (ob_vlog_append(&o->vlog, cf->vcap, vrec, vstored, get_u32(m.vsk->header)) != 0) {
+                    harness_error(c, "the accumulated vid log of a chunked run overflowed or could not be allocated");
+                    rc = -1;
+                }
+                o->vlog.seq += vseq;
+                o->vlog.lost += get_u32(m.vsk->header + 4);
                 o->ilog.seq += iseq;
                 o->dlog.seq += dseq;
                 o->ilog.lost += get_u32(m.isk->header + 4);
@@ -832,15 +956,30 @@ static int ob_exec(struct ctx *c, const struct ob_src *src, uint64_t until, cons
     }
     if (rc == 0 && cf->on) {
         snprintf(msg, sizeof msg, "the core wrote outside the record memory of the %s sink in mode %s (guard bytes changed)", cf->name, md->name);
-        check(c, ob_guards_ok(m.iblock, m.ibytes, m.poison) && ob_guards_ok(m.dblock, m.dbytes, m.poison), msg);
+        check(c, ob_guards_ok(m.iblock, m.ibytes, m.poison) && ob_guards_ok(m.dblock, m.dbytes, m.poison) && ob_guards_ok(m.vblock, m.vbytes, m.poison), msg);
         if (md->kind != OBM_CHUNK) {
             uint32_t ic = get_u32(m.isk->header);
             uint32_t dc = get_u32(m.dsk->header);
+            uint64_t vb = get_u64(m.vsk->header + 16);
 
             snprintf(msg, sizeof msg, "the core wrote into the record memory past the count of the %s sink in mode %s", cf->name, md->name);
-            check(c, ob_tail_ok(m.iblock + OBS_GUARD, m.ibytes, (size_t)ic * DS_INSN_RECORD_BYTES, m.poison) && ob_tail_ok(m.dblock + OBS_GUARD, m.dbytes, (size_t)dc * DS_DEV_RECORD_BYTES, m.poison), msg);
+            check(c, ob_tail_ok(m.iblock + OBS_GUARD, m.ibytes, (size_t)ic * DS_INSN_RECORD_BYTES, m.poison) && ob_tail_ok(m.dblock + OBS_GUARD, m.dbytes, (size_t)dc * DS_DEV_RECORD_BYTES, m.poison)
+                      && vb <= (uint64_t)m.vbytes && ob_tail_ok(m.vblock + OBS_GUARD, m.vbytes, (size_t)vb, m.poison), msg);
             ob_log_header(&o->ilog, m.isk->header);
             ob_log_header(&o->dlog, m.dsk->header);
+            o->vlog.count = get_u32(m.vsk->header);
+            o->vlog.lost = get_u32(m.vsk->header + 4);
+            o->vlog.seq = get_u64(m.vsk->header + 8);
+            o->vlog.bytes = vb;
+            if (vb > 0u && vb <= (uint64_t)m.vbytes) {
+                o->vlog.rec = (unsigned char *)malloc((size_t)vb);
+                if (o->vlog.rec == NULL) {
+                    harness_error(c, "out of memory for the vid log copy of the observer matrix");
+                    rc = -1;
+                } else {
+                    memcpy(o->vlog.rec, m.vblock + OBS_GUARD, (size_t)vb);
+                }
+            }
             if (ic > 0u) {
                 o->ilog.rec = (unsigned char *)malloc((size_t)ic * DS_INSN_RECORD_BYTES);
             }
@@ -888,7 +1027,8 @@ static int ob_logs_equal(const struct ob_out *a, const struct ob_out *b)
 {
     return a->ilog.count == b->ilog.count && a->dlog.count == b->dlog.count && a->ilog.seq == b->ilog.seq && a->dlog.seq == b->dlog.seq
            && (a->ilog.count == 0u || (a->ilog.rec != NULL && b->ilog.rec != NULL && memcmp(a->ilog.rec, b->ilog.rec, (size_t)a->ilog.count * DS_INSN_RECORD_BYTES) == 0))
-           && (a->dlog.count == 0u || (a->dlog.rec != NULL && b->dlog.rec != NULL && memcmp(a->dlog.rec, b->dlog.rec, (size_t)a->dlog.count * DS_DEV_RECORD_BYTES) == 0));
+           && (a->dlog.count == 0u || (a->dlog.rec != NULL && b->dlog.rec != NULL && memcmp(a->dlog.rec, b->dlog.rec, (size_t)a->dlog.count * DS_DEV_RECORD_BYTES) == 0))
+           && a->vlog.count == b->vlog.count && a->vlog.seq == b->vlog.seq && a->vlog.bytes == b->vlog.bytes && (a->vlog.bytes == 0u || (a->vlog.rec != NULL && b->vlog.rec != NULL && memcmp(a->vlog.rec, b->vlog.rec, (size_t)a->vlog.bytes) == 0));
 }
 
 /* the records a limited sink holds are the first count records of the large sink of the same mode, and its counts follow from what the large sink saw offered */
@@ -902,6 +1042,16 @@ static void ob_prefix_of(struct ctx *c, const struct ob_out *large, const struct
     check(c, o->ilog.seq == large->ilog.seq && (uint64_t)o->ilog.count == want_i && (uint64_t)o->ilog.lost == large->ilog.seq - want_i, msg);
     snprintf(msg, sizeof msg, "the dev header of the %s sink in mode %s differs from the offers the large sink saw", cf->name, mode);
     check(c, o->dlog.seq == large->dlog.seq && (uint64_t)o->dlog.count == want_d && (uint64_t)o->dlog.lost == large->dlog.seq - want_d, msg);
+    {
+        uint32_t want_vc = 0u;
+        uint64_t want_vb = 0u;
+
+        ob_vfit(&large->vlog, (uint64_t)cf->vcap, &want_vc, &want_vb);
+        snprintf(msg, sizeof msg, "the vid header of the %s sink in mode %s differs from the whole records of the large sink that fit its byte capacity (drop-newest, sticky full)", cf->name, mode);
+        check(c, o->vlog.seq == large->vlog.seq && o->vlog.count == want_vc && o->vlog.bytes == want_vb && (uint64_t)o->vlog.lost == large->vlog.seq - (uint64_t)want_vc, msg);
+        snprintf(msg, sizeof msg, "the vid records of the %s sink in mode %s are not the first records of the large sink", cf->name, mode);
+        check(c, o->vlog.bytes == 0u || (large->vlog.rec != NULL && o->vlog.rec != NULL && memcmp(o->vlog.rec, large->vlog.rec, (size_t)o->vlog.bytes) == 0), msg);
+    }
     snprintf(msg, sizeof msg, "the insn records of the %s sink in mode %s are not the first records of the large sink", cf->name, mode);
     check(c, o->ilog.count == 0u || (large->ilog.rec != NULL && o->ilog.rec != NULL && memcmp(o->ilog.rec, large->ilog.rec, (size_t)o->ilog.count * DS_INSN_RECORD_BYTES) == 0), msg);
     snprintf(msg, sizeof msg, "the dev records of the %s sink in mode %s are not the first records of the large sink", cf->name, mode);
@@ -1013,6 +1163,12 @@ static int ob_parse_modes(const char *text, struct ob_mode *modes, unsigned *nmo
     return *nmodes >= 1u && modes[0].kind == OBM_WHOLE ? 0 : -1;
 }
 
+/* the lines due at the machine time M by the closed form of D-137: floor((M - 1) / 1365) + 1, 0 for M = 0 (ASSUMED LED-VID-0004 and LED-VID-0001); written here, no code shared with the core */
+static uint64_t ob_lines_due(uint64_t m)
+{
+    return m == 0u ? 0u : (m - 1u) / UINT64_C(1365) + 1u;
+}
+
 /* the whole matrix for one program: every mode, each with the no-sink reference and every configuration; *runs counts the machine runs */
 static void ob_matrix(struct ctx *c, const struct ob_src *src, uint64_t until, const int *want, const struct ob_mode *modes, unsigned nmodes, int pending, unsigned *runs)
 {
@@ -1028,7 +1184,10 @@ static void ob_matrix(struct ctx *c, const struct ob_src *src, uint64_t until, c
         if (cfg[q].large) {
             uint64_t fit = until / 6u + 16u; /* an instruction takes at least two cycles of at least three master clocks, so a deadline cannot execute more instructions than this; a large sink that still loses a record is harness_failure below */
 
+            uint64_t vfit = (until / UINT64_C(1365) + UINT64_C(3)) * (uint64_t)OB_VID_LINE_MAX; /* the closed form of D-137: at most floor((deadline - 1) / 1365) + 1 lines are due, plus the overshoot of one step, each at most the longest record */
+
             cfg[q].icap = fit < (uint64_t)OB_INSN_LARGE ? (uint32_t)fit : (uint32_t)OB_INSN_LARGE;
+            cfg[q].vcap = vfit < (uint64_t)OB_VID_LARGE ? (uint32_t)vfit : (uint32_t)OB_VID_LARGE;
         }
     }
     for (mi = 0u; mi < nmodes && !c->harness; mi++) {
@@ -1060,7 +1219,14 @@ static void ob_matrix(struct ctx *c, const struct ob_src *src, uint64_t until, c
         }
         (*runs)++;
         ob_same_as(c, &ref, &large, cfg[1].name, modes[mi].name);
-        if (large.ilog.lost != 0u || large.dlog.lost != 0u) {
+        {
+            char msg[200];
+
+            snprintf(msg, sizeof msg, "the vid sink of the large run in mode %s was offered %llu records, the closed form floor((M - 1) / 1365) + 1 of its machine time %llu is %llu (ASSUMED LED-VID-0004)", modes[mi].name, (unsigned long long)large.vlog.seq, (unsigned long long)large.e.mclk,
+                     (unsigned long long)ob_lines_due(large.e.mclk));
+            check(c, large.vlog.seq == ob_lines_due(large.e.mclk), msg);
+        }
+        if (large.ilog.lost != 0u || large.dlog.lost != 0u || large.vlog.lost != 0u) {
             harness_error(c, "the large sink of the observer matrix lost a record: the log is evidence here and would be incomplete");
         }
         if (modes[mi].kind == OBM_STOP) {
@@ -1071,6 +1237,9 @@ static void ob_matrix(struct ctx *c, const struct ob_src *src, uint64_t until, c
 
             if (!want[ci]) {
                 continue;
+            }
+            if (cfg[ci].vfour) {
+                cfg[ci].vcap = ob_vfour(&large.vlog); /* the byte capacity of four records, taken from the large run of this mode (F-2) */
             }
             if (ob_exec(c, src, until, &cfg[ci], &modes[mi], &o) != 0) {
                 break;
@@ -1104,6 +1273,8 @@ static void ob_matrix(struct ctx *c, const struct ob_src *src, uint64_t until, c
 
             snprintf(msg, sizeof msg, "the insn records of the %s run are not the first records of the whole run", modes[mi].name);
             check(c, large.ilog.count <= whole_large.ilog.count && (large.ilog.count == 0u || memcmp(large.ilog.rec, whole_large.ilog.rec, (size_t)large.ilog.count * DS_INSN_RECORD_BYTES) == 0), msg);
+            snprintf(msg, sizeof msg, "the vid records of the %s run are not the first records of the whole run", modes[mi].name);
+            check(c, large.vlog.bytes <= whole_large.vlog.bytes && (large.vlog.bytes == 0u || memcmp(large.vlog.rec, whole_large.vlog.rec, (size_t)large.vlog.bytes) == 0), msg);
         }
         ob_out_free(&ref);
         ob_out_free(&large);
@@ -1125,6 +1296,11 @@ void kind_observer(const struct kase *k, struct ctx *c, char *got, size_t gotcap
     unsigned nprog = 1u;
     unsigned char *img = NULL;
     struct ob_src src;
+    char pbuf[PK_LIST_MAX];
+    char req[320];
+    const char *frag[OB_POLICIES_MAX];
+    unsigned nfrag = 0u;
+    unsigned qi;
 
     rom[0] = '\0';
     if (!k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until == 0u || until > UINT64_C(0xFFFFFFFF) || !k->has[K_SINKS] || !k->has[K_CHUNKS] || ob_parse_expect(k->val[K_EXPECT], &pending, &nrandom) != 0
@@ -1135,6 +1311,33 @@ void kind_observer(const struct kase *k, struct ctx *c, char *got, size_t gotcap
     memset(&src, 0, sizeof src);
     src.k = k;
     src.rom = rom;
+    if (k->has[K_POLICIES]) { /* plan 04-05: the power-on policies of the case, request fragments separated by || as in a guest case; the whole matrix runs once under each (every comparison is within a policy) */
+        size_t plen = strlen(k->val[K_POLICIES]);
+        char *p2;
+
+        if (plen >= sizeof pbuf) {
+            harness_error(c, "the policies key of an observer case is too long");
+            return;
+        }
+        memcpy(pbuf, k->val[K_POLICIES], plen + 1u);
+        p2 = pbuf;
+        for (;;) {
+            char *sep = strstr(p2, "||");
+
+            if (nfrag >= OB_POLICIES_MAX) {
+                harness_error(c, "the policies key of an observer case lists more than 4 request fragments");
+                return;
+            }
+            frag[nfrag++] = p2;
+            if (sep == NULL) {
+                break;
+            }
+            *sep = '\0';
+            p2 = sep + 2;
+        }
+    } else {
+        frag[nfrag++] = "";
+    }
     if (nrandom != 0u) {
         img = (unsigned char *)malloc(RP_IMAGE_BYTES);
         if (img == NULL) {
@@ -1145,15 +1348,22 @@ void kind_observer(const struct kase *k, struct ctx *c, char *got, size_t gotcap
         src.img = img;
         nprog = nrandom;
     }
-    for (pi = 0u; pi < nprog && !c->harness; pi++) {
-        src.index = pi;
-        if (img != NULL) {
-            rp_build(img, rp_seed(pi));
+    for (qi = 0u; qi < nfrag && !c->harness; qi++) {
+        if (vd_compose_request(k->val[K_REQUEST], frag[qi], req, sizeof req) != 0) {
+            harness_error(c, "the request of the observer case plus a policy fragment does not fit");
+            break;
         }
-        ob_matrix(c, &src, until, want, modes, nmodes, pending, &runs);
+        src.request = req;
+        for (pi = 0u; pi < nprog && !c->harness; pi++) {
+            src.index = pi;
+            if (img != NULL) {
+                rp_build(img, rp_seed(pi));
+            }
+            ob_matrix(c, &src, until, want, modes, nmodes, pending, &runs);
+        }
     }
     free(img);
-    snprintf(got, gotcap, "programs=%u modes=%u runs=%u", nprog, nmodes, runs);
+    snprintf(got, gotcap, "programs=%u modes=%u policies=%u runs=%u", nprog, nmodes, nfrag, runs);
 }
 
 /* ---- kind dev_log: the device-register log (plan 03-19; D-119, CORE-06) ---- */
@@ -1162,7 +1372,8 @@ void kind_observer(const struct kase *k, struct ctx *c, char *got, size_t gotcap
 #define DL_DEV_CAP 64u
 #define DL_INSN_CAP 262144u
 #define DL_WIN_CAP 4u
-#define DL_MCLK_LOW 12u /* master clocks per CPU cycle at the power-up low speed (D-90), a literal of the judge: the two stores of the cyc-probe penalty section run before its CSH */
+#define DL_MCLK_LOW 12u /* master clocks per CPU cycle at the power-up low speed (D-90), a literal of the judge: the stores and reads of the cyc-probe penalty section before its CSH run at it */
+#define DL_MCLK_HIGH 3u /* master clocks per CPU cycle at the high speed (D-90), a literal of the judge: the item cycle suffix H selects it for the read after the CSH of the cyc-probe penalty section (plan 04-19) */
 
 /* one expected record of a guest log: the pc of the instruction, kind (W write, R read, ST), the physical address and the byte (a number, or A for the A register in the insn record of that instruction) */
 struct dl_item {
@@ -1172,6 +1383,7 @@ struct dl_item {
     uint32_t value;
     int value_is_a;
     uint32_t cycle; /* the zero-based cycle of the instruction in which the access happens (plan 03-21, D-92): its page cycle count minus one plus the VDC and VCE penalty cycles of the assumption */
+    uint32_t mclk;  /* master clocks per cycle of that instruction: DL_MCLK_LOW, or DL_MCLK_HIGH when the item's cycle ends in H (an instruction run at the high speed) */
 };
 
 static int dl_parse_item(const char *text, struct dl_item *it)
@@ -1192,6 +1404,11 @@ static int dl_parse_item(const char *text, struct dl_item *it)
             return -1;
         }
         f[n++] = tok;
+    }
+    it->mclk = DL_MCLK_LOW;
+    if (n == 5u && strlen(f[4]) >= 2u && f[4][strlen(f[4]) - 1u] == 'H') { /* a cycle with the suffix H runs at the high speed */
+        f[4][strlen(f[4]) - 1u] = '\0';
+        it->mclk = DL_MCLK_HIGH;
     }
     if (n != 5u || parse_u64(f[4], &v) != 0 || v > 63u) {
         return -1;
@@ -1343,8 +1560,8 @@ static void dl_guest(struct ctx *c, const char *rom, const char *request, uint64
             }
             snprintf(msg, sizeof msg, "dev record %u: the instruction at pc %04X is not in the insn log exactly once", i, (unsigned)items[i].pc);
             check(c, hits == 1u, msg);
-            snprintf(msg, sizeof msg, "dev record %u: the stamp is not the start stamp of the instruction at pc %04X in the insn log plus %u cycles of %u master clocks (the access stamp, D-92)", i, (unsigned)items[i].pc, (unsigned)items[i].cycle, DL_MCLK_LOW);
-            check(c, get_u64(r) == stamp + (uint64_t)items[i].cycle * (uint64_t)DL_MCLK_LOW, msg);
+            snprintf(msg, sizeof msg, "dev record %u: the stamp is not the start stamp of the instruction at pc %04X in the insn log plus %u cycles of %u master clocks (the access stamp, D-92)", i, (unsigned)items[i].pc, (unsigned)items[i].cycle, (unsigned)items[i].mclk);
+            check(c, get_u64(r) == stamp + (uint64_t)items[i].cycle * (uint64_t)items[i].mclk, msg);
             snprintf(msg, sizeof msg, "dev record %u: the pc field is not %04X", i, (unsigned)items[i].pc);
             check(c, get_u16(r + 16) == items[i].pc, msg);
             snprintf(msg, sizeof msg, "dev record %u: the kind byte is not %u", i, (unsigned)items[i].kind);
@@ -1375,7 +1592,7 @@ static void dl_guest(struct ctx *c, const char *rom, const char *request, uint64
 }
 
 /* the bus-level view of the window rule (D-119): one instance, one dev sink, accesses driven through the choke point with MPR0 mapped to the hardware page. The expected records are written from the rule itself
- * (writes to windows 0 to 5 and reads of window 4 are logged, everything else is not), the aux byte from the instance's own latch after each access. A NULL bus logs nothing. */
+ * (writes to windows 0 to 5 and reads of windows 0, 1 and 4 are logged, everything else is not; D-119, D-149), the aux byte from the instance's own latch after each access (unchanged by a read of window 0 or 1). A NULL bus logs nothing. */
 struct dl_exp {
     uint32_t phys;
     uint32_t value;
@@ -1413,7 +1630,7 @@ static void dl_windows(struct ctx *c, const char *rom, const char *request, char
     memset(&dsk, 0, sizeof dsk);
     dsk.records = big.b;
     dsk.capacity = DL_WIN_CAP * 4u;
-    ds_obs_begin(&log, NULL, &dsk);
+    ds_obs_begin(&log, NULL, &dsk, NULL);
     memset(&bus, 0, sizeof bus);
     memset(&bus_off, 0, sizeof bus_off);
     bus.obs = &log;
@@ -1434,12 +1651,12 @@ static void dl_windows(struct ctx *c, const char *rom, const char *request, char
             nexp++;
         }
     }
-    /* a read of every window: only window 4 is logged; the value it returns and the latch after it are what the record must hold */
+    /* a read of every window: windows 0, 1 and 4 are logged (D-119, D-149); the value it returns and the latch after it are what the record must hold (a read of window 0 or 1 leaves the latch unchanged, so its aux is the latch as it stands after the read) */
     for (k = 0u; k < 8u; k++) {
         uint32_t off = k * 0x400u + 1u;
         uint8_t v = ds_bus_read(w, &bus, (uint16_t)off);
 
-        if (k == 4u) {
+        if (k <= 1u || k == 4u) {
             want[nexp].phys = 0x1FE000u | off;
             want[nexp].value = (uint32_t)v;
             want[nexp].kind = (uint32_t)DS_DEV_READ;
@@ -1505,7 +1722,7 @@ static void dl_windows(struct ctx *c, const char *rom, const char *request, char
         memset(&ssk, 0xA5, sizeof ssk);
         ssk.records = small.b;
         ssk.capacity = 4u;
-        ds_obs_begin(&slog, NULL, &ssk);
+        ds_obs_begin(&slog, NULL, &ssk, NULL);
         memset(&sbus, 0, sizeof sbus);
         sbus.obs = &slog;
         for (n = 0u; n < 10u; n++) {
@@ -1530,7 +1747,7 @@ void kind_dev_log(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
     uint64_t until = 0u;
 
     if (dl_parse(k->val[K_EXPECT], &windows, rom, sizeof rom, items, &nitems) != 0 || (!windows && (!k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until == 0u))) {
-        harness_error(c, "a dev_log case needs until_mclk and expect = mode=guest;rom=NAME;rec=PC:KIND:PHYS:VALUE:CYCLE;rec=... (KIND W, R or ST; VALUE a number or A; CYCLE 0 to 63) or mode=windows;rom=NAME");
+        harness_error(c, "a dev_log case needs until_mclk and expect = mode=guest;rom=NAME;rec=PC:KIND:PHYS:VALUE:CYCLE;rec=... (KIND W, R or ST; VALUE a number or A; CYCLE 0 to 63, optionally ending in H for the high speed) or mode=windows;rom=NAME");
         return;
     }
     if (windows) {
@@ -1612,6 +1829,12 @@ static int trace_fixture_permit(const char *fixture)
         return trace_authored_listed(name) ? TR_OK : TR_NOT_PERMITTED;
     }
     return synth_size(fixture) != 0u ? TR_OK : TR_NOT_PERMITTED;
+}
+
+/* 1 when the fixture key is an authored image listed in the gate's authored list or a synthetic recipe: the rights rule of every file output of the runner (--trace-out here, --video-out in videokinds.c since plan 04-05) */
+int output_fixture_permitted(const char *fixture)
+{
+    return trace_fixture_permit(fixture) == TR_OK;
 }
 
 /* the paths the runner derives from a valid id: 0 on success */
@@ -1863,4 +2086,228 @@ void kind_trace_out_rights(const struct kase *k, struct ctx *c, char *got, size_
         return;
     }
     snprintf(got, gotcap, "items=%u", n);
+}
+
+/* ---- kind vid_chan_append: the video sink channel (plan 04-02; D-162, F-2, T-04-05, T-04-07) ----
+ * expect = parts=attached,append. Evidence class E0: the channel mechanism and the non-interference of an attached sink; the line length and the grid are ASSUMED (LED-VID-0001, LED-VID-0004), no hardware claim.
+ *   attached  fixture = authored:NAME and until_mclk: the ROM is run once with no sink (the reference) and once with a vid sink of 4096 bytes whose header and buffer are poisoned with $A5 and which has guard bytes around it. Since plan 04-04 the fold is the producer: one
+ *             record per line (64 bytes, 96 on a display line since plan 04-09, k % 4 == 2 for ds-proto), so after the run the header must read count = floor((M - 1) / 1365) + 1 for the machine time M the run reached (the closed form of D-137, written here from the rule), lost 0, seq = count, bytes = the sum of the record sizes and the zero word
+ *             (decoded by hand, little-endian: the poisoned header was overwritten and never read), the records must be back to back with origin i * 1365 and rec_bytes 64 or 96, the buffer past them and the guards must still hold their poison, and the run must give the reference
+ *             machine time, steps and digest.
+ *   append    direct channel calls, no ds_run (F-2, D-162): synthetic records of 64 to 2792 bytes are offered to ds_obs_vid and the header must read the counts of the table below, written here by hand from the rule (whole records only, count = records
+ *             stored, bytes = their sum, lost = seq - count, and after the first record that does not fit every later one is lost, even a smaller one that would fit: the sticky full flag). Capacities 0 and 1 store nothing and count every offer as
+ *             lost; a NULL record or an empty one is counted lost and never copied; an absent sink and a NULL log do nothing. The stored bytes must equal the records offered and the bytes past them and the guards must still hold their poison. */
+
+#define VC_BYTES 4096u
+#define VC_GUARD 64u
+
+static void vc_attached(struct ctx *c, const char *rom, const char *request, uint64_t until, char *got, size_t gotcap)
+{
+    struct booted b0;
+    struct booted b1;
+    const struct ds_instance *ci0 = NULL;
+    const struct ds_instance *ci1 = NULL;
+    struct ds_run_request rq;
+    struct ds_run_result r0;
+    struct ds_run_result r1;
+    struct ds_vid_sink vsk;
+    union {
+        uint64_t align;
+        unsigned char b[VC_GUARD + VC_BYTES + VC_GUARD];
+    } mem;
+    uint8_t d0[DS_DIGEST_BYTES];
+    uint8_t d1[DS_DIGEST_BYTES];
+    const char *err = boot_built_rom(rom, request, &b0, &ci0);
+    size_t j;
+    int untouched = 1;
+    int shapes_ok = 1;
+    uint64_t want;
+    uint64_t want_bytes = 0u;
+    uint64_t off = 0u;
+
+    if (err != NULL) {
+        harness_error(c, err);
+        return;
+    }
+    err = boot_built_rom(rom, request, &b1, &ci1);
+    if (err != NULL) {
+        release_boot(&b0);
+        harness_error(c, err);
+        return;
+    }
+    memset(&mem, OBS_POISON, sizeof mem);
+    memset(&vsk, OBS_POISON, sizeof vsk);
+    vsk.bytes = mem.b + VC_GUARD;
+    vsk.capacity = VC_BYTES;
+    memset(&r0, 0, sizeof r0);
+    memset(&r1, 0, sizeof r1);
+    memset(&rq, 0, sizeof rq);
+    rq.struct_size = (uint32_t)sizeof rq;
+    rq.until_mclk = until;
+    (void)ds_run((struct ds_instance *)(void *)b0.mem, &rq, &r0);
+    rq.vid = &vsk;
+    (void)ds_run((struct ds_instance *)(void *)b1.mem, &rq, &r1);
+    note_run(c, r1.machine_time, r1.reason);
+    check(c, r0.reason == (uint32_t)DS_RUN_REASON_UNTIL && r1.reason == (uint32_t)DS_RUN_REASON_UNTIL && r1.refusal == (uint32_t)DS_RUNREF_NONE, "a run with a vid sink was refused or did not reach its deadline");
+    /* the fold produces one record per line (D-137, D-161): the count is the closed form floor((M - 1) / 1365) + 1 of the machine time M the run reached, written here from the rule and the line length of D-136 (a layout figure, ASSUMED LED-VID-0001), never read from the core. The authored ds-proto programs no vertical or horizontal register,
+     * so the cycle is 4 lines (VDS 0 gives 2 lines, VDW 0 one display line, VCR 0 none, VSW 0 one line, D-139) and line k is a display line when k % 4 == 2; a display line has the window HDS 0, HDW 0 of 8 dots (D-140, ASSUMED LED-VID-0005) and so 8 index words and 8 colour words, 32 payload bytes (D-161): rec_bytes 96, and 64 on every other line. Plan 04-09 gave display lines
+     * that window (before it every record was 64 bytes). */
+    want = (r1.machine_time - UINT64_C(1)) / UINT64_C(1365) + UINT64_C(1);
+    for (j = 0u; j < want; j++) {
+        want_bytes += (j % 4u == 2u) ? UINT64_C(96) : UINT64_C(64);
+    }
+    check(c, r1.machine_time > 0u && want_bytes <= (uint64_t)VC_BYTES, "the run is too long for the vid buffer of this case, or reached no time");
+    check(c, (uint64_t)get_u32(vsk.header) == want && get_u32(vsk.header + 4) == 0u && get_u64(vsk.header + 8) == want && get_u64(vsk.header + 16) == want_bytes && get_u64(vsk.header + 24) == 0u,
+          "the vid header after the run does not read count = floor((M - 1) / 1365) + 1, lost 0, seq = count, bytes = 64 per line plus 32 per display line and a zero word (a poisoned header must be overwritten)");
+    for (j = 0u; j < sizeof mem.b; j++) {
+        if (j >= VC_GUARD && j < VC_GUARD + want_bytes) {
+            continue;
+        }
+        untouched = untouched && mem.b[j] == (unsigned char)OBS_POISON;
+    }
+    check(c, untouched, "the core wrote into the guard bytes or into the vid buffer past the records it stored");
+    for (j = 0u; j < want; j++) {
+        const unsigned char *rec = mem.b + VC_GUARD + off;
+        uint64_t rb = (j % 4u == 2u) ? UINT64_C(96) : UINT64_C(64);
+
+        shapes_ok = shapes_ok && off + rb <= (uint64_t)VC_BYTES && get_u64(rec) == (uint64_t)j * UINT64_C(1365) && (uint64_t)((unsigned)rec[16] + ((unsigned)rec[17] << 8)) == rb;
+        off += rb;
+    }
+    check(c, shapes_ok, "a stored vid record does not carry the origin k * 1365 and rec_bytes 96 on a display line (k % 4 == 2) and 64 on the others");
+    check(c, r0.machine_time == r1.machine_time && r0.steps == r1.steps && ds_digest(ci0, d0) == 0u && ds_digest(ci1, d1) == 0u && memcmp(d0, d1, DS_DIGEST_BYTES) == 0,
+          "attaching a vid sink changed the machine time, the steps or the digest of the run");
+    release_boot(&b0);
+    release_boot(&b1);
+    snprintf(got, gotcap, "count=%u lost=%u seq=%llu bytes=%llu", (unsigned)get_u32(vsk.header), (unsigned)get_u32(vsk.header + 4), (unsigned long long)get_u64(vsk.header + 8), (unsigned long long)get_u64(vsk.header + 16));
+}
+
+/* one append case: a byte capacity, the sizes of the records offered in order, and the counts the rule predicts (count, bytes stored, lost; seq is n) */
+#define VC_OFFERS_MAX 4u
+struct vc_case {
+    uint32_t cap;
+    unsigned n;
+    uint32_t size[VC_OFFERS_MAX];
+    uint32_t count;
+    uint32_t bytes;
+    uint32_t lost;
+    const char *what;
+};
+
+static const struct vc_case vc_cases[] = {
+    {3000u, 4u, {64u, 2792u, 2792u, 64u}, 2u, 2856u, 2u, "sticky full: the third record (2792) does not fit, the fourth (64) would fit the 144 bytes left but is lost"},
+    {3000u, 3u, {64u, 64u, 64u, 0u}, 3u, 192u, 0u, "three small records all fit"},
+    {3000u, 3u, {2792u, 64u, 64u, 0u}, 3u, 2920u, 0u, "a large record first leaves room: nothing is full yet"},
+    {128u, 3u, {64u, 64u, 64u, 0u}, 2u, 128u, 1u, "an exact fit is stored, the next record is lost"},
+    {100u, 2u, {2792u, 64u, 0u, 0u}, 0u, 0u, 2u, "the first record does not fit: the smaller second one (64 of 100 bytes) is lost too"},
+    {0u, 2u, {64u, 64u, 0u, 0u}, 0u, 0u, 2u, "capacity 0 stores nothing"},
+    {1u, 2u, {64u, 2792u, 0u, 0u}, 0u, 0u, 2u, "capacity 1 stores nothing"},
+};
+
+/* the bytes of record number i of a case: a pattern the header rule cannot produce by accident */
+static unsigned char vc_pattern(unsigned i, uint32_t j)
+{
+    return (unsigned char)(0x11u * (i + 1u) + j);
+}
+
+static void vc_append(struct ctx *c, char *got, size_t gotcap)
+{
+    unsigned t;
+    unsigned checks = 0u;
+    char msg[320];
+    unsigned char rec[DS_VID_MAX_REC_BYTES];
+    union {
+        uint64_t align;
+        unsigned char b[VC_GUARD + 3000u + VC_GUARD];
+    } mem;
+    struct ds_vid_sink vsk;
+    struct ds_obs_log log;
+
+    for (t = 0u; t < (unsigned)(sizeof vc_cases / sizeof vc_cases[0]); t++) {
+        const struct vc_case *vc = &vc_cases[t];
+        unsigned i;
+        uint32_t off = 0u;
+        int same = 1;
+        int untouched = 1;
+        uint32_t j;
+
+        memset(&mem, OBS_POISON, sizeof mem);
+        memset(&vsk, OBS_POISON, sizeof vsk);
+        vsk.bytes = mem.b + VC_GUARD;
+        vsk.capacity = vc->cap;
+        ds_obs_begin(&log, NULL, NULL, &vsk);
+        snprintf(msg, sizeof msg, "append case %u: ds_obs_begin did not overwrite the poisoned vid header with zeros", t);
+        check(c, get_u32(vsk.header) == 0u && get_u32(vsk.header + 4) == 0u && get_u64(vsk.header + 8) == 0u && get_u64(vsk.header + 16) == 0u && get_u64(vsk.header + 24) == 0u, msg);
+        for (i = 0u; i < vc->n; i++) {
+            for (j = 0u; j < vc->size[i]; j++) {
+                rec[j] = vc_pattern(i, j);
+            }
+            ds_obs_vid(&log, rec, vc->size[i]);
+        }
+        ds_obs_end(&log);
+        snprintf(msg, sizeof msg, "append case %u (%s): the header reads count %u lost %u seq %llu bytes %llu, the rule predicts count %u lost %u seq %u bytes %u", t, vc->what, (unsigned)get_u32(vsk.header), (unsigned)get_u32(vsk.header + 4),
+                 (unsigned long long)get_u64(vsk.header + 8), (unsigned long long)get_u64(vsk.header + 16), (unsigned)vc->count, (unsigned)vc->lost, vc->n, (unsigned)vc->bytes);
+        check(c, get_u32(vsk.header) == vc->count && get_u32(vsk.header + 4) == vc->lost && get_u64(vsk.header + 8) == (uint64_t)vc->n && get_u64(vsk.header + 16) == (uint64_t)vc->bytes && get_u64(vsk.header + 24) == 0u, msg);
+        for (i = 0u; i < vc->count && i < vc->n; i++) { /* the stored records are the first count offers, back to back at the front of the buffer */
+            for (j = 0u; j < vc->size[i]; j++) {
+                same = same && mem.b[VC_GUARD + off + j] == vc_pattern(i, j);
+            }
+            off += vc->size[i];
+        }
+        snprintf(msg, sizeof msg, "append case %u (%s): the stored bytes are not the first records offered, back to back", t, vc->what);
+        check(c, same && off == vc->bytes, msg);
+        for (j = 0u; j < (uint32_t)sizeof mem.b; j++) { /* the guard before the buffer and everything after the stored bytes (the rest of the capacity and the guard after it) still hold the poison */
+            if (j < VC_GUARD || j >= VC_GUARD + vc->bytes) {
+                untouched = untouched && mem.b[j] == (unsigned char)OBS_POISON;
+            }
+        }
+        snprintf(msg, sizeof msg, "append case %u (%s): the core wrote into the guard bytes or past the stored records", t, vc->what);
+        check(c, untouched, msg);
+        checks++;
+    }
+    /* a record that is NULL or empty is never copied and is counted lost; the next whole record still fits (a malformed offer is not a record that does not fit) */
+    memset(&mem, OBS_POISON, sizeof mem);
+    memset(&vsk, OBS_POISON, sizeof vsk);
+    vsk.bytes = mem.b + VC_GUARD;
+    vsk.capacity = 3000u;
+    ds_obs_begin(&log, NULL, NULL, &vsk);
+    memset(rec, 0x5A, 64u);
+    ds_obs_vid(&log, NULL, 64u);
+    ds_obs_vid(&log, rec, 0u);
+    ds_obs_vid(&log, rec, 64u);
+    ds_obs_end(&log);
+    check(c, get_u32(vsk.header) == 1u && get_u32(vsk.header + 4) == 2u && get_u64(vsk.header + 8) == 3u && get_u64(vsk.header + 16) == 64u, "a NULL record and an empty record were not counted lost, or the whole record after them was not stored");
+    /* an absent sink and a NULL log do nothing: the header of a sink that is not attached keeps its poison */
+    memset(&vsk, OBS_POISON, sizeof vsk);
+    ds_obs_begin(&log, NULL, NULL, NULL);
+    ds_obs_vid(&log, rec, 64u);
+    ds_obs_vid(NULL, rec, 64u);
+    ds_obs_end(&log);
+    {
+        unsigned k;
+        int poisoned = 1;
+
+        for (k = 0u; k < DS_VID_HEADER_BYTES; k++) {
+            poisoned = poisoned && vsk.header[k] == (unsigned char)OBS_POISON;
+        }
+        check(c, poisoned, "a call with no vid sink wrote a vid header");
+    }
+    {
+        size_t used = strlen(got);
+
+        snprintf(got + used, gotcap - used, " append_cases=%u", checks);
+    }
+}
+
+void kind_vid_chan_append(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    char rom[48];
+    uint64_t until = 0u;
+
+    rom[0] = '\0';
+    if (strcmp(k->val[K_EXPECT], "parts=attached,append") != 0 || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until == 0u || authored_name(k->val[K_FIXTURE], rom, sizeof rom) != 0) {
+        harness_error(c, "a vid_chan_append case needs fixture = authored:NAME, until_mclk and expect = parts=attached,append");
+        return;
+    }
+    vc_attached(c, rom, k->val[K_REQUEST], until, got, gotcap);
+    vc_append(c, got, gotcap);
 }

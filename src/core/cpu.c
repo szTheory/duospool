@@ -16,6 +16,7 @@
 #include "ds_core.h"
 #include "ds_mapper.h"
 #include "ds_obs.h"
+#include "ds_vdc.h"
 
 /* processor status bits (H8-4): N V T B D I Z C; B exists only on the stack, so it has no mask here */
 #define P_N 0x80u
@@ -563,7 +564,10 @@ static uint32_t sample_and_enter(struct ds_instance *inst, struct ds_obs_log *lo
     uint32_t vector;
 
     if (i_sample == 0u) {
-        vector = ds_irq_pending(inst, start + (uint64_t)total - (uint64_t)DS_CONST_irq_sample_cycles_before_end * (uint64_t)mclk_per_cycle);
+        uint64_t sample = start + (uint64_t)total - (uint64_t)DS_CONST_irq_sample_cycles_before_end * (uint64_t)mclk_per_cycle;
+
+        ds_vdc_advance(inst, sample, log); /* the VDC and VCE are folded to the sample stamp before the pending query (D-137 (2), F-24) */
+        vector = ds_irq_pending(inst, sample);
         if (vector != 0u) {
             total += interrupt_entry(inst, log, start + (uint64_t)total, vector);
         }
@@ -680,8 +684,8 @@ static uint32_t block_step(struct ds_instance *inst, struct ds_obs_log *log)
     return block_byte(inst, &bus, mclk_per_cycle);
 }
 
-/* one instruction; log is the instruction sink writer of the running ds_run call or NULL (plan 03-10): the hook is called once per executed instruction with the state before it runs (D-119) */
-uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
+/* one step of the machine without the step-end fold (see ds_cpu_step_obs below): an instruction, a block transfer step or an interrupt entry */
+static uint32_t cpu_step_body(struct ds_instance *inst, struct ds_obs_log *log)
 {
     if (inst->blk_active != 0u) { /* inside a block transfer: this step is a byte or the epilogue, not the fetch of an instruction (plan 03-25, D-92) */
         return block_step(inst, log);
@@ -1088,6 +1092,17 @@ uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
      * part of its own entry, so its sample always sees the I it left (set), and a pending interrupt cannot pre-empt the first instruction of the BRK handler (R-9, LED-IRQ-0005). No other value exists (D-111). The entry runs now, in the same step, so there is no persisted latch and no stop point between an instruction and its entry.
      */
     return sample_and_enter(inst, log, bus->start, total, mclk_per_cycle, i_sample);
+}
+
+/* one instruction; log is the observer log of the running ds_run call or NULL (plan 03-10): the instruction hook is called once per executed instruction with the state before it runs (D-119). The VDC and VCE are folded to the last clock of the step (start + total - 1)
+ * on every exit of the step, whatever it was, so ds_cpu_step (no log) and ds_run share the fold and the next event is never before machine_time (D-137 (3), F-9, F-28) */
+uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
+{
+    uint64_t start = inst->machine_time;
+    uint32_t total = cpu_step_body(inst, log);
+
+    ds_vdc_advance(inst, start + (uint64_t)total - UINT64_C(1), log);
+    return total;
 }
 
 uint32_t ds_cpu_step(struct ds_instance *inst)

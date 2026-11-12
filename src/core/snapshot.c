@@ -18,6 +18,7 @@
 #include "ds_poweron.h"
 #include "ds_serial.h"
 #include "ds_snapshot.h"
+#include "ds_vdc.h"
 
 /* the refusal names, generated from snapshot_refusals.def */
 #define DS_SNAPREF(name, number) [number] = "snapshot." #name,
@@ -165,6 +166,12 @@ static uint64_t r_u64(struct rd *r)
 #define SNAP_PAD_BITS 0xFFu                  /* the eight buttons of the two-button pad; every bit above is reserved */
 #define SNAP_UP_DOWN 0x50u
 #define SNAP_LEFT_RIGHT 0xA0u
+#define SNAP_VDC_AR_MAX 31u                  /* the address register keeps its low 5 bits (D-146) */
+#define SNAP_VDC_STATUS_MAX 0x3Fu            /* status flags 0 to 5; BSY (bit 6) and bit 7 read 0 (D-144) */
+#define SNAP_VCE_ENTRY_MAX 0x1FFu            /* a colour table address or entry is 9 bits (D-153) */
+#define SNAP_V_TOGO_MAX 512u                 /* VDW is a 9-bit register, so a state can have 512 lines left; no clamp (F-1) */
+#define SNAP_BEAM_NONE 0xFFFFu               /* display_k outside the display state, and vd_off or rcr_off for "no event" */
+#define SNAP_BEAM_LINE_MAX 0x7FFFu           /* the RCR counter saturates here (D-142) */
 
 /* the number of values of model parameter index: its allowed list is values separated by a vertical bar */
 static uint32_t model_values(uint32_t index)
@@ -252,8 +259,8 @@ static uint32_t dec_powr(struct ds_instance *inst, struct vctx *v, struct rd *r,
         return (uint32_t)DS_SNAPREF_NONE;
     }
     bound = ds_policy_of(inst->profile.field[DS_FIELD_powerup_policy].value);
-    if (policy < (uint32_t)DS_POLICY_ZERO || policy > (uint32_t)DS_POLICY_SEEDED_V2) {
-        return (uint32_t)DS_SNAPREF_field; /* a policy outside 1 to 3 */
+    if (policy < (uint32_t)DS_POLICY_ZERO || policy > (uint32_t)DS_POLICY_SEEDED_V3) {
+        return (uint32_t)DS_SNAPREF_field; /* a policy outside 1 to 4 */
     }
     if (policy != bound) {
         return (uint32_t)DS_SNAPREF_profile; /* a valid policy that is not the one the instance's profile binds: the snapshot of another profile */
@@ -546,6 +553,257 @@ static uint32_t dec_schd(struct ds_instance *inst, struct vctx *v, struct rd *r,
     return (uint32_t)DS_SNAPREF_NONE;
 }
 
+/* the dot clock dividers the VCE can latch (review fix L-02): the one table of vce.c, read through ds_vce_divider, so a changed constants.def row changes the core and the restore rule together. 1 when div is one of the four entries */
+static int snap_divider_ok(uint32_t div)
+{
+    uint32_t cr;
+
+    for (cr = 0u; cr < 4u; cr++) {
+        if (ds_vce_divider(cr) == div) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* the largest divider of the table (the SATB transfer window is 256 words of it) */
+static uint32_t snap_divider_max(void)
+{
+    uint32_t cr;
+    uint32_t m = 0u;
+
+    for (cr = 0u; cr < 4u; cr++) {
+        if (ds_vce_divider(cr) > m) {
+            m = ds_vce_divider(cr);
+        }
+    }
+    return m;
+}
+
+static uint32_t dec_vce0(struct ds_instance *inst, struct vctx *v, struct rd *r, int commit)
+{
+    uint8_t cr = r_u8(r);
+    uint16_t cta = r_u16(r);
+
+    (void)v;
+    if (commit) {
+        inst->vce_cr = cr;
+        inst->vce_cta = cta;
+        return (uint32_t)DS_SNAPREF_NONE;
+    }
+    return (uint32_t)cta > SNAP_VCE_ENTRY_MAX ? (uint32_t)DS_SNAPREF_field : (uint32_t)DS_SNAPREF_NONE; /* the control register is any byte */
+}
+
+static uint32_t dec_palt(struct ds_instance *inst, struct vctx *v, struct rd *r, int commit)
+{
+    uint32_t i;
+
+    (void)v;
+    for (i = 0u; i < DS_PAL_BYTES; i++) {
+        uint8_t b = r_u8(r);
+
+        if (commit) {
+            inst->vce_pal[i] = b;
+        } else if ((i & 1u) != 0u && (uint32_t)b > (SNAP_VCE_ENTRY_MAX >> 8)) { /* entry i / 2 is the u16 of bytes 2i and 2i + 1: at most 9 bits, so the odd byte is 0 or 1 */
+            return (uint32_t)DS_SNAPREF_field;
+        }
+    }
+    return (uint32_t)DS_SNAPREF_NONE;
+}
+
+static uint32_t dec_vdc0(struct ds_instance *inst, struct vctx *v, struct rd *r, int commit)
+{
+    uint8_t ar = r_u8(r);
+    uint8_t status = r_u8(r);
+    uint16_t reg[20];
+    uint16_t rdbuf;
+    uint8_t wlatch;
+    uint32_t i;
+
+    (void)v;
+    for (i = 0u; i < 20u; i++) {
+        reg[i] = r_u16(r);
+    }
+    rdbuf = r_u16(r);
+    wlatch = r_u8(r);
+    if (commit) {
+        inst->vdc_ar = ar;
+        inst->vdc_status = status;
+        for (i = 0u; i < 20u; i++) {
+            inst->vdc_reg[i] = reg[i];
+        }
+        inst->vdc_rdbuf = rdbuf;
+        inst->vdc_wlatch = wlatch;
+        return (uint32_t)DS_SNAPREF_NONE;
+    }
+    if ((uint32_t)ar > SNAP_VDC_AR_MAX || (uint32_t)status > SNAP_VDC_STATUS_MAX) {
+        return (uint32_t)DS_SNAPREF_field;
+    }
+    for (i = 0u; i < 20u; i++) {
+        if (((uint32_t)reg[i] & ~(uint32_t)ds_vdc_reg_mask(i)) != 0u) { /* the one mask table of vdc.c (D-146, review fix L-02): a stored register has every bit outside its mask 0; R03 and R04 stay 0 */
+            return (uint32_t)DS_SNAPREF_field;
+        }
+    }
+    return (uint32_t)DS_SNAPREF_NONE; /* the read buffer and the write latch are any value */
+}
+
+static uint32_t dec_beam(struct ds_instance *inst, struct vctx *v, struct rd *r, int commit)
+{
+    uint64_t line_idx = r_u64(r);
+    uint8_t stage = r_u8(r);
+    uint8_t v_state = r_u8(r);
+    uint16_t v_togo = r_u16(r);
+    uint16_t display_k = r_u16(r);
+    uint16_t rcr_counter = r_u16(r);
+    uint16_t frame_lines = r_u16(r);
+    uint16_t bg_y = r_u16(r);
+    uint16_t mwr_active = r_u16(r);
+    uint8_t burst = r_u8(r);
+    uint8_t line_dirty = r_u8(r);
+    uint8_t sprite_pend = r_u8(r);
+    uint16_t vd_off = r_u16(r);
+    uint16_t rcr_off = r_u16(r);
+    uint8_t lat_div = r_u8(r);
+    uint8_t vd_pending = r_u8(r);
+    uint8_t vd_irq_phase = r_u8(r);
+    uint8_t rcr_origin = r_u8(r);
+
+    if (commit) {
+        inst->line_idx = line_idx;
+        inst->stage = stage;
+        inst->v_state = v_state;
+        inst->v_togo = v_togo;
+        inst->display_k = display_k;
+        inst->rcr_counter = rcr_counter;
+        inst->frame_lines = frame_lines;
+        inst->bg_y = bg_y;
+        inst->mwr_active = mwr_active;
+        inst->burst = burst;
+        inst->line_dirty = line_dirty;
+        inst->sprite_pend = sprite_pend;
+        inst->vd_off = vd_off;
+        inst->rcr_off = rcr_off;
+        inst->lat_div = lat_div;
+        inst->vd_pending = vd_pending;
+        inst->vd_irq_phase = vd_irq_phase;
+        inst->rcr_origin = rcr_origin;
+        return (uint32_t)DS_SNAPREF_NONE;
+    }
+    /* the line count is judged against the machine time of the same stream (v->time is set by dec_time in pass 1 only, F-34a), before any multiplication by the line length (D-166: a count far ahead of the time would make the next fold loop for as many lines) */
+    if (line_idx > v->time / (uint64_t)DS_CONST_line_mclk + UINT64_C(2)) {
+        return (uint32_t)DS_SNAPREF_field;
+    }
+    if ((uint32_t)stage > 2u || (uint32_t)v_state > 3u || (uint32_t)v_togo > SNAP_V_TOGO_MAX) {
+        return (uint32_t)DS_SNAPREF_field;
+    }
+    if (v_state == 1u ? (uint32_t)display_k >= 512u : (uint32_t)display_k != SNAP_BEAM_NONE) { /* a display line inside VDW, 0xFFFF everywhere else */
+        return (uint32_t)DS_SNAPREF_field;
+    }
+    if ((uint32_t)rcr_counter > SNAP_BEAM_LINE_MAX || (frame_lines != 262u && frame_lines != 263u) || (uint32_t)bg_y > 511u || (uint32_t)mwr_active > 0xFFu) {
+        return (uint32_t)DS_SNAPREF_field;
+    }
+    /* the frame length is the bound lines_per_frame of the profile, constant for the run (D-136, review fix M-01): a value of the domain that is not the one the instance's profile binds is the snapshot of another profile (the profile hash does not cover it), refused like a policy of another profile in dec_powr */
+    if ((uint32_t)frame_lines != ds_vdc_frame_lines(inst)) {
+        return (uint32_t)DS_SNAPREF_profile;
+    }
+    if (burst > 1u || (uint32_t)line_dirty > 0x3Fu || (uint32_t)sprite_pend > 3u || vd_pending > 1u) {
+        return (uint32_t)DS_SNAPREF_field;
+    }
+    if (((uint32_t)vd_off >= (uint32_t)DS_CONST_line_mclk && (uint32_t)vd_off != SNAP_BEAM_NONE) || ((uint32_t)rcr_off >= (uint32_t)DS_CONST_line_mclk && (uint32_t)rcr_off != SNAP_BEAM_NONE)) {
+        return (uint32_t)DS_SNAPREF_field;
+    }
+    /* the divider latched at EV_LINE multiplies vd_off, rcr_off and dma_word_mclk: 2, 3 or 4, or 0 before the first line event (line_idx 0), so no restored state reaches a zero divisor */
+    if (lat_div == 0u ? line_idx != UINT64_C(0) : !snap_divider_ok((uint32_t)lat_div)) {
+        return (uint32_t)DS_SNAPREF_field;
+    }
+    /* the event order a run produces (review fix L-01): VD is outstanding only under the phase hdw_start (line_start raises it at EV_LINE), only as the next stage (EV_LINE makes EV_VD the next stage when it leaves one outstanding, and EV_VD clears it), and when the RCR event of the same line is still to come it is later than the VD event
+     * (the window end (HDS+HDW+2)*8*div is after the window start (HDS+1)*8*div, beam.c), so the stage order VD then RCR is the time order. The offsets are not recomputed from HSR and HDR: a register write after the EV_LINE legally changes the registers and not the offsets of that line */
+    if (vd_pending != 0u && (vd_irq_phase == 0u || stage != 1u || ((uint32_t)rcr_off != SNAP_BEAM_NONE && (uint32_t)rcr_off <= (uint32_t)vd_off))) {
+        return (uint32_t)DS_SNAPREF_field;
+    }
+    /* the fold window (D-166, T-04-14), judged after the divider rule so that a divider of 0 after line 0 is refused for its own reason: the next event the members name is not before machine_time and is less than two lines after it, because a live run folds every step to its last clock (F-9),
+     * so the next event is at most one line ahead; a time far behind machine_time would make the next fold loop for as many lines. The helper returns 0 for members that name no event (refused too) and never overflows; the difference is taken only after the order is known. */
+    {
+        uint64_t pending = 0u;
+
+        if (!ds_vdc_pending_time(&pending, line_idx, (uint32_t)stage, (uint32_t)vd_pending, (uint32_t)vd_off, (uint32_t)rcr_off) || pending < v->time || pending - v->time >= UINT64_C(2) * (uint64_t)DS_CONST_line_mclk) {
+            return (uint32_t)DS_SNAPREF_field;
+        }
+    }
+    if ((uint32_t)vd_irq_phase >= model_values((uint32_t)DS_MODEL_vd_irq_phase) || (uint32_t)rcr_origin >= model_values((uint32_t)DS_MODEL_rcr_origin)) {
+        return (uint32_t)DS_SNAPREF_field;
+    }
+    return (uint32_t)DS_SNAPREF_NONE;
+}
+
+static uint32_t dec_vdma(struct ds_instance *inst, struct vctx *v, struct rd *r, int commit)
+{
+    uint8_t satb_pending = r_u8(r);
+    uint8_t satb_done_valid = r_u8(r);
+    uint64_t satb_done_at = r_u64(r);
+    uint8_t dma_state = r_u8(r);
+    uint64_t dma_start = r_u64(r);
+    uint16_t dma_word_mclk = r_u16(r);
+    uint32_t dma_done = r_u32(r);
+
+    if (commit) {
+        inst->satb_pending = satb_pending;
+        inst->satb_done_valid = satb_done_valid;
+        inst->satb_done_at = satb_done_at;
+        inst->dma_state = dma_state;
+        inst->dma_start = dma_start;
+        inst->dma_word_mclk = dma_word_mclk;
+        inst->dma_done = dma_done;
+        return (uint32_t)DS_SNAPREF_NONE;
+    }
+    /* the progress member is 0 between folds: the closed form is re-based at every apply (review fix H-01), so any other value is a state no run reaches */
+    if (satb_pending > 1u || satb_done_valid > 1u || dma_state > 2u || dma_done != 0u) {
+        return (uint32_t)DS_SNAPREF_field;
+    }
+    /* the master clocks per word are DS_CONST_vdc_dma_dots_per_word dots of the divider latched at the start (8, 12 or 16 with the rows of today): the divisor of the closed form of the transfer, so a transfer in progress never has any other (D-151); derived from the core's constant and divider table (review fix L-02) */
+    if (dma_state != 0u && ((uint32_t)dma_word_mclk % (uint32_t)DS_CONST_vdc_dma_dots_per_word != 0u || !snap_divider_ok((uint32_t)dma_word_mclk / (uint32_t)DS_CONST_vdc_dma_dots_per_word))) {
+        return (uint32_t)DS_SNAPREF_field;
+    }
+    /* the time windows (D-166, T-04-14): a SATB transfer that is valid ends from machine_time to 256 words of the largest divider after it (4096 clocks with the rows of today, ds_vdc_satb_copy), and a transfer in progress started at or before machine_time; both are judged by comparison first, so no sum can overflow */
+    if (satb_done_valid != 0u && (satb_done_at < v->time || satb_done_at - v->time > UINT64_C(256) * (uint64_t)DS_CONST_vdc_dma_dots_per_word * (uint64_t)snap_divider_max())) {
+        return (uint32_t)DS_SNAPREF_field;
+    }
+    if (dma_state != 0u && dma_start > v->time) {
+        return (uint32_t)DS_SNAPREF_field;
+    }
+    return (uint32_t)DS_SNAPREF_NONE;
+}
+
+static uint32_t dec_vram(struct ds_instance *inst, struct vctx *v, struct rd *r, int commit)
+{
+    uint32_t i;
+
+    (void)v;
+    if (!commit) {
+        r->p += DS_VRAM_BYTES; /* every byte value is a legal VRAM byte */
+        return (uint32_t)DS_SNAPREF_NONE;
+    }
+    for (i = 0u; i < DS_VRAM_BYTES; i++) {
+        inst->vdc_vram[i] = r_u8(r);
+    }
+    return (uint32_t)DS_SNAPREF_NONE;
+}
+
+static uint32_t dec_satb(struct ds_instance *inst, struct vctx *v, struct rd *r, int commit)
+{
+    uint32_t i;
+
+    (void)v;
+    if (!commit) {
+        r->p += DS_SATB_BYTES; /* every byte value is a legal SATB byte */
+        return (uint32_t)DS_SNAPREF_NONE;
+    }
+    for (i = 0u; i < DS_SATB_BYTES; i++) {
+        inst->vdc_satb[i] = r_u8(r);
+    }
+    return (uint32_t)DS_SNAPREF_NONE;
+}
+
 /* the decoders in the order of the region table of serial.c; the tag is checked against that table at every step, so a table that drifts from the stream fails closed */
 static const struct {
     const char tag[5];
@@ -553,6 +811,7 @@ static const struct {
 } decoders[DS_REGION_COUNT] = {
     {"PROF", dec_prof}, {"CONT", dec_cont}, {"POWR", dec_powr}, {"TIME", dec_time}, {"RAM8", dec_ram8}, {"MPRS", dec_mprs}, {"CPU0", dec_cpu0},
     {"BUS0", dec_bus0}, {"TIMR", dec_timr}, {"IRQC", dec_irqc}, {"IRQS", dec_irqs}, {"BLKT", dec_blkt}, {"IOPT", dec_iopt}, {"SCHD", dec_schd},
+    {"VCE0", dec_vce0}, {"PALT", dec_palt}, {"VDC0", dec_vdc0}, {"BEAM", dec_beam}, {"VDMA", dec_vdma}, {"VRAM", dec_vram}, {"SATB", dec_satb},
 };
 
 /* one walk over the stream: pass 1 (commit 0) checks the prefix, the version, every frame and every field; pass 2 (commit 1) repeats the walk and stores. The frame checks are made in both passes, but in pass 2 they cannot fail: pass 1 has accepted these same bytes. */

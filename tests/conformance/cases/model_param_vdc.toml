@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The two model parameters of the VDC interrupt events (plan 04-08; D-142, D-143, D-168, ER-10, plan-check info 5; ASSUMED LED-IRQ-0001 and LED-IRQ-0010): the authored vdc_stat guest is run three times with the device-register sink, once with the default request, once with model.vd_irq_phase=hdw_start and once with model.rcr_origin=line_before.
+# The stamps come from the dev log: the VD stamp is that of the last read of the VDC status register with bit 5 set (the read in the IRQ1 handler of the VBlank interrupt) and the RR stamp that of the first read with bit 2 set (the read in the handler of the RCR interrupt).
+# The literals are arithmetic on the setup of the fixture (HDS = 2, HDW = 31, divider 4 at CR 0) and the one-line statement of each parameter, not DuoSpool output. vd_irq_phase = hdw_start places VD at the start of the active window instead of at the line start: (HDS + 1) * 8 dots of 4 master clocks = 96 master clocks later.
+# rcr_origin = line_before sets the RCR counter to 64 one line earlier, so the same RCR value matches one line sooner: 1365 master clocks earlier (the RR stamp moves by -1365). Both literals take the ASSUMED class of their entries (ER-10): the positions are modelling assumptions.
+# Tolerance: tol = 15 master clocks. The handler reads follow an interrupt that is taken at the first instruction boundary after the event, in the foreground wait loop lda abs, cmp #, bcs, dex, bne (the CSH high speed, 3 master clocks per cycle); its longest instruction is lda abs of 5 cycles, 15 master clocks (the plan allows at most 7 cycles x 3 = 21).
+# Two cross rows hold the other parameter fixed: each parameter moves its own event only (within the same tolerance). Evidence tier E0 (the model against the case's own literals); no accuracy, raster or hardware claim; the word pass is not a support claim.
+# until_mclk is 2,100,000 since plan 04-10 (it was 3,000,000): the vdc_stat guest gained the DV and DS sections F and G after its RR and VD sections, and G reads the status with bit 5 set after a counted wait, so a later deadline would make that read the last one with bit 5. The deadline lies after the VBlank interrupt of section C that this measurement uses and before
+# the first read of section G.
+id = "model_param_vdc"
+kind = "model_param_vdc"
+fixture = "authored:vdc-stat"
+request = "model.vd_irq_phase=hdw_start||model.rcr_origin=line_before"
+expect = "rom=vdc-stat;vd_shift=96;rr_shift=-1365;tol=15"
+meaning = "Binding vd_irq_phase = hdw_start moves the VD status-read stamp of the vdc_stat guest by +96 master clocks and rcr_origin = line_before moves the RR status-read stamp by -1365 (one line earlier), each within the 15 master clocks of its longest foreground-loop instruction, and each parameter leaves the other event where it was"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 2100000

@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The raw video line records of the dot clock fixture (plan 04-09; D-137, D-140, D-141, D-161, D-169, D-171, D-172, ER-10, ER-11, ER-12): the authored fixture fixtures/src/vce_dot.s programs HSR $0202 and HDR $031F (HDS 2, HDW 31), the border palette entry $100 and the VCE control register, and the runner kind video (tests/conformance/videokinds.c) attaches a vid sink and a dev sink,
+# runs the guest to the end of its DSV1 verdict and judges the line records by group, with the OFFSETS WRITTEN IN THAT FILE, never from a core header. Role: literal (D-172). The literals are not in this file: they live in fixtures/src/vce_dot.vexp (hand-derived rows, the derivation in its comments).
+# Class of each group (ER-10, the weakest class of the inputs of a row wins): the count, origin and frame rows use the 1365-clock grid and the frame length (ASSUMED LED-VID-0004, LED-VID-0001); the divider groups are MAN H6-3 for the contents 00h and 01h and ASSUMED LED-VID-0002 for 02h and 03h, judged only on records at least one whole line from the write that sets them;
+# active_x, active_w, rec_bytes and the CLIPPED flag depend on the window origin of D-140 (ASSUMED LED-VID-0005); the mid-frame change and the line_dirty rows join a write stamp to the grid (ASSUMED LED-VID-0004); the border is GUEST pal_bijection (the guest's additive sum, 273).
+# The toy vid-dot-div (the divider table entries for the contents 00h and 01h swapped) turns this case guest_failure. The evidence text prints video_sha256=... E0 repeatability: no raster-accurate, pixel-accurate or hardware claim, and the word pass is not a support claim.
+id = "video_vce_dot"
+kind = "video"
+fixture = "authored:vce-dot"
+request = ""
+expect = "rom=vce-dot;id=19;scene=video_vce_dot"
+meaning = "A guest that programs a window of 256 dots, the border entry and VCE CR $00 makes the core emit one line record per 1,365 clocks whose display lines carry divider 4 (MAN H6-3), active_x 24, active_w 256, rec_bytes 1088 and a blank payload (ASSUMED window origin) and border 273 (GUEST), E0 repeatability"
+required = true
+control = false
+expect_outcome = "pass"
+pins = ["LED-VID-0002", "LED-VID-0017"]
+until_mclk = 4000000
+checks = 4

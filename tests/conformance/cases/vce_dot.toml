@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The dot clock and geometry fixture seen from the guest (plan 04-09; D-139, D-140, D-141, D-169, D-170, ER-4, ER-5): the authored fixture fixtures/src/vce_dot.s is assembled by ca65 in the gate (never committed), is booted on the core, sets the vertical sum of 264 lines, HSR and HDR, the border palette
+# entry $100 by an additive running sum, writes the VCE control register and holds each setup for about a frame,
+# and writes a DSV1 verdict block that the runner judges from raw RAM. The case has no policies key, so the guest kind runs the ROM under its default policy list (zero, seeded-prng-v3 seed 1, seed 2) and the check bytes must be equal in all three: every value the guest reads, it wrote first (D-167).
+# The checks are readbacks of what the guest programmed where the interface allows one: the unused read of CR (ASSUMED LED-VID-0016), the border entry by the procedure of H6-5 (MAN) and the high byte of the VDC status word (MAN H7-25). The raster itself is judged from the line records by the video
+# cases video_vce_dot, vid_frame_lines and vid_active_window; the literals come from the manual pages, the guest's own arithmetic or the ledger entries, and none comes from DuoSpool output.
+# Evidence tier E0: no accuracy, compatibility or hardware claim, and the word pass is not a support claim. until_mclk is a deadline above the point where the guest seals its block.
+id = "vce_dot"
+kind = "guest"
+fixture = "authored:vce-dot"
+request = ""
+expect = "id=19"
+meaning = "The authored vce_dot fixture programs the vertical setup, HSR and HDR, the border entry and the VCE control register, holds each setup for about a frame and reads back what the interface allows (CR unused read, entry $100 by the H6-5 procedure, the VDC status high byte), 4 passing checks of classes MAN and ASSUMED, identical under three power-on policies"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+checks = 4

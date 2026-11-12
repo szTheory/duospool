@@ -969,6 +969,45 @@ stage_input_check_negatives() {
   run_controls --ok-prefix --require-negative tests/gate/input-check tests/gate/input-check sh "$here/input-check" --root @DIR@ @EXPECT@
 }
 
+# video-check (VID-06; D-171, D-172, D-173, ER-10, ER-11, ER-12, F-6, F-42; plan 04-07): the video literal files fixtures/src/*.vexp against the grammar (closed keys, limits), the class lint (MAN needs an img cite, GUEST an allowlisted model, ASSUMED a ledger id, sym=asym is ASSUMED only), the role rule (a golden scene needs a literal scene of the same name, INV_VIDEO_HASH_ONLY),
+# the kill rules (INV_VIDEO_GROUP_UNKILLED, VIDEO_GROUP_VACUOUS), the ROWS non-vacuity lint and the toy cross-rules (VIDEO_SCENE_UNTOYED, INV_TOY_NO_LITERAL). Static, so it is registered before the build. F-42 ruling: ONE stage (57 stages), not a pair: the stage function runs the checker on this repository, then the negative mini-roots of tests/video (every
+# tests/video/<case>/ is a mini-root with fixtures/src/t.vexp; ok-<case> must pass and every other case must fail with exactly the codes in its EXPECT) and returns the worse code. A control that passes without its EXPECT met means the checker is broken.
+# vc_gen_limits DIR (review fix H-04 of the gate review): write one mini-root per stage 1 limit of scripts/lib/vexp-lex.awk under DIR, each with its EXPECT: lex-line-too-long (a comment line of 401 characters), lex-non-ascii (a byte $E9), lex-no-spdx (no SPDX pair),
+# lex-too-many-rows (513 rows under 16 KiB) and lex-file-too-large (17,000 bytes of comment lines). They are generated, not committed, because no committed file may hold a line over 400 characters or a byte outside ASCII.
+vc_gen_limits() {
+  vg_d=$1
+  rm -rf "$vg_d"
+  for vg_n in lex-line-too-long lex-non-ascii lex-no-spdx lex-too-many-rows lex-file-too-large; do
+    mkdir -p "$vg_d/$vg_n/fixtures/src" || return 2
+  done
+  vg_h='# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors'
+  { printf '%s\n' "$vg_h"; awk 'BEGIN { s = "#"; while (length(s) < 401) s = s "x"; print s }'; } > "$vg_d/lex-line-too-long/fixtures/src/t.vexp" || return 2
+  echo VEXP_LINE_TOO_LONG > "$vg_d/lex-line-too-long/EXPECT"
+  { printf '%s\n' "$vg_h"; printf '# a byte outside ASCII: \351\n'; } > "$vg_d/lex-non-ascii/fixtures/src/t.vexp" || return 2
+  echo VEXP_NON_ASCII > "$vg_d/lex-non-ascii/EXPECT"
+  printf '# a file without the SPDX pair\n' > "$vg_d/lex-no-spdx/fixtures/src/t.vexp" || return 2
+  echo VEXP_NO_SPDX > "$vg_d/lex-no-spdx/EXPECT"
+  { printf '%s\n' "$vg_h"; awk 'BEGIN { printf "scene\tm\tcase=video_m\trole=literal\ngroup\tm\tg\tform=STRUCT\tclass=ASSUMED:LED-VID-0004\tsym=none\tkills=F4\n"; for (i = 0; i < 511; i++) printf "row\tm\tg\tcheck=count\tgrid=1365\n" }'; } > "$vg_d/lex-too-many-rows/fixtures/src/t.vexp" || return 2
+  echo VEXP_TOO_MANY_ROWS > "$vg_d/lex-too-many-rows/EXPECT"
+  { printf '%s\n' "$vg_h"; awk 'BEGIN { for (i = 0; i < 170; i++) { s = "#"; while (length(s) < 99) s = s "y"; print s } }'; } > "$vg_d/lex-file-too-large/fixtures/src/t.vexp" || return 2
+  echo VEXP_FILE_TOO_LARGE > "$vg_d/lex-file-too-large/EXPECT"
+  return 0
+}
+
+stage_video_check() {
+  vc_a=0
+  vc_b=0
+  vc_c=0
+  checker sh "$here/video-check" || vc_a=$?
+  run_controls --ok-prefix --require-negative tests/video tests/video sh "$here/video-check" --root @DIR@ @EXPECT@ || vc_b=$?
+  vc_gen_limits "$tmp/vc-gen" || return 2
+  run_controls --require-negative "$tmp/vc-gen" "$tmp/vc-gen" sh "$here/video-check" --root @DIR@ @EXPECT@ || vc_c=$?
+  if [ "$vc_a" -eq 2 ] || [ "$vc_b" -eq 2 ] || [ "$vc_c" -eq 2 ]; then return 2; fi
+  if [ "$vc_a" -ne 0 ] || [ "$vc_b" -ne 0 ] || [ "$vc_c" -ne 0 ]; then return 1; fi
+  return 0
+}
+
 # xasm (FIX-01, CPU-01, CPU-06; D-129, D-130; plan 03-08): the assembler encoding oracle. scripts/xasm-check assembles one line per defined row of tests/oracle/huc6280-opcodes.tsv (the
 # manual transcription) with ca65 and ld65 and requires the bytes to equal the TSV encodings; WLA-DX, when it happens to be on PATH, is compared in the same way, else the status line says
 # wla=optional-absent and no cross-assembler claim is made. The table must hold exactly 234 defined rows and 22 UNDEF rows (H8-1: 234 instructions). Static, so it is registered before the build; it reads only
@@ -1522,7 +1561,34 @@ selftest() {
       && [ "$(grep -c -F -e '--cases "$cm_bd/cases.tsv"' "$here/conformance-run" || true)" -eq 0 ] \
       && [ "$(grep -c -F -e '--ids "$cm_bd/ids.txt"' "$here/conformance-run" || true)" -eq 0 ] \
       && [ "$(grep -c -F -e 'filter_cases "$cm_bd/cases.tsv"' "$here/conformance-run" || true)" -eq 1 ]; then wire_ok=1; fi
-    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 2 ] && [ ! -e "$tf/out2.tsv" ] && grep -q 'HARNESS_ERROR' "$tmp/st.err" && [ "$wire_ok" -eq 1 ]; then
+    # the second EXPECT column pass (plan 04-17; D-173, F-4, F-43): a canned EXPECT with one red id and one pass id is split by the toy-expect mode into the union, the red and the pass lists; an unknown second column, a pass id that no REQUIRED line names and a toy with no red id are each exit 2 and leave no list;
+    # the toy-verdict mode wants guest_failure for the red id and pass for the pass id, so a pass id that fails or a red id that passes is exit 1. Mutated (the line that sends a second column to the pass list now ignores it): the pass list is empty and the same call no longer gives it.
+    printf '# a red id and a stays-green id\nalpha\nbeta\tpass\n' > "$tf/ex.txt"
+    printf 'alpha\nbeta\n' > "$tf/req.txt"
+    printf 'alpha\n' > "$tf/req2.txt"
+    printf 'alpha\nbeta\tfail\n' > "$tf/exbad.txt"
+    printf 'beta\tpass\n' > "$tf/exnored.txt"
+    printf 'RESULT alpha guest_failure assertions=1 evidence=x\nRESULT beta pass assertions=1 evidence=x\nRUNNER_DONE 2\n' > "$tf/res-ok.txt"
+    printf 'RESULT alpha guest_failure assertions=1 evidence=x\nRESULT beta guest_failure assertions=1 evidence=x\nRUNNER_DONE 2\n' > "$tf/res-bad1.txt"
+    printf 'RESULT alpha pass assertions=1 evidence=x\nRESULT beta pass assertions=1 evidence=x\nRUNNER_DONE 2\n' > "$tf/res-bad2.txt"
+    col_alive=0
+    if sh "$here/conformance-run" toy-expect "$tf/ex.txt" "$tf/cx" "$tf/req.txt" > /dev/null 2>&1 && [ "$(tr '\n' ' ' < "$tf/cx.ids")" = "alpha beta " ] && [ "$(tr '\n' ' ' < "$tf/cx.pass")" = "beta " ] && [ "$(tr '\n' ' ' < "$tf/cx.red")" = "alpha " ]; then col_alive=1; fi
+    if sh "$here/conformance-run" toy-expect "$tf/exbad.txt" "$tf/cb1" "$tf/req.txt" > /dev/null 2>&1 || [ -e "$tf/cb1.ids" ]; then col_alive=0; fi
+    if sh "$here/conformance-run" toy-expect "$tf/ex.txt" "$tf/cb2" "$tf/req2.txt" > /dev/null 2>&1 || [ -e "$tf/cb2.ids" ]; then col_alive=0; fi
+    if sh "$here/conformance-run" toy-expect "$tf/exnored.txt" "$tf/cb3" "$tf/req.txt" > /dev/null 2>&1 || [ -e "$tf/cb3.ids" ]; then col_alive=0; fi
+    if ! sh "$here/conformance-run" toy-verdict "$tf/res-ok.txt" "$tf/cx.red" "$tf/cx.pass" > /dev/null 2>&1; then col_alive=0; fi
+    if sh "$here/conformance-run" toy-verdict "$tf/res-bad1.txt" "$tf/cx.red" "$tf/cx.pass" > /dev/null 2>&1; then col_alive=0; fi
+    if sh "$here/conformance-run" toy-verdict "$tf/res-bad2.txt" "$tf/cx.red" "$tf/cx.pass" > /dev/null 2>&1; then col_alive=0; fi
+    coltok='if (NF == 2) { print $1 > pass } else { print $1 > red; nred++ }'
+    colbefore=$(grep -c -F -e "$coltok" "$here/conformance-run" || true)
+    sed 's/if (NF == 2) { print \$1 > pass } else {/if (0) { print \$1 > pass } else {/' "$here/conformance-run" > "$cp_dir/conformance-run.col"
+    colafter=$(grep -c -F -e "$coltok" "$cp_dir/conformance-run.col" || true)
+    col_mut_dead=0
+    if sh "$cp_dir/conformance-run.col" toy-expect "$tf/ex.txt" "$tf/cm" "$tf/req.txt" > /dev/null 2>&1 && [ "$(tr '\n' ' ' < "$tf/cm.pass")" != "beta " ]; then col_mut_dead=1; fi
+    col_wire=0
+    if [ "$(grep -c -F -e 'toy_expect "${cm_dir}EXPECT"' "$here/conformance-run" || true)" -eq 1 ] && [ "$(grep -c -F -e 'toy_verdict "$cm_out"' "$here/conformance-run" || true)" -eq 1 ] && [ "$(grep -c -F -e '$cm_name.pass' "$here/conformance-run" || true)" -ge 1 ]; then col_wire=1; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 2 ] && [ ! -e "$tf/out2.tsv" ] && grep -q 'HARNESS_ERROR' "$tmp/st.err" && [ "$wire_ok" -eq 1 ] \
+      && [ "$col_alive" -eq 1 ] && [ "$colbefore" -eq 1 ] && [ "$colafter" -eq 0 ] && [ "$col_mut_dead" -eq 1 ] && [ "$col_wire" -eq 1 ]; then
       echo "SELFTEST mutation-toy-filter PASS"
     else
       echo "SELFTEST mutation-toy-filter FAIL"; failed=1
@@ -2163,7 +2229,7 @@ selftest() {
   fi
 
   # (policies) a guest that reads power-on state must turn its case red (plan 03-11; D-127, T-03-33). A scratch mini-root holds a copy of fixture-build, of ds_proto.s and its .checks, of the linker config, of the four fixture library
-  # files and of the case ds_proto (no policies key, so the guest kind runs its default list: zero and seeded-prng-v2 seeds 1 and 2, plan 03-24). The unmutated copy is built and run first and must give RESULT ds_proto pass. Then the single line that invokes a
+  # files and of the case ds_proto (no policies key, so the guest kind runs its default list: zero and seeded-prng-v3 seeds 1 and 2, plan 04-18). The unmutated copy is built and run first and must give RESULT ds_proto pass. Then the single line that invokes a
   # CHECK macro with the argument 2 (exit 2 unless exactly one line matches) is preceded by a load of work RAM that the guest never wrote ($2500) stored as the expected byte, so the check still passes under every policy but its observed byte
   # is the power-on byte. The copy is rebuilt into the scratch directory and the same runner must give guest_failure and say that the seeded policy differs from the zero policy at check 2. Nothing is written under fixtures/ or build/gate/fixtures/.
   if st_want mutation-policies-uninit; then
@@ -2598,6 +2664,93 @@ selftest() {
         echo "SELFTEST mutation-input-rules $ir_case PASS"
       else
         echo "SELFTEST mutation-input-rules $ir_case FAIL (alive $st_alive, before $before, after $after, exit $r)"; failed=1
+      fi
+    done
+  fi
+
+  # (z7b) the three tagged rules of the video checker are removable and detected (D-172, plan 04-07): each control (a mini-root of tests/video, run with its EXPECT) is met on an unmutated copy of scripts/; with the lines tagged rule-video-hash-only, rule-video-group-vacuous or
+  # rule-vexp-class-lint deleted from the copy of the rules file the code is no longer reported, so the same run must exit 1. One line per rule: SELFTEST mutation-video-hash-only, mutation-video-group-vacuous and mutation-vexp-class-lint CASE PASS|FAIL, selectable by name.
+  for vm_e in mutation-video-hash-only:hash-only:rule-video-hash-only mutation-video-group-vacuous:group-vacuous:rule-video-group-vacuous mutation-vexp-class-lint:class-bad:rule-vexp-class-lint mutation-vexp-class-lint:asym-man:rule-vexp-asym-class; do
+    vm_name=${vm_e%%:*}
+    vm_rest=${vm_e#*:}
+    vm_case=${vm_rest%%:*}
+    vm_tag=${vm_rest#*:}
+    if st_want "$vm_name"; then
+      st_ran=1
+      rm -rf "$cp_dir"
+      cp -R "$here" "$cp_dir"
+      fxr="tests/video/$vm_case"
+      vm_want=$(cat "$fxr/EXPECT")
+      if sh "$cp_dir/video-check" --root "$fxr" --cites fixtures/lib/cites.txt --ledger ledger/entries --expect "$vm_want" > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+      st_alive=0
+      if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+      before=$(grep -c "$vm_tag" "$cp_dir/lib/vexp-rules.awk" || true)
+      grep -v "$vm_tag" "$cp_dir/lib/vexp-rules.awk" > "$cp_dir/lib/vexp-rules.awk.mutated" || true
+      mv "$cp_dir/lib/vexp-rules.awk.mutated" "$cp_dir/lib/vexp-rules.awk"
+      after=$(grep -c "$vm_tag" "$cp_dir/lib/vexp-rules.awk" || true)
+      if sh "$cp_dir/video-check" --root "$fxr" --cites fixtures/lib/cites.txt --ledger ledger/entries --expect "$vm_want" > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+      if [ "$st_alive" -eq 1 ] && [ "$before" -ge 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+        echo "SELFTEST $vm_name $vm_case PASS"
+      else
+        echo "SELFTEST $vm_name $vm_case FAIL (alive $st_alive, tagged lines $before then $after, mutated run exit $r)"; failed=1
+      fi
+    fi
+  done
+
+  # (z7c) every other tagged rule of the video checker is removable and detected: one line per control, SELFTEST mutation-video-rules CASE PASS|FAIL. Each entry is CASE:TAG, the mini-root under tests/video and the tag of the statement that reports its code in lib/vexp-rules.awk
+  if st_want mutation-video-rules; then
+    st_ran=1
+    for vr_e in group-unkilled:rule-video-group-unkilled unknown-key:rule-unknown-key rows-vacuous:rule-video-rows-vacuous scene-untoyed:rule-video-scene-untoyed toy-no-literal:rule-toy-no-literal format:rule-format exempt-format:rule-video-exempt-format grid-class:rule-vexp-grid-class \
+      frame-class:rule-vexp-frame-class guest-bind:rule-vexp-guest-bind rel-asym:rule-vexp-rel-asym scene-no-case:rule-video-scene-case scene-no-sweep:rule-video-scene-sweep fixture-no-policy:rule-video-fixture-policy; do
+      vr_case=${vr_e%%:*}
+      vr_tag=${vr_e#*:}
+      rm -rf "$cp_dir"
+      cp -R "$here" "$cp_dir"
+      fxr="tests/video/$vr_case"
+      vr_want=$(cat "$fxr/EXPECT")
+      if sh "$cp_dir/video-check" --root "$fxr" --cites fixtures/lib/cites.txt --ledger ledger/entries --expect "$vr_want" > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+      st_alive=0
+      if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+      before=$(grep -c "$vr_tag" "$cp_dir/lib/vexp-rules.awk" || true)
+      grep -v "$vr_tag" "$cp_dir/lib/vexp-rules.awk" > "$cp_dir/lib/vexp-rules.awk.mutated" || true
+      mv "$cp_dir/lib/vexp-rules.awk.mutated" "$cp_dir/lib/vexp-rules.awk"
+      after=$(grep -c "$vr_tag" "$cp_dir/lib/vexp-rules.awk" || true)
+      if sh "$cp_dir/video-check" --root "$fxr" --cites fixtures/lib/cites.txt --ledger ledger/entries --expect "$vr_want" > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+      if [ "$st_alive" -eq 1 ] && [ "$before" -ge 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+        echo "SELFTEST mutation-video-rules $vr_case PASS"
+      else
+        echo "SELFTEST mutation-video-rules $vr_case FAIL (alive $st_alive, tagged lines $before then $after, mutated run exit $r)"; failed=1
+      fi
+    done
+  fi
+
+  # (z7d) review fix H-04 of the gate review: each stage 1 limit of the video checker is removable and detected. The controls are generated by vc_gen_limits (no committed file may hold them); each must be met on an unmutated copy of scripts/, and with the tagged line of its limit deleted from the copy of lib/vexp-lex.awk (rule-lex-NAME), or
+  # with the one line of lib/vexp-rules.awk that turns stage 1 rows into violations deleted (rule-stage1-limits, judged on lex-line-too-long), the same run must exit 1. One line per control: SELFTEST mutation-video-lex CASE PASS|FAIL.
+  if st_want mutation-video-lex; then
+    st_ran=1
+    vc_gen_limits "$tmp/vc-gen-st" || failed=1
+    for vl_e in lex-line-too-long:lex:rule-lex-line-too-long lex-non-ascii:lex:rule-lex-non-ascii lex-no-spdx:lex:rule-lex-no-spdx lex-too-many-rows:lex:rule-lex-too-many-rows lex-file-too-large:lex:rule-lex-file-too-large lex-line-too-long:rules:rule-stage1-limits; do
+      vl_case=${vl_e%%:*}
+      vl_rest=${vl_e#*:}
+      vl_file=${vl_rest%%:*}
+      vl_tag=${vl_rest#*:}
+      if [ "$vl_file" = lex ]; then vl_awk=vexp-lex.awk; else vl_awk=vexp-rules.awk; fi
+      rm -rf "$cp_dir"
+      cp -R "$here" "$cp_dir"
+      fxr="$tmp/vc-gen-st/$vl_case"
+      vl_want=$(cat "$fxr/EXPECT")
+      if sh "$cp_dir/video-check" --root "$fxr" --cites fixtures/lib/cites.txt --ledger ledger/entries --expect "$vl_want" > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+      st_alive=0
+      if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+      before=$(grep -c "$vl_tag" "$cp_dir/lib/$vl_awk" || true)
+      grep -v "$vl_tag" "$cp_dir/lib/$vl_awk" > "$cp_dir/lib/$vl_awk.mutated" || true
+      mv "$cp_dir/lib/$vl_awk.mutated" "$cp_dir/lib/$vl_awk"
+      after=$(grep -c "$vl_tag" "$cp_dir/lib/$vl_awk" || true)
+      if sh "$cp_dir/video-check" --root "$fxr" --cites fixtures/lib/cites.txt --ledger ledger/entries --expect "$vl_want" > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+      if [ "$st_alive" -eq 1 ] && [ "$before" -ge 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+        echo "SELFTEST mutation-video-lex $vl_case $vl_tag PASS"
+      else
+        echo "SELFTEST mutation-video-lex $vl_case $vl_tag FAIL (alive $st_alive, tagged lines $before then $after, mutated run exit $r)"; failed=1
       fi
     done
   fi
@@ -3237,6 +3390,10 @@ selftest() {
       as_case input-check-stage1 'STATUS input-check ok' "$as_dir" toml-subset sh "$here/input-check" --root "$ic_ok"
       as_case input-check-stage2 'STATUS input-check ok' "$as_dir" input-rules sh "$here/input-check" --root "$ic_ok"
       as_case input-check-rows 'STATUS input-check ok' "$as_dir" '$1 == "V"' sh "$here/input-check" --root "$ic_ok"
+      vc_ok="tests/video/ok-video"
+      as_case video-check-stage1 'STATUS video-check ok' "$as_dir" vexp-lex sh "$here/video-check" --root "$vc_ok"
+      as_case video-check-stage2 'STATUS video-check ok' "$as_dir" vexp-rules sh "$here/video-check" --root "$vc_ok"
+      as_case video-check-rows 'STATUS video-check ok' "$as_dir" '$1 == "V"' sh "$here/video-check" --root "$vc_ok"
       xa_ok="tests/gate/xasm/ok-tsv"
       as_case xasm-stage1 'STATUS xasm ok' "$as_dir" 'stage=1' sh "$here/xasm-check" --root "$xa_ok"
       as_case xasm-stage2 'STATUS xasm ok' "$as_dir" 'stage=2' sh "$here/xasm-check" --root "$xa_ok"
@@ -3453,6 +3610,7 @@ run_stage inventory stage_inventory
 run_stage inventory-negatives stage_inventory_negatives
 run_stage fixture-lint stage_fixture_lint
 run_stage fixture-lint-negatives stage_fixture_lint_negatives
+run_stage video-check stage_video_check
 run_stage input-check stage_input_check
 run_stage input-check-negatives stage_input_check_negatives
 run_stage xasm stage_xasm

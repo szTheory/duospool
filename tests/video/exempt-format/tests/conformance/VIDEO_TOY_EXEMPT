@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# exempt-format: the second line has a case id and no reason.
+video_ef	a reason that names the kill of the scene
+video_other

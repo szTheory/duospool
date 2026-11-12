@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Case ids that must come out guest_failure on the toy, one per line; a second column pass (a TAB and the word pass) marks a case that must STAY pass (F-4). The solid case is the proof that the toy moves only the asymmetric group.
+video_bg_basic_asym
+video_bg_basic_solid	pass

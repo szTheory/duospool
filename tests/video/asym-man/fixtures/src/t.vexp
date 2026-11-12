@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# asym-man: an asymmetric group (sym=asym) with a MAN class: the manual does not print pixel order, plane order, scroll direction, wrap or flips (ER-12).
+scene	am	case=video_am	role=literal
+group	am	g1	form=ROWS	class=MAN:H6-3	sym=asym	kills=F1,F2
+row	am	g1	line=active+0;x=0..5	index=2*5,2*300,2*7

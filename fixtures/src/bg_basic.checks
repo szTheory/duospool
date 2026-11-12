@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# bg_basic.checks - one row per CHECK of fixtures/src/bg_basic.s (D-125, plan 04-11). Columns separated by one TAB: check index (1-based), slug, class tag, meaning.
+# Class tags: MAN:<page> (a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model>, ASSUMED:<LED-id>.
+# Every check here is a readback of what the guest wrote, compared with an expectation the guest forms by a different computation than the writer (the BAT fields by shifts, the tiles by a read of the ROM table, the palette by an additive sum), so it holds under every power-on policy (D-167).
+# The raster itself, the index rule, the palette lookup and the unmodelled-mode flag are judged from the line records by the video cases (fixtures/src/bg_basic.vexp), not here. A pass is not a support claim (ER-4).
+id=22
+checks=6
+1	bat-low-bytes	GUEST:bat-fields	The low bytes of the 8 BAT words read back through VRR equal the tile code low bytes: the OR of the differences is zero
+2	bat-high-bytes	GUEST:bat-fields	The high bytes equal (bank << 4) | (code >> 8), formed in the guest by four shifts (H7-14: bank in bits 15-12, code in bits 11-0)
+3	tile-low-bytes	GUEST:tile-readback	The low bytes of the 112 tile words read back through VRR equal the ROM table the block upload took them from
+4	tile-high-bytes	GUEST:tile-readback	The high bytes of the 112 tile words equal the ROM table
+5	pal-low-sum	GUEST:pal-bijection	The 512 palette entry low bytes equal the additive running sum E(i + 1) = (E(i) + 91) & 511 from E(0) = 17, a different computation from the multiplicative writer
+6	pal-bit8-sum	GUEST:pal-bijection	The 512 palette entry bit 8 values equal the same running sum

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
-# The block transfers (plan 03-25; D-92, D-100, D-124, D-125, D-127; H8-6, S8-88, S8-89): the authored fixture fixtures/src/cpu_blk.s (the plain image cpu-blk) is assembled by ca65 in the gate (never committed), boots on the core, runs to the absolute deadline until_mclk (master clocks)
+# The block transfers (plan 03-25; D-92, D-100, D-124, D-125, D-127; H8-6, S8-88, S8-89): the authored fixture fixtures/src/cpu_blk.s (the plain image cpu-blk) is assembled by ca65 in the gate (never committed), is booted on the core, runs to the absolute deadline until_mclk (master clocks)
 # and writes a DSV1 verdict block that the runner judges from raw RAM. It runs TII, TDD, TIN, TIA and TAI with the registers and flags set before them (A, X, Y, S and N V Z C must be given back), overlapping blocks, the 16-bit address wrap, lengths above 256, a destination on the stack, the
 # cycle count read from the timer (E2) and the interrupt around a 4096-byte transfer with I set (the timer borrow is latched and not taken). The expected literals are in the literal table of fixtures/lib/check.inc and classed in fixtures/src/cpu_blk.checks: a manual page (MAN), an
 # in-guest computation (GUEST) or an assumed ledger entry (ASSUMED LED-CPU-0008, LED-IRQ-0007); none comes from DuoSpool output. The case has no policies key, so the guest kind runs the ROM under its default policy list (zero and two seeds of seeded-prng-v2, D-127).

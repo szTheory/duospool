@@ -11,8 +11,10 @@
 #        conformance-run control DIR
 #        conformance-run control-signal DIR SIG
 #        conformance-run filter-cases CASES_TSV IDS_FILE OUT_TSV
+#        conformance-run toy-expect EXPECT OUT_BASE [REQUIRED] | toy-verdict RESULTS RED_IDS PASS_IDS   (plan 04-17: the EXPECT second column pass, F-4)
 #        conformance-run snapshot-host-hash EVIDENCE_DIR
 #        conformance-run trace-out-check BD
+#        conformance-run video-out-check BD
 #        conformance-run supervise --ids FILE --out FILE [--wall N] -- CMD ARGS...
 # run mode (D-60, D-85): everything lives under build/NAME (default gate, the build directory of the preset NAME). The steps are
 #   (the runner also gets --records DIR/records, made empty on every run, and --golden-dir tests/conformance/golden: see plan 14, D-84b, D-86; and --inputs DIR/inputs.tsv, plan 03-27)
@@ -79,7 +81,7 @@ LC_ALL=C; export LC_ALL
 here=$(cd "$(dirname "$0")" && pwd)
 
 usage() {
-  echo "usage: conformance-run run [--preset NAME] | sanitize | fixtures [--only NAME] | control DIR | control-signal DIR SIG | filter-cases CASES_TSV IDS_FILE OUT_TSV | snapshot-host-hash EVIDENCE_DIR | trace-out-check BD | supervise --ids FILE --out FILE [--wall N] -- CMD ARGS..." >&2
+  echo "usage: conformance-run run [--preset NAME] | sanitize | fixtures [--only NAME] | control DIR | control-signal DIR SIG | filter-cases CASES_TSV IDS_FILE OUT_TSV | toy-expect EXPECT OUT_BASE [REQUIRED] | toy-verdict RESULTS RED_IDS PASS_IDS | snapshot-host-hash EVIDENCE_DIR | trace-out-check BD | video-out-check BD | supervise --ids FILE --out FILE [--wall N] -- CMD ARGS..." >&2
   exit 2
 }
 
@@ -204,7 +206,7 @@ run_mode() {
   mkdir -p "$bd" || { echo "HARNESS_ERROR cannot create $bd" >&2; exit 2; }
   rm -rf "$bd/exclude-ids.txt" "$bd/cases.tsv" "$bd/ids.txt" "$bd/results.txt" "$bd/evidence" "$bd/records" "$bd/r1.tsv" "$bd/rules-fields.txt" "$bd/oracle.tsv" "$bd/oracle.err" "$bd/bankclass.tsv" "$bd/bankclass.err" "$bd/inputs.tsv" "$bd/inputs.err"
   # the traces of an earlier explicit --trace-out run (plan 03-19; D-120): the cases write none, and trace_out_check below requires the directory to be absent until it makes it itself (the gate mode only: the sanitize mode makes none)
-  if [ "$mode" != sanitize ]; then rm -rf build/gate/traces; fi
+  if [ "$mode" != sanitize ]; then rm -rf build/gate/traces build/gate/video; fi # the video dir of an earlier explicit --video-out run is removed the same way (plan 04-05)
 
   flatten_cases "$bd"
   flatten_inputs "$bd"
@@ -313,6 +315,7 @@ run_mode() {
     exit 0
   fi
   trace_out_check "$bd"
+  video_out_check "$bd"
   controls_mode "$preset" "$bd"
   echo "STATUS conformance ok n=$n"
   exit 0
@@ -371,6 +374,74 @@ trace_out_check() {
   echo "TRACE_OUT ds_proto insn dev ok"
 }
 
+# video_out_check BD (plan 04-05; D-162, D-163, T-04-17, T-04-19): the runner writes a video stream only on an explicit --video-out. The cases that just ran must have left no build/gate/video; then the explicit request for the authored video case video_vce_pal must print exactly two lines (the .dsvr stream: record count, size, sha256; the .tsv:
+# rows, size, sha256), the two files must exist with the size and the SHA-256 that a host tool measures (the printed values are not trusted), the stream must hold at least one record and its host SHA-256 must equal the video_sha256 the case run printed in its evidence file (the external recomputation: the digest of the stream is not
+# taken from the core's own hash alone), the .tsv must have one row per record after its header row, and five refused requests (an id with a slash and dot-dot, an upper-case id, a case whose fixture is none, a case that is not a video case, no such case) must exit 2 and add no file. Any fault is exit 1 with a VIDEO_OUT_ code, a missing tool exit 2.
+video_out_check() {
+  vo_bd=$1
+  vo_dir=build/gate/video
+  vo_id=video_vce_pal
+  if [ -e "$vo_dir" ]; then
+    echo "VIDEO_OUT_UNREQUESTED the cases created $vo_dir without --video-out"
+    exit 1
+  fi
+  mkdir -p "$vo_dir" || { echo "HARNESS_ERROR cannot create $vo_dir" >&2; exit 2; }
+  pick_sha_tool
+  if "$vo_bd/ds_runner" --cases "$vo_bd/cases.tsv" --video-out "$vo_id" > "$vo_bd/video-out.txt" 2> "$vo_bd/video-out.err"; then vo_r=0; else vo_r=$?; fi
+  if [ "$vo_r" -ne 0 ]; then
+    cat "$vo_bd/video-out.err"
+    echo "VIDEO_OUT_FAILED the explicit --video-out $vo_id exited $vo_r"
+    exit 1
+  fi
+  if [ "$(wc -l < "$vo_bd/video-out.txt" | tr -d ' ')" -ne 2 ]; then
+    echo "VIDEO_OUT_STDOUT the video request printed other than its two summary lines"
+    exit 1
+  fi
+  vo_line=$(grep "^VIDEO $vo_id dsvr records=" "$vo_bd/video-out.txt" || true)
+  vo_recs=$(printf '%s\n' "$vo_line" | sed -n 's/^VIDEO [a-z0-9_]* dsvr records=\([0-9][0-9]*\) bytes=[0-9][0-9]* sha256=[0-9a-f]\{64\}$/\1/p')
+  vo_bytes=$(printf '%s\n' "$vo_line" | sed -n 's/^.* bytes=\([0-9][0-9]*\) sha256=.*$/\1/p')
+  vo_sha=$(printf '%s\n' "$vo_line" | sed -n 's/^.* sha256=\([0-9a-f]\{64\}\)$/\1/p')
+  vo_tline=$(grep "^VIDEO $vo_id tsv rows=" "$vo_bd/video-out.txt" || true)
+  vo_rows=$(printf '%s\n' "$vo_tline" | sed -n 's/^VIDEO [a-z0-9_]* tsv rows=\([0-9][0-9]*\) bytes=[0-9][0-9]* sha256=[0-9a-f]\{64\}$/\1/p')
+  vo_tbytes=$(printf '%s\n' "$vo_tline" | sed -n 's/^.* bytes=\([0-9][0-9]*\) sha256=.*$/\1/p')
+  vo_tsha=$(printf '%s\n' "$vo_tline" | sed -n 's/^.* sha256=\([0-9a-f]\{64\}\)$/\1/p')
+  if [ -z "$vo_recs" ] || [ -z "$vo_bytes" ] || [ -z "$vo_sha" ] || [ -z "$vo_rows" ] || [ -z "$vo_tbytes" ] || [ -z "$vo_tsha" ] || [ ! -f "$vo_dir/$vo_id.dsvr" ] || [ ! -f "$vo_dir/$vo_id.tsv" ]; then
+    echo "VIDEO_OUT_SHAPE a summary line or a file of $vo_id is missing or malformed"
+    exit 1
+  fi
+  # a stream of a program that ran holds at least one record: a writer that wrote nothing (no sink attached, no step run) satisfies size 19 and the hash of the bare header, so it is refused here
+  if [ "$vo_recs" -lt 1 ]; then
+    echo "VIDEO_OUT_EMPTY the video stream of $vo_id holds no record: a writer that records nothing is dead, not a pass"
+    exit 1
+  fi
+  vo_host_bytes=$(wc -c < "$vo_dir/$vo_id.dsvr" | tr -d ' ')
+  vo_host_sha=$($sha_tool "$vo_dir/$vo_id.dsvr" | awk '{ print $1 }')
+  vo_host_tbytes=$(wc -c < "$vo_dir/$vo_id.tsv" | tr -d ' ')
+  vo_host_tsha=$($sha_tool "$vo_dir/$vo_id.tsv" | awk '{ print $1 }')
+  if [ "$vo_host_bytes" != "$vo_bytes" ] || [ "$vo_host_sha" != "$vo_sha" ] || [ "$vo_bytes" -lt $(( 19 + vo_recs * 64 )) ] || [ "$vo_host_tbytes" != "$vo_tbytes" ] || [ "$vo_host_tsha" != "$vo_tsha" ]; then
+    echo "VIDEO_OUT_MISMATCH the printed size or sha256 of $vo_id.dsvr or $vo_id.tsv differs from the host tools, or the stream is shorter than 19 + 64 bytes per record"
+    exit 1
+  fi
+  if [ "$vo_rows" != "$vo_recs" ] || [ "$(wc -l < "$vo_dir/$vo_id.tsv" | tr -d ' ')" -ne $(( vo_recs + 1 )) ]; then
+    echo "VIDEO_OUT_ROWS the tsv of $vo_id does not hold one row per record after its header row"
+    exit 1
+  fi
+  # the external recomputation (T-04-19): the SHA-256 the host tool computes over the written stream file equals the video_sha256 the video case printed in its evidence file
+  vo_case_sha=$(sed -n 's/^video_sha256=\([0-9a-f]\{64\}\) .*$/\1/p' "$vo_bd/evidence/$vo_id.txt" | head -n 1)
+  if [ -z "$vo_case_sha" ] || [ "$vo_case_sha" != "$vo_host_sha" ]; then
+    echo "VIDEO_OUT_DIGEST the host SHA-256 of $vo_id.dsvr is not the video_sha256 of the evidence file of the case $vo_id"
+    exit 1
+  fi
+  for vo_bad in '../x' 'Video_vce_pal' run_refuse_memory_invalid vce_pal no_such_case; do
+    if "$vo_bd/ds_runner" --cases "$vo_bd/cases.tsv" --video-out "$vo_bad" > /dev/null 2> /dev/null; then vo_r=0; else vo_r=$?; fi
+    if [ "$vo_r" -ne 2 ] || [ "$(ls "$vo_dir" | wc -l | tr -d ' ')" -ne 2 ]; then
+      echo "VIDEO_OUT_REFUSAL a refused request '$vo_bad' did not exit 2 or left a file"
+      exit 1
+    fi
+  done
+  echo "VIDEO_OUT $vo_id dsvr tsv ok"
+}
+
 # sanitize_compiler BD (D-55): choose the compiler of the sanitize preset and export it as CC. Darwin: /usr/bin/clang, because Homebrew
 # LLVM hangs with ASan on this macOS. Elsewhere: cc. A build directory that was configured with another compiler is removed first
 # (cmake keeps the compiler of an existing cache), and on Linux ASAN_OPTIONS gets detect_leaks=1 (Apple ASan has no leak detector).
@@ -427,6 +498,74 @@ canary_check() {
   fi
 }
 
+# toy_expect EXPECT OUT_BASE [REQUIRED_FILE] (plan 04-17; D-173, F-4, F-43, T-04-56): the EXPECT file of a toy control split into the id lists of the controls. A line is an id, or an id and a second column; the only second column is the word pass (the toy must leave that case at pass: a case that keeps an assumption-free group
+# green while the toy turns its offset group red). OUT_BASE.ids is the union of the ids in file order (what the toy runs, what the charset and "no case carries" checks read), OUT_BASE.pass the ids with the second column, OUT_BASE.red the ids without it. Fail closed (exit 2, and no list left behind): an empty
+# EXPECT, a second column other than pass, a third column, a repeated id, a toy with no red id (a toy that kills nothing proves nothing), and, when REQUIRED_FILE is given, a pass id that is not a REQUIRED case (a stays-green case that the gate does not require would prove nothing either).
+# The mode is also the entry the gate selftest mutation-toy-filter drives on a scratch copy of this script.
+toy_expect() {
+  te_src=$1
+  te_out=$2
+  te_req=${3-}
+  rm -f "$te_out.ids" "$te_out.pass" "$te_out.red"
+  if [ ! -f "$te_src" ]; then
+    echo "HARNESS_NO_FILE toy-expect needs the EXPECT file" >&2
+    exit 2
+  fi
+  if awk '/^[ \t]*(#.*)?$/ { next }
+    { n++; if (NF > 2 || (NF == 2 && $2 != "pass")) { print "HARNESS_ERROR toy-expect: the second column of an EXPECT line is the word pass and nothing else: " $0 > "/dev/stderr"; bad = 1 }
+      if ($1 in seen) { print "HARNESS_ERROR toy-expect: the id " $1 " is listed twice" > "/dev/stderr"; bad = 1 }
+      seen[$1] = 1; print $1 > ids
+      if (NF == 2) { print $1 > pass } else { print $1 > red; nred++ } }
+    END { if (n == 0) { print "HARNESS_ERROR toy-expect: the EXPECT file lists no id" > "/dev/stderr"; bad = 1 }
+      if (nred == 0 && n > 0) { print "HARNESS_ERROR toy-expect: a toy needs at least one id that must come out guest_failure" > "/dev/stderr"; bad = 1 }
+      exit bad }' ids="$te_out.ids" pass="$te_out.pass" red="$te_out.red" "$te_src"; then :; else
+    rm -f "$te_out.ids" "$te_out.pass" "$te_out.red"
+    exit 2
+  fi
+  : >> "$te_out.pass"
+  : >> "$te_out.red"
+  if [ -n "$te_req" ]; then
+    while IFS= read -r te_id; do
+      if ! grep -Fxq -e "$te_id" "$te_req"; then
+        echo "HARNESS_ERROR toy-expect: the pass id $te_id is not a REQUIRED case" >&2
+        rm -f "$te_out.ids" "$te_out.pass" "$te_out.red"
+        exit 2
+      fi
+    done < "$te_out.pass"
+  fi
+}
+
+# toy_verdict RESULTS RED_IDS PASS_IDS (plan 04-17): judge the RESULT lines of a toy run. Every id of RED_IDS must have a RESULT line whose id and outcome FIELDS are that id and guest_failure and every id of PASS_IDS one whose outcome is pass (awk field match, never a whole-line match), and a RUNNER_DONE line must be present.
+# Exit 0 when all hold, else 1 with the reasons on stdout (the text after expected guest_failure; got:).
+toy_verdict() {
+  tv_res=$1
+  tv_red=$2
+  tv_pass=$3
+  tv_ok=1
+  tv_why=""
+  if ! awk '$1 == "RUNNER_DONE" { f = 1 } END { exit !f }' "$tv_res"; then
+    tv_ok=0
+    tv_why="no RUNNER_DONE line"
+  fi
+  while IFS= read -r tv_id; do
+    if ! awk -v id="$tv_id" '$1 == "RESULT" && $2 == id && $3 == "guest_failure" { f = 1 } END { exit !f }' "$tv_res"; then
+      tv_ok=0
+      tv_why="$tv_why $tv_id:$(awk -v id="$tv_id" '$1 == "RESULT" && $2 == id { print $3; f = 1; exit } END { if (!f) print "no-result" }' "$tv_res")"
+    fi
+  done < "$tv_red"
+  while IFS= read -r tv_id; do
+    if ! awk -v id="$tv_id" '$1 == "RESULT" && $2 == id && $3 == "pass" { f = 1 } END { exit !f }' "$tv_res"; then
+      tv_ok=0
+      tv_why="$tv_why $tv_id:$(awk -v id="$tv_id" '$1 == "RESULT" && $2 == id { print $3; f = 1; exit } END { if (!f) print "no-result" }' "$tv_res")(wanted-pass)"
+    fi
+  done < "$tv_pass"
+  if [ "$tv_ok" -eq 1 ]; then
+    return 0
+  fi
+  echo "$tv_why"
+  return 1
+}
+
 # controls_mode PRESET BD (D-85, D-55): the liveness controls of the matrix, run after it. Every tests/controls/NAME/ holds a RULE
 # and an EXPECT. For each one: scripts/control-mutate makes the toy source from the LIVE file named by the rule (an anchor count
 # other than one is a harness error, exit 2), the toy targets ds_toy_NAME of every control are built in one cmake invocation after all sources are made (a toy that does not compile
@@ -460,11 +599,12 @@ controls_mode() {
       echo "HARNESS_NO_EXPECT $cm_name" >&2
       exit 2
     fi
-    awk '/^[ \t]*(#.*)?$/ { next } { print $1 }' "${cm_dir}EXPECT" > "$cm_bd/controls/$cm_name.ids"
-    if [ ! -s "$cm_bd/controls/$cm_name.ids" ]; then
+    if [ -z "$(awk '/^[ \t]*(#.*)?$/ { next } { print $1 }' "${cm_dir}EXPECT")" ]; then
       echo "HARNESS_EMPTY_EXPECT $cm_name" >&2
       exit 2
     fi
+    # the ids of the EXPECT: a second column pass keeps a case green under the toy (plan 04-17, F-4, F-43): toy_expect writes the union (.ids, what runs), the red ids (.red) and the pass ids (.pass)
+    toy_expect "${cm_dir}EXPECT" "$cm_bd/controls/$cm_name" tests/conformance/REQUIRED
     while IFS= read -r cm_id; do
       case $cm_id in
         '' | *[!A-Za-z0-9_]*) echo "HARNESS_ERROR $cm_name: EXPECT id '$cm_id' is outside A-Z a-z 0-9 _" >&2; exit 2 ;;
@@ -522,22 +662,12 @@ controls_mode() {
       exit 2
     fi
     cm_ok=1
-    cm_why=""
-    if ! awk '$1 == "RUNNER_DONE" { f = 1 } END { exit !f }' "$cm_out"; then
-      cm_ok=0
-      cm_why="no RUNNER_DONE line"
-    fi
-    while IFS= read -r cm_id; do
-      if ! awk -v id="$cm_id" '$1 == "RESULT" && $2 == id && $3 == "guest_failure" { f = 1 } END { exit !f }' "$cm_out"; then
-        cm_ok=0
-        cm_why="$cm_why $cm_id:$(awk -v id="$cm_id" '$1 == "RESULT" && $2 == id { print $3; f = 1; exit } END { if (!f) print "no-result" }' "$cm_out")"
-      fi
-    done < "$cm_bd/controls/$cm_name.ids"
+    if cm_why=$(toy_verdict "$cm_out" "$cm_bd/controls/$cm_name.red" "$cm_bd/controls/$cm_name.pass"); then :; else cm_ok=0; fi
     if [ "$cm_ok" -eq 1 ]; then
       echo "CONTROL $cm_name RED_OK" | tee -a "$cm_bd/controls.txt"
     else
       echo "CONTROL $cm_name NOT_RED" | tee -a "$cm_bd/controls.txt"
-      echo "  expected guest_failure; got:$cm_why"
+      echo "  expected guest_failure (and pass for a second column pass); got:$cm_why"
       cm_red=1
     fi
   done
@@ -838,7 +968,10 @@ case $1 in
   control) shift; [ $# -eq 1 ] || usage; control_mode "$1" ;;
   control-signal) shift; [ $# -eq 2 ] || usage; control_mode "$1" "$2" ;;
   filter-cases) shift; [ $# -eq 3 ] || usage; filter_cases "$1" "$2" "$3"; exit 0 ;;
+  toy-expect) shift; { [ $# -eq 2 ] || [ $# -eq 3 ]; } || usage; toy_expect "$@"; exit 0 ;; # plan 04-17: the EXPECT of a toy split into its id lists
+  toy-verdict) shift; [ $# -eq 3 ] || usage; if toy_verdict "$1" "$2" "$3"; then exit 0; else exit 1; fi ;; # plan 04-17: the verdict of a toy run against its id lists
   snapshot-host-hash) shift; [ $# -eq 1 ] || usage; snapshot_host_hash "$1"; exit 0 ;;
+  video-out-check) shift; [ $# -eq 1 ] || usage; video_out_check "$1"; exit 0 ;; # the entry of the video --video-out step (plan 04-05), run from the repository root against a built gate directory
   trace-out-check) shift; [ $# -eq 1 ] || usage; trace_out_check "$1"; exit 0 ;; # the entry the selftest trace-out-empty drives with a shim runner in a scratch directory
   supervise) shift ;;
   *) usage ;;

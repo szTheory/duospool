@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# group-unkilled: a group with an empty kills list: no record fault is declared to show it live.
+scene	gu	case=video_gu	role=literal
+group	gu	g1	form=STRUCT	class=ASSUMED:LED-VID-0004	sym=none	kills=
+row	gu	g1	check=count	grid=1365

@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The vid sink channel of ds_run (plan 04-02; D-162, F-2, T-04-05, T-04-07): the third caller-owned sink, a byte buffer for whole raw-video records. Part attached: the authored ds-proto is run once with no sink (the reference) and once with a vid sink of 4096 bytes
+# whose header and buffer are poisoned with $A5 and which has guard bytes around it. Since the tracer of plan 04-04 the fold is the producer of one record per line (64 bytes, and since plan 04-09 96 bytes on a display line,
+# k % 4 == 2 for ds-proto, which programs no vertical or horizontal register: an 8-dot window, ASSUMED LED-VID-0005), so the header after the run must read count = floor((M - 1) / 1365) + 1 for the machine time M reached (written from the rule of D-137, ASSUMED LED-VID-0004 and LED-VID-0001),
+# lost 0, seq = count, bytes = 64 per line plus 32 per display line and the zero word, decoded by hand from the bytes, which shows the poisoned header was overwritten and never read; the records must be back to back with origin i * 1365 and rec_bytes 64 or 96
+# the buffer past them and the guards must still hold their poison; and the run must give the machine time, steps and digest of the run with no sink.
+# Part append: direct channel calls with synthetic records of 64 to 2792 bytes (F-2): whole records only, count = records stored, bytes = their sum, lost = seq - count, and after the first record that does not fit every later one is lost even if smaller (sticky full): 64, 2792, 2792, 64
+# into 3000 bytes store 2 records of 2856 bytes in all and lose 2; an exact fit is stored; capacity 0 and 1 store nothing; a NULL or empty record is lost and never copied. The literals are written by hand from that rule.
+# Evidence tier E0 (repeatability and non-interference: the core is compared with itself, the header literals are the layout of D-162): a mechanism check, no hardware claim, and the word pass is not a support claim.
+id = "vid_chan_append"
+kind = "vid_chan_append"
+fixture = "authored:ds-proto"
+request = ""
+expect = "parts=attached,append"
+meaning = "A ds_run request that carries a vid sink is accepted and receives one record per line, 64 bytes or 96 on a display line (count = floor((M - 1) / 1365) + 1, ASSUMED grid) and leaves the run unchanged; the channel stores whole records only, drops the newest with a sticky full flag and counts lost = seq - count (E0 mechanism, no hardware claim)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 40000

@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# Background chain, index rules, border and burst (D-157; VID-01). A modelling assumption, not a hardware fact: the pixel bit order and the plane order inside a word are community readings that no page prints.
+# Witnesses: TEST:video_bg_basic_asym (pixel bit order, plane byte order); video_bg_scroll_asym (scroll direction and the wrap of a 64 x 64 map, plan 04-12); video_bg_enab (the burst frame and bg_off_index: index 0 on the dots of a frame with SB set and BB clear, plan 04-12). The status stays assumed.
+id = "LED-VID-0010"
+statement = "R1/R2: the background chain (BAT bank and code, CG0 and CG1 planes) gives a 9-bit index; the border is index 256; the burst latch is taken at display line 0; with BB 0 the background index is bg_off_index (0). Bit 7 leftmost and the plane order are COMMUNITY readings. A modelling assumption."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|H7-6 H7-9 H7-14 H7-15 H7-18|SB and BB valid from the next display period, BAT word layout, CG0 and CG1 words for CH0-CH3, VD7-VD4 colour and VD3-VD0 = CH3-CH0, border VD8 = 1 with VD7-VD0 = 0", "REPORT|pcetech.txt|pixel bit order and backdrop reading, community"]
+evidence = []
+disagreement = "the backdrop when BB = 0 (index 0 versus 256) and the burst latch instant differ between sources; H7-15 draws CH1 left of CH0 inside a word but prints no bit numbers"
+pinning_test = "TEST:video_bg_basic_asym"
+updated = "2026-11-11"
+assumption = "Plane significance is page-stated (H7-18); which byte of a word is which plane and which pixel is leftmost is not, so those checks are ASSUMED class and sit apart from the order-insensitive solid-tile checks (ER-12)."
+revisit_phase = 4
+withheld = ["tile appearance", "backdrop colour", "burst timing"]
+origin = "04-CONTEXT D-157"

@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# VCE window and colour table (D-152; VID-05). Supported (E1, documentary) by plan 04-13 under ER-2, scoped to the H6-2 to H6-5 facts: the equality of the core with page statements, not a hardware measurement. Unlisted reads, the unused data bits, the address wrap, the window mirrors and the block-transfer behaviour are modelling readings outside the E1 part.
+# ER-2 record (plan 04-13, verifier gsd-executor, 2026-11-12). Condition 1: H6-2 (CR, CTA, CTW and CTR by the pins A1 and A2, AO selects the low or high byte; CTA 9 bits; G, R and B of 3 bits over data bits 8-0), H6-3 (CTA is incremented automatically after the high byte of the data is transferred) and H6-5 (write: CTA low, CTA high, data low, data high; read: the address in
+# two steps, the data low byte first; 512 addresses)
+# were re-read as page images from a scratch copy of the HuC6260 manual (sha256 c6f0d83a..., never committed). Condition 2: the literals are the MAN rows of fixtures/src/vce_pal.s (entry 0 and entry $100 read back, the address stepping once after the high byte only) and the GUEST row pal_bijection over all 512 entries; none comes from the core or a hash.
+# Condition 3: the statement says equals the manual's stated values. Condition 4: withheld lists hardware accuracy, timing and compatibility. Condition 5: pin TEST:vce_pal names the entry in its pins.
+id = "LED-VID-0016"
+statement = "VL0 (E1 documentary): DuoSpool's VCE colour table equals the manual's stated values: 512 entries of 9 bits (G, R and B of 3 bits each over data bits 8-0), addressed by a 9-bit CTA written low byte then high byte, written through CTW and read through CTR low byte first, with CTA incremented after the high byte of the data (H6-2, H6-3, H6-5)."
+profile = "pce-hucard-2btn"
+status = "supported"
+sources = ["FACT|H6-2 H6-3 H6-4 H6-5|CR CTA CTW CTR by pins A1 A2, 9-bit G R B fields, 512 x 9 table in two 256-address halves, CTA incremented after the high byte of data", "REPORT|pcetech.txt|unlisted reads, high-byte read bits and the window mirror, community"]
+evidence = ["E1|tests/conformance/cases/vce_pal.toml: MAN rows of vce_pal.s (entries 0 and $100 read back by the H6-5 procedure, the address steps after the high byte only, bit 8) and the GUEST row pal_bijection over 512 entries; pages re-read as images in plan 04-13", "E0|tests/conformance/cases/vce_pal.toml: the 32 checks pass identically under three power-on policies, repeatability only"]
+disagreement = "the manual shades the unused data bits while pcetech reports a tested read value and the bus may float; no page held gives unlisted read values, the CTA wrap or independent halves"
+pinning_test = "TEST:vce_pal"
+updated = "2026-11-12"
+assumption = "The window decode offset & 7 with mirrors, unlisted reads $FF, a CTR high byte reading bits 7 to 1 as 1, CR bits 7 and 2 doing nothing, the address wrap from $1FF to 0, independent halves and the block-transfer alternation are modelling readings (REPORT pcetech, ASSUMED rows of vce_pal) outside the E1 statement."
+revisit_phase = 4
+withheld = ["upper-bit reads", "colour accuracy", "any claim of hardware accuracy", "any claim about timing", "any claim of game compatibility"]
+origin = "04-CONTEXT D-152"

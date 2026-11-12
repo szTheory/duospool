@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The VRAM-to-VRAM transfer closed form against a naive per-clock reference (plan 04-10; D-151, D-157, D-175, ER-10, T-04-35): the runner kind vdc_advance_pure (tests/conformance/vdckinds.c) boots a synthetic instance per scenario, fills its VRAM with pseudo-random bytes, writes a vertical setup of a 20-line cycle and starts transfers through the port at random stamps
+# with random SOUR, DESR,
+# LENR (M - 1) and DCR bits 1 to 3, with CR writes that make the frame burst or not, and advances the core by direct ds_vdc_advance calls to a random partition of the stamps and to the stamps at, one before and one after the first word boundaries, the last words and every display start. After every call the counters SOUR, DESR and LENR, the state, DV and all 65,536 VRAM
+# bytes equal those of a reference
+# that steps one master clock at a time with counters and shares no formula or code with the core (the 4 dots per word, the divider 4, 3, 2, 2 and the 20-line cycle are written in the test; ASSUMED LED-VID-0014, MAN H6-3, ASSUMED LED-VID-0002, ASSUMED LED-VID-0001). 256 scenarios with a fixed seed. The case demands a minimum number of cancels at a display start,
+# completions and pending starts
+# so it cannot pass without crossing the display-start rule, and a transfer started before the first line event must stay pending with a legal word time (the zero-divisor guard). The mutants of the closed form (a divisor off by one, a cancel that is skipped, a word applied after the event) turn it red. Evidence tier E0: no accuracy, compatibility or hardware claim, and
+# the word pass is not a support claim.
+id = "vdc_advance_pure"
+kind = "vdc_advance_pure"
+fixture = "plain-256k"
+request = ""
+expect = "scenarios=256;seed=7"
+meaning = "Over 256 seeded random scenarios the VRAM-to-VRAM transfer progress of the core equals a naive per-clock reference at random stamps and at the word boundaries and display starts, in counters, state, DV and every VRAM byte, with a minimum of cancels, completions and pending starts crossed, E0 repeatability of a rule against a model of the same rule"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

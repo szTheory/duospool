@@ -8,11 +8,16 @@
 # Plan 03-29 added the regions IOPT (the latch of port O and the device kind of each of the five ports, 6 bytes: FF 01 00 00 00 00 at boot) and SCHD (the declared input schedule, 1024 slots of 16 bytes and the count and a reserved word, 16392 zero bytes for a run with no input) and the serial version 7, so the literal changed: a throwaway C
 # program outside the repo booted this request and wrote the 8607-byte version 6 stream with the core's stream writer, which hashes to the committed version 6 literal e3f935fa17ce7da35875c144ba2170ac8a52accc0aa0cba972b0c24bf243e7d0 under shasum -a 256; a throwaway python script outside the repo then set the version to 7 and appended the
 # frames IOPT (6 bytes) and SCHD (16392 zero bytes) written from the rules above, and the 25021-byte stream it wrote hashes to the new literal under shasum -a 256. Evidence tier E0 (see above).
+# Plan 04-03 (the one Phase 4 bump: serial version 8, seven regions VCE0, PALT, VDC0, BEAM, VDMA, VRAM, SATB appended after SCHD) changed the literal. Method (D-165, Pitfall 1): the 25021-byte version 7 stream of this case was
+# dumped by a scratch copy of the version 7 tree, and shasum -a 256 of it equalled the committed version 7 literal 18d810fc... before anything else was done; a throwaway python script outside the repo, which never called the new
+# core, then set the version to 8 and appended the seven frames written by hand from the D-165 layout (VCE0 3, PALT 1024, VDC0 45, BEAM 33, VDMA 25, VRAM 65536 and SATB 512 bytes, all zero except BEAM, whose rcr_counter 16384 (bytes
+# 00 40 at payload offset 14), frame_lines 262 (06 01 at 16) and display_k 0xFFFF (FF FF at 12) are the boot values of the rules, F-11); the 92255-byte stream it wrote hashes to the new literal under shasum -a 256. Evidence tier E0:
+# it pins the encoding and shows repeatability, never that the state is right.
 id = "digest_stream_blkt"
 kind = "digest_stream"
 fixture = "plain-256k"
 request = "bind.powerup_policy=seeded-prng-v1;seed=42"
-expect = "version=7;frames=PROF:32,CONT:40,POWR:16,TIME:8,RAM8:8192,MPRS:8,CPU0:8,BUS0:3,TIMR:11,IRQC:3,IRQS:160,BLKT:11,IOPT:6,SCHD:16392;size=262144;enum=1;poke=block-mid;digest=18d810fcd8b379c5b9403bf17f16199661d4935020adbeff3f560d61c16fca25"
+expect = "version=8;frames=PROF:32,CONT:40,POWR:16,TIME:8,RAM8:8192,MPRS:8,CPU0:8,BUS0:3,TIMR:11,IRQC:3,IRQS:160,BLKT:11,IOPT:6,SCHD:16392,VCE0:3,PALT:1024,VDC0:45,BEAM:33,VDMA:25,VRAM:65536,SATB:512;size=262144;enum=1;poke=block-mid;digest=f39a41e6194716976beb3b3cd9dba37bd3c07b31522df2e6a4037be5dddb810d"
 meaning = "With a block transfer in progress poked into the instance the region BLKT carries the documented little-endian bytes (the remaining count 65536 as a u32, the addresses as u16), the payloads match the instance, and the SHA-256 of the stream equals the independently derived literal"
 required = true
 control = false

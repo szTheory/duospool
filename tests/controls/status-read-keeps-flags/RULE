@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Toy control (D-85, D-173; a toy of the Phase 4 set, plan 04-17): a status read that does not clear the flags, made from the live src/core/vdc.c by scripts/control-mutate. The anchor is the one statement of ds_vdc_read that clears bits 0 to 5 of the status after a read (it keeps bits 6 and 7); the replacement is an empty statement, the plausible mistake of a status
+# read that only returns the byte.
+# The case in EXPECT must come out guest_failure on the toy: vdc_stat reads the status twice with the VD flag set and expects $00 the second time (check 5), the IRQ1 level must end with the read (check 4) and the handler must run once (checks 7 and 13). The real core passes it (a REQUIRED case).
+tag=rule-status-read-keeps-flags
+file=src/core/vdc.c
+anchor=inst->vdc_status = (uint8_t)((uint32_t)inst->vdc_status & 0xC0u);
+replace=;

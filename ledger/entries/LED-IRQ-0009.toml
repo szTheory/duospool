@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# The IRQ1 level of the VDC (D-144; VID-04). A modelling assumption, not a hardware fact. The Phase 3 test stimulus (LED-IRQ-0008) is ORed with it.
+id = "LED-IRQ-0009"
+statement = "VL0: the IRQ1 level is (VDC flags != 0) ORed with the declared stimulus level; a status read clears the flags; the level is a level, not an edge; the VDC drives no IRQ2 and no NMI. A modelling assumption."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|H7-4|a set status bit drives the interrupt request (IRQ) active, and the status register clears when read", "CODE|three emulators|the IRQ1 line follows the flags"]
+evidence = []
+disagreement = "none recorded; the manual page held says nothing about IRQ2 or NMI from the VDC and gives no latency"
+pinning_test = "TEST:vdc_stat"
+updated = "2026-11-11"
+assumption = "Delivery stays governed by the disable register and the I flag; every video-kind case declares no stimulus. The line is the OR of two drivers, so a check that uses the stimulus says nothing about the VDC (ER-5)."
+revisit_phase = 4
+withheld = ["interrupt latency", "IRQ line timing"]
+origin = "04-CONTEXT D-144"

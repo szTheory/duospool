@@ -24,12 +24,14 @@ This file records the external tools that build the authored HuCard fixtures und
 - Plan 03-06 (2026-11-11) measured the committed sources on the Homebrew bottle only: `ds_proto.s` and its four protocol variants gave the same five hashes on two consecutive builds, from a build in the working tree and from a build of the same files
   extracted to a different directory, and for the sources as they were at commit `2b09d68` (plan 03-05) and at plan 03-06. The pins in the manifest are those hashes. The hashes quoted in the plan 03-05 summary do not reproduce and should be ignored;
   the manifest is the record.
-- Plan 03-08 (2026-11-11) ran the encoding matrix on the Homebrew bottle (`ca65 V2.18`): all 234 defined rows of the manual transcription assemble to the transcribed bytes (opcode plus fixed placeholder operands), `STATUS xasm ok rows=234 wla=optional-absent`. The matrix covers every defined opcode in every mode the manual lists, so it is a byte-level identity check of the assembler against the transcription, not a check of cycles or behaviour. WLA-DX was absent, so no second-assembler claim is made.
+- Plan 03-08 (2026-11-11) ran the encoding matrix on the Homebrew bottle (`ca65 V2.18`): all 234 defined rows of the manual transcription assemble to the transcribed bytes (opcode plus fixed placeholder operands), `STATUS xasm ok rows=234 wla=optional-absent`. The matrix covers every defined opcode in every mode the manual lists, so it is a byte-level identity check of the
+  assembler against the transcription, not a check of cycles or behaviour. WLA-DX was absent, so no second-assembler claim is made.
 - Not measured here: the Ubuntu package on these sources. The pins are repeatability evidence on one package family (E0). Until a run on the apt package shows the same hashes (needs a push, which is an owner decision), CI and local identity is an assumption recorded in `LED-TOOL-0001`.
 
 ## The opcode table: numeric data from the manual pages
 
-`tests/oracle/huc6280-opcodes.tsv` is numeric data transcribed from the cited manual pages (the H8-25 opcode map and the S8 instruction pages, with the flag tables S8-7 to S8-9), read as page images by an agent on 2026-11-11 (method, verifier and the printing errors found are in the file header). It holds opcodes, mnemonics, mode names, byte and cycle counts, flag strings and page labels. It never holds page text or an image (ER-9), and it is licensed 0BSD like the other numeric data of the repository. It is the independent second table for the core opcode table (plan 03-09) and the matrix input of `scripts/xasm-check`.
+`tests/oracle/huc6280-opcodes.tsv` is numeric data transcribed from the cited manual pages (the H8-25 opcode map and the S8 instruction pages, with the flag tables S8-7 to S8-9), read as page images by an agent on 2026-11-11 (method, verifier and the printing errors found are in the file header). It holds opcodes, mnemonics, mode names, byte and cycle counts, flag strings and
+page labels. It never holds page text or an image (ER-9), and it is licensed 0BSD like the other numeric data of the repository. It is the independent second table for the core opcode table (plan 03-09) and the matrix input of `scripts/xasm-check`.
 
 ## WLA-DX: optional, verify-only
 
@@ -49,5 +51,13 @@ The three PDFs are read as untrusted data from a scratch directory outside the r
 - HuC6280 Hardware Manual (label H8-n is PDF page n+3): https://raw.githubusercontent.com/MiSTer-devel/TurboGrafx16_MiSTer/master/docs/HuC6280%20-%20CMOS%208-bit%20Microprocessor%20Hardware%20Manual.pdf ; 1196754 bytes ; sha256 `40a32e5dec7fefd8ea1893be91a53e6f6d4eae5f9c86154019ae792b40374fcb`
 - HuC6280 Software Manual (label S8-n is PDF page n+2): https://raw.githubusercontent.com/MiSTer-devel/TurboGrafx16_MiSTer/master/docs/HuC6280%20-%20CMOS%208-bit%20Microprocessor%20Software%20Manual.pdf ; 2416355 bytes ; sha256 `51eeda397e413527fe33f5446d83bd6ff7a49da2a0fd56cf3840c65c0920fd0c`
 - Hu7 CD BIOS Manual (printed page 28 is PDF page 27): https://raw.githubusercontent.com/MiSTer-devel/TurboGrafx16_MiSTer/master/docs/Hu7%20CD%20System%20-%20BIOS%20Manual.pdf ; 1053799 bytes ; sha256 `8e92ead829d9c93316bc66b2eb271e43c7f7e8a91d86db00e1d798ab7c908a6e`
+
+Two more manuals are cited from Phase 4 on (plan 04-01, ER-1, ER-9). Both were downloaded from the same MiSTer docs folder into a scratch directory outside the repository, matched against the recorded byte count and SHA-256, rendered page by page at 100 dpi and read as images on 2026-11-11 (verifier gsd-executor; the per-page facts are the `H7-` and `H6-` rows of
+`fixtures/lib/cites.txt`). No page text and no page image is committed.
+
+- HuC6270 CMOS Video Display Controller Manual (label H7-n is PDF page n+3, 28 pages): https://raw.githubusercontent.com/MiSTer-devel/TurboGrafx16_MiSTer/master/docs/HuC6270%20-%20CMOS%20Video%20Display%20Controller%20Manual.pdf ; 1497291 bytes ; sha256 `2bb87866b403632bf1ba1a6801ba82ba6f4a13f15e46835500e368e8da5ac6ab` ; read 2026-11-11 ; pages H7-2 to H7-16 and H7-18 to H7-25
+  (H7-1 and H7-17 are not used by any decision).
+- HuC6260 CMOS Video Color Encoder Manual (label H6-n is PDF page n+2, 7 pages: cover, contents, H6-1 to H6-5): https://raw.githubusercontent.com/MiSTer-devel/TurboGrafx16_MiSTer/master/docs/HuC6260%20-%20CMOS%20Video%20Color%20Encoder%20Manual.pdf ; 315186 bytes ; sha256 `c6f0d83a75898f3c1513ee5c152e9ce82bac689978e338974a59b9c4db39bd92` ; read 2026-11-11 ; pages H6-1 to H6-5.
+  The contents page lists the sync generator at H6-6, which is not in this copy, so nothing about sync timing is cited from the HuC6260 manual (04-CONTEXT writer note 4).
 
 Whether the hosting mirror may redistribute these documents is not settled here; this repository does not redistribute them.

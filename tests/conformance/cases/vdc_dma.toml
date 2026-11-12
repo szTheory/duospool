@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The VDC VRAM-to-VRAM transfer seen from the guest (plan 04-10; D-151, D-157, D-169, D-170, D-175 (b), ER-4, ER-10): the authored fixture fixtures/src/vdc_dma.s is assembled by ca65 in the gate (never committed), uploads a 64-word table to VRAM, starts a transfer of LENR + 1 = 64 words with the LENR high byte write in burst (CR = 0), reads the last destination word
+# back at once
+# (an instant transfer fails there) and the 64 destination words after a counted delay through VRR against an additive running sum (GUEST), and writes a DSV1 verdict block that the runner judges from raw RAM. The classes: GUEST (the sum), MAN H7-12 (the trigger and the count), ASSUMED LED-VID-0014 (the copy takes time; VL1, no speed is claimed).
+# The case has no policies key, so the guest kind runs the ROM under its default policy list (zero, seeded-prng-v3 seed 1, seed 2) and the check bytes must be equal in all three: every word the guest reads, it wrote first or the transfer moved (D-167). The literals come from the assembler's own table formula, the manual page H7-12 or the assumed ledger entry, never from
+# DuoSpool output.
+# The runner kind vdc_vram (case vdc_dma_vram) reads the same words from the instance VRAM bytes (D-175 (c)). Evidence tier E0: no accuracy, compatibility or hardware claim, and the word pass is not a support claim.
+id = "vdc_dma"
+kind = "guest"
+fixture = "authored:vdc-dma"
+request = ""
+expect = "id=20;observe=21:policy"
+meaning = "The authored vdc_dma fixture drives the VRAM-to-VRAM transfer: 64 words in burst against an additive running sum, LENR = 0, SI/D and DI/D, DV gating, IW ignored, an overlap, the registers left alone, the trigger byte, an observed poll count and an overrun cut at the display start with no DV; 24 checks of classes GUEST, MAN and ASSUMED, identical under three power-on policies"
+required = true
+control = false
+expect_outcome = "pass"
+pins = ["LED-VID-0014"]
+until_mclk = 2500000
+checks = 24

@@ -16,6 +16,7 @@
 #include "ds_mapper.h"
 #include "ds_obs.h"
 #include "ds_timer.h"
+#include "ds_vdc.h"
 
 /* the 8 KiB work RAM is mirrored four times in banks $F8-$FB with & $1FFF (D-103): the mask is only right for this size */
 _Static_assert(DS_RAM8K_BYTES == 0x2000u, "the work RAM mirror mask assumes 8 KiB");
@@ -60,11 +61,12 @@ static uint32_t offset_of(uint16_t addr)
 /*
  * The hardware page, bank $FF: six windows of $400 bytes at physical $1FE000 (H8-9, H8-24), decoded by the offset in the page shifted right by 10 in one switch (D-103, no function-pointer bus).
  * Window 0 is the VDC (register A1-A0), 1 the VCE (A2-A0), 2 the PSG (A3-A0), 3 the timer (A0), 4 the I/O port (one register for the whole window), 5 the interrupt registers (A1-A0: 2 is $1402, 3 is $1403),
- * and windows 6 and 7 ($1800-$1FFF) have no device. The timer, the interrupt controller (plans 03-21 and 03-22) and the pad (plan 03-27, io.c) are devices; the VDC and VCE are stubs until Phase 4 and the PSG until Phase 5:
- *   VDC window reads DS_VDC_STUB_READ and VCE window DS_VCE_STUB_READ (D-104); the windows without a device read the unmapped constant and change nothing.
+ * and windows 6 and 7 ($1800-$1FFF) have no device. The timer, the interrupt controller (plans 03-21 and 03-22), the pad (plan 03-27, io.c), the VCE (plan 04-04, vce.c) and the VDC (plan 04-06, vdc.c) are devices; the PSG is a stub until Phase 5:
+ *   the VDC and VCE windows answer from vdc.c and vce.c after the fold; the windows without a device read the unmapped constant and change nothing.
  *   io_buffer (D-104, ASSUMED LED-CPU-0013) is the byte of the last read or write in $0800-$17FF (windows 2 to 5): a read returns its stub value with the upper bits of the byte the window does not drive taken from io_buffer
  *   (the PSG window all eight bits, the timer bit 7 over its 7-bit counter, $1402 and $1403 the upper five bits over three register bits, the interrupt registers $1400 and $1401 all eight, the I/O window nothing: the pad drives all eight lines), and the byte read becomes the new io_buffer;
  *   a write in those windows stores its byte in io_buffer (the I/O window's byte is also the latch of port O). Reads and writes in the VDC and VCE windows and in the empty windows do not touch io_buffer.
+ * The dev log (D-119, D-149) holds every write to windows 0 to 5, the ST physical writes, the reads of the I/O window and, since plan 04-19, the reads of windows 0 and 1, each with the stamp the fold used and the latch unchanged.
  */
 enum hw_window { HW_VDC = 0, HW_VCE = 1, HW_PSG = 2, HW_TIMER = 3, HW_IO = 4, HW_IRQ = 5 };
 
@@ -119,10 +121,16 @@ static uint8_t hw_read(struct ds_instance *inst, struct ds_bus *bus, uint32_t of
     charge_penalty(bus, offset);
     stamp = access_stamp(inst, bus, 1);
     switch ((enum hw_window)(offset >> 10u)) {
-    case HW_VDC:
-        return (uint8_t)DS_VDC_STUB_READ;
-    case HW_VCE:
-        return (uint8_t)DS_VCE_STUB_READ;
+    case HW_VDC: /* the fold goes first with the stamp computed above, never recomputed (D-137 (1), F-24, Pitfall 2); the VDC answers at that stamp (plan 04-06, vdc.c: a status read clears the flags, a data read may start the next VRAM read); the read is logged with that same stamp and never touches io_buffer (D-149, F-27) */
+        ds_vdc_advance(inst, stamp, bus != NULL ? bus->obs : NULL);
+        value = ds_vdc_read(inst, reg, stamp);
+        log_dev(inst, bus, stamp, offset, value, (uint32_t)DS_DEV_READ);
+        return value;
+    case HW_VCE: /* the VCE answers at the access stamp after the fold, is logged with that stamp and never touches io_buffer (plan 04-04; D-149, D-152, F-27) */
+        ds_vdc_advance(inst, stamp, bus != NULL ? bus->obs : NULL);
+        value = ds_vce_read(inst, reg, stamp);
+        log_dev(inst, bus, stamp, offset, value, (uint32_t)DS_DEV_READ);
+        return value;
     case HW_PSG:
         value = inst->io_buffer;
         break;
@@ -133,6 +141,9 @@ static uint8_t hw_read(struct ds_instance *inst, struct ds_bus *bus, uint32_t of
         value = (uint8_t)((uint32_t)(inst->io_buffer & 0x80u) | (uint32_t)ds_timer_read(inst, reg, stamp));
         break;
     case HW_IRQ: /* $1402 and $1403: the three register bits over the upper five of the latch (H8-24); $1400 and $1401 read the latch whole */
+        if ((reg & 3u) == 3u) { /* a read of $1403 folds the VDC first (D-137 (1)); $1402 and $1400/$1401 do not: the mask only gates delivery (F-24) */
+            ds_vdc_advance(inst, stamp, bus != NULL ? bus->obs : NULL);
+        }
         value = (reg & 3u) >= 2u ? (uint8_t)((uint32_t)(inst->io_buffer & 0xF8u) | ds_irq_read(inst, reg, stamp)) : inst->io_buffer;
         break;
     default: /* windows 6 and 7: no device, the unmapped constant, no side effect */
@@ -140,7 +151,7 @@ static uint8_t hw_read(struct ds_instance *inst, struct ds_bus *bus, uint32_t of
         return value;
     }
     inst->io_buffer = value;
-    if ((enum hw_window)(offset >> 10u) == HW_IO) { /* the $1000 window is the one whose reads are logged (D-119) */
+    if ((enum hw_window)(offset >> 10u) == HW_IO) { /* the reads of windows 2 to 5 that are logged are the $1000 window's (D-119); $1403 and the PSG reads stay unlogged (D-149) */
         log_dev(inst, bus, stamp, offset, value, (uint32_t)DS_DEV_READ);
     }
     return value;
@@ -154,6 +165,14 @@ static void hw_write(struct ds_instance *inst, struct ds_bus *bus, uint32_t offs
     charge_penalty(bus, offset);
     stamp = access_stamp(inst, bus, 0);
     switch ((enum hw_window)(offset >> 10u)) {
+    case HW_VDC: /* the VDC window folds to the access stamp, then takes the write (plan 04-06, vdc.c); the ST physical writes reach here too (D-137 (1), F-24) */
+        ds_vdc_advance(inst, stamp, bus != NULL ? bus->obs : NULL);
+        ds_vdc_write(inst, offset & 0x3FFu, value, stamp);
+        break;
+    case HW_VCE: /* the VCE window folds to the access stamp, then takes the write (plan 04-04; D-137 (1), D-152) */
+        ds_vdc_advance(inst, stamp, bus != NULL ? bus->obs : NULL);
+        ds_vce_write(inst, offset & 0x3FFu, value, stamp);
+        break;
     case HW_TIMER:
         inst->io_buffer = value;
         ds_timer_write(inst, offset & 0x3FFu, value, stamp);
@@ -171,7 +190,7 @@ static void hw_write(struct ds_instance *inst, struct ds_bus *bus, uint32_t offs
         inst->io_buffer = value;
         ds_io_write(inst, value);
         break;
-    default: /* the VDC and VCE windows (stubs: the write is dropped) and the empty windows */
+    default: /* the empty windows */
         break;
     }
     if ((offset >> 10u) <= (uint32_t)HW_IRQ) { /* every write to windows 0 to 5 is logged, a device or not (D-119); windows 6 and 7 have none */
@@ -224,7 +243,7 @@ void ds_bus_write(struct ds_instance *inst, struct ds_bus *bus, uint16_t addr, u
 void ds_bus_write_phys(struct ds_instance *inst, struct ds_bus *bus, uint32_t phys, uint8_t value)
 {
     if (phys == 0x1FE000u || phys == 0x1FE002u || phys == 0x1FE003u) {
-        hw_write(inst, bus, phys & 0x1FFFu, value, (uint32_t)DS_DEV_ST); /* the VDC window: a stub that drops the byte until Phase 4 */
+        hw_write(inst, bus, phys & 0x1FFFu, value, (uint32_t)DS_DEV_ST); /* the VDC window: AR, data LSB and data MSB writes of the register interface (plan 04-06, D-149) */
     }
 }
 

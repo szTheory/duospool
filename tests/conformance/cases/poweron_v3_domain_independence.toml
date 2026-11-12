@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Domain independence of seeded-prng-v3 (D-167, D-50 additive): v3 draws every v2 domain unchanged and adds the domains vram, satb and pal, each with its own stream, so a seed-42 boot under v3 lays down the same RAM bytes as under v1 and v2, and the same CPU, mapping and timer bytes as v2. The literals are those of
+# poweron_v2_draw_order and poweron_v3_draw_order, recomputed independently by a throwaway python3 script outside the repo (see the latter), copied here as text and never read back from a run. The case also holds that the seven streams of the seed start with seven different 8-byte words, so no two domains share a
+# stream, that the three new arrays are drawn (not all zero), and that every video register stays 0 except the three boot fields (vid=constants) and the reset facts stay constant. Each domain has its own constant and stream, so adding the
+# three new domains moved no v2 byte (the ram, mpr and first video literals above are fixed text); a stream that shared a constant with another would start with the same word. Evidence tier E0, a modelling assumption and not a hardware claim (LED-PROF-0002).
+id = "poweron_v3_domain_independence"
+kind = "poweron"
+fixture = "plain-256k"
+request = "bind.powerup_policy=seeded-prng-v3;seed=42"
+expect = "policy=seeded-prng-v3;seed=42;ram@0=37db8e2ea18a90d91bed048d161cb5d2;ram@8184=86e36fa23afcda5d;mpr@0=dacbc62869a061;vram@65528=29d8a7e87a2d484f;satb@504=6a9fc2f65e58c243;pal@1016=1801810016006000;streams=distinct;drawn=vram;drawn=satb;drawn=pal;vid=constants;reset=constants"
+meaning = "Under seeded-prng-v3 the RAM, MPR and last-word video bytes of seed 42 equal the independent literals, the seven domain streams start differently, and the video registers and the reset facts hold"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

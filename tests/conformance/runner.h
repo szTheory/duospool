@@ -229,6 +229,17 @@ void kind_spin(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 
 /* the guest kind (guestkinds.c since plan 03-04): boots a built authored ROM, runs it with ds_run and judges its DSV1 verdict block from raw RAM */
 void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_video(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* videokinds.c (plan 04-04): a guest ROM run with a vid and a dev sink, its DSV1 verdict and the raw video records judged by literal rows, the stream digest beside them (E0) */
+/* plan 04-07 (D-171, D-172, ER-11, T-04-25, T-04-26; videokinds.c): video_fault_sweep (the faults F0 to F9 applied to the captured records, every group flips under the faults it declares, a group that no declared fault flips is VIDEO_GROUP_VACUOUS), video_hash_not_verdict (an F5-faulted stream passes a golden computed for it and fails the literal div group) and
+ * video_judge_forms (the ROWS, REL and STRUCT forms, the null renderers and the sweep on hand-built records); the video kind also judges the role golden, refused video-hash-only without a literal scene */
+void kind_video_fault_sweep(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_video_hash_not_verdict(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_video_judge_forms(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+/* plan 04-05 (D-162, D-163, T-04-17, T-04-19): the --video-out ID option (videokinds.c), the same shape as --trace-out: video_out_id is its value (NULL when not given), videokinds_arg parses it, video_out_main runs the request (exit status 0, or 2 for a refusal or a fault) and kind_video_out_rights judges the rule without writing a file */
+extern const char *video_out_id;
+int videokinds_arg(int argc, char **argv, int *a);
+int video_out_main(void);
+void kind_video_out_rights(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 /* the model parameter kinds (guestkinds.c, plan 03-17): ds_model_set refusals with the instance unchanged, and the deferred coverage of model_refusals.def and the rows of model_params.def */
 void kind_model_refuse(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_model_refusal_coverage(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
@@ -283,6 +294,7 @@ const char *boot_content(const char *request, size_t len, struct booted *b, cons
  *   observe=IDX:differs     (plan 03-24) only in a case that carries policy-diff=IDX for the same IDX: the byte of every policy after the first must differ from the byte of the first one
  *   policy-diff=IDX         (plan 03-24, guest only) the policy-diff negative control: the case must also carry observe=IDX:differs, and every other observe row of the case is observe=IDX:policy or has a value. A fixture that initialised the row before observing
  *                           it makes the case guest_failure, which shows that the comparison across policies can see a difference
+ *   judge=A-B               (plan 04-17, guest only) judge only the checks A to B (see guestkinds.c); the integrity of the whole block is still verified
  *   exclude=IDX,IDX,...     the checks a mutation sweep skips (strictly ascending), which must equal the observe rows of the fixture (mutate_sweep only)
  *   fail-set=IDX,IDX,...    (plan 03-29, guest only) a control-shaped case: the guest must finish with a consistent block in which exactly the checks listed (strictly ascending, 1 to 255) read $46 and every other check $50; any other set, a result byte that is neither, or a structural fault of the
  *                           block is a failure of the case. The pad negative controls use it (none, wrong, late: the declared set is the fact under test, the verdict of the guest is E0 data)
@@ -308,6 +320,8 @@ struct guest_expect {
         unsigned value;
     } obs[GE_ITEMS_MAX];
     unsigned pdiff; /* policy-diff=IDX (0 when the case has no such item) */
+    unsigned jlo;   /* judge=A-B (plan 04-17): only the checks jlo to jhi are judged; jlo is 0 when the case has no such item */
+    unsigned jhi;
     unsigned nex;
     unsigned ex[GE_ITEMS_MAX];
     unsigned nfail; /* fail-set=IDX,... (MODE_FAILSET) */
@@ -326,6 +340,8 @@ const char *read_observe(const char *rom, struct obs_list *out);
 int parse_guest_expect(const char *text, struct guest_expect *e); /* 0 on success */
 /* judge the DSV1 block b (256 bytes of raw work RAM) on c: exactly one outcome; got receives the observed summary */
 void judge_dsv1(struct ctx *c, const uint8_t *b, unsigned want_id, unsigned want_checks, char *got, size_t gotcap);
+/* the same with the judge=A-B range of plan 04-17: lo 0 judges every check, otherwise only the checks lo to hi (1-based) have to pass; the structural verification covers all checks */
+void judge_dsv1_range(struct ctx *c, const uint8_t *b, unsigned want_id, unsigned want_checks, unsigned lo, unsigned hi, char *got, size_t gotcap);
 /* a protocol-control case: s is the scratch context the judge filled; c passes only on the declared outcome and a reason containing the declared word */
 void expect_verdict(struct ctx *c, const struct ctx *s, const struct guest_expect *e, char *got, size_t gotcap);
 /* every observe row of the fixture needs an observe=IDX:VALUE item and every item an observe row: harness_failure (observe-missing, observe-unlisted) on t otherwise */
@@ -344,7 +360,9 @@ int obskinds_arg(int argc, char **argv, int *a);
 int trace_out_main(void);
 void kind_observer(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_dev_log(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_vid_chan_append(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_trace_out_rights(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+int output_fixture_permitted(const char *fixture); /* 1 for an authored image listed in build/gate/fixtures-authored.used or a synthetic recipe: the rights rule of --trace-out and --video-out (plan 04-05) */
 /* the stop callback that holds once the guest has set the DSV1 done state with its complement (a speed aid only, D-95: the deadline stays the hard bound) */
 int dsv1_done(const struct ds_instance *inst, void *ctx);
 
@@ -354,6 +372,7 @@ int dsv1_done(const struct ds_instance *inst, void *ctx);
 void kind_chunk_equiv(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 uint64_t rp_seed(unsigned index);
 void rp_build(unsigned char *img, uint64_t seed);
+void rp_build_vdc(unsigned char *img, uint64_t seed); /* the vdc_random_regs programs (plan 04-13): bank 0 only, hardware page mapped, VDC and VCE accesses, block transfers and waits */
 const char *boot_random(const unsigned char *img, const char *request, struct booted *b, const struct ds_instance **inst);
 
 /* the mutation sweep (sweepkinds.c, plan 03-10): every literal of the DCK1 table of a built image is flipped in an in-memory copy and must flip exactly its own check */
@@ -385,6 +404,28 @@ const char *snap_first_diff(const struct ds_instance *a, const struct ds_instanc
 int list_fixtures(const size_t *sweep, size_t nsweep);
 
 /* the kinds added after the Phase 3 code review (reviewkinds.c): brk_irq_sample (WR-01, BRK with an interrupt pending, both values of irq_i_sample) and dev_record_pc (WR-02, the pc field of the dev records of a block transfer) */
+/* the VDC and VCE C-level kinds (vdckinds.c, plan 04-05): vdc_fold (random partitions of the fold against one jump, the tie rule through the bus write path, the next-event invariant), vid_noninterference (a vid-only sink in four shapes against no sink under three policies) and snapshot_restore_video (restores at the stops of the video schedules, the concatenated stream
+ * compared); vd_policy_request appends policy fragment i (0 zero, 1 and 2 seeded-prng-v3 seeds 1 and 2) to a case's request, as kind_guest does for its default list */
+#define VD_POLICIES 3u
+void kind_vdc_fold(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_vid_noninterference(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_snapshot_restore_video(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_vdc_random_regs(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_vdc_poweron_policy_diff(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_vdc_vram(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-06: the VRAM words of the instance bytes against literals of the case (D-175 (c)) */
+void kind_vdc_vram_sweep(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-06: all 65,536 word addresses through the accessor pair and the port (D-147) */
+void kind_vdc_regmask(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-06: the register masks, the AR width, the reserved ARs and the status read (D-144, D-146) */
+void kind_model_param_vdc(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-08: the VD and RR status-read stamps of the vdc_stat guest under the default and the two bound model rows (D-143, D-168) */
+void kind_vdc_irq_agree(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-17: the guest-recorded RCR to VD and VD to RCR = 64 intervals against the dev log read stamps and the hand-derived literals of the case (D-174, ER-3, ER-10) */
+void kind_vdc_advance_pure(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-10: the DMA closed form against a naive per-clock model over seeded random stamp partitions that cross display starts (D-151, D-175) */
+void kind_vdc_satb_data(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-10: the 256 SATB words of the instance bytes against the source pattern (D-150, D-175 (c)) */
+void kind_vdc_snapshot_mid_dma(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-10: restores in the middle of a VRAM transfer, a SATB wait and the arming window continue to the same end (D-151, D-166) */
+void kind_vdc_dma_lenr_live(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* review fix H-01: a transfer whose LENR low byte is rewritten while it runs restores at every stop past 65,536 words (D-151, D-166) */
+void kind_vdc_vblank_wrap(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* review fix M-02: the VBlank state entry when VDS and VDW fill the frame exactly (D-139, D-143, ASSUMED LED-IRQ-0001) */
+const char *vd_policy_name(unsigned i);
+int vd_policy_request(unsigned i, const char *base, char *out, size_t cap);
+int vd_compose_request(const char *base, const char *fragment, char *out, size_t cap); /* the request with one policy fragment appended: the observer kind uses it for its policies key */
+
 void kind_brk_irq_sample(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_dev_record_pc(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 

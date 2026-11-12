@@ -31,12 +31,26 @@
 # IO-0004) after block_irq_after_epilogue, so LED-IO-0003 and LED-IO-0004 joined [withheld] (26 ids). The digest line is the one of the version 7 stream above: the constants and the layout are not in the digest.
 # Code review fix WR-01 (erratum R-9 of 03-CONTEXT.md) changed the sample after BRK, so behaviour_epoch went from 2 to 3 and nothing else in this record changed: the digest, the profile hash, the content hash and every table are as before (the epoch is not in the digest stream). The literal 3 was written by hand.
 # Code review fix WR-02 (the pc field of the device-register records of a block transfer) moved behaviour_epoch from 3 to 4 and again nothing else in this record changed; the literal 4 was written by hand.
+# Plan 04-03 (the one Phase 4 bump; D-165, D-167, D-168) changed the layout, format_version 6 to 7, and the epoch, behaviour_epoch 4 to 5 (literals written by hand): the table [model_vd_irq_phase] (line_start, LED-IRQ-0001) and
+# [model_rcr_origin] (first_active, LED-IRQ-0010) follow [model_irq_i_sample], [constants] gained line_mclk (1365, LED-VID-0001) and rcr_counter_poweron (16384, LED-IRQ-0010), and [withheld] gained LED-IRQ-0010 (27 ids; LED-IRQ-0001
+# and LED-VID-0001 were present). These blocks were written by hand from the def files, never copied from printer output. The serial version went 7 to 8 with the seven regions VCE0, PALT, VDC0, BEAM, VDMA, VRAM and SATB appended, so
+# the digest line changed: the 25021-byte version 7 stream of this boot was dumped by a scratch copy of the version 7 tree and its shasum -a 256 equalled the committed version 7 digest above (45cb85ee...) before anything else was
+# done; a throwaway python script outside the repo, which never called the new core, set the version to 8 and appended the seven frames (VCE0 3, PALT 1024, VDC0 45, BEAM 33, VDMA 25, VRAM 65536, SATB 512 bytes, zero except BEAM:
+# rcr_counter 16384, frame_lines 262 and display_k 0xFFFF at their stream offsets, F-11); the 92255-byte stream it wrote hashes to the new digest under shasum -a 256. The profile and content hashes did not change. Evidence tier E0.
+# Plan 04-04 (the tracer; D-136, D-141, D-152, D-153) added eight rows to src/core/constants.def, written here by hand from the def: raster_phase_mclk and line_sample_offset_mclk (0, LED-VID-0004), vce_div_cr0 and vce_div_cr1 (4 and 3, LED-VID-0017), vce_div_cr2 and vce_div_cr3 (2 and 2, LED-VID-0002),
+# vce_unused_read and vce_data_hi_unused_or (255 and 254, LED-VID-0016), so [constants] has 28 rows and [withheld] gained LED-VID-0004, LED-VID-0016 and LED-VID-0017 (30 ids in sorted order; LED-VID-0002 was present). Not copied from printer output. The format version, the epoch, the digest and the profile and content hashes did not change. Evidence tier E0.
+# Plan 04-06 (the VDC interface; D-144, D-147) added three rows to src/core/constants.def, written here by hand from the def: vdc_vram_words and vdc_oob_read (32768 and 0, LED-VID-0007) and vdc_bsy_level (0, LED-VID-0015),
+# so [constants] has 31 rows and [withheld] gained LED-VID-0007 and LED-VID-0015 (32 ids in sorted order). Not copied from printer output. The format version, the epoch, the digest and the profile and content hashes did not change. Evidence tier E0.
+# Plan 04-10 (VRAM-to-VRAM and VRAM-to-SATB DMA; D-150, D-151) added one row to src/core/constants.def, written here by hand from the def: vdc_dma_dots_per_word (4, LED-VID-0014), so [constants] has 32 rows and [withheld] gained LED-VID-0014 (33 ids in sorted order). Not copied from printer output.
+# The format version, the epoch, the digest and the profile and content hashes did not change. Evidence tier E0.
+# Plan 04-11 (the background renderer; D-157) added one row to src/core/constants.def, written here by hand from the def: bg_off_index (0, LED-VID-0010), so [constants] has 33 rows and [withheld] gained LED-VID-0010 (34 ids in sorted order). Not copied from printer output.
+# The format version, the epoch, the digest and the profile and content hashes did not change. Evidence tier E0.
 [record]
-format_version = 6
+format_version = 7
 
 [core]
 build_id = "unset"
-behaviour_epoch = 4
+behaviour_epoch = 5
 
 [profile]
 id = "pce-hucard-2btn"
@@ -109,7 +123,7 @@ value = "seeded-prng-v1"
 bound_by = "run-request"
 
 [withheld]
-count = 26
+count = 34
 id_1 = "LED-AUD-0001"
 id_2 = "LED-CPU-0003"
 id_3 = "LED-CPU-0004"
@@ -128,14 +142,22 @@ id_15 = "LED-IRQ-0003"
 id_16 = "LED-IRQ-0005"
 id_17 = "LED-IRQ-0006"
 id_18 = "LED-IRQ-0007"
-id_19 = "LED-LOAD-0001"
-id_20 = "LED-LOAD-0002"
-id_21 = "LED-LOAD-0003"
-id_22 = "LED-LOAD-0005"
-id_23 = "LED-PROF-0002"
-id_24 = "LED-VID-0001"
-id_25 = "LED-VID-0002"
-id_26 = "LED-VID-0003"
+id_19 = "LED-IRQ-0010"
+id_20 = "LED-LOAD-0001"
+id_21 = "LED-LOAD-0002"
+id_22 = "LED-LOAD-0003"
+id_23 = "LED-LOAD-0005"
+id_24 = "LED-PROF-0002"
+id_25 = "LED-VID-0001"
+id_26 = "LED-VID-0002"
+id_27 = "LED-VID-0003"
+id_28 = "LED-VID-0004"
+id_29 = "LED-VID-0007"
+id_30 = "LED-VID-0010"
+id_31 = "LED-VID-0014"
+id_32 = "LED-VID-0015"
+id_33 = "LED-VID-0016"
+id_34 = "LED-VID-0017"
 
 [content]
 sha256 = "dea83b86f5837a056859d5cf1ff5db8612092a2855be3e5da32ed277fc5f37e0"
@@ -160,6 +182,18 @@ bound_by = "default"
 [model_irq_i_sample]
 value = "pre"
 ledger = "LED-IRQ-0005"
+status = "open"
+bound_by = "default"
+
+[model_vd_irq_phase]
+value = "line_start"
+ledger = "LED-IRQ-0001"
+status = "open"
+bound_by = "default"
+
+[model_rcr_origin]
+value = "first_active"
+ledger = "LED-IRQ-0010"
 status = "open"
 bound_by = "default"
 
@@ -189,6 +223,21 @@ block_irq_after_epilogue = "1 LED-IRQ-0007"
 pad_clr_high_nibble = "0 LED-IO-0003"
 io_poweron_latch = "255 LED-IO-0003"
 pad_settle_mclk = "0 LED-IO-0004"
+line_mclk = "1365 LED-VID-0001"
+rcr_counter_poweron = "16384 LED-IRQ-0010"
+raster_phase_mclk = "0 LED-VID-0004"
+line_sample_offset_mclk = "0 LED-VID-0004"
+vce_div_cr0 = "4 LED-VID-0017"
+vce_div_cr1 = "3 LED-VID-0017"
+vce_div_cr2 = "2 LED-VID-0002"
+vce_div_cr3 = "2 LED-VID-0002"
+vce_unused_read = "255 LED-VID-0016"
+vce_data_hi_unused_or = "254 LED-VID-0016"
+vdc_vram_words = "32768 LED-VID-0007"
+vdc_oob_read = "0 LED-VID-0007"
+vdc_bsy_level = "0 LED-VID-0015"
+vdc_dma_dots_per_word = "4 LED-VID-0014"
+bg_off_index = "0 LED-VID-0010"
 
 [run]
 reason = "none"
@@ -203,4 +252,4 @@ size_cap = 1048576
 time = 0
 time_unit = "master-clocks"
 digest_algorithm = "sha256"
-digest = "45cb85eec312cf4d9d0621d67a8a57a4017f6a98a1f8bba1072d42ff41d7ec04"
+digest = "5ecef2a4e63add02f3d12d3fdd1c0ae63244420311824ef7d54446a3bf708cbf"

@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Agreement of the guest-recorded interrupt measurements with the model (plan 04-17; D-174, D-136, ER-3, ER-10; kind vdc_irq_agree in videokinds.c; ASSUMED LED-IRQ-0001, LED-IRQ-0010, LED-VID-0001, LED-CPU-0009, LED-CPU-0017): the model row rcr_origin = line_before (the counter is 64 one line earlier, so every RCR value matches one line sooner), 262 lines.
+# The ROM is run under the default power-on policies (zero, seeded-prng-v3 seeds 1 and 2) and the whole DSV1 block must be the same; the dev log of the first run gives the status read stamps of the handlers. gap is the hand-derived time in master clocks from the RCR event of the last display line to the VD event: the RCR event of a line is at (HDS + HDW + 2) * 8 * div =
+# (2 + 31 + 2) * 8 * 4 = 1120 master clocks into the line (the fixture programs HDS 2, HDW 31 and the divider 4), and VD is as before, but the RCR of the last display line is one line earlier: 245 + 1365 = 1610.
+# hit is the time from the VD event to the RCR = 64 event of the next frame, the counter origin line: the VBlank entry line is the first line after the 240 display lines (VDW + 1) and the next frame's first display line is frame_lines + VDS + 2 = frame_lines + 17 lines from the frame start, so the counter origin line is one line sooner, so the RCR = 64 event is one line
+# earlier than by default: 21 * 1365 + 1120 = 29,785; both are modelling assumptions (D-139, D-142, D-143) and not hardware facts.
+# tol = 27 master clocks is the plan window of 1.5 iterations of 18; brk = 12 is the bound that the interrupt wait gives (an event is taken at the first instruction end whose last cycle is at or after it, so the wait is at least 1 and under 5 cycles and two waits differ by under 4 cycles = 12 master clocks; the difference of two handler boundaries is within 4 cycles of
+# 6 * g, spin.inc). 24 = 12 + 12 is under 27.
+# The three windows of the three hypotheses 245, 341 and 1610 are disjoint: [218, 272], [314, 368] and [1583, 1637] master clocks (12.1 to 15.1, 17.4 to 20.4 and 87.9 to 90.9 iterations), provided the handler of the last display line returns before VD: its entry, vector jump, body and RTI are 66 cycles, a wait of under 5 cycles precedes it, so it returns under 71 cycles
+# after the event and VD comes at 81.7 cycles (04-VALIDATION.md A10).
+# Evidence tier E0/E2: the model against hand-derived literals and against the guest's own count of machine time, a modelling assumption; hardware claim: none. No absolute line or frame number is observed; the word pass is not a support claim.
+id = "vdc_irq_agree_lb"
+kind = "vdc_irq_agree"
+fixture = "authored:vdc-irq"
+request = "model.rcr_origin=line_before"
+expect = "rom=vdc-irq;id=18;gap=1610;hit=29785;next=8;tol=27;brk=12;row=13"
+meaning = "The guest-recorded RCR to VD interval (1610 master clocks) and VD to RCR = 64 interval (29785) of the vdc_irq fixture agree with the model row rcr_origin = line_before within the windows, the dev log stamps and the guest count agree within the instrument bracket; E0/E2 modelling assumption, hardware claim none"
+required = true
+control = false
+expect_outcome = "pass"
+pins = ["LED-IRQ-0010"]
+until_mclk = 2100000
+checks = 16

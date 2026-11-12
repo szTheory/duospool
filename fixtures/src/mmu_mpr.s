@@ -6,7 +6,7 @@
 ; HuCard banks whose bytes this file writes itself (segment BANKS: the first byte of file bank k is k and the last byte is k xor $A5, so a bank, an offset and a mirror can each be told apart from the $FF of an unmapped read), and, from
 ; check 22 on, the windows of the hardware page and the bus latch (io_buffer). ROMBANKS is the image size in banks: 32 gives 256 KiB, 48 gives 384 KiB and 128 gives 1 MiB (plan 03-20; D-127), three images of this one source (scripts/fixture-build). The two checks that name a
 ; mirror of the HuCard window (18 and 19) differ by image size and take their bank and literal from conditional assembly on ROMBANKS below; every other check is the same in the three images. Every check reads cells the fixture has written (D-127): RAM cells are written first, HuCard bytes are the BANKS data, and io_buffer is set by a write to the I/O window before every read that depends on it.
-; The classes: MAN rows follow a page (H8-7: the MPR byte supplies the physical address bits A13 to A20; S8-101: TMA reads what TAM stored), ASSUMED rows name the project's modelling assumption (the ledger entries LED-CPU-0011 to LED-CPU-0015 and LED-LOAD-0003).
+; The classes: MAN rows follow a page (H8-7: the MPR byte supplies the physical address bits A13 to A20; S8-101: TMA reads what TAM stored; H6-5: a colour table entry reads back what was written through the VCE window), ASSUMED rows name the project's modelling assumption (the ledger entries LED-CPU-0011 to LED-CPU-0015 and LED-LOAD-0003).
 ; No HuC, PCEAS, emulator or cc65 library code.
         .setcpu "huc6280"
 
@@ -69,7 +69,7 @@ BYTE19 = $7F
         LIT 23, $00
         LIT 24, $00
         LIT 25, $FF
-        LIT 26, $FF
+        LIT 26, $5A
         LIT 27, $A5
         LIT 28, $A5
         LIT 29, $C3
@@ -237,16 +237,23 @@ fixture_main:
         lda a:$6800                     ; check 22 ASSUMED:LED-CPU-0013: io_buffer is constant 0 at power-on: the PSG window reads $00 before any access in $0800-$17FF
         CHECK_LIT 22
         SETIO $A5
-        lda a:$6000                     ; check 23 ASSUMED:LED-CPU-0012: the VDC window is a stub that reads $00 (and not io_buffer, which holds $A5)
+        lda a:$6000                     ; check 23 ASSUMED:LED-PROF-0003: the live VDC status read is $00 at reset (no flag is set; MAN H7-4: the read clears the flags) and not io_buffer, which holds $A5
         CHECK_LIT 23
         SETIO $A5
-        lda a:$63FF                     ; check 24 ASSUMED:LED-CPU-0012: the last byte of the 1 KiB VDC window reads the stub too (H8-24: the VDC register is A1-A0, the window repeats)
+        lda a:$63FF                     ; check 24 ASSUMED:LED-PROF-0003: the last byte of the 1 KiB VDC window is register 3, the data MSB: it reads the read buffer, $00 at reset (H8-24: the VDC register is A1-A0, the window repeats)
         CHECK_LIT 24
         SETIO $00
-        lda a:$6400                     ; check 25 ASSUMED:LED-CPU-0012: the VCE window is a stub that reads $FF (and not io_buffer, which holds $00)
+        lda a:$7800                     ; check 25 ASSUMED:LED-CPU-0012: window 6 ($1FF800) has no device: it reads the unmapped constant $FF whatever io_buffer holds ($00 here)
         CHECK_LIT 25
+        stz a:$6402                     ; the VCE window answers from the colour table (plan 04-04): CTA = 0 (low, then high), CTW low $5A, CTW high 0 (the address steps to 1)
+        stz a:$6403
+        lda #$5A
+        sta a:$6404
+        stz a:$6405
+        stz a:$6402                     ; CTA = 0 again (the procedure of H6-5: the address, then the data low byte first)
+        stz a:$6403
         SETIO $00
-        lda a:$67FF                     ; check 26 ASSUMED:LED-CPU-0012: the last byte of the VCE window reads the stub too (H8-24: the VCE register is A2-A0)
+        lda a:$6404                     ; check 26 MAN:H6-5: the colour table entry 0 reads back the low byte the fixture wrote first, $5A (the value read is the byte written, not io_buffer, which holds $00)
         CHECK_LIT 26
         SETIO $A5
         lda a:$6000                     ; a read in the VDC window

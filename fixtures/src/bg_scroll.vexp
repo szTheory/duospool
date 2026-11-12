@@ -1,0 +1,74 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# bg_scroll.vexp - the hand-derived literal rows of the bg_scroll video scenes (plan 04-12; D-156, D-157, D-161, D-169, D-171, D-172, D-173, ER-10, ER-11, ER-12, F-12).
+# scripts/fixture-build writes this file, comments dropped, as build/gate/fixtures/bg-scroll.vexp.tsv; the runner kind video (tests/conformance/videokinds.c) reads only that file. One source holds the literals: no expected value lives in a case file, and none comes from a run of DuoSpool, another emulator or a hash.
+# The grammar is the one of bg_basic.vexp (scripts/lib/vexp-rules.awk) plus the write selectors of this plan: a ROWS selector line=NAME N+D;x=X0..X1 names the line D after the line that holds register write N of the guest (NAME bxr, byr or cr), and a REL selector may end in ;at=NAME N. The judge finds that line from the stamp of the write in the dev log against the origins
+# of the records themselves (never from the core's tables, D-171), and refuses the row as a fault of the case when a data write lies within 250 master clocks of any line origin (Pitfall 2, the ER-10 margin guard): the rows never depend on the tie rule of D-138. "Line n" is the record whose origin is the last one before the write; line n + 1 follows it.
+# The fixture (fixtures/src/bg_scroll.s) writes the vertical setup (VPR $0F02, VDW 239, VCR 4), HSR $0202 and HDR $031F (HDS 2, HDW 31: active_x 24, active_w 256 dots), MWR 0 (SCREEN 000: a 32 x 32 BAT), BXR = BYR = 0, the palette P(i) = (91 * i + 17) & 511, the BAT and four solid tiles, then CR BB = 1 and, at counted instants inside display lines, BXR = 16
+# (register write 1 of BXR), BXR = 0 (write 2),
+# BYR = 63 (write 1 of BYR) and BYR = 0 twenty lines later (write 2), then a 64 x 64 BAT with MWR SCREEN = 101, BXR = 500 and BYR = 300. The register writes are numbered from 0 in the order the guest makes them; write 0 of BXR and BYR is the setup.
+# The BAT (H7-14: word 0 is the top-left character, +1 to the right, +$20 per row; a word holds the bank in bits 15-12 and the code in bits 11-0): the word of BAT row r and column c is the code $100 + (c & 3) in the bank 1 when r < 8 and the bank 2 when r >= 8. The tiles (H7-15: 16 words from word code * 16; H7-18: VD3 to VD0 = CH3 to CH0, VD7 to VD4 = the
+# bank, VD3 to VD0 all 0 forces VD7 to VD4 to 0): code $100 solid pixel 15,
+# $101 solid pixel 12, $102 solid pixel 3, $103 pixel 0 everywhere. So BAT column c of bank b shows the index (b << 4) | pixel: bank 1 gives 31, 28, 19 and 0 for the columns c & 3 = 0, 1, 2, 3, bank 2 gives 47, 44, 35 and 0, bank 3 gives 63, 60, 51 and 0, bank 4 gives 79, 76, 67 and 0. A display line shows 8 dots of each column from the left edge, so with no
+# scroll the row is 8 x 31, 8 x 28, 8 x 19, 8 x 0 in bank 1
+# (display lines 0 to 63, BAT rows 0 to 7).
+# The latch rows (class MAN H7-7: BXR is valid "with the next scanning line", so the line that holds the write is not changed by it and the line after it is). Every write of the latch phase falls in a display line of the BAT rows 0 to 7 (the fixture places them about 16, 22, 52 and 72 lines into the frame, a calibration of its counted delays), so the bank is 1 on both lines of every row.
+# BXR = 16 moves the picture by two tiles: the virtual column of dot x is 16 + x (or x - 16 if the scroll ran the other way: the period of the row is 4 tiles = 32 dots, so both give the same row, and the 256-dot line wraps at a multiple of 32, so the wrap is not seen either), the tile column c + 2 whose type is (c + 2) & 3. Dot 0 to 7 then show the column of
+# type 2 (19), dots 8 to 15 type 3 (0), dots 16 to 23 type 0 (31), dots 24 to 31 type 1 (28).
+# The rows are therefore direction-independent and order-insensitive (sym=order): bxr1+0 (the line that holds the write BXR = 16) keeps 8 x 31, 8 x 28, 8 x 19, 8 x 0; bxr1+1 shows 8 x 19, 8 x 0, 8 x 31, 8 x 28; bxr2+0 (the line that holds the write BXR = 0, which still shows the shifted picture) shows 8 x 19, 8 x 0, 8 x 31, 8 x 28 and bxr2+1 shows the unshifted row again.
+# The relation rows (REL scroll_x_shift at the write, dx = 16): the line after the write shows the line that holds it moved by dx dots, B[x] = A[x + dx] (the same two lines, both ways: a shift of 16 dots on a row of period 32 is its own inverse).
+# Kills (D-172): F1 shifts the dots of the line the group looks at first by one dot (a transition inside the x range turns the row red); F7 zeroes every non-zero index of that line; F8 swaps that line with the one before it, and the first row of the latch group is the line after the first write, so the swap exchanges the unshifted line with the shifted one; F0
+# perturbs the first number of the first row.
+# These BXR rows have no renderer mutant (the toy cap of 10 is spent, 04-VALIDATION.md A4): under R1 the only mutant class, a late or a missing latch, is what the record faults F1 and F8 emulate, and the REL row adds the relation. F2 (two index bits swapped) cannot act on these indices (their two low bits are equal), so no group declares it.
+# Classes (ER-10): the structure rows use the 1365-clock grid and the frame length (ASSUMED LED-VID-0004).
+scene	video_bg_scroll	case=video_bg_scroll	role=literal
+group	video_bg_scroll	struct	form=STRUCT	class=ASSUMED:LED-VID-0004	sym=none	kills=F4,F8,F9
+row	video_bg_scroll	struct	check=count	grid=1365
+row	video_bg_scroll	struct	check=origins	step=1365
+row	video_bg_scroll	struct	check=rec_bytes	header=64;version=1;max_w=682
+row	video_bg_scroll	struct	check=values_below_512	limit=512
+group	video_bg_scroll	latch	form=ROWS	class=MAN:H7-7	sym=order	kills=F0,F1,F7,F8
+row	video_bg_scroll	latch	line=bxr1+1;x=0..31	index=8*19,8*0,8*31,8*28
+row	video_bg_scroll	latch	line=bxr1+0;x=0..31	index=8*31,8*28,8*19,8*0
+row	video_bg_scroll	latch	line=bxr2+0;x=0..31	index=8*19,8*0,8*31,8*28
+row	video_bg_scroll	latch	line=bxr2+1;x=0..31	index=8*31,8*28,8*19,8*0
+group	video_bg_scroll	latch_rel	form=REL	class=MAN:H7-7	sym=order	kills=F0,F1,F7
+row	video_bg_scroll	latch_rel	rel=scroll_x_shift;runs=main,main;at=bxr1	dx=16
+row	video_bg_scroll	latch_rel	rel=scroll_x_shift;runs=main,main;at=bxr2	dx=16
+# The BYR rows (plan 04-12, plan-check ruling 4): a write of BYR sets the row counter at its stamp, so a write during line n shows the virtual row BYR + 1 on line n + 1 [MAN H7-7: "valid with the next line as BYR+1"]. The BYR write 1 is BYR = 63 in the display line n2 = 52 (a calibration of the counted delays: 16 + 6 + 30 lines into the frame, all in the BAT
+# rows 0 to 7 of bank 1); the next line shows the row 64,
+# the BAT row 8, whose bank is 2: 8 x 47, 8 x 44, 8 x 35, 8 x 0 (BXR is 0 by then). A reading that showed BYR itself (row 63, the BAT row 7, bank 1: 31, 28, 19, 0) or that kept the old counter (row 52, the BAT row 6, bank 1) fails this row, which is the toy vid-scroll-latch (the BYR write no longer reloads the counter). The BYR write 2 (BYR = 0) is in display
+# line 71; the next line shows row 0 + 1 = 1, the BAT row 0, bank 1,
+# and the old counter would give row 84 (the BAT row 10, bank 4): the row byr2+1 is also MAN H7-7. The lines that hold the writes, and the line after the next, rest on the row counter of LED-VID-0009 (the display line k shows row k from BYR = 0 at the first display line, plus one per line: ASSUMED, F-12): line 51 shows row 51 (the BAT row 6, bank 1), line 65 =
+# n2 + 2 shows row 65 (the BAT row 8, bank 2), line 71 shows row
+# 64 + 19 = 83 (the BAT row 10, bank 4: 79, 76, 67, 0). The relation row scroll_y_shift (class ASSUMED LED-VID-0009, it rests on the same counter for the reference frame): the 16 lines after the write 1 of BYR (rows 64 to 79, the BAT rows 8 and 9, banks 2 and 3) are the lines 12 below them of the frame before, B line i = A line i + 12, since the reference
+# frame (BYR = 0, BXR = 0) shows row i on line i and 64 - 52 = 12.
+group	video_bg_scroll	byr_next	form=ROWS	class=MAN:H7-7	sym=order	kills=F0,F1,F7,F8
+row	video_bg_scroll	byr_next	line=byr1+1;x=0..31	index=8*47,8*44,8*35,8*0
+row	video_bg_scroll	byr_next	line=byr2+1;x=0..31	index=8*31,8*28,8*19,8*0
+group	video_bg_scroll	byr_own	form=ROWS	class=ASSUMED:LED-VID-0009	sym=order	kills=F0,F1,F7
+row	video_bg_scroll	byr_own	line=byr1+0;x=0..31	index=8*31,8*28,8*19,8*0
+row	video_bg_scroll	byr_own	line=byr1+2;x=0..31	index=8*47,8*44,8*35,8*0
+row	video_bg_scroll	byr_own	line=byr2+0;x=0..31	index=8*79,8*76,8*67,8*0
+group	video_bg_scroll	byr_rel	form=REL	class=ASSUMED:LED-VID-0009	sym=order	kills=F0,F1,F7
+row	video_bg_scroll	byr_rel	rel=scroll_y_shift;runs=main,main;at=byr1;fa=prev	dy=11;lines=16
+# The wrap scene (ER-12, ASSUMED LED-VID-0010: the scroll direction, the wrap of the virtual columns and rows and the BAT layout of a 64 x 64 map are readings no page prints, with the row counter of LED-VID-0009): the guest fills a 64 x 64 BAT (4,096 words from word 0; the word of BAT row r and column c is the bank c >> 2 with the code $100 + ((c + r) & 3)), writes MWR = $0050
+# (SCREEN 101: 64 x 64, valid at the next VBlank entry, H7-9), BXR = 500 and BYR = 300. Frame 8 of the stream lies wholly after the latch (frame 6 holds the rewrite of the BAT and the MWR write, frame 7 is the first whole frame of the new map; the frame number is a calibration read from the counted sequence, never a literal source: a frame that is not the intended one fails its rows).
+# The index of the dot with the virtual column V = (500 + x) mod 512 and the virtual row R = (300 + k) mod 512 on display line k is, with T = V >> 3 and r = R >> 3, the bank T >> 2 shifted left 4 plus the pixel of the type (T + r) & 3 (types 0, 1, 2, 3 are the pixels 15, 12, 3, 0, and the pixel 0 gives the index 0 whatever the bank, H7-18).
+# Line 0: R = 300, r = 37. Dots 0 to 3: V 500 to 503, T = 62, bank 15, type (62 + 37) & 3 = 3: pixel 0, index 0. Dots 4 to 11: T = 63, bank 15, type (63 + 37) & 3 = 0: pixel 15, index 255. Dots 12 to 19: V = 512 mod 512 = 0, T = 0 (the wrap: no wrap would read the BAT word 64 of the row, which is column 0 of the next row, type 2), bank 0, type 37 & 3 = 1:
+# pixel 12, index 12. Dots 20 to 27:
+# T = 1, type 2: pixel 3, index 3. Dots 28 to 31: T = 2, type 3: index 0. The scroll in the other direction would start at V = (x - 500) mod 512 = x + 12 and show T = 1 on dots 0 to 3.
+# Line 4 (the first row of the group, so that the swap of the fault F8 exchanges it with line 3, which shows the other BAT row): R = 304, r = 38. Dots 0 to 3: T = 62, bank 15, type (62 + 38) & 3 = 0: pixel 15, index 255. Dots 4 to 11: T = 63, type (63 + 38) & 3 = 1: pixel 12, index 252. Dots 12 to 19: T = 0, bank 0, type 38 & 3 = 2: pixel 3, index 3. Dots 20
+# to 27: T = 1, type 3: index 0. Dots 28 to 31: T = 2, type 40 & 3 = 0: index 15.
+# Lines 211 and 212 are the vertical wrap (300 + 211 = 511, 300 + 212 = 512 mod 512 = 0). Line 211: R = 511, r = 63. Dots 0 to 3: T = 62, bank 15, type (62 + 63) & 3 = 1: pixel 12, index 252. Dots 4 to 11: T = 63, type (63 + 63) & 3 = 2: pixel 3, index 243. Dots 12 to 19: T = 0, type 63 & 3 = 3: index 0. Dots 20 to 27: T = 1, type 64 & 3 = 0: pixel 15, bank 0,
+# index 15. Dots 28 to 31: T = 2, type 65 & 3 = 1: index 12.
+# Line 212: R = 0, r = 0. Dots 0 to 3: T = 62, type 62 & 3 = 2: pixel 3, bank 15, index 243. Dots 4 to 11: T = 63, type 3: index 0. Dots 12 to 19: T = 0, type 0: index 15. Dots 20 to 27: T = 1, type 1: index 12. Dots 28 to 31: T = 2, type 2: index 3.
+# Kills: F1 shifts the dots of the focus line, F7 zeroes it, F8 swaps the focus line with the one before it (for the wrap rows the focus is line 212, so lines 211 and 212 exchange); F2 cannot act (the indices 0, 3, 12, 15, 243, 252 and 255 have equal low bits).
+scene	video_bg_scroll_asym	case=video_bg_scroll_asym	role=literal
+group	video_bg_scroll_asym	wrap_x	form=ROWS	class=ASSUMED:LED-VID-0010	sym=asym	kills=F0,F1,F7,F8
+row	video_bg_scroll_asym	wrap_x	line=active+4;x=0..31;frame=8	index=4*255,8*252,8*3,8*0,4*15
+row	video_bg_scroll_asym	wrap_x	line=active+0;x=0..31;frame=8	index=4*0,8*255,8*12,8*3,4*0
+group	video_bg_scroll_asym	wrap_y	form=ROWS	class=ASSUMED:LED-VID-0010	sym=asym	kills=F0,F1,F7,F8
+row	video_bg_scroll_asym	wrap_y	line=active+212;x=0..31;frame=8	index=4*243,8*0,8*15,8*12,4*3
+row	video_bg_scroll_asym	wrap_y	line=active+211;x=0..31;frame=8	index=4*252,8*243,8*0,8*15,4*12

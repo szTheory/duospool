@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# guest-bind: the allowlisted model pal_bijection on an index= ROWS row and on the STRUCT check div_table, neither of which its in-guest arithmetic gives: VEXP_CLASS. Review fix M-03: the control of the tag rule-vexp-guest-bind.
+scene	gb	case=video_gb	role=literal
+group	gb	g1	form=ROWS	class=GUEST:pal_bijection	sym=order	kills=F0,F1
+row	gb	g1	line=active+0;x=0..5	index=2*5,2*300,2*7
+group	gb	g2	form=STRUCT	class=GUEST:pal_bijection	sym=none	kills=F0,F5
+row	gb	g2	check=div_table	div=4,3;crw=0,1;gap=5460

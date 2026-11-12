@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Restore at the stops of a scroll run (plan 04-12; D-137, D-121, D-122, D-163, ER-7): the runner kind snapshot_restore_video runs the authored bg_scroll fixture, under each of the three power-on policies, in calls to the deadlines of three schedules (1364 and 1366 master clocks, which fall at every phase inside a 1365-clock line, and 7) with a vid sink on
+# every call. At every stop of the schedules 1364 and 1366 (so also at the stops one clock either side of the counted BXR and BYR writes
+# of frame 4, which the run reaches at about 1.45 to 1.53 million clocks), at every stride-th stop of the schedule 7 and at every stop whose machine time is a multiple of 1365, the machine is snapshotted, restored into a fresh boot of the same image whose restorable members are poisoned, compared member by member with the source (ROM excluded) and the run goes
+# on with the restored target. The machine time, the steps,
+# the verdict RAM, the digest and the concatenated stream bytes of every chain must equal those of the uninterrupted run (memcmp of the stream, never hashes); a schedule 7 that restored at no stop at a multiple of 1365 is a guest_failure, so the tie is not left untested. The run is the first 1,560,000 master clocks (about 1,143 lines), which holds the setup,
+# three frames of the background, the four counted writes of the latch phase and the start of frame 5. Evidence tier E0: the core compared with itself
+# (repeatability and consistency); no literal comes from a DuoSpool run, and the word pass is not a support claim.
+id = "snapshot_restore_video_bg"
+kind = "snapshot_restore_video"
+fixture = "authored:bg-scroll"
+request = ""
+expect = "rom=bg-scroll;schedules=1364,1366,7;stride=2003"
+meaning = "Snapshots of the first 1560000 clocks of the bg_scroll run taken at every stop of the 1364 and 1366 schedules and at strided and line-event stops of the 7 schedule, restored into a fresh poisoned instance and continued, give the machine time, steps, verdict RAM, digest and raw video stream of the uninterrupted run under three policies"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 1560000

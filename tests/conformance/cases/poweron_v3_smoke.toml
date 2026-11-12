@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Power-on, seeded-prng-v3 with seed 42, the smoke case of plan 04-18 (D-167, T-04-10): a boot bound to the policy draws VRAM, SATB and the palette and keeps every VDC and VCE register, the read buffer, the address register, the write latch, the status flags, the beam members and the DMA members at 0, except the three boot
+# fields (rcr_counter 16384, display_k 0xFFFF, frame_lines 262 or 263): a drawn control register could raise IRQ1 under a Phase 3 guest that knows nothing of the VDC, so only the three byte arrays are drawn (vid=constants). The items drawn=vram, drawn=satb and drawn=pal assert only that an array is not all zero, a structural
+# property that names no value and so cannot be copied from a DuoSpool run (the exact bytes are pinned by poweron_v3_draw_order); palbits=clear asserts that every odd palette byte keeps bit 0 only. The record's policy_version 3 is the table of poweron.c. A modelling assumption of this project, never a hardware claim. Evidence tier E0.
+id = "poweron_v3_smoke"
+kind = "poweron"
+fixture = "plain-256k"
+request = "bind.powerup_policy=seeded-prng-v3;seed=42"
+expect = "policy=seeded-prng-v3;seed=42;reset=constants;drawn=cpu;drawn=mpr;drawn=tmr;drawn=vram;drawn=satb;drawn=pal;palbits=clear;vid=constants;time=0"
+meaning = "A seed-42 boot under seeded-prng-v3 draws VRAM, SATB and the palette with every odd palette byte reduced to bit 0, while every video register, latch, status, beam and DMA member stays 0 except the three boot fields"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

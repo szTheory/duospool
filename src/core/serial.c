@@ -131,7 +131,7 @@ void ds_profile_hash(const struct ds_profile *profile, uint8_t out[DS_DIGEST_BYT
 
 /* ---- the region table ---- */
 
-enum region_id { R_PROF, R_CONT, R_POWR, R_TIME, R_RAM8, R_MPRS, R_CPU0, R_BUS0, R_TIMR, R_IRQC, R_IRQS, R_BLKT, R_IOPT, R_SCHD, R_COUNT };
+enum region_id { R_PROF, R_CONT, R_POWR, R_TIME, R_RAM8, R_MPRS, R_CPU0, R_BUS0, R_TIMR, R_IRQC, R_IRQS, R_BLKT, R_IOPT, R_SCHD, R_VCE0, R_PALT, R_VDC0, R_BEAM, R_VDMA, R_VRAM, R_SATB, R_COUNT };
 
 struct region {
     char tag[5];            /* four ASCII bytes and a NUL, which is not written */
@@ -182,6 +182,20 @@ _Static_assert(offsetof(struct ds_instance, slot_type) + DS_PORT_COUNT - offseto
 _Static_assert(offsetof(struct ds_instance, input_reserved) + sizeof(uint32_t) - offsetof(struct ds_instance, input_ev) == DS_INPUT_MAX * 16u + 8u, "the input schedule is not the 16392 bytes of the SCHD payload");
 _Static_assert(offsetof(struct ds_input_event, at) == 0u && offsetof(struct ds_input_event, port) == 8u && offsetof(struct ds_input_event, mask) == 12u, "the fields of an input event are not at 0, 8 and 12");
 
+/*
+ * The VCE and VDC regions (plan 04-03; D-165): each is one live span of the instance in the order of the declarations of ds_core.h, and the instance has no padding (the tiling assert), so a span is its first member to the end of its last. VCE0 is vce_cr (u8) and vce_cta (u16): 3 bytes; PALT the 1,024 bytes of vce_pal; VDC0 is the 20 register slots (u16),
+ * the read buffer (u16), the address register, the status and the write latch: 45 bytes; BEAM is 33 bytes (stage, v_state, burst, line_idx, v_togo ... rcr_origin: the stream order of D-165 is written field by field by emit_payload and differs from the order of the members); VDMA is 25 bytes (satb_pending, satb_done_valid, satb_done_at, dma_start, dma_done, dma_word_mclk,
+ * dma_state); VRAM the 65,536 bytes of vdc_vram; SATB the 512 bytes of vdc_satb.
+ */
+_Static_assert(offsetof(struct ds_instance, vce_cta) + sizeof(uint16_t) - offsetof(struct ds_instance, vce_cr) == 3u, "the VCE fields are not the 3 bytes of the VCE0 payload");
+_Static_assert(offsetof(struct ds_instance, vdc_wlatch) + 1u - offsetof(struct ds_instance, vdc_reg) == 45u, "the VDC fields are not the 45 bytes of the VDC0 payload");
+_Static_assert(offsetof(struct ds_instance, rcr_origin) + 1u - offsetof(struct ds_instance, stage) == 33u, "the beam fields are not the 33 bytes of the BEAM payload");
+_Static_assert(offsetof(struct ds_instance, dma_state) + 1u - offsetof(struct ds_instance, satb_pending) == 25u, "the DMA fields are not the 25 bytes of the VDMA payload");
+_Static_assert(offsetof(struct ds_instance, vdc_wlatch) + 1u == offsetof(struct ds_instance, stage) && offsetof(struct ds_instance, rcr_origin) + 1u == offsetof(struct ds_instance, satb_pending) && offsetof(struct ds_instance, dma_state) + 1u == offsetof(struct ds_instance, vce_cr),
+               "the VDC0, BEAM, VDMA and VCE0 spans are not neighbours");
+_Static_assert(offsetof(struct ds_instance, vce_cta) + sizeof(uint16_t) == offsetof(struct ds_instance, vce_pal) && offsetof(struct ds_instance, vce_pal) + DS_PAL_BYTES == offsetof(struct ds_instance, vdc_vram) && offsetof(struct ds_instance, vdc_vram) + DS_VRAM_BYTES == offsetof(struct ds_instance, vdc_satb),
+               "the palette, VRAM and SATB arrays are not neighbours");
+
 static const struct region regions[R_COUNT] = {
     [R_PROF] = {"PROF", DS_DIGEST_BYTES, offsetof(struct ds_instance, profile), sizeof(struct ds_profile)},
     [R_CONT] = {"CONT", DS_CONTENT_ID_BYTES + 4u + 4u, offsetof(struct ds_instance, content_id), DS_CONTENT_ID_BYTES},
@@ -198,6 +212,13 @@ static const struct region regions[R_COUNT] = {
     [R_BLKT] = {"BLKT", 11u, offsetof(struct ds_instance, blk_active), offsetof(struct ds_instance, blk_dst) + sizeof(uint16_t) - offsetof(struct ds_instance, blk_active)},
     [R_IOPT] = {"IOPT", 6u, offsetof(struct ds_instance, o_latch), offsetof(struct ds_instance, slot_type) + DS_PORT_COUNT - offsetof(struct ds_instance, o_latch)},
     [R_SCHD] = {"SCHD", DS_INPUT_MAX * 16u + 8u, offsetof(struct ds_instance, input_ev), offsetof(struct ds_instance, input_reserved) + sizeof(uint32_t) - offsetof(struct ds_instance, input_ev)},
+    [R_VCE0] = {"VCE0", 3u, offsetof(struct ds_instance, vce_cr), offsetof(struct ds_instance, vce_cta) + sizeof(uint16_t) - offsetof(struct ds_instance, vce_cr)},
+    [R_PALT] = {"PALT", DS_PAL_BYTES, offsetof(struct ds_instance, vce_pal), DS_PAL_BYTES},
+    [R_VDC0] = {"VDC0", 45u, offsetof(struct ds_instance, vdc_reg), offsetof(struct ds_instance, vdc_wlatch) + 1u - offsetof(struct ds_instance, vdc_reg)},
+    [R_BEAM] = {"BEAM", 33u, offsetof(struct ds_instance, stage), offsetof(struct ds_instance, rcr_origin) + 1u - offsetof(struct ds_instance, stage)},
+    [R_VDMA] = {"VDMA", 25u, offsetof(struct ds_instance, satb_pending), offsetof(struct ds_instance, dma_state) + 1u - offsetof(struct ds_instance, satb_pending)},
+    [R_VRAM] = {"VRAM", DS_VRAM_BYTES, offsetof(struct ds_instance, vdc_vram), DS_VRAM_BYTES},
+    [R_SATB] = {"SATB", DS_SATB_BYTES, offsetof(struct ds_instance, vdc_satb), DS_SATB_BYTES},
 };
 
 /* the payload of one region: exactly regions[index].payload_len bytes, one explicit field per call, never a struct */
@@ -294,6 +315,60 @@ static void emit_payload(struct writer *w, const struct ds_instance *inst, uint3
         w_u32(w, inst->input_reserved);
         break;
     }
+    case R_VCE0: /* the control register, then the colour table address as a u16 little-endian (plan 04-03; D-165) */
+        w_u8(w, inst->vce_cr);
+        w_u16(w, inst->vce_cta);
+        break;
+    case R_PALT:
+        w_bytes(w, inst->vce_pal, DS_PAL_BYTES);
+        break;
+    case R_VDC0: { /* the address register, the status, the 20 register slots as u16, the read buffer as u16 and the write latch (D-165) */
+        uint32_t reg;
+
+        w_u8(w, inst->vdc_ar);
+        w_u8(w, inst->vdc_status);
+        for (reg = 0u; reg < 20u; reg++) {
+            w_u16(w, inst->vdc_reg[reg]);
+        }
+        w_u16(w, inst->vdc_rdbuf);
+        w_u8(w, inst->vdc_wlatch);
+        break;
+    }
+    case R_BEAM: /* the stream order of D-165, one explicit field per line */
+        w_u64(w, inst->line_idx);
+        w_u8(w, inst->stage);
+        w_u8(w, inst->v_state);
+        w_u16(w, inst->v_togo);
+        w_u16(w, inst->display_k);
+        w_u16(w, inst->rcr_counter);
+        w_u16(w, inst->frame_lines);
+        w_u16(w, inst->bg_y);
+        w_u16(w, inst->mwr_active);
+        w_u8(w, inst->burst);
+        w_u8(w, inst->line_dirty);
+        w_u8(w, inst->sprite_pend);
+        w_u16(w, inst->vd_off);
+        w_u16(w, inst->rcr_off);
+        w_u8(w, inst->lat_div);
+        w_u8(w, inst->vd_pending);
+        w_u8(w, inst->vd_irq_phase);
+        w_u8(w, inst->rcr_origin);
+        break;
+    case R_VDMA: /* the SATB copy and the VRAM-to-VRAM transfer (D-165), one explicit field per line */
+        w_u8(w, inst->satb_pending);
+        w_u8(w, inst->satb_done_valid);
+        w_u64(w, inst->satb_done_at);
+        w_u8(w, inst->dma_state);
+        w_u64(w, inst->dma_start);
+        w_u16(w, inst->dma_word_mclk);
+        w_u32(w, inst->dma_done);
+        break;
+    case R_VRAM:
+        w_bytes(w, inst->vdc_vram, DS_VRAM_BYTES);
+        break;
+    case R_SATB:
+        w_bytes(w, inst->vdc_satb, DS_SATB_BYTES);
+        break;
     default:
         break;
     }

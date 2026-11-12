@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The observer non-interference matrix on the video fixture (plan 04-05; D-119, D-162, D-164, F-2, F-31, CORE-06): the authored vce_pal runs under three power-on policies (zero, seeded-prng-v3 seed 1 and seed 2; the policies key, request fragments separated by ||) in each of the modes whole, chunk:7
+# and stop:5000, once with no sink and once per configuration with all three sinks (insn, dev and vid: large, drop4 (the byte capacity of the first four vid records of the large run), poison (a poisoned header and memory), cap0, cap1). Every run must end with the stop reason, machine time, steps,
+# verdict RAM, digest and stop sequence of the run with no sink; the vid header must read count = whole records stored, lost = seq - count, bytes their sum, a zero word, the bytes past the count and the guard bytes untouched, the records of a limited sink the first records of the large sink, and the
+# offered number seq of the large sink the closed-form line count floor((M - 1) / 1365) + 1 of the machine time of its run (ASSUMED LED-VID-0004 and LED-VID-0001, written in the kind); in a chunked run the vid logs accumulated over the calls equal those of the whole run. The toy vid-emit-mutates turns
+# this case guest_failure. Evidence tier E0: the core is compared with itself (non-interference); no accuracy, raster or hardware claim, and the word pass is not a support claim.
+id = "observer_vce_pal"
+kind = "observer"
+fixture = "authored:vce-pal"
+request = ""
+expect = "compare=verdict,machine_time,stops,digest"
+meaning = "Enabling the instruction, device-register and vid sinks in any of five configurations, whole or in 7 chunks or stopped by the callback, changes neither the verdict RAM, the machine time, the stop sequence nor the digest of vce_pal under three power-on policies, and the vid header counts whole records against the closed-form line count"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+sinks = "large,drop4,poison,cap0,cap1"
+chunks = "whole,chunk:7,stop:5000"
+policies = "||bind.powerup_policy=seeded-prng-v3;seed=1||bind.powerup_policy=seeded-prng-v3;seed=2"

@@ -1,0 +1,209 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# video-check - the static checker of the video literal files (VID-06; plan 04-07; D-171, D-172, D-173, ER-10, ER-11, ER-12, F-5, F-6, F-15, F-42, T-04-24 to T-04-27). It reads every fixtures/src/*.vexp (the hand-written literal rows of a video scene) and judges the grammar, the class lint, the role and kill rules and the toy cross-rules; it never judges what a row says about
+# a video, only that a row cannot be vacuous, cannot inflate its class and cannot hide behind a hash.
+# usage: video-check [--expect CODE[,CODE...]] [--root DIR] [--cites FILE] [--ledger DIR]
+#   --root DIR   the root that holds fixtures/src/*.vexp (default: the repository root). A root with no .vexp file is a harness error (exit 2): a check of nothing never passes. A root without its own fixtures/lib/cites.txt or ledger/entries reads those of this repository (as scripts/fixture-lint does).
+#   --cites FILE, --ledger DIR   the cite registry and the ledger directory to judge the classes against (default: those of the root when it carries them, else those of this repository; the selftests copy scripts/ and name them)
+#                The toy cross-rules (VIDEO_SCENE_UNTOYED, INV_TOY_NO_LITERAL) run only where the root carries tests/conformance/VIDEO_TOY_EXEMPT or tests/controls: a mini-root without either has no toy registry.
+# Two stages, each writing to a file whose exit status is tested (CR-01: no awk on the left of a pipe), each ending in a sentinel: stage 1 is scripts/lib/vexp-lex.awk (limits: 512 rows, 400 characters per line, 16 KiB per file, ASCII, the 0BSD SPDX pair), which prints an END row per file; stage 2 is scripts/lib/vexp-rules.awk, which prints a closing RULES row.
+# A dead stage 1 (no sentinel, a failed status) or a dead stage 2 is VIDEO_STAGE_DEAD (exit 2), never a pass.
+# Codes (printed verbatim; scripts/inventory-check is not edited, F-6): VEXP_FORMAT VEXP_UNKNOWN_KEY VEXP_CLASS VEXP_ASYM_CLASS INV_VIDEO_GROUP_UNKILLED VIDEO_GROUP_VACUOUS VIDEO_ROWS_VACUOUS INV_VIDEO_HASH_ONLY VIDEO_SCENE_UNTOYED INV_TOY_NO_LITERAL VIDEO_EXEMPT_FORMAT and the stage 1 codes VEXP_NO_SPDX VEXP_LINE_TOO_LONG VEXP_NON_ASCII VEXP_TOO_MANY_ROWS VEXP_FILE_TOO_LARGE.
+# stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then (clean) a line  VIDEO_CHECK files=N scenes=N groups=N rows=N exempt=N  and  STATUS video-check ok n=N
+# stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
+# exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error (including VIDEO_STAGE_DEAD)
+set -eu
+LC_ALL=C; export LC_ALL
+here=$(cd "$(dirname "$0")" && pwd)
+repo=$(cd "$here/.." && pwd)
+
+usage() {
+  echo "usage: video-check [--expect CODE[,CODE...]] [--root DIR] [--cites FILE] [--ledger DIR]" >&2
+  exit 2
+}
+
+expect=""
+have_expect=0
+root=$repo
+cites=""
+ledger=""
+while [ $# -gt 0 ]; do
+  case $1 in
+    --expect) [ $# -ge 2 ] || usage; expect=$2; have_expect=1; shift 2 ;;
+    --root) [ $# -ge 2 ] || usage; root=$2; shift 2 ;;
+    --cites) [ $# -ge 2 ] || usage; cites=$2; shift 2 ;;
+    --ledger) [ $# -ge 2 ] || usage; ledger=$2; shift 2 ;;
+    *) usage ;;
+  esac
+done
+# an --expect that names no code would make a control assert nothing (WR-05): exit 2, never 0
+if [ "$have_expect" -eq 1 ] && [ -z "$(printf '%s' "$expect" | tr -d ', \t\r\n')" ]; then
+  echo "HARNESS_EMPTY_EXPECT --expect names no code" >&2
+  exit 2
+fi
+if [ ! -d "$root" ]; then
+  echo "HARNESS_NO_FILE $root" >&2
+  exit 2
+fi
+root=$(cd "$root" && pwd)
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+tab=$(printf '\t')
+facts="$tmp/facts"
+rows="$tmp/rows"
+t1="$tmp/stage1"
+t2="$tmp/stage2"
+viol="$tmp/viol"
+: > "$facts"
+: > "$rows"
+
+dead() {
+  echo "VIDEO_STAGE_DEAD $1" >&2
+  exit 2
+}
+
+# the registry and the ledger of the root when it carries them (a mini-root), else those of this repository
+if [ -z "$cites" ]; then
+  if [ -f "$root/fixtures/lib/cites.txt" ]; then cites="$root/fixtures/lib/cites.txt"; else cites="$repo/fixtures/lib/cites.txt"; fi
+fi
+if [ -z "$ledger" ]; then
+  if [ -d "$root/ledger/entries" ]; then ledger="$root/ledger/entries"; else ledger="$repo/ledger/entries"; fi
+fi
+[ -f "$cites" ] || { echo "HARNESS_NO_FILE $cites" >&2; exit 2; }
+[ -d "$ledger" ] || { echo "HARNESS_NO_FILE $ledger" >&2; exit 2; }
+
+# facts: the manual pages with an img row (the label is column 1, the flag column 2), the ledger ids
+awk -F '\t' '/^#/ || /^[ \t]*$/ { next } $2 == "img" { print "C\t" $1 }' "$cites" >> "$facts" || dead "the cite reader failed"
+for e in "$ledger"/LED-*.toml; do
+  [ -f "$e" ] || continue
+  printf 'L\t%s\n' "$(basename "$e" .toml)" >> "$facts"
+done
+
+# the toy registry (D-173): the exempt list, the toys (RULE file and EXPECT columns) and the guest-kind cases
+exfile="$root/tests/conformance/VIDEO_TOY_EXEMPT"
+ctl="$root/tests/controls"
+if [ -f "$exfile" ] || [ -d "$ctl" ]; then
+  printf 'A\t1\n' >> "$facts"
+  if [ -f "$exfile" ]; then
+    awk -F '\t' '
+      /^#/ || /^[ \t]*$/ { next }
+      { if (NF != 2 || $1 !~ /^[a-z][a-z0-9_]*$/ || $2 == "") printf "XB\t%d\tVIDEO_TOY_EXEMPT lines are CASE_ID, a TAB and a reason\n", NR; else printf "X\t%s\t%s\n", $1, $2 }
+    ' "$exfile" >> "$facts" || dead "the exempt reader failed"
+  fi
+  for d in "$ctl"/*/; do
+    [ -d "$d" ] || continue
+    name=$(basename "$d")
+    if [ -f "${d}RULE" ]; then
+      awk -F '=' -v t="$name" '$1 == "file" { printf "Z\t%s\t%s\n", t, $2; exit }' "${d}RULE" >> "$facts" || dead "the RULE reader failed on $name"
+    fi
+    if [ -f "${d}EXPECT" ]; then
+      awk -v t="$name" '
+        /^[ \t]*(#.*)?$/ { next }
+        NF == 1 { printf "K\t%s\t%s\n", t, $1; next }
+        $2 == "pass" { printf "P\t%s\t%s\n", t, $1 }
+      ' "${d}EXPECT" >> "$facts" || dead "the EXPECT reader failed on $name"
+    fi
+  done
+  if [ -d "$root/tests/conformance/cases" ]; then
+    set -- "$root"/tests/conformance/cases/*.toml
+    if [ -f "$1" ]; then
+      awk '
+        FNR == 1 { if (id != "" && kind == "guest") print "Y\t" id; id = ""; kind = "" }
+        /^id = "/ { id = $0; sub(/^id = "/, "", id); sub(/".*$/, "", id) }
+        /^kind = "/ { kind = $0; sub(/^kind = "/, "", kind); sub(/".*$/, "", kind) }
+        END { if (id != "" && kind == "guest") print "Y\t" id }
+      ' "$@" >> "$facts" || dead "the case reader failed"
+    fi
+  fi
+else
+  printf 'A\t0\n' >> "$facts"
+fi
+# the inventory facts (review fix M-04 of the gate review): where the root carries tests/conformance/cases, every case of kind video or video_fault_sweep with the scene= item of its expect and its REQUIRED membership (VC rows), and the roms= list of vdc_poweron_policy_diff (PR rows)
+if [ -d "$root/tests/conformance/cases" ]; then
+  printf 'I\t1\n' >> "$facts"
+  reqf="$root/tests/conformance/REQUIRED"
+  [ -f "$reqf" ] || reqf=/dev/null
+  set -- "$root"/tests/conformance/cases/*.toml
+  if [ -f "$1" ]; then
+    awk '
+      FNR == NR { if ($0 !~ /^#/ && $0 !~ /^[ \t]*$/) req[$1] = 1; next }
+      FNR == 1 { flush() }
+      /^id = "/ { id = $0; sub(/^id = "/, "", id); sub(/".*$/, "", id) }
+      /^kind = "/ { kind = $0; sub(/^kind = "/, "", kind); sub(/".*$/, "", kind) }
+      /^expect = "/ { ex = $0; sub(/^expect = "/, "", ex); sub(/"[ \t]*$/, "", ex) }
+      END { flush() }
+      function flush(   sc, rl, n, a, i) {
+        if (id != "" && (kind == "video" || kind == "video_fault_sweep")) {
+          sc = ""
+          if (match(ex, /(^|;)scene=[a-z0-9_]+/)) { sc = substr(ex, RSTART, RLENGTH); sub(/^;?scene=/, "", sc) }
+          printf "VC\t%s\t%s\t%s\t%s\n", id, kind, sc, (id in req) ? 1 : 0
+        }
+        if (id == "vdc_poweron_policy_diff" && match(ex, /^roms=[^;]*/)) {
+          rl = substr(ex, 6, RLENGTH - 5)
+          n = split(rl, a, ",")
+          for (i = 1; i <= n; i++) { sub(/@.*$/, "", a[i]); printf "PR\t%s\n", a[i] }
+        }
+        id = ""; kind = ""; ex = ""
+      }
+    ' "$reqf" "$@" >> "$facts" || dead "the inventory reader failed"
+  fi
+fi
+
+# stage 1 for every .vexp file: a file, its status tested, its sentinel required
+nfiles=0
+for f in "$root"/fixtures/src/*.vexp; do
+  [ -f "$f" ] || continue
+  rel=${f#"$root"/}
+  case $rel in
+    *"$tab"*) echo "HARNESS_BAD_FILENAME a TAB in a file name" >&2; exit 2 ;;
+  esac
+  nfiles=$((nfiles + 1))
+  if awk -f "$here/lib/vexp-lex.awk" "$f" > "$t1" 2> "$tmp/stage1.err"; then :; else
+    dead "stage 1 (vexp-lex.awk) failed on $rel"
+  fi
+  if ! tail -n 1 "$t1" | grep -Eq "^END${tab}[0-9]+\$" || [ "$(grep -c "^END${tab}" "$t1" || true)" -ne 1 ]; then
+    dead "stage 1 (vexp-lex.awk) printed no closing END row for $rel"
+  fi
+  printf 'F\t%s\n' "$rel" >> "$rows"
+  cat "$t1" >> "$rows"
+done
+if [ "$nfiles" -eq 0 ]; then
+  echo "HARNESS_NO_FILE $root/fixtures/src holds no *.vexp: a check of nothing never passes" >&2
+  exit 2
+fi
+cat "$facts" "$rows" > "$tmp/all"
+
+# stage 2: one file, its status tested, its closing row required
+if awk -f "$here/lib/vexp-rules.awk" "$tmp/all" > "$t2" 2> "$tmp/stage2.err"; then :; else
+  dead "stage 2 (vexp-rules.awk) failed"
+fi
+if ! tail -n 1 "$t2" | grep -Eq "^RULES${tab}[0-9]+\$"; then
+  dead "stage 2 (vexp-rules.awk) printed no closing RULES row"
+fi
+awk -F '\t' '$1 == "V" { printf "%s\t%s\t%s\t%s\n", $2, $3, $4, $5 }' "$t2" > "$tmp/viol0" || dead "stage 2 row reader failed"
+sort -u "$tmp/viol0" > "$viol"
+summary=$(awk -F '\t' '$1 == "S" { printf "files=%s scenes=%s groups=%s rows=%s exempt=%s", $2, $3, $4, $5, $6 }' "$t2") || dead "stage 2 summary reader failed"
+
+if [ "$have_expect" -eq 1 ]; then
+  cut -f2 "$viol" > "$tmp/got.codes"
+  sort -u "$tmp/got.codes" | tr '\n' ',' | sed 's/,$//' > "$tmp/got"
+  printf '%s\n' "$expect" | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/,$//' > "$tmp/want"
+  if cmp -s "$tmp/got" "$tmp/want"; then
+    echo "EXPECT_OK"
+    exit 0
+  fi
+  echo "EXPECT_MISMATCH wanted '$(cat "$tmp/want")' got '$(cat "$tmp/got")'" >&2
+  cat "$viol" >&2
+  exit 1
+fi
+
+cat "$viol"
+if [ -s "$viol" ]; then
+  exit 1
+fi
+echo "VIDEO_CHECK $summary"
+echo "STATUS video-check ok n=$nfiles"
+exit 0

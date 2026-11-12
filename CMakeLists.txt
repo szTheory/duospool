@@ -66,16 +66,29 @@ set(DS_RUNNER_SOURCES
   tests/conformance/digkinds.c tests/conformance/reckinds.c tests/conformance/ilvkinds.c tests/conformance/fixlist.c
   tests/conformance/spinkinds.c tests/conformance/synth.c tests/conformance/hashkinds.c tests/conformance/guestkinds.c
   tests/conformance/sweepkinds.c tests/conformance/obskinds.c tests/conformance/cpukinds.c tests/conformance/buskinds.c
-  tests/conformance/chunkkinds.c tests/conformance/randprog.c tests/conformance/inputkinds.c tests/conformance/snapkinds.c tests/conformance/reviewkinds.c)
+  tests/conformance/chunkkinds.c tests/conformance/randprog.c tests/conformance/inputkinds.c tests/conformance/snapkinds.c tests/conformance/reviewkinds.c tests/conformance/videokinds.c tests/conformance/vdckinds.c)
 add_executable(ds_runner ${DS_RUNNER_SOURCES} ${DS_SHIM_SOURCES})
 target_link_libraries(ds_runner PRIVATE ds_text ds_core)
 target_compile_definitions(ds_runner PRIVATE ${DS_SHIM_DEFINITION})
 
-# Toy control libraries (D-85, D-55): one runner per tests/controls/NAME/RULE, each built from the ds_core sources with the one file
+# Toy control runners (D-85, D-55, D-176 lever 1): one runner per tests/controls/NAME/RULE, each linked from the ds_core sources with the one file
 # named by the rule's file= line replaced by a generated variant of the live file. scripts/control-mutate writes that variant to
 # ${CMAKE_BINARY_DIR}/controls/NAME/ before the build, so the source is marked GENERATED and need not exist at configure time. A
-# toy is its own executable target (ds_toy_NAME), excluded from the default build, and never touches ds_core: it compiles the core
-# sources again into its own objects. The headers still resolve through the private include directories of the toy.
+# toy is its own executable target (ds_toy_NAME), excluded from the default build, and never touches ds_core: it links its own objects.
+# The runner, shim and text sources and each core source are compiled ONCE into object libraries (ds_toy_runner_objs and ds_toy_core_FILE, same flags
+# and definitions that every toy source had before), and a toy links all of them but the core object it replaces, so only the mutated unit is compiled
+# per toy and a header edit recompiles every unit once and not once per toy. The headers resolve through the private include directories of the objects.
+add_library(ds_toy_runner_objs OBJECT EXCLUDE_FROM_ALL ${DS_RUNNER_SOURCES} ${DS_SHIM_SOURCES} ${DS_TEXT_SOURCES})
+target_include_directories(ds_toy_runner_objs PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/core ${CMAKE_CURRENT_SOURCE_DIR}/src/text)
+target_compile_definitions(ds_toy_runner_objs PRIVATE "DS_BUILD_ID=\"${DS_BUILD_ID}\"" ${DS_SHIM_DEFINITION})
+foreach(core_source IN LISTS DS_CORE_SOURCES)
+  get_filename_component(core_base "${core_source}" NAME_WE)
+  add_library(ds_toy_core_${core_base} OBJECT EXCLUDE_FROM_ALL "${core_source}")
+  target_include_directories(ds_toy_core_${core_base} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core ${CMAKE_CURRENT_SOURCE_DIR}/src/text)
+  target_compile_definitions(ds_toy_core_${core_base} PRIVATE "DS_BUILD_ID=\"${DS_BUILD_ID}\"" ${DS_SHIM_DEFINITION})
+endforeach()
 file(GLOB DS_CONTROL_RULES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tests/controls/*/RULE)
 foreach(rule IN LISTS DS_CONTROL_RULES)
   get_filename_component(rule_dir "${rule}" DIRECTORY)
@@ -95,11 +108,14 @@ foreach(rule IN LISTS DS_CONTROL_RULES)
   get_filename_component(rule_base "${rule_file}" NAME)
   set(toy_source "${CMAKE_BINARY_DIR}/controls/${name}/${rule_base}")
   set_source_files_properties("${toy_source}" PROPERTIES GENERATED TRUE)
-  set(toy_core_sources ${DS_CORE_SOURCES})
-  list(REMOVE_ITEM toy_core_sources "${live_source}")
-  add_executable(ds_toy_${name} EXCLUDE_FROM_ALL
-    ${DS_RUNNER_SOURCES} ${DS_SHIM_SOURCES}
-    ${DS_TEXT_SOURCES} ${toy_core_sources} "${toy_source}")
+  set(toy_objects $<TARGET_OBJECTS:ds_toy_runner_objs>)
+  foreach(core_source IN LISTS DS_CORE_SOURCES)
+    if(NOT core_source STREQUAL live_source)
+      get_filename_component(core_base "${core_source}" NAME_WE)
+      list(APPEND toy_objects $<TARGET_OBJECTS:ds_toy_core_${core_base}>)
+    endif()
+  endforeach()
+  add_executable(ds_toy_${name} EXCLUDE_FROM_ALL ${toy_objects} "${toy_source}")
   target_include_directories(ds_toy_${name} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/core ${CMAKE_CURRENT_SOURCE_DIR}/src/text)
   target_compile_definitions(ds_toy_${name} PRIVATE "DS_BUILD_ID=\"${DS_BUILD_ID}\"" ${DS_SHIM_DEFINITION})

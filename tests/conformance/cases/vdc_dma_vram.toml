@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The VRAM words the VRAM-to-VRAM transfer moved, read from the instance bytes (plan 04-10; D-151, D-175 (c), ER-10, T-04-34): the runner kind vdc_vram (tests/conformance/vdckinds.c) boots the authored vdc_dma image, runs it to the end of its DSV1 verdict under each of the three default power-on policies (zero, seeded-prng-v3 seed 1 and 2) and assembles every listed
+# word byte by byte
+# from the 65,536 VRAM bytes of the instance (word w = byte 2w | byte 2w+1 << 8), with no use of the port read path or of the accessor, against the literal of the case. The literals are restated from fixtures/src/vdc_dma.s: the source block word 0 and word 63 at $0800 and $083F (the assembler table, word i = ($1234 + $F7 * i) & $FFFF, a multiplication), the sentinel
+# $C2E1 after the destination block
+# at $0A40 that a transfer of LENR + 1 = 64 words does not touch (MAN H7-12, M - 1) and the 64 destination words at $0A00 to $0A3F, word i = ($1234 + $F7 * i) & $FFFF (the item tia): the same words as the source, because the copy moved them. A word copied to the wrong address or with its bytes swapped fails here even if the guest reads the same value back through VRR.
+# Evidence tier E0: no accuracy, compatibility or hardware claim, and the word pass is not a support claim.
+id = "vdc_dma_vram"
+kind = "vdc_vram"
+fixture = "authored:vdc-dma"
+request = ""
+expect = "rom=vdc-dma;words=0x0800:0x1234,0x083F:0x4EFD,0x0A40:0xC2E1,0x0B00:0x1BDA,0x0B01:0x2222,0x0C00:0x1519,0x0C03:0x1234,0x0D00:0x1519,0x0D03:0x1234,0x0E00:0x1234,0x0E11:0x132B,0x0E20:0x7A5B,0x0E24:0x7A5B,0x0F40:0x9C4D,0x0F80:0x1234,0x1000:0x1234,0x103F:0x4EFD,0x2000:0x5CE3,0x2FFF:0xB7A9,0x4000:0x5CE3;tia=0x0A00:0x1234:0xF7:64"
+meaning = "The 64 destination words of the vdc_dma transfer and the words of its later sections (reversals, overlap, retrigger, the overrun first word moved and last word untouched) sit at their VRAM word addresses in the instance bytes under three power-on policies, E0 repeatability"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 2500000

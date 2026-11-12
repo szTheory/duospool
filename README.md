@@ -12,15 +12,31 @@ Phases 1 to 3 are complete locally. The core is a deterministic machine shell th
 profile, and it executes the authored fixture suite through a bounded run measured in master clocks. Every outcome comes from a
 fresh, headless, repeatable run, and a matching hash proves repeatability only.
 
+Phase 4 (raw video from the VDC and the VCE) is complete locally for its background, interrupt, DMA, palette and dot-clock scope. Sprites
+were split off at the cut line and are Phase 4.1, which has not run. DuoSpool now executes the authored VDC/VCE diagnostic fixtures and emits a per-scanline raw video record (9-bit values and indices,
+dot-clock divisor, active window, line start in master clocks, frame line count) before any colour conversion or scaling. No sprite
+behaviour is claimed. A hash of that record is repeatability evidence (E0) and never a verdict; every expected literal in a video case
+comes from a manual page, from an in-guest computation or from a named ledger entry, and each literal group is turned red by a fault
+sweep, a mutation sweep or a toy control.
+
 Supported entries (evidence tier E1, documentary): LED-CPU-0001, LED-CPU-0002, LED-CPU-0005, LED-CPU-0014, LED-CPU-0016,
-LED-IRQ-0002 and LED-IRQ-0004 (part a only). Supported here means the model equals the cited manual page: a documentary
-comparison, not a hardware measurement.
+LED-IRQ-0002, LED-IRQ-0004 (part a only), LED-VID-0006, LED-VID-0008, LED-VID-0009, LED-VID-0014, LED-VID-0016 and
+LED-VID-0017. Supported here means the model equals the cited manual page: a documentary comparison, not a hardware measurement.
+Each Phase 4 entry is scoped by its statement to the page-stated part only: LED-VID-0008 covers the RR, DV and VD flags, their
+enables and the clear on read (the OR and CR flags are raised by no event yet), LED-VID-0009 the next-line statements for BXR and
+BYR, LED-VID-0014 the trigger, the length and the DCR bits of the VRAM copy (the cancel at a display start is a modelling reading), and
+LED-VID-0017 exactly the control register contents 00h and 01h.
+
+Guest-recorded interrupt positions agree with the model's position for the profile's line count (E2 self-consistency); the position
+is a labelled modelling assumption.
 
 The block-transfer cost entry, LED-CPU-0007, stays assumed. Every other claim is a labelled modelling assumption in
 `ledger/entries`, and the gate makes no second-assembler claim (the optional WLA-DX cross-check is a local one-off recorded in
 `docs/ci-timings.md`).
 
 Withheld claim words: "accurate", "cycle-accurate", "interrupt-accurate", "pad-accurate", "hardware-verified", "compatible", "supports TG-16/PC Engine", "boots", "passes the CPU tests". None of them is used here without an evidence class, and the gate rejects each one anywhere else in this file.
+
+Withheld claim words: "pixel-accurate", "raster-accurate", "scanline-accurate", "dot-accurate", "sprite-accurate", "scroll-accurate", "colour-accurate", "timing-accurate", "DMA-accurate", "VRAM-timing-accurate", "renders correctly", "displays correctly", "plays games", "video-compatible". None of them is used here without an evidence class.
 
 ## Local gate
 

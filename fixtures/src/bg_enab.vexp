@@ -1,0 +1,60 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# bg_enab.vexp - the hand-derived literal rows of the bg_enab video scene (plan 04-12; D-157, D-161, D-169, D-171, D-172, D-173, ER-10, ER-11, ER-12).
+# scripts/fixture-build writes this file, comments dropped, as build/gate/fixtures/bg-enab.vexp.tsv; the runner kind video (tests/conformance/videokinds.c) reads only that file. One source holds the literals: no expected value lives in a case file, and none comes from a run of DuoSpool, another emulator or a hash.
+# The fixture (fixtures/src/bg_enab.s) writes the vertical setup (VPR $0F02, VDW 239, VCR 4), HSR $0202 and HDR $031F (active_x 24, active_w 256 dots), MWR 0 (a 32 x 32 BAT), BXR = BYR = 0, the palette P(i) = (91 * i + 17) & 511, the BAT (the word $0040 everywhere, row 0 columns 0 to 3 are $3040, $0041, $F042, $7043; H7-14) and four solid tiles (code $040
+# pixel 15, $041 pixel 12, $042 pixel 3, $043 pixel 0; H7-15),
+# then the VDC control register in two frames a phase: write 1 BB (bit 7), 2 BB and SB (bit 6), 3 SB, 4 neither, 5 BB, and 6 (SB alone) inside a display line of a frame. The frame numbers below were read from the guest's own counted sequence (the BG_FRAME delays of bg_enab.s) on one run as a calibration and never as a literal: frames 0 to 2 are the setup
+# (burst frames), frame 3 is wholly after write 1 (BB), frame 5 after write 2 (BB and SB),
+# frame 7 after write 3 (SB), frame 9 after write 4 (neither: the burst latch at its display line 0 sees BB = SB = 0), frame 11 after write 5 (BB), frame 12 holds write 6 near its first display lines and frame 13 is wholly after it. A row at a frame that is not the intended one fails; it can never pass, because no other frame holds these indices.
+# The tile rows (class MAN H7-6: BB set draws the background; the layout of H7-14, H7-15 and H7-18: VD3 to VD0 = CH3 to CH0, VD7 to VD4 = the bank, VD3 to VD0 all 0 forces VD7 to VD4 to 0): display line K shows virtual row K (BYR = 0), BAT row K / 8; the dots are the virtual columns 0 to 255 (BXR = 0). Display lines 0 to 7 are BAT row 0: column 0 is bank 3
+# pixel 15 = index 63, column 1 bank 0 pixel 12 = 12,
+# column 2 bank 15 pixel 3 = 243, column 3 the tile of pixel 0 = index 0 whatever the bank (bank 7), columns 4 to 31 bank 0 pixel 15 = 15. So lines 0 to 7 read 8 dots of 63, 12, 243 and 0, then 224 dots of 15. Every tile is solid, so no bit order, byte order or flip changes a row (sym=order).
+# The burst frame (frame 9): BB = SB = 0 at the first display line gives a burst frame: the record flag BURST (bit 1 of the flags byte, set on display lines) and index 256 (the border entry, H7-18: VD8 = 1) on every active dot [ASSUMED LED-VID-0010: burst timing and the content of a burst frame are withheld words of that entry; the page says only that SB = BB
+# = 0 starts burst mode with the next frame].
+# A flat line set cannot be a ROWS row (D-171 non-vacuity: at least 3 distinct values and one transition), so it is a STRUCT row, flat_frame (the 240 display lines of a frame all index 256, flag BURST set) or flat_at. The backdrop (frame 7: SB set, BB clear, no burst): every active dot not covered by a sprite takes bg_off_index, 0 [ASSUMED LED-VID-0010, a
+# modelling reading; pcetech says 0, Mednafen fills 256]:
+# 240 display lines of index 0 and no BURST flag; there are no sprites before plan 04-14. The flags BB (bit 2) and SB (bit 3) of every record of a frame are the CR bits 7 and 6 at the line event (project definition of D-161, ASSUMED LED-VID-0004 with the grid): frame 3 has BB set and SB clear, frame 5 both set, frame 7 SB only, frame 9 neither.
+# The mid-frame toggle (write 6, CR = $0040: BB clear, SB set, so the frame is not a burst frame): the record of the line that holds the write was emitted before the write and shows the tile rows [MAN H7-6: "valid from the next horizontal display period"]; the lines after it take the backdrop. The write is found from its stamp in the dev log against the
+# origins of the records, and refused as a fault of the case
+# within 250 master clocks of a line origin. The fixture places it in display line 2 (BAT row 0), so cr6+0 shows 8 x 63, 8 x 12, 8 x 243, 8 x 0 and then the default tile (index 15) from dot 32, and the lines cr6+1 to cr6+5 are flat at index 0 (ASSUMED LED-VID-0010 bg_off_index; the next-line timing itself is the MAN statement). REL blank_is_border is not used:
+# the case has one run, and the burst frame is judged by flat_frame.
+# Kills (D-172): F1 shifts the dots of the focus line one dot, F7 zeroes every non-zero index of that line, F8 swaps the focus line with the one before it (declared only where that line has other content, as the flat set after the toggle: the first display line of the frame has a non-display record before it, which the swap only moves); F3 drops the first
+# display line of the frame, so a frame of 239 lines fails a 240-line flat row; F0 perturbs the
+# first number of the first row. The flag group declares F0 only (the faults that move or drop lines
+# leave the frame whole or make it a fault of the case; the comparison is live through F0, and the five frames of different flag combinations differ from each other).
+# Classes (ER-10): the structure rows use the 1365-clock grid and the frame length (ASSUMED LED-VID-0004).
+# Review fixes M-02 and M-03 of the gate review: the MAN group bb_on keeps display line 0, which shows BAT row 0 under both readings of the row counter start; the row at display line 7 rests on the ASSUMED start (D-156, LED-VID-0009) and is the group bb_on7, class ASSUMED LED-VID-0009. The bb_on rows select their frame with ;held=F:
+# the guest holds each enable phase for two frames, and every frame that shows BB set shows these page values, while a frame without BB fails (no other frame holds them), so the literal does not rest on the frame number. The flags group declares only F0, which proves the comparison live and no more (a recorded limit, review fix M-06).
+scene	video_bg_enab	case=video_bg_enab	role=literal
+group	video_bg_enab	struct	form=STRUCT	class=ASSUMED:LED-VID-0004	sym=none	kills=F4,F8,F9
+row	video_bg_enab	struct	check=count	grid=1365
+row	video_bg_enab	struct	check=origins	step=1365
+row	video_bg_enab	struct	check=rec_bytes	header=64;version=1;max_w=682
+row	video_bg_enab	struct	check=values_below_512	limit=512
+group	video_bg_enab	bb_on	form=ROWS	class=MAN:H7-6	sym=order	kills=F0,F1,F7
+row	video_bg_enab	bb_on	line=active+0;x=0..31;held=3	index=8*63,8*12,8*243,8*0
+row	video_bg_enab	bb_on	line=active+0;x=16..39;held=3	index=8*243,8*0,8*15
+row	video_bg_enab	bb_on	line=active+0;x=0..31;held=5	index=8*63,8*12,8*243,8*0
+row	video_bg_enab	bb_on	line=active+0;x=0..31;held=11	index=8*63,8*12,8*243,8*0
+group	video_bg_enab	bb_on7	form=ROWS	class=ASSUMED:LED-VID-0009	sym=order	kills=F0,F1,F7
+row	video_bg_enab	bb_on7	line=active+7;x=0..31;frame=3	index=8*63,8*12,8*243,8*0
+group	video_bg_enab	burst	form=STRUCT	class=ASSUMED:LED-VID-0010	sym=none	kills=F0,F3
+row	video_bg_enab	burst	check=flat_frame	index=256;frame=9;from=0;count=240;burst=1
+group	video_bg_enab	backdrop	form=STRUCT	class=ASSUMED:LED-VID-0010	sym=none	kills=F0,F3
+row	video_bg_enab	backdrop	check=flat_frame	index=0;frame=7;from=0;count=240;burst=0
+group	video_bg_enab	flags	form=STRUCT	class=ASSUMED:LED-VID-0004	sym=none	kills=F0
+row	video_bg_enab	flags	check=frame_flags	want=1;frame=3;bit=2
+row	video_bg_enab	flags	check=frame_flags	want=0;frame=3;bit=3
+row	video_bg_enab	flags	check=frame_flags	want=1;frame=5;bit=2
+row	video_bg_enab	flags	check=frame_flags	want=1;frame=5;bit=3
+row	video_bg_enab	flags	check=frame_flags	want=0;frame=7;bit=2
+row	video_bg_enab	flags	check=frame_flags	want=1;frame=7;bit=3
+row	video_bg_enab	flags	check=frame_flags	want=0;frame=9;bit=2
+row	video_bg_enab	flags	check=frame_flags	want=0;frame=9;bit=3
+group	video_bg_enab	toggle_own	form=ROWS	class=MAN:H7-6	sym=order	kills=F0,F1,F7
+row	video_bg_enab	toggle_own	line=cr6+0;x=0..31	index=8*63,8*12,8*243,8*0
+row	video_bg_enab	toggle_own	line=cr6+0;x=16..39	index=8*243,8*0,8*15
+group	video_bg_enab	toggle_next	form=STRUCT	class=ASSUMED:LED-VID-0010	sym=none	kills=F0,F8
+row	video_bg_enab	toggle_next	check=flat_at	index=0;reg=2;wr=6;d=1;count=5

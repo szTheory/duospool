@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# rel-asym: a scroll direction relation (scroll_y_shift) and a horizontal shift inside a tile (scroll_x_shift dx=3) under MAN with sym=order, which the author declared order-insensitive: VEXP_ASYM_CLASS (ER-12). Review fix M-03: the control of the tag rule-vexp-rel-asym.
+scene	ra	case=video_ra	role=literal
+group	ra	g1	form=REL	class=MAN:H7-7	sym=order	kills=F0,F1
+row	ra	g1	rel=scroll_y_shift;runs=main,main	dy=3
+row	ra	g1	rel=scroll_x_shift;runs=main,main	dx=3

@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The register field masks, the AR width, the reserved AR values and the status read (plan 04-06; D-144, D-146, D-161, T-04-21, ER-10): the runner kind vdc_regmask (tests/conformance/vdckinds.c) boots a synthetic image and drives the VDC without a guest. Part masks: for each of R00 to R13 a write of $FF to the low byte and then to the high byte reads back, from the instance bytes,
+# the field mask written in the kind (MAN H7-2 and H7-5 to H7-11: CR $1FFF, RCR $03FF, BXR $03FF, BYR $01FF, MWR $00FF, HSR $7F1F, HDR $7F7F, VPR $FF1F, VDW $01FF, VCR $00FF, DCR $001F, the others 16 bits; H7-2 prints VDW in the VCR row), R03 and R04 stay 0, and the line_dirty bit of the write is the one of D-161 (HSR and HDR b1, VPR VDW VCR b2, BXR and BYR b3, CR and MWR b5).
+# MARR is judged after its read operation: written $FFFF it is stepped to $0000 by the IW step. Part ar: AR keeps its low five bits (MAN H7-3), and a data write at each AR from $14 to $1F changes no register, buffer, latch, line_dirty bit or VRAM byte
+# (ASSUMED LED-VID-0006). Part status: ds_vdc_flag raises a bit only with its enable set (CR bits 0 to 3 for CR, OR, RR and VD, DCR bits 0 and 1 for DS and DV, MAN H7-4),
+# a read returns the bits and clears bits 0 to 5, BSY (bit 6) is the constant 0
+# (ASSUMED LED-VID-0015) and bit 7 is 0, a raised flag survives a later disable and a later enable creates none. E0, the masks are field widths from H7-5 to H7-11 and not a read-back claim: no register of this interface is readable, so no accuracy, compatibility or hardware claim, and the word pass is not a support claim.
+id = "vdc_regmask"
+kind = "vdc_regmask"
+fixture = "plain-256k"
+request = ""
+expect = "parts=masks,ar,status"
+meaning = "Each VDC register holds the field mask of its width after a write of $FFFF (instance bytes), R03 and R04 stay 0, AR keeps five bits and a reserved AR changes nothing, and the status read returns the enabled flags and clears them, E0, a field-width fact and not a read-back claim"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

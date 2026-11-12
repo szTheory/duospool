@@ -1,16 +1,16 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
-# Seed entry for research conflict C2 (lines per frame). A modelling assumption, not an established hardware fact.
+# Seed entry for research conflict C2 (lines per frame), amended by plan 04-01 (D-136, D-179): the count is constant for a run, the power-on clause is removed, the CR bit 2 disagreement and the H7-13 sum are recorded. A modelling assumption, not an established hardware fact.
 id = "LED-VID-0001"
-statement = "DuoSpool models a frame as 262 lines of 1365 master clocks (357630 clocks, about 60.05 Hz); if the count is a guest-selectable VCE bit, lines_per_frame means the power-on value."
+statement = "DuoSpool models a frame as lines_per_frame lines (262 by default, 263 selectable by the profile) of 1365 master clocks, constant for the whole run; VCE CR bit 2 is stored and changes nothing. A modelling assumption, not an established hardware fact."
 profile = "pce-hucard-2btn"
 status = "assumed"
-sources = ["REPORT|pcetech.txt|263 lines fixed (SUMMARY C2)", "CODE|MAME|screen config 263, TODO for a 263-line mode (SUMMARY C2)", "CODE|Mednafen, Geargrafx, Ares|default 262, 263 selectable by a VCE bit (SUMMARY C2)", "UNKNOWN|manual pages read|state no line count (SUMMARY C2)"]
+sources = ["REPORT|pcetech.txt|263 lines fixed (SUMMARY C2)", "CODE|MAME|screen config 263, TODO for a 263-line mode (SUMMARY C2)", "CODE|Mednafen, Geargrafx, Ares|default 262, 263 selectable by a VCE bit (SUMMARY C2)", "FACT|H6-3 H7-13|fCLOCK 6fsc; no page held states a line count", "UNKNOWN|H6-6|sync generator page absent from the HuC6260 copy"]
 evidence = []
-disagreement = "262 lines (default of three codebases that also model 263) versus 263 fixed (pcetech report; MAME screen config with a TODO for the other mode); the manual pages read state no count"
-pinning_test = "PENDING:4"
-updated = "2026-11-09"
-assumption = "lines_per_frame is proposed as 262 as a labelled placeholder; 263 would be 358995 clocks, about 59.83 Hz (derived). The profile field stays open and means the power-on value if the count is guest-selectable."
+disagreement = "262 lines (default of three codebases that also model 263) versus 263 fixed (pcetech report; MAME screen config with a TODO for the other mode); CR bit 2 polarity: Geargrafx 263 when set, MAME dead code in the opposite sense, pcetech calls it blur; the H7-13 sum (VSW+1)+(VDS+2)+(VDW+1)+VCR gives 264 for VPR 0F02, VDW 239, VCR 4 and is not followed"
+pinning_test = "TEST:vid_frame_lines"
+updated = "2026-11-11"
+assumption = "lines_per_frame is the profile field, 262 by default as a labelled placeholder; 263 would be 358995 clocks (derived). It is constant for the run and no power-on or guest-selected count exists. 1365 = 6 x 227.5 uses a line length of 227.5 fsc that no page held states (H6-3 gives fCLOCK = 6fsc). The pin is TEST:vid_frame_lines (E0, the 263 binding; 262 is judged in video_vce_dot)."
 revisit_phase = 4
-withheld = ["any frame length claim", "any frame rate claim", "any samples-per-frame claim"]
+withheld = ["any frame length claim", "any frame rate claim", "any samples-per-frame claim", "any claim about the polarity of CR bit 2"]
 origin = "SUMMARY C2"

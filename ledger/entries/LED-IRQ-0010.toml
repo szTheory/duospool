@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# The RCR counter and the RR flag (D-142; VID-04). A modelling assumption, not a hardware fact; the model row rcr_origin stays open. The page wording about the previous line of the display start is ambiguous.
+id = "LED-IRQ-0010"
+statement = "R1: the RCR counter is 64 on the first display line (model parameter rcr_origin), persists across frames, starts at a sentinel that matches nothing, is compared as 10 bits at every line, and RR is raised at the end of the active window (not at all if that falls beyond the line). A modelling assumption."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|H7-7|the counter is set to 64 at a scanning line relative to the display start (ambiguous wording) and incremented each scan; RCR bits 9-0", "REPORT|pcetech.txt and vdcdox.txt|the first display line reading, community"]
+evidence = []
+disagreement = "first_active versus line_before (the page wording reads either way and the two differ by one whole line); the RR instant: MAME at hsync fall (1128), Mednafen 4 dots earlier, Geargrafx inside the HDW state"
+pinning_test = "TEST:vdc_irq_agree_lb"
+updated = "2026-11-11"
+assumption = "rcr_origin = first_active is the default and line_before the alternative; the RR instant at the end of the active window is a placeholder. Guest measurements bracket it with a tolerance and never state an absolute line."
+revisit_phase = 4
+withheld = ["any RCR line claim", "raster-accurate"]
+origin = "04-CONTEXT D-142"

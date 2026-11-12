@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# scene-untoyed: a scene case that no toy EXPECT lists and no VIDEO_TOY_EXEMPT line names (the root carries an empty exempt list, so it has a toy registry).
+scene	su	case=video_untoyed_probe	role=literal
+group	su	g1	form=STRUCT	class=ASSUMED:LED-VID-0004	sym=none	kills=F4
+row	su	g1	check=count	grid=1365

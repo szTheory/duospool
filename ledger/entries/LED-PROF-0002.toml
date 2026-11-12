@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 # Power-on state (D-50, D-68, D-75); the unit and mapping register constant clauses are superseded by D-91 and D-114 (03-CONTEXT). A modelling assumption, not a hardware fact. The pin lists the seed-42 draw order.
+# Amended by plan 04-01 (D-167, D-179): seeded-prng-v3 adds the v3 domains VRAM____, SATB____ and PAL_____ (video memory contents only); v1 and v2 are unchanged and give zero VRAM, SATB and palette.
 id = "LED-PROF-0002"
-statement = "DuoSpool models power-on as one of three policies bound in the run request: zero (RAM zero), seeded-prng-v1 (splitmix64, one stream per domain, RAM only) or seeded-prng-v2 (v1 plus the cpu, mpr and tmr domains, LED-PROF-0003). SUPERSEDED: the unit clause (psg_noise, vdc_phase, placeholder cycles) by D-91 and the all-zero mapping register clause by D-114. A modelling choice."
+statement = "DuoSpool models power-on as one of four policies bound in the run request: zero, seeded-prng-v1 (splitmix64, RAM only), seeded-prng-v2 (v1 plus the cpu, mpr and tmr domains, LED-PROF-0003) or seeded-prng-v3 (v2 plus VRAM____, SATB____, PAL_____). SUPERSEDED: the unit clause (psg_noise, vdc_phase) by D-91 and the all-zero mapping register clause by D-114. A modelling choice."
 profile = "pce-hucard-2btn"
 status = "assumed"
 sources = ["UNKNOWN|hardware power-on RAM contents|no source read; the two policies are the project's own modelling choice (D-50)", "UNKNOWN|hardware power-on mapping register values|not read; the all-zero constant is an open item for Phase 3", "UNKNOWN|hardware PSG noise and VDC phase behaviour|not read; Phase 2 evolves them with placeholder rules only (D-68)"]

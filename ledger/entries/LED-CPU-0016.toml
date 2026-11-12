@@ -5,6 +5,7 @@
 # and H8-24 (VDC at logical 0000, 0002, 0003 for ST0, ST1, ST2) were read as page images from a scratch copy of the hardware manual (sha256 40a32e5d..., never committed) and a scratch copy of the software manual (sha256 51eeda39..., never committed).
 # Condition 2: the twelve st= literals of st_bypass are $1FE000, $1FE002 and $1FE003 with the immediates written in the fixture; the addresses are the combination of the Table 2-2-3 codes with the H8-9 chip enable (a derivation of three page facts, named as such in the assumption field), and none comes from cpu_ops.def or from a DuoSpool run.
 # Condition 3: the statement says equals the manual's stated values. Condition 4: withheld lists the three required items and the VDC reaction. Condition 5: pin TEST:st_bypass. The penalty of the store is LED-CPU-0017 and is not part of this entry.
+# Plan 04-01 note (D-149, D-179; F-47): ST reaches a live VDC from Phase 4. Only the assumption and comment lines were edited; the statement, evidence, status and pin of this supported entry are unchanged.
 id = "LED-CPU-0016"
 statement = "DuoSpool's ST0, ST1 and ST2 write their immediate to physical $1FE000, $1FE002 and $1FE003 whatever the mapping registers hold. This equals the manual's stated values: A1,A0 = 00, 10, 11 with CE7 asserted and A13 to A20 high (H8-8 Table 2-2-3, S8-80 to S8-82), the HuC6270 at $1FE000-$1FE3FF (H8-9, H8-24)."
 profile = "pce-hucard-2btn"
@@ -14,7 +15,7 @@ evidence = ["E1|tests/conformance/cases/st_bypass.toml: twelve stores under four
 disagreement = "The ROADMAP names H8-3 for the ST0-ST2 bypass; that page is the stack and reset page (R-6), so the cite is corrected here and the ROADMAP is not edited. The manual shows the A1,A0 code and not the physical address: the form 0x1FE00n is a combination of three pages. No emulator reading is recorded for the bypass."
 pinning_test = "TEST:st_bypass"
 updated = "2026-11-11"
-assumption = "The physical addresses are the combination of Table 2-2-3 with the chip-enable pages (a derivation, not a printed address). The page says A13 to A20 are driven high in the write cycle, which this entry reads as independence from the mapping registers. The penalty of the store is LED-CPU-0017."
+assumption = "The physical addresses are the combination of Table 2-2-3 with the chip-enable pages (a derivation, not a printed address). The page says A13 to A20 are driven high in the write cycle, which this entry reads as independence from the mapping registers. The penalty of the store is LED-CPU-0017. The byte reaches a live VDC from Phase 4 (D-149); not claimed here."
 revisit_phase = 3
 withheld = ["any claim of hardware cycle accuracy", "any claim of interrupt latency in cycles", "any claim of game compatibility", "any TG-16 or region claim", "any claim about what the VDC does with the stored byte"]
 origin = "03-CONTEXT D-106"

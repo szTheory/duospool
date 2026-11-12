@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
 # The memory map and the mapping registers seen from the guest, 1 MiB image (plan 03-20; D-102, D-103, D-104, D-124, D-125, D-127): the authored fixture fixtures/src/mmu_mpr.s is assembled once more by ca65 with ROMBANKS=128 (scripts/fixture-build, the
-# variants list), boots on the core, runs to the absolute deadline until_mclk (master clocks) and writes a DSV1 verdict block that the runner judges from raw RAM. It is the same source and the same 65 checks as mmu_mpr_256k; only the literals of checks 18 and 19
+# variants list), is booted on the core, runs to the absolute deadline until_mclk (master clocks) and writes a DSV1 verdict block that the runner judges from raw RAM. It is the same source and the same 65 checks as mmu_mpr_256k; only the literals of checks 18 and 19
 # differ, by conditional assembly on ROMBANKS, because the mirror rule of the plain mapper differs by image size (ASSUMED:LED-LOAD-0003): check 18 reads bank $20 (file bank $20, tag $20, a mirror of bank 0 in the 256 KiB image) and check 19 bank $7F (file bank $7F, tag $7F, the last bank of the window), because a 1 MiB image has no mirror of its window.
 # The expected literals are the table of fixtures/lib/check.inc and classed in fixtures/src/mmu_mpr.checks (a manual page, an in-guest computation or an assumed ledger entry); none comes from DuoSpool output. Checks 49, 59 and 60 are observe-only rows (plan 03-17):
 # TMA with the operand $00 is the model parameter tma_zero, so this case (the default, bus_latch) expects the latch bytes, observe=49:248 ($F8), 59:249 ($F9) and 60:249, exactly as mmu_mpr_256k does, because the two images share the TMA #0 observe rows. The case has

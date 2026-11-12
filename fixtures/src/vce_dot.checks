@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# vce_dot.checks - one row per CHECK of fixtures/src/vce_dot.s (D-125, plan 04-09). Columns separated by one TAB: check index (1-based), slug, class tag, meaning.
+# Class tags: MAN:<page> (a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model>, ASSUMED:<LED-id>. The guest checks are readbacks of what it programmed where the interface allows one (the VCE control register and the VDC geometry registers have no readback): the
+# raster itself is judged from the line records by the video cases (fixtures/src/vce_dot.vexp), not here.
+# The border entry $100 is read back by the procedure of H6-5; its value 273 is the additive running sum of the guest (the class of the border row of the video case is GUEST pal_bijection). A pass is not a support claim (ER-4).
+id=19
+checks=4
+1	cr-read-unused	ASSUMED:LED-VID-0016	A read of CR ($0400) gives the unused value $FF (the register is write only)
+2	pal-entry100-low-roundtrip	MAN:H6-5	Entry $100 of the colour table reads back the low byte the guest wrote: P(256) = 273, low byte $11
+3	pal-entry100-bit8	MAN:H6-5	Entry $100 reads back bit 8 set: 273 is at least 256
+4	vdc-status-high-zero	MAN:H7-25	The high byte of the VDC status word (logical $0001) reads $00

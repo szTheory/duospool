@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Toy control (D-85, D-173, F-4; a toy of the Phase 4 set, plan 04-17): the RCR counter set to 63 instead of 64 on its origin line, made from the live src/core/beam.c by scripts/control-mutate. The anchor is the one statement of rcr_step that sets the counter on the origin line (the first display line, or the last line of VDS under rcr_origin = line_before); the
+# replacement sets 63, the plausible off-by-one of a counter that is set one line early.
+# The cases of EXPECT with no second column must come out guest_failure on the toy: vdc_irq, vdc_irq_263 and the four agreement cases, whose RCR of the last display line then matches on the VBlank entry line after VD, so the handler of that RCR reads VD and the next handler RR, and the VD to RCR = 64 interval moves by one line. The case vdc_irq_ratio keeps its second
+# column pass: the ratio of RCR = 100 to 108 against RCR = 100 to 101 has no dependence on the origin, so it must STAY pass (F-4). The real core passes all of them (REQUIRED cases).
+tag=rule-vid-rcr-base
+file=src/core/beam.c
+anchor=inst->rcr_counter = (uint16_t)64u;
+replace=inst->rcr_counter = (uint16_t)63u;

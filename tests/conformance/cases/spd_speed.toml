@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
-# The CPU speed switch seen from the guest, with the timer as the clock (plan 03-23; D-101, D-107, D-124, D-125, D-127, ER-3, ER-4; H8-18, H8-25): the authored fixture fixtures/src/spd_speed.s is assembled by ca65 in the gate (never committed), boots on the core, runs to the absolute deadline
+# The CPU speed switch seen from the guest, with the timer as the clock (plan 03-23; D-101, D-107, D-124, D-125, D-127, ER-3, ER-4; H8-18, H8-25): the authored fixture fixtures/src/spd_speed.s is assembled by ca65 in the gate (never committed), is booted on the core, runs to the absolute deadline
 # until_mclk (master clocks) and writes a DSV1 verdict block that the runner judges from raw RAM. The fixture measures a fixed loop by the timer counter (a step every 3072 master clocks) before any switch, after CSH and after CSL, repeats a switch to the speed already in force, tunes two intervals to
 # sit just past a step boundary so that the speed a CSH or CSL is charged at shows, and compares loops over the VDC, VCE and PSG windows with a work-RAM loop at both speeds. The expected counters are written by the assembler from the instruction counts of the source and classed in fixtures/src/spd_speed.checks: the power-up
 # low speed and the one-byte length are manual facts (H8-18, H8-25); the ratio of the speeds, the cost of a switch and the VDC and VCE penalty are modelling assumptions (ASSUMED LED-CPU-0006 and LED-CPU-0017, written in plan 03-34). Every row that reads the counter is E2 self-consistency (ER-3): it depends on the

@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Fixture manifest entry (FIX-02, FIX-01, D-59 amended, D-123): one authored HuCard image of fixtures/src/vdc_satb.s. The bytes are assembled in the gate by ca65 and ld65 and are
+# never committed. scripts/fixture-check compares size and sha256 below with the bytes scripts/fixture-build wrote, as hashed by the host sha tool, so a changed source, library or
+# toolchain output turns the gate red. The pin was measured on the Homebrew cc65 2.19 bottle (see fixtures/lib/TOOLS.md); it proves the build is repeatable, nothing more.
+id = "vdc_satb"
+kind = "authored"
+source = "fixtures/src/vdc_satb.s"
+recipe = "vdc-satb: ca65 --cpu huc6280 -D ROMBANKS=32 -I fixtures/lib -o build/gate/fx/vdc-satb.o fixtures/src/vdc_satb.s; ld65 -C fixtures/lib/hucard.cfg -D ROMBANKS=32 -o build/gate/fixtures/vdc-satb.pce build/gate/fx/vdc-satb.o"
+toolchain = "cc65 V2.19 (ca65 prints V2.18; identity by encoding-matrix bytes, plan 03-08), Homebrew bottle 2.19 locally, hashed by sha256sum or shasum -a 256"
+size = 262144
+sha256 = "31ddfa718cbcb9d50ccb96c5d916f5468cd6dc979171461930544c045e9d3160"
+licence = "0BSD"
+notices = "none: assembled at gate time from the project-owned sources fixtures/src/vdc_satb.s and fixtures/lib/*.inc and hucard.cfg (0BSD); no HuC, PCEAS or cc65 library or startup code, no emulator code, no game content"
+redistribution = "generated-not-committed"
+meaning = "Authored diagnostic HuCard of 256 KiB: the VRAM-to-SATB copy armed by the DVSSR high byte, carried out at the next VBlank, with DS gated by DCR bit 0, the repeat by DCR bit 4 and a rewritten source, judged through the status flags (the SATB itself is read by the runner); 9 DSV1 checks. A pass is not a support claim."
+verdict_source = "manual-cite:H7-4+manual-cite:H7-12+spec-literal:LED-VID-0013+spec-literal:LED-IRQ-0009"

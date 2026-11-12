@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# grid-class: three checks that use the 1365-clock grid, the frame numbering or the write-to-line join (count, flat_frame, flat_at) in a group of the class MAN: VEXP_CLASS from the grid rule alone (the label H6-3 has an img cite). Review fixes H-04 and M-03: the control of the tag rule-vexp-grid-class.
+scene	gc	case=video_gc	role=literal
+group	gc	g1	form=STRUCT	class=MAN:H6-3	sym=none	kills=F4,F8,F9
+row	gc	g1	check=count	grid=1365
+row	gc	g1	check=flat_frame	index=0;frame=7;from=0;count=240;burst=0
+row	gc	g1	check=flat_at	index=0;reg=2;wr=6;d=1;count=5

@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The VRAM words the guest wrote, read from the instance bytes (plans 04-06; D-148, D-175 (c), ER-10, T-04-23): the runner kind vdc_vram (tests/conformance/vdckinds.c) boots the authored vdc_reg image, runs it to the end of its DSV1 verdict under each of the three default power-on policies (zero, seeded-prng-v3 seed 1 and 2) and
+# assembles every listed word byte by byte from the 65,536 VRAM bytes of the instance (word w = byte 2w | byte 2w+1 << 8), with no use of the port read path or of the accessor, against the literal of the case. The literals are restated from fixtures/src/vdc_reg.s: the final word at each address the guest wrote through ST0, ST1 and ST2 (VWR: the high byte
+# write stores the word at MAWR and steps MAWR by the IW increment, MAN H7-5 and H7-7; MAN H8-8 for the ST triple), the IW landing words $0401, $0520, $0640 and $0780, the mirror words $0200 and $0300, the words of the write latch ($0B00, $0B01) and of the wrap ($0000), and the 32 words of the TIA upload at $0800 to $081F, word i = ($1234 + $F7 * i) & $FFFF
+# (the item tia, a multiplication; the guest checks the same words with an additive running sum). A word stored at another address or with its bytes swapped fails here even if the guest reads the same value back through VRR. The words $FFFF dropped at $8000 and $FFFF are not listed: the accessor sweep (vdc_vram_sweep) covers the out-of-range rule. The toy vrr-no-readahead
+# does not change these words, so this case stays green under it (its literal case is vdc_reg). Evidence tier E0: no accuracy, compatibility or hardware claim, and the word pass is not a support claim.
+id = "vdc_vram"
+kind = "vdc_vram"
+fixture = "authored:vdc-reg"
+request = ""
+expect = "rom=vdc-reg;words=0x0100:0x1234,0x0101:0x5678,0x0120:0x1A2B,0x0121:0x9ABC,0x0200:0xB2A1,0x0300:0xD4C3,0x0220:0x0B0A,0x0230:0x2111,0x0231:0x3222,0x0240:0x6D5C,0x0400:0x0A01,0x0401:0x0A02,0x0500:0x0B11,0x0520:0x0B12,0x0600:0x0C21,0x0640:0x0C22,0x0700:0x0D31,0x0780:0x0D32,0x0B00:0x3322,0x0B01:0x4422,0x0000:0x7788,0x0A00:0xC0DE,0x0A10:0xC0DE;tia=0x0800:0x1234:0xF7:32"
+meaning = "The 55 words the vdc_reg guest wrote through ST0, ST1, ST2, the window mirrors and a TIA upload sit at their VRAM word addresses in the instance bytes under three power-on policies, IW landings and the write latch included, E0 repeatability"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 2000000

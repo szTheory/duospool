@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
-# The cycle probe fixture, completion checks (plan 03-15; D-98, D-101, D-124, D-125, D-127): the authored fixture fixtures/src/cyc_probe.s is assembled by ca65 in the gate (never committed), boots on the core, runs to the absolute deadline
+# The cycle probe fixture, completion checks (plan 03-15; D-98, D-101, D-124, D-125, D-127): the authored fixture fixtures/src/cyc_probe.s is assembled by ca65 in the gate (never committed), is booted on the core, runs to the absolute deadline
 # until_mclk (master clocks) and writes a DSV1 verdict block that the runner judges from raw RAM. The thirteen checks show that the fixed instruction sequence of the probe and the penalty section (plan 03-16) completed and took the paths the manual defines (branch paths, the T-mode cell,
 # the decimal results, the TAM and TMA round trip, the BRK handler and the RTI return, the speed switch pair, the end marker); the expected literals are in the literal table of fixtures/lib/check.inc and classed in fixtures/src/cyc_probe.checks (MAN or GUEST),
 # none from DuoSpool output. The cycle counts of the same sequence are judged by case cycle_adders_manual. The case has no policies key, so the guest kind runs the ROM under its default policy list (D-127).

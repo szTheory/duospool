@@ -1,0 +1,46 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# vdc_reg.checks - one row per CHECK of fixtures/src/vdc_reg.s (D-125, plan 04-06). Columns separated by one TAB: check index (1-based), slug, class tag, meaning.
+# Class tags: MAN:<page> (a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model>, ASSUMED:<LED-id>. Every word read is a word the guest wrote first (policy independent, D-167); the VRAM bytes are drawn under a power-on policy and no check reads another word.
+# The manual pages give the register list and the AR width (H7-2, H7-3), the high byte triggers of VWR, MARR and VRR (H7-5, H7-25), the IW steps (H7-7), the high byte of the status word (H7-25) and the ST triple (H8-8). The window mirrors, the reserved registers, the write latch, the out-of-range rule, the idle status and the block readback
+# are modelling choices of LED-VID-0006, LED-VID-0007, LED-VID-0015 and LED-CPU-0008 (assumed). A pass is not a support claim (ER-4).
+id=16
+checks=37
+1	vrr-first-low	MAN:H7-5	The first VRR low read is the low byte of the word $1234 written at $0100
+2	vrr-first-high	MAN:H7-25	The first VRR high read is the high byte of the same word; this read triggers the next one
+3	vrr-second-low	MAN:H7-5	The second VRR low read is the low byte of the word $5678 written at $0101
+4	vrr-second-high	MAN:H7-25	The second VRR high read is its high byte
+5	buffer-old-after-overwrite	MAN:H7-5	The CPU receives the buffer as it was: the word at $0121 was overwritten after the MARR write, and the first VRR low read still gives the low byte $2B of the word $1A2B loaded from $0120
+6	buffer-next-sees-overwrite	MAN:H7-25	The high byte read of VRR triggered the next word, which now holds the overwrite $9ABC: the next VRR low read gives $BC
+7	mirror-0006-low	ASSUMED:LED-VID-0006	A word written through the mirrors $0004, $0006 and $0007 comes back through the mirror $0006: the low byte $A1 of the word $B2A1 at $0200
+8	mirror-0007-high	ASSUMED:LED-VID-0006	The high byte $B2 through the mirror $0007
+9	mirror-03fe-low	ASSUMED:LED-VID-0006	A word written through the last mirror $03FC, $03FE and $03FF comes back through $03FE: the low byte $C3 of the word $D4C3 at $0300
+10	mirror-03ff-high	ASSUMED:LED-VID-0006	The high byte $D4 through $03FF
+11	ar-high-bits-ignored	MAN:H7-3	AR keeps bits 4-0: a write of $E2 selects VWR and the word $0B0A is stored at MAWR $0220; the low byte reads $0A
+12	ar-bit4-kept	ASSUMED:LED-VID-0006	An AR of $15 names no register (bit 4 is kept) and its data write does not reach CR: the second word of two lands at $0231 (IW +1) and reads $22
+13	r1-read-zero	MAN:H7-25	A read of $0001 returns $00 while the read buffer is not zero
+14	r1-write-ignored	ASSUMED:LED-VID-0006	A write to $0001 is ignored and does not change AR: the next data write still reaches VWR, the word $6D5C at $0240 reads $5C
+15	status-idle	ASSUMED:LED-VID-0015	The status read with nothing pending is $00, bit 6 (BSY) included
+16	status-mirror-idle	ASSUMED:LED-VID-0006	The status read through the mirror $03FC is $00
+17	iw00-write-step	MAN:H7-7	IW 00 steps MAWR by 1: the second word $0A02 of two lands at $0401 and its low byte reads $02
+18	iw01-write-step	MAN:H7-7	IW 01 steps MAWR by $20: the second word $0B12 lands at $0520 (from $0500) and its low byte reads $12
+19	iw10-write-step	MAN:H7-7	IW 10 steps MAWR by $40: the second word $0C22 lands at $0640 (from $0600) and its low byte reads $22
+20	iw11-write-step	MAN:H7-7	IW 11 steps MAWR by $80: the second word $0D32 lands at $0780 (from $0700) and its low byte reads $32
+21	iw01-read-step	MAN:H7-7	With IW 01 the read operation steps MARR by $20: after MARR = $0500 the second VRR pair reads the word at $0520, low byte $12
+22	iw11-read-step	MAN:H7-7	With IW 11 the read operation steps MARR by $80: after MARR = $0700 the second VRR pair reads the word at $0780, low byte $32
+23	marr-low-write-no-read	ASSUMED:LED-VID-0006	A write of the low byte of MARR alone starts no read: the buffer still holds the word $1234 loaded from $0100, low byte $34
+24	vrr-low-read-no-read	ASSUMED:LED-VID-0006	A read of the low byte of VRR starts no read: a second low read gives $34 again
+25	latch-low-alone-stores-nothing	MAN:H7-5	A VWR low byte write alone stores nothing: the word $1111 at $0B00 still reads $11 after a write of $22 to the low byte
+26	latch-used-by-high-write	ASSUMED:LED-VID-0006	The high byte write after the lone low byte write stores the word $3322 at $0B00 with the latched low byte: reads $22
+27	latch-persists	ASSUMED:LED-VID-0006	The write latch is not cleared by the write: a second high byte write alone stores $4422 at $0B01, low byte $22
+28	oob-write-dropped	ASSUMED:LED-VID-0007	A write at word address $8000 is dropped and does not alias word $0000: the sentinel $4321 still reads $21
+29	oob-read-zero	ASSUMED:LED-VID-0007	A read at word address $8000 returns 0 over a buffer that held $4321 (low byte $21)
+30	maw-wrap-after-dropped	ASSUMED:LED-VID-0007	MAWR steps and wraps modulo 65,536 after a write at $FFFF that is dropped: the next word $7788 lands at $0000, low byte $88
+31	reserved-read-buffer-low	ASSUMED:LED-VID-0006	With AR = 3 (reserved) a data low read returns the low byte of the read buffer ($34 of the word $1234 loaded from $0100)
+32	reserved-high-read-no-read	ASSUMED:LED-VID-0006	The high byte read with AR = 3 started no read operation: with AR = 2 the low byte still reads $34
+33	st-triple-mpr0-ram	MAN:H8-8	ST0, ST1 and ST2 reach the VDC while MPR0 maps work RAM: the word $C0DE written at $0A00 reads $DE
+34	sta-triple-equals-st	MAN:H8-8	The same word written with sta to $0000, $0002 and $0003 at $0A10 reads $DE: the sta triple equals the ST triple
+35	tia-upload-low-sum	GUEST:vram-sum	A TIA upload of 64 bytes to the data port stores 32 words; the low bytes read back through VRR equal the additive running sum W(i + 1) = (W(i) + $F7) & $FFFF from $1234 (the table is formed by the assembler as $1234 + $F7 * i): the OR of the differences is zero
+36	tia-upload-high-sum	GUEST:vram-sum	The high bytes of the same 32 words equal the same running sum: the OR of the differences is zero
+37	tai-readback-sum	ASSUMED:LED-CPU-0008	A TAI readback of 64 bytes from the data port into work RAM gives the same 32 words: the OR of the differences from the running sum is zero

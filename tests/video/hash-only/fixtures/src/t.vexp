@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# hash-only: a golden scene whose NAME has no literal scene: a stream digest alone would be a verdict (ER-11).
+scene	hs	case=video_hs_golden	role=golden
+golden	hs	sha256=0000000000000000000000000000000000000000000000000000000000000000

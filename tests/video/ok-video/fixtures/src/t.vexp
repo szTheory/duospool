@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# ok-video: a clean root (scripts/video-check, plan 04-07): a literal scene with a ROWS, a REL and two STRUCT groups, its golden scene, and a struct-role scene; every case is named by tests/conformance/VIDEO_TOY_EXEMPT.
+scene	okscene	case=video_ok_literal	role=literal
+scene	okscene	case=video_ok_golden	role=golden
+scene	okstruct	case=video_ok_struct	role=struct
+group	okscene	g_rows	form=ROWS	class=ASSUMED:LED-VID-0010	sym=asym	kills=F1,F2,F7
+row	okscene	g_rows	line=active+0;x=0..5	index=2*5,2*300,2*7
+group	okscene	g_rel	form=REL	class=ASSUMED:LED-VID-0010	sym=asym	kills=F0,F1
+row	okscene	g_rel	rel=scroll_x_shift;runs=a,b	dx=1
+group	okscene	g_div	form=STRUCT	class=MAN:H6-3	sym=none	kills=F0,F5
+row	okscene	g_div	check=div_table	div=4,3;crw=0,1;gap=5460
+group	okscene	g_border	form=STRUCT	class=GUEST:pal_bijection	sym=none	kills=F0
+row	okscene	g_border	check=border_after_pal	value=273
+golden	okscene	sha256=0000000000000000000000000000000000000000000000000000000000000000
+group	okstruct	g_count	form=STRUCT	class=ASSUMED:LED-VID-0004	sym=none	kills=F4,F8,F9
+row	okstruct	g_count	check=count	grid=1365

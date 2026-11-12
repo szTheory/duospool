@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# Vertical cycle and active window (D-139, D-140; VID-04, VID-05). A modelling assumption, not a hardware fact. The frame length is the profile field lines_per_frame, so the H7-13 height sum is recorded and not followed.
+id = "LED-VID-0005"
+statement = "R1: the vertical cycle runs VDS+2, VDW+1, VCR, VSW+1 lines in that order, restarted at each frame start and repeated; a character is 8 dots; the active window starts (HDS+1)*8 dots into the line, is (HDW+1)*8 dots wide and is clipped at the line end; no fixed width exists. A modelling assumption."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|H7-10|HDW bits 6-0, VDS bits 15-8, VSW bits 4-0, VDW 9 bits; each field is N-1 (VDS is N-2)", "FACT|H7-13|Fig 2-2-1 widths HSW+1 HDS+1 HDW+1 HDE+1, heights VDS+2 VDW+1 VCR VSW+1, character 8x8 dots", "REPORT|pcetech.txt|VDS and VSW offset, community reading"]
+evidence = []
+disagreement = "pcetech places the VDS+VSW offset differently; the window origin has two readings (this model uses the end of the sync pulse, the manual figure order would add (HSW+1)*8 dots); 320 versus 341 are host crop figures, not hardware widths; no page states the VBlank entry when VDS and VDW fill the frame exactly"
+pinning_test = "TEST:vid_active_window"
+updated = "2026-11-12"
+assumption = "The vertical cycle is cut at the frame wrap because the H7-13 sum (VSW+1)+(VDS+2)+(VDW+1)+VCR can exceed the frame length (264 for VPR 0F02, VDW 239, VCR 4). A VDW that completes on the last frame line is not cut: the wrap line is its VBlank entry, then the cycle restarts (review fix M-02, LED-IRQ-0001). HSW and HDE affect only the sprite slot count and the record."
+revisit_phase = 4
+withheld = ["visible area", "overscan", "any claim that a frame is W x H pixels"]
+origin = "04-CONTEXT D-139"

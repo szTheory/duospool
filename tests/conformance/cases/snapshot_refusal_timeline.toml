@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Restore domain rules of the BEAM timeline members (plan 04-18; D-166, F-34, T-04-08, T-04-09): same method as snapshot_refusal_vdc. The rows: vd_off and rcr_off 1365 (accept 1364 and the none value 0xFFFF), line_idx above machine_time / 1365 + 2 (accept the limit itself; 2^63 and 2^64 - 1 are judged before any multiplication, with lat_div 2 so that
+# the divider rule is not what refuses them), lat_div 5 and 1 refused and 0 refused after line 0 (lat-div-0-late; 2 and 4 accepted), and so no restored divisor is zero. Evidence tier E0: the core compared with its own written domain rules, no hardware claim.
+id = "snapshot_refusal_timeline"
+kind = "snapshot_refuse"
+fixture = "authored:ds-proto"
+request = "bind.powerup_policy=seeded-prng-v2;seed=3"
+expect = "vd-off-1365=field|vd-off-1364=accept|vd-off-ffff=accept|rcr-off-1365=field|line-far=field|line-limit=accept|line-2-63=field|line-max=field|lat-div-5=field|lat-div-1=field|lat-div-0-late=field|lat-div-4=accept|lat-div-2=accept"
+meaning = "A snapshot whose event offsets, line count or latched divider leaves its domain is refused as field with the instance byte-identical, so no restored state reaches a zero divisor or a line count that outruns the machine time"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 100000

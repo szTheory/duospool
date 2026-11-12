@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# vdc_stat.checks - one row per CHECK of fixtures/src/vdc_stat.s (D-125, plan 04-08). Columns separated by one TAB: check index (1-based), slug, class tag, meaning.
+# Class tags: MAN:<page> (a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model>, ASSUMED:<LED-id>. The status layout and the rule that a flag is set only when its enable bit is set and cleared by the read are H7-4. The level that follows the status and is delivered once is LED-IRQ-0009 (assumed).
+# Two rows need the frame to be longer than the distance between the VBlank the fixture synchronises on and the next RCR match, so they take LED-VID-0001 (ER-10); the BSY level is LED-VID-0015. The DV and DS rows (16 to 21) joined in plan 04-10 and the OR and CR rows join in plan 04-15. A pass is not a support claim (ER-4).
+id=17
+checks=21
+1	gate-clear-status-zero	ASSUMED:LED-VID-0008	With every enable clear and the I flag set, more than two frames pass and the status read gives $00: an RCR match and a VBlank leave no flag
+2	vd-level-before-read	ASSUMED:LED-IRQ-0009	With VD enabled and the flag not yet read, bit 1 of $1403 (the IRQ1 level) reads 1 and bit 0 reads 0
+3	vd-flag-bit5-alone	ASSUMED:LED-VID-0008	The VBlank flag is bit 5 of the status and no other bit: CR bit 2 is clear, so the RCR matches that pass leave bit 2 clear
+4	vd-level-after-read	ASSUMED:LED-IRQ-0009	After the status read the IRQ1 level reads 0 again: bits 1 and 0 of $1403 are 0
+5	vd-read-clears	MAN:H7-4	A read of the status clears bits 0 to 5: the second read gives $00
+6	vd-irq1-handler-status	MAN:H7-4	The next VBlank is taken as IRQ1 and the first status read in the handler gives $20
+7	vd-irq1-handler-once	ASSUMED:LED-IRQ-0009	The status read ends the level, so the handler ran once and was not entered again
+8	rr-late-enable-no-flag	ASSUMED:LED-VID-0001	CR bit 2 set after RCR matches passed with it clear: the status read at once gives $00, enabling later creates no flag (the next match is far from the VBlank the fixture is synchronised on)
+9	rr-irq1-handler-status	MAN:H7-4	With CR bit 2 set the next RCR match is taken as IRQ1 and the first status read in the handler gives $04: bit 2 (RR) alone
+10	rr-handler-read-clears	MAN:H7-4	The second status read in the handler gives $00
+11	rr-level-before-in-handler	ASSUMED:LED-IRQ-0009	In the handler, before the status read, bit 1 of $1403 reads 1 and bit 0 reads 0
+12	rr-level-after-in-handler	ASSUMED:LED-IRQ-0009	In the handler, after the status read, bits 1 and 0 of $1403 read 0
+13	irq1-handler-twice	ASSUMED:LED-IRQ-0009	The handler has run twice in all, once for the VBlank and once for the RCR match, and was not entered again
+14	rr-rearms-vd-gated	ASSUMED:LED-VID-0001	After the acknowledge the next RCR match raises RR again, and a VBlank that passes with CR bit 3 clear leaves bit 5 clear: 1.2 frames later the status reads $04
+15	status-bits-6-7-zero	ASSUMED:LED-VID-0015	Bits 6 and 7 of every status byte read are 0: the OR of the foreground reads and of the four handler reads, masked with $C0, is $00
+16	dv-gate-clear	ASSUMED:LED-VID-0008	With DCR bit 1 clear the end of a VRAM-to-VRAM transfer sets no DV: the status read after the transfer is $00
+17	dv-set-alone	MAN:H7-4	With DCR bit 1 set the end of a transfer sets DV, bit 4 of the status, alone: $10
+18	dv-read-clears	MAN:H7-4	The status read cleared DV: the next read is $00
+19	ds-gate-clear	ASSUMED:LED-VID-0013	A VRAM-to-SATB copy carried out at a VBlank with DCR bit 0 clear sets no DS: after the VBlank and a wait the status is $20, VD alone
+20	ds-set	ASSUMED:LED-VID-0013	With DCR bit 0 set the same copy sets DS, bit 3: the status is $28, VD and DS
+21	ds-read-clears	MAN:H7-4	The status read cleared DS and VD: the next read is $00

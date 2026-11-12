@@ -26,12 +26,12 @@
 #include "ds_snapshot.h"
 #include "runner.h"
 
-/* ---- the hand-kept stream layout (independent of serial.c): the prefix and its NUL, the version, then 14 frames of tag, u32 length and payload ---- */
+/* ---- the hand-kept stream layout (independent of serial.c): the prefix and its NUL, the version, then 21 frames of tag, u32 length and payload ---- */
 
 #define SK_PREFIX_BYTES 15u
-#define SK_VERSION 7u
-#define SK_FRAMES 14u
-#define SK_EXPECTED_SIZE 25021u /* 15 + 4 + 14 * 8 + 24890 payload bytes */
+#define SK_VERSION 8u
+#define SK_FRAMES 21u
+#define SK_EXPECTED_SIZE 92255u /* 15 + 4 + 21 * 8 + 92068 payload bytes: the 24890 of serial version 7 and the 67178 of the seven Phase 4 regions (3 + 1024 + 45 + 33 + 25 + 65536 + 512), derived by hand (plan 04-03) */
 
 static const struct {
     const char *tag;
@@ -39,8 +39,9 @@ static const struct {
 } sk_frames[SK_FRAMES] = {
     {"PROF", 32u}, {"CONT", 40u}, {"POWR", 16u}, {"TIME", 8u}, {"RAM8", 8192u}, {"MPRS", 8u}, {"CPU0", 8u},
     {"BUS0", 3u},  {"TIMR", 11u}, {"IRQC", 3u},  {"IRQS", 160u}, {"BLKT", 11u}, {"IOPT", 6u}, {"SCHD", 16392u},
+    {"VCE0", 3u},  {"PALT", 1024u}, {"VDC0", 45u}, {"BEAM", 33u},  {"VDMA", 25u}, {"VRAM", 65536u}, {"SATB", 512u},
 };
-enum { RG_PROF, RG_CONT, RG_POWR, RG_TIME, RG_RAM8, RG_MPRS, RG_CPU0, RG_BUS0, RG_TIMR, RG_IRQC, RG_IRQS, RG_BLKT, RG_IOPT, RG_SCHD };
+enum { RG_PROF, RG_CONT, RG_POWR, RG_TIME, RG_RAM8, RG_MPRS, RG_CPU0, RG_BUS0, RG_TIMR, RG_IRQC, RG_IRQS, RG_BLKT, RG_IOPT, RG_SCHD, RG_VCE0, RG_PALT, RG_VDC0, RG_BEAM, RG_VDMA, RG_VRAM, RG_SATB };
 
 /* the offset of the frame (the tag) of region r, and of its payload */
 static size_t sk_frame_off(unsigned r)
@@ -78,7 +79,7 @@ static const struct sk_tile sk_tiles[] = {DS_INSTANCE_TILING(SK_TILE)};
 /* the members that a restore does not write because they are not machine state of the stream: the identity of the instance (profile, content id, size class) is checked by pass 1, mapper, byte order and header are derived at boot, the ROM is excluded and the tail is padding */
 static int sk_is_identity(const char *name)
 {
-    static const char *const ids[] = {"profile", "content_id", "mapper", "size_class", "byte_order", "header", "rom", "tail_pad"};
+    static const char *const ids[] = {"profile", "content_id", "mapper", "size_class", "byte_order", "header", "rom", "tail_pad", "vid_pad"};
     size_t i;
 
     for (i = 0u; i < sizeof ids / sizeof ids[0]; i++) {
@@ -243,7 +244,7 @@ static uint64_t sk_get64(const uint8_t *p)
 /* ---- snapshot_hash ---- */
 
 /*
- * snapshot_hash: the snapshot of a mid-run stop of the fixture. Checked here: the size is the hand-kept 25021 bytes and equals ds_snapshot_size(); the call writes exactly that many bytes and not one more (a canary after the buffer); the prefix, the version, every tag and every length are the hand-kept ones;
+ * snapshot_hash: the snapshot of a mid-run stop of the fixture. Checked here: the size is the hand-kept 92255 bytes and equals ds_snapshot_size(); the call writes exactly that many bytes and not one more (a canary after the buffer); the prefix, the version, every tag and every length are the hand-kept ones;
  * the TIME, CPU0 and RAM8 payloads equal the instance's own members read raw; the SHA-256 of the snapshot equals ds_digest of the instance; the snapshot has the same bytes after a byte of the ROM is flipped (the ROM is not in it); and the guest has not finished at the stop (it is mid-run).
  * host-file: the snapshot bytes are written to ID.snapshot beside the evidence text, and the evidence text gets the lines digest=HEX (the core's digest), snapshot_bytes=N and snapshot_file=ID.snapshot. scripts/conformance-run then hashes the file with sha256sum or shasum -a 256 and fails the stage with SNAPSHOT_HOST_HASH_MISMATCH when that differs from the digest line:
  * the host tool shares no code, language or author with the core (D-121). The snapshot of an authored fixture only is written (D-120: the state of a commercial image is not for the evidence directory).
@@ -292,7 +293,7 @@ void kind_snapshot_hash(const struct kase *k, struct ctx *c, char *got, size_t g
         return;
     }
     check(c, sk_tiling_ok(), "the tiling list of ds_core.h does not tile struct ds_instance member by member");
-    check(c, sk_stream_size() == (size_t)SK_EXPECTED_SIZE, "the hand-kept frames of this file do not add up to the 25021 bytes of the stream");
+    check(c, sk_stream_size() == (size_t)SK_EXPECTED_SIZE, "the hand-kept frames of this file do not add up to the 92255 bytes of the stream");
     w = sk_boot(c, k, rom, k->val[K_REQUEST], 1, &b);
     if (w == NULL) {
         return;
@@ -324,7 +325,7 @@ void kind_snapshot_hash(const struct kase *k, struct ctx *c, char *got, size_t g
     }
     /* the hand-kept frames */
     check(c, memcmp(buf, "duospool-state", 15u) == 0, "the snapshot does not start with the prefix and its NUL");
-    check(c, buf[15] == (uint8_t)SK_VERSION && buf[16] == 0u && buf[17] == 0u && buf[18] == 0u, "the serializer version of the snapshot is not the hand-kept version 7 (a layout change needs this file's table and version updated)");
+    check(c, buf[15] == (uint8_t)SK_VERSION && buf[16] == 0u && buf[17] == 0u && buf[18] == 0u, "the serializer version of the snapshot is not the hand-kept version 8 (a layout change needs this file's table and version updated)");
     for (r = 0u; r < SK_FRAMES; r++) {
         const uint8_t *f = buf + sk_frame_off((unsigned)r);
         uint32_t len = (uint32_t)f[4] | ((uint32_t)f[5] << 8) | ((uint32_t)f[6] << 16) | ((uint32_t)f[7] << 24);
@@ -1336,14 +1337,16 @@ static void ed_time_max(uint8_t *b)
 static void ed_time_below(uint8_t *b)
 {
     sk_put64(b + sk_payload_off(RG_TIME), (UINT64_C(1) << 63) - 1u);
+    /* the fold window rule of plan 04-19 (D-166) refuses a beam whose next event is behind the machine time, so the beam follows the time: the next line event is the first one at or after it (ceiling of time / 1365), which the line-limit rule also allows */
+    sk_put64(b + sk_payload_off(RG_BEAM), ((UINT64_C(1) << 63) - UINT64_C(1) + UINT64_C(1364)) / UINT64_C(1365));
 }
 static void ed_p_b_bit(uint8_t *b)
 {
     b[sk_payload_off(RG_CPU0) + 4u] |= 0x10u;
 }
-static void ed_policy4(uint8_t *b)
+static void ed_policy5(uint8_t *b)
 {
-    sk_put32(b + sk_payload_off(RG_POWR), 4u);
+    sk_put32(b + sk_payload_off(RG_POWR), 5u); /* policy 5 is the first unknown policy since seeded-prng-v3 took 4 (plan 04-18) */
 }
 static void ed_policy_other(uint8_t *b)
 {
@@ -1496,6 +1499,279 @@ static void ed_latch(uint8_t *b)
     b[sk_payload_off(RG_IOPT)] = 0x00u;
 }
 
+/*
+ * The edits of the seven Phase 4 regions (plan 04-18; D-166, F-1, F-34, T-04-08, T-04-09). The offsets are payload offsets in the stream order of the decoders, written by hand from the frame layout and not from the struct:
+ *   VCE0 3 bytes: cr 0, cta 1 (u16).  PALT 1,024 bytes.  VDC0 45 bytes: ar 0, status 1, the 20 registers from 2 (register n at 2 + 2n), read buffer 42, write latch 44.
+ *   BEAM 33 bytes: line_idx 0 (u64), stage 8, v_state 9, v_togo 10, display_k 12, rcr_counter 14, frame_lines 16, bg_y 18, mwr_active 20 (u16 each), burst 22, line_dirty 23, sprite_pend 24, vd_off 25, rcr_off 27 (u16), lat_div 29, vd_pending 30, vd_irq_phase 31, rcr_origin 32.
+ *   VDMA 25 bytes: satb_pending 0, satb_done_valid 1, satb_done_at 2 (u64), dma_state 10, dma_start 11 (u64), dma_word_mclk 19 (u16), dma_done 21 (u32).
+ * A row that sets a field to its last legal value is declared accept (the boundary pair of its refusal): the accepted snapshot must re-serialise to the same bytes.
+ */
+static void sk_put16(uint8_t *p, uint32_t v)
+{
+    p[0] = (uint8_t)(v & 0xFFu);
+    p[1] = (uint8_t)((v >> 8) & 0xFFu);
+}
+#define ED_U8(fn, rg, off, val) static void fn(uint8_t *b) { b[sk_payload_off(rg) + (off)] = (uint8_t)(val); }
+#define ED_U16(fn, rg, off, val) static void fn(uint8_t *b) { sk_put16(b + sk_payload_off(rg) + (off), (uint32_t)(val)); }
+#define ED_U32(fn, rg, off, val) static void fn(uint8_t *b) { sk_put32(b + sk_payload_off(rg) + (off), (uint32_t)(val)); }
+#define BM_AT(b, off) ((b) + sk_payload_off(RG_BEAM) + (off))
+#define VDC_REG(n) (2u + 2u * (n))
+
+ED_U16(ed_cta_200, RG_VCE0, 1u, 0x200u)
+ED_U16(ed_cta_1ff, RG_VCE0, 1u, 0x1FFu)
+ED_U8(ed_pal_odd2, RG_PALT, 1u, 2u)
+ED_U8(ed_pal_odd1, RG_PALT, 1u, 1u)
+ED_U8(ed_pal_last_ff, RG_PALT, 1023u, 0xFFu)
+ED_U8(ed_ar_32, RG_VDC0, 0u, 32u)
+ED_U8(ed_ar_31, RG_VDC0, 0u, 31u)
+ED_U8(ed_st_40, RG_VDC0, 1u, 0x40u)
+ED_U8(ed_st_3f, RG_VDC0, 1u, 0x3Fu)
+ED_U16(ed_r03, RG_VDC0, VDC_REG(3u), 1u)
+ED_U16(ed_r04, RG_VDC0, VDC_REG(4u), 1u)
+ED_U16(ed_r05, RG_VDC0, VDC_REG(5u), 0x2000u)
+ED_U16(ed_r06, RG_VDC0, VDC_REG(6u), 0x0400u)
+ED_U16(ed_r07, RG_VDC0, VDC_REG(7u), 0x0400u)
+ED_U16(ed_r08, RG_VDC0, VDC_REG(8u), 0x0200u)
+ED_U16(ed_r09, RG_VDC0, VDC_REG(9u), 0x0100u)
+ED_U16(ed_r0a, RG_VDC0, VDC_REG(10u), 0x0080u)
+ED_U16(ed_r0b, RG_VDC0, VDC_REG(11u), 0x0080u)
+ED_U16(ed_r0c, RG_VDC0, VDC_REG(12u), 0x0020u)
+ED_U16(ed_r0d, RG_VDC0, VDC_REG(13u), 0x0200u)
+ED_U16(ed_r0d_1ff, RG_VDC0, VDC_REG(13u), 0x01FFu)
+ED_U16(ed_r0e, RG_VDC0, VDC_REG(14u), 0x0100u)
+ED_U16(ed_r0f, RG_VDC0, VDC_REG(15u), 0x0020u)
+ED_U8(ed_stage_3, RG_BEAM, 8u, 3u)
+ED_U8(ed_vstate_4, RG_BEAM, 9u, 4u)
+ED_U16(ed_vtogo_513, RG_BEAM, 10u, 513u)
+ED_U16(ed_vtogo_512, RG_BEAM, 10u, 512u)
+ED_U16(ed_dk_0_vds, RG_BEAM, 12u, 0u)
+ED_U16(ed_rcr_8000, RG_BEAM, 14u, 0x8000u)
+ED_U16(ed_rcr_7fff, RG_BEAM, 14u, 0x7FFFu)
+ED_U16(ed_fl_261, RG_BEAM, 16u, 261u)
+ED_U16(ed_fl_264, RG_BEAM, 16u, 264u)
+ED_U16(ed_fl_263, RG_BEAM, 16u, 263u)
+ED_U16(ed_fl_262, RG_BEAM, 16u, 262u)
+ED_U16(ed_bgy_512, RG_BEAM, 18u, 512u)
+ED_U16(ed_bgy_511, RG_BEAM, 18u, 511u)
+ED_U16(ed_mwr_100, RG_BEAM, 20u, 0x100u)
+ED_U8(ed_burst_2, RG_BEAM, 22u, 2u)
+ED_U8(ed_dirty_40, RG_BEAM, 23u, 0x40u)
+ED_U8(ed_sprite_4, RG_BEAM, 24u, 4u)
+ED_U16(ed_vdoff_555, RG_BEAM, 25u, 1365u)
+ED_U16(ed_vdoff_554, RG_BEAM, 25u, 1364u)
+ED_U16(ed_vdoff_ffff, RG_BEAM, 25u, 0xFFFFu)
+ED_U16(ed_rcroff_555, RG_BEAM, 27u, 1365u)
+ED_U8(ed_ld_5, RG_BEAM, 29u, 5u)
+ED_U8(ed_ld_1, RG_BEAM, 29u, 1u)
+ED_U8(ed_ld_4, RG_BEAM, 29u, 4u)
+ED_U8(ed_ld_2, RG_BEAM, 29u, 2u)
+ED_U8(ed_vdpend_2, RG_BEAM, 30u, 2u)
+ED_U8(ed_vph_2, RG_BEAM, 31u, 2u)
+ED_U8(ed_vph_1, RG_BEAM, 31u, 1u)
+ED_U8(ed_rorg_2, RG_BEAM, 32u, 2u)
+ED_U8(ed_satbp_2, RG_VDMA, 0u, 2u)
+ED_U8(ed_satbv_2, RG_VDMA, 1u, 2u)
+ED_U8(ed_dst_3, RG_VDMA, 10u, 3u)
+ED_U32(ed_dd_10001, RG_VDMA, 21u, 65537u)
+ED_U32(ed_dd_10000, RG_VDMA, 21u, 65536u)
+ED_U32(ed_dd_1, RG_VDMA, 21u, 1u)
+ED_U32(ed_dd_0, RG_VDMA, 21u, 0u)
+ED_U16(ed_dw_9_idle, RG_VDMA, 19u, 9u)
+
+/* the display line is judged against the vertical state: inside VDW (v_state 1) below 512, anywhere else exactly 0xFFFF (F-1) */
+static void ed_dk_511_vdw(uint8_t *b)
+{
+    b[sk_payload_off(RG_BEAM) + 9u] = 1u;
+    sk_put16(BM_AT(b, 12u), 511u);
+}
+static void ed_dk_512_vdw(uint8_t *b)
+{
+    b[sk_payload_off(RG_BEAM) + 9u] = 1u;
+    sk_put16(BM_AT(b, 12u), 512u);
+}
+static void ed_dk_ffff_vdw(uint8_t *b)
+{
+    b[sk_payload_off(RG_BEAM) + 9u] = 1u; /* display_k stays 0xFFFF, which is not a display line inside VDW */
+}
+/* line_idx is judged against the machine time of the same stream before any multiplication; lat_div is 2 in these rows so that the divider rule is not what refuses them */
+static void ed_li_far(uint8_t *b)
+{
+    sk_put64(BM_AT(b, 0u), sk_get64(b + sk_payload_off(RG_TIME)) / UINT64_C(1365) + UINT64_C(3));
+    b[sk_payload_off(RG_BEAM) + 29u] = 2u;
+}
+static void ed_li_limit(uint8_t *b)
+{
+    sk_put64(BM_AT(b, 0u), sk_get64(b + sk_payload_off(RG_TIME)) / UINT64_C(1365) + UINT64_C(2));
+    b[sk_payload_off(RG_BEAM) + 29u] = 2u;
+}
+static void ed_li_2_63(uint8_t *b)
+{
+    sk_put64(BM_AT(b, 0u), UINT64_C(1) << 63);
+    b[sk_payload_off(RG_BEAM) + 29u] = 2u;
+}
+static void ed_li_max(uint8_t *b)
+{
+    sk_put64(BM_AT(b, 0u), UINT64_MAX);
+    b[sk_payload_off(RG_BEAM) + 29u] = 2u;
+}
+/* a divider of 0 is the state before the first line event only: after line 0 it would be a zero divisor */
+static void ed_ld_0_late(uint8_t *b)
+{
+    sk_put64(BM_AT(b, 0u), UINT64_C(5));
+    b[sk_payload_off(RG_BEAM) + 29u] = 0u;
+}
+/* the fold window rules (D-166, T-04-14; plan 04-19): the next event the BEAM members name must lie in [machine_time, machine_time + 2730), judged after the divider rule, which is 2 in these rows so that it is not what refuses them. The rows that need a machine time set it to a multiple of 1365 plus a delta, and the
+ * line index to a count that the line-limit rule accepts (at most time / 1365 + 2); stage 0 names the EV_LINE of line_idx at line_idx * 1365 (raster_phase_mclk 0, ASSUMED LED-VID-0004), stage 1 the EV_VD of line_idx - 1 at its origin plus vd_off */
+static void win_set(uint8_t *b, uint64_t time, uint64_t line_idx, uint8_t stage)
+{
+    sk_put64(b + sk_payload_off(RG_TIME), time);
+    sk_put64(BM_AT(b, 0u), line_idx);
+    b[sk_payload_off(RG_BEAM) + 8u] = stage;
+    b[sk_payload_off(RG_BEAM) + 29u] = 2u;
+}
+static void ed_ev_before(uint8_t *b)
+{
+    sk_put64(BM_AT(b, 0u), UINT64_C(1)); /* the event of line 1 is at 1365, far behind the machine time of the snapshot */
+    b[sk_payload_off(RG_BEAM) + 8u] = 0u;
+    b[sk_payload_off(RG_BEAM) + 29u] = 2u;
+}
+static void ed_ev_far(uint8_t *b)
+{
+    win_set(b, UINT64_C(74) * UINT64_C(1365), UINT64_C(76), 0u); /* the event is at 76 * 1365 = time + 2730 exactly */
+}
+static void ed_ev_2729(uint8_t *b)
+{
+    win_set(b, UINT64_C(74) * UINT64_C(1365) + UINT64_C(1), UINT64_C(76), 0u); /* the event is time + 2729, the last clock the window holds */
+}
+static void ed_ev_now(uint8_t *b)
+{
+    win_set(b, UINT64_C(74) * UINT64_C(1365), UINT64_C(74), 0u); /* the event is at the machine time itself */
+}
+static void ed_ev_none(uint8_t *b)
+{
+    win_set(b, sk_get64(b + sk_payload_off(RG_TIME)), UINT64_C(5), 1u); /* stage 1 with no VD flag outstanding names no event */
+    b[sk_payload_off(RG_BEAM) + 30u] = 0u;
+}
+/* an outstanding VD event as a run leaves it (review fix L-01): the phase hdw_start (vd_irq_phase 1) and no RCR event of the line still to come (rcr_off none), so that only the window rule is what judges the row */
+static void vd_set(uint8_t *b, uint64_t line_idx)
+{
+    win_set(b, sk_get64(b + sk_payload_off(RG_TIME)), line_idx, 1u);
+    b[sk_payload_off(RG_BEAM) + 30u] = 1u;
+    b[sk_payload_off(RG_BEAM) + 31u] = 1u;
+    sk_put16(BM_AT(b, 25u), 100u);
+    sk_put16(BM_AT(b, 27u), 0xFFFFu);
+}
+static void ed_ev_vd_before(uint8_t *b)
+{
+    vd_set(b, UINT64_C(1)); /* the EV_VD of line 0 at 100, behind the machine time */
+}
+static void ed_ev_vd_ahead(uint8_t *b)
+{
+    vd_set(b, sk_get64(b + sk_payload_off(RG_TIME)) / UINT64_C(1365) + UINT64_C(2)); /* the EV_VD of the line before the last allowed index: its origin plus 100 is less than one line ahead */
+}
+/* the event order rules (review fix L-01), each from the accepted edge event-vd-ahead with one member changed: VD outstanding under the phase line_start (which raises VD at EV_LINE and never leaves it outstanding), VD outstanding at the stage RCR (EV_VD always comes first), and an RCR event of the same line at or before the VD event (the window
+ * end is after the window start, so a run never has it); an RCR event after the VD event is accepted */
+static void ed_vd_line_start(uint8_t *b)
+{
+    ed_ev_vd_ahead(b);
+    b[sk_payload_off(RG_BEAM) + 31u] = 0u;
+}
+static void ed_vd_stage_rcr(uint8_t *b)
+{
+    ed_ev_vd_ahead(b);
+    b[sk_payload_off(RG_BEAM) + 8u] = 2u;
+    sk_put16(BM_AT(b, 27u), 200u);
+}
+static void ed_vd_after_rcr(uint8_t *b)
+{
+    ed_ev_vd_ahead(b);
+    sk_put16(BM_AT(b, 27u), 50u);
+}
+static void ed_vd_rcr_equal(uint8_t *b)
+{
+    ed_ev_vd_ahead(b);
+    sk_put16(BM_AT(b, 27u), 100u);
+}
+static void ed_vd_before_rcr(uint8_t *b)
+{
+    ed_ev_vd_ahead(b);
+    sk_put16(BM_AT(b, 27u), 101u);
+}
+/* satb_done_at is judged only when valid, in [machine_time, machine_time + 4096]; dma_start only while a transfer runs, at or before the machine time */
+static void sat_set(uint8_t *b, uint8_t valid, uint64_t at)
+{
+    b[sk_payload_off(RG_VDMA) + 1u] = valid;
+    sk_put64(b + sk_payload_off(RG_VDMA) + 2u, at);
+}
+static void ed_sat_before(uint8_t *b)
+{
+    sat_set(b, 1u, sk_get64(b + sk_payload_off(RG_TIME)) - UINT64_C(1));
+}
+static void ed_sat_now(uint8_t *b)
+{
+    sat_set(b, 1u, sk_get64(b + sk_payload_off(RG_TIME)));
+}
+static void ed_sat_4096(uint8_t *b)
+{
+    sat_set(b, 1u, sk_get64(b + sk_payload_off(RG_TIME)) + UINT64_C(4096));
+}
+static void ed_sat_4097(uint8_t *b)
+{
+    sat_set(b, 1u, sk_get64(b + sk_payload_off(RG_TIME)) + UINT64_C(4097));
+}
+static void ed_sat_max(uint8_t *b)
+{
+    sat_set(b, 1u, UINT64_MAX);
+}
+static void ed_sat_idle_far(uint8_t *b)
+{
+    sat_set(b, 0u, UINT64_MAX);
+}
+static void dst_set(uint8_t *b, uint8_t state, uint64_t start)
+{
+    b[sk_payload_off(RG_VDMA) + 10u] = state;
+    sk_put64(b + sk_payload_off(RG_VDMA) + 11u, start);
+    sk_put16(b + sk_payload_off(RG_VDMA) + 19u, 8u);
+}
+static void ed_dst_ahead(uint8_t *b)
+{
+    dst_set(b, 1u, sk_get64(b + sk_payload_off(RG_TIME)) + UINT64_C(1));
+}
+static void ed_dst_now(uint8_t *b)
+{
+    dst_set(b, 1u, sk_get64(b + sk_payload_off(RG_TIME)));
+}
+static void ed_dst_idle_far(uint8_t *b)
+{
+    dst_set(b, 0u, UINT64_MAX);
+}
+/* a transfer in progress has 8, 12 or 16 master clocks per word, never 0 (the closed form divides by it) */
+static void ed_dma_word_0(uint8_t *b)
+{
+    b[sk_payload_off(RG_VDMA) + 10u] = 2u;
+    sk_put16(b + sk_payload_off(RG_VDMA) + 19u, 0u);
+}
+static void ed_dw_9_run(uint8_t *b)
+{
+    b[sk_payload_off(RG_VDMA) + 10u] = 1u;
+    sk_put16(b + sk_payload_off(RG_VDMA) + 19u, 9u);
+}
+static void ed_dw_8_run(uint8_t *b)
+{
+    b[sk_payload_off(RG_VDMA) + 10u] = 1u;
+    sk_put16(b + sk_payload_off(RG_VDMA) + 19u, 8u);
+}
+static void ed_dw_12_run(uint8_t *b)
+{
+    b[sk_payload_off(RG_VDMA) + 10u] = 2u;
+    sk_put16(b + sk_payload_off(RG_VDMA) + 19u, 12u);
+}
+static void ed_dw_16_run(uint8_t *b)
+{
+    b[sk_payload_off(RG_VDMA) + 10u] = 2u;
+    sk_put16(b + sk_payload_off(RG_VDMA) + 19u, 16u);
+}
+
 static const struct {
     const char *name;
     int mode;
@@ -1528,7 +1804,7 @@ static const struct {
     {"time-max", M_EDIT, ed_time_max},
     {"time-2-63-1", M_EDIT, ed_time_below},
     {"p-b-bit", M_EDIT, ed_p_b_bit},
-    {"policy-4", M_EDIT, ed_policy4},
+    {"policy-5", M_EDIT, ed_policy5},
     {"policy-other", M_EDIT, ed_policy_other},
     {"seed-no-flag", M_EDIT, ed_seed_no_flag},
     {"tma-zero-2", M_EDIT, ed_tma2},
@@ -1553,6 +1829,100 @@ static const struct {
     {"iopt-port-1", M_EDIT, ed_iopt_port1},
     {"iopt-kind-2", M_EDIT, ed_iopt_kind2},
     {"latch-any", M_EDIT, ed_latch},
+    {"cta-200", M_EDIT, ed_cta_200},
+    {"cta-1ff", M_EDIT, ed_cta_1ff},
+    {"pal-odd-2", M_EDIT, ed_pal_odd2},
+    {"pal-odd-1", M_EDIT, ed_pal_odd1},
+    {"pal-last-ff", M_EDIT, ed_pal_last_ff},
+    {"ar-32", M_EDIT, ed_ar_32},
+    {"ar-31", M_EDIT, ed_ar_31},
+    {"status-40", M_EDIT, ed_st_40},
+    {"status-3f", M_EDIT, ed_st_3f},
+    {"r03-1", M_EDIT, ed_r03},
+    {"r04-1", M_EDIT, ed_r04},
+    {"r05-mask", M_EDIT, ed_r05},
+    {"r06-mask", M_EDIT, ed_r06},
+    {"r07-mask", M_EDIT, ed_r07},
+    {"r08-mask", M_EDIT, ed_r08},
+    {"r09-mask", M_EDIT, ed_r09},
+    {"r0a-mask", M_EDIT, ed_r0a},
+    {"r0b-mask", M_EDIT, ed_r0b},
+    {"r0c-mask", M_EDIT, ed_r0c},
+    {"r0d-mask", M_EDIT, ed_r0d},
+    {"r0d-1ff", M_EDIT, ed_r0d_1ff},
+    {"r0e-mask", M_EDIT, ed_r0e},
+    {"r0f-mask", M_EDIT, ed_r0f},
+    {"stage-3", M_EDIT, ed_stage_3},
+    {"v-state-4", M_EDIT, ed_vstate_4},
+    {"v-togo-513", M_EDIT, ed_vtogo_513},
+    {"v-togo-512", M_EDIT, ed_vtogo_512},
+    {"disp-511-vdw", M_EDIT, ed_dk_511_vdw},
+    {"disp-512-vdw", M_EDIT, ed_dk_512_vdw},
+    {"disp-ffff-vdw", M_EDIT, ed_dk_ffff_vdw},
+    {"disp-0-vds", M_EDIT, ed_dk_0_vds},
+    {"rcr-8000", M_EDIT, ed_rcr_8000},
+    {"rcr-7fff", M_EDIT, ed_rcr_7fff},
+    {"frame-261", M_EDIT, ed_fl_261},
+    {"frame-264", M_EDIT, ed_fl_264},
+    {"frame-263", M_EDIT, ed_fl_263},
+    {"frame-262", M_EDIT, ed_fl_262},
+    {"bg-y-512", M_EDIT, ed_bgy_512},
+    {"bg-y-511", M_EDIT, ed_bgy_511},
+    {"mwr-100", M_EDIT, ed_mwr_100},
+    {"burst-2", M_EDIT, ed_burst_2},
+    {"dirty-40", M_EDIT, ed_dirty_40},
+    {"sprite-4", M_EDIT, ed_sprite_4},
+    {"vd-pending-2", M_EDIT, ed_vdpend_2},
+    {"vd-off-1365", M_EDIT, ed_vdoff_555},
+    {"vd-off-1364", M_EDIT, ed_vdoff_554},
+    {"vd-off-ffff", M_EDIT, ed_vdoff_ffff},
+    {"rcr-off-1365", M_EDIT, ed_rcroff_555},
+    {"line-far", M_EDIT, ed_li_far},
+    {"line-limit", M_EDIT, ed_li_limit},
+    {"line-2-63", M_EDIT, ed_li_2_63},
+    {"line-max", M_EDIT, ed_li_max},
+    {"lat-div-5", M_EDIT, ed_ld_5},
+    {"lat-div-1", M_EDIT, ed_ld_1},
+    {"lat-div-0-late", M_EDIT, ed_ld_0_late},
+    {"lat-div-4", M_EDIT, ed_ld_4},
+    {"lat-div-2", M_EDIT, ed_ld_2},
+    {"vd-phase-2", M_EDIT, ed_vph_2},
+    {"vd-phase-1", M_EDIT, ed_vph_1},
+    {"rcr-origin-2", M_EDIT, ed_rorg_2},
+    {"satb-pend-2", M_EDIT, ed_satbp_2},
+    {"satb-valid-2", M_EDIT, ed_satbv_2},
+    {"dma-state-3", M_EDIT, ed_dst_3},
+    {"dma-done-65537", M_EDIT, ed_dd_10001},
+    {"dma-done-65536", M_EDIT, ed_dd_10000},
+    {"dma-done-1", M_EDIT, ed_dd_1},
+    {"dma-done-0", M_EDIT, ed_dd_0},
+    {"dma-word-0", M_EDIT, ed_dma_word_0},
+    {"dma-word-9", M_EDIT, ed_dw_9_run},
+    {"dma-word-8", M_EDIT, ed_dw_8_run},
+    {"dma-word-12", M_EDIT, ed_dw_12_run},
+    {"dma-word-16", M_EDIT, ed_dw_16_run},
+    {"dma-word-9-idle", M_EDIT, ed_dw_9_idle},
+    {"event-before-time", M_EDIT, ed_ev_before},
+    {"event-too-far", M_EDIT, ed_ev_far},
+    {"event-2729", M_EDIT, ed_ev_2729},
+    {"event-at-time", M_EDIT, ed_ev_now},
+    {"event-none", M_EDIT, ed_ev_none},
+    {"event-vd-before", M_EDIT, ed_ev_vd_before},
+    {"event-vd-ahead", M_EDIT, ed_ev_vd_ahead},
+    {"vd-pend-line-start", M_EDIT, ed_vd_line_start},
+    {"vd-pend-stage-rcr", M_EDIT, ed_vd_stage_rcr},
+    {"vd-after-rcr", M_EDIT, ed_vd_after_rcr},
+    {"vd-rcr-equal", M_EDIT, ed_vd_rcr_equal},
+    {"vd-before-rcr", M_EDIT, ed_vd_before_rcr},
+    {"satb-done-before", M_EDIT, ed_sat_before},
+    {"satb-done-now", M_EDIT, ed_sat_now},
+    {"satb-done-4096", M_EDIT, ed_sat_4096},
+    {"satb-done-4097", M_EDIT, ed_sat_4097},
+    {"satb-done-max", M_EDIT, ed_sat_max},
+    {"satb-done-idle-far", M_EDIT, ed_sat_idle_far},
+    {"dma-start-ahead", M_EDIT, ed_dst_ahead},
+    {"dma-start-now", M_EDIT, ed_dst_now},
+    {"dma-start-idle-far", M_EDIT, ed_dst_idle_far},
     {"null-buffer", M_NULL, ed_none},
     {"buffer-in-instance", M_OVERLAP, ed_none},
     {"snapshot-capacity", M_SNAP_CAPACITY, ed_none},
@@ -1698,6 +2068,18 @@ void kind_snapshot_refuse(const struct kase *k, struct ctx *c, char *got, size_t
 
                 accepted++;
                 check(c, ds_snapshot(t, check_buf, size, &w2) == (uint32_t)DS_SNAPREF_NONE && w2 == size && memcmp(check_buf, edit, size) == 0, "an accepted snapshot does not re-serialise to the same bytes");
+                if (strncmp(item, "event-", 6u) == 0 || strncmp(item, "satb-done-", 10u) == 0 || strncmp(item, "dma-start-", 10u) == 0) { /* plan 04-19: an accepted edge of a fold window still runs defined: a bounded run from it (the fold loops over a few lines at most) ends for a declared reason and its state snapshots again */
+                    struct ds_run_request rq3;
+                    struct ds_run_result res3;
+
+                    memset(&rq3, 0, sizeof rq3);
+                    memset(&res3, 0, sizeof res3);
+                    rq3.struct_size = (uint32_t)sizeof rq3;
+                    rq3.until_mclk = t->machine_time + UINT64_C(6000);
+                    rc = ds_run(t, &rq3, &res3);
+                    check(c, rc == (uint32_t)DS_RUN_REASON_UNTIL || rc == (uint32_t)DS_RUN_REASON_REFUSED, "a bounded run from an accepted edge of a fold window ended for no declared reason");
+                    check(c, ds_snapshot(t, check_buf, size, NULL) == (uint32_t)DS_SNAPREF_NONE, "the snapshot of a state reached by a run from an accepted edge of a fold window was refused");
+                }
                 if (strcmp(item, "time-2-63-1") == 0) { /* T-03-84: the largest machine time that restore accepts must not be one that a run can wrap: a deadline near 2^64 is refused, and a short run from there takes steps and ends below 2^64 */
                     struct ds_run_request rq2;
                     struct ds_run_result res2;
@@ -2017,6 +2399,8 @@ static const struct {
 } hs_ctl[] = {
     {RG_PROF, 0u, 32u},   {RG_CONT, 0u, 40u},   {RG_POWR, 0u, 16u},  {RG_TIME, 0u, 8u},     {RG_CPU0, 4u, 5u},      {RG_CPU0, 7u, 8u},     {RG_BUS0, 2u, 3u},
     {RG_TIMR, 0u, 11u},   {RG_IRQC, 0u, 3u},    {RG_IRQS, 0u, 30u},  {RG_BLKT, 0u, 11u},    {RG_IOPT, 0u, 6u},      {RG_SCHD, 0u, 48u},    {RG_SCHD, 16384u, 16392u},
+    /* plan 04-18 (D-166): every control byte of the four Phase 4 control regions, VCE0 3, VDC0 45, BEAM 33 and VDMA 25 bytes */
+    {RG_VCE0, 0u, 3u},    {RG_VDC0, 0u, 45u},   {RG_BEAM, 0u, 33u},  {RG_VDMA, 0u, 25u},
 };
 
 static void hs_flip(struct hs_env *e)
@@ -2033,6 +2417,14 @@ static void hs_flip(struct hs_env *e)
             e->edit[sk_payload_off(hs_ctl[i].rg) + at] ^= 0x01u;
             hs_try(e, e->size, HW_EITHER, idx++);
         }
+    }
+    /* plan 04-18 (D-166, F-22): the palette, by sampling, and a bit that no palette entry has: bit 1 of an odd palette byte (entries have 9 bits) is refused */
+    for (i = 0u; i < 4u; i++) {
+        static const size_t odd[4] = {1u, 3u, 511u, 1023u};
+
+        hs_fresh(e);
+        e->edit[sk_payload_off(RG_PALT) + odd[i]] ^= 0x02u;
+        hs_try(e, e->size, HW_REFUSE, idx++);
     }
 }
 
@@ -2063,6 +2455,144 @@ static void hs_data(struct hs_env *e)
         e->edit[sk_payload_off(RG_BUS0) + i] ^= 0x01u;
         hs_try(e, e->size, HW_ACCEPT, idx++);
     }
+    /* plan 04-18 (D-166, F-22): PALT, VRAM and SATB bytes by sampling, never all 65,536 VRAM bytes: the first, second and last bytes and the bytes around the middle, the low bit and the high bit (the odd palette bytes keep bit 0 only, so the high bit of an odd one is a refusal row of the flip class) */
+    {
+        static const size_t pal[4] = {0u, 2u, 1022u, 1u};
+        static const size_t vram[8] = {0u, 1u, 255u, 256u, 32767u, 32768u, 65534u, 65535u};
+        static const size_t satb[6] = {0u, 1u, 255u, 256u, 510u, 511u};
+
+        for (i = 0u; i < 8u; i++) {
+            hs_fresh(e);
+            e->edit[sk_payload_off(RG_PALT) + pal[i >> 1]] ^= (i & 1u) != 0u && (pal[i >> 1] & 1u) != 0u ? 0x01u : (i & 1u) != 0u ? 0x80u : 0x01u;
+            hs_try(e, e->size, HW_ACCEPT, idx++);
+        }
+        for (i = 0u; i < 16u; i++) {
+            hs_fresh(e);
+            e->edit[sk_payload_off(RG_VRAM) + vram[i >> 1]] ^= (i & 1u) != 0u ? 0x80u : 0x01u;
+            hs_try(e, e->size, HW_ACCEPT, idx++);
+        }
+        for (i = 0u; i < 12u; i++) {
+            hs_fresh(e);
+            e->edit[sk_payload_off(RG_SATB) + satb[i >> 1]] ^= (i & 1u) != 0u ? 0x80u : 0x01u;
+            hs_try(e, e->size, HW_ACCEPT, idx++);
+        }
+    }
+}
+
+/*
+ * vdc-tia (plan 04-06; D-166, D-175): sampled restore stops INSIDE a block transfer that targets the VDC data port. The authored vdc_reg image (the TIA upload of 32 words to the data pair and the TAI readback of them) is run under a seeded-prng-v3 request to four stops chosen by the block transfer state of the instance, never by a time
+ * taken from a run: the TIA with 63, 32 and 1 bytes left (opcode $E3, the destination $0002 or $0003; an odd and an even byte, the first and the last) and the TAI with 33 bytes left (opcode $F3, the source $0002 or $0003). At each stop the machine is snapshotted and restored into a fresh boot with another seed whose every restorable member is poisoned, the restored instance equals the source
+ * in every member (VRAM, the VDC registers, the read buffer and write latch, the block transfer bytes among them), and the target is run on to the deadline of the case: its machine time, step count, verdict RAM, digest and every restorable member equal those of one uninterrupted run. Evidence tier E0 (the core compared with itself); no hardware claim.
+ */
+struct hv_spec {
+    uint32_t opcode;
+    uint32_t remaining;
+};
+
+static int hv_stop(const struct ds_instance *inst, void *ctx)
+{
+    const struct hv_spec *sp = (const struct hv_spec *)ctx;
+    uint32_t port = sp->opcode == 0xE3u ? (uint32_t)inst->blk_dst : (uint32_t)inst->blk_src;
+
+    return inst->blk_active == 1u && (uint32_t)inst->blk_opcode == sp->opcode && inst->blk_remaining == sp->remaining && (port & 0xFFFEu) == 2u;
+}
+
+static void hs_vdc_block(struct ctx *c, const char *rom, uint64_t until, unsigned *stops)
+{
+    static const struct hv_spec spec[4] = {{0xE3u, 63u}, {0xE3u, 32u}, {0xE3u, 1u}, {0xF3u, 33u}};
+    static const char *const req_src = "bind.powerup_policy=seeded-prng-v3;seed=5";
+    static const char *const req_twin = "bind.powerup_policy=seeded-prng-v3;seed=6";
+    struct booted br;
+    const struct ds_instance *ref = NULL;
+    struct ds_run_request rq;
+    struct ds_run_result res;
+    uint64_t ref_steps = 0u;
+    uint8_t ref_digest[DS_DIGEST_BYTES];
+    uint8_t *snap = (uint8_t *)malloc(ds_snapshot_size());
+    unsigned i;
+    const char *err;
+
+    if (snap == NULL) {
+        harness_error(c, "out of memory for the snapshot of the vdc-tia stops");
+        return;
+    }
+    err = boot_built_rom(rom, req_src, &br, &ref);
+    if (err != NULL) {
+        free(snap);
+        harness_error(c, err);
+        return;
+    }
+    memset(&rq, 0, sizeof rq);
+    memset(&res, 0, sizeof res);
+    rq.struct_size = (uint32_t)sizeof rq;
+    rq.until_mclk = until;
+    check(c, ds_run((struct ds_instance *)(void *)br.mem, &rq, &res) == (uint32_t)DS_RUN_REASON_UNTIL, "the uninterrupted run of the vdc-tia part did not end on its deadline");
+    ref_steps = res.steps;
+    check(c, ds_digest(ref, ref_digest) == 0u, "the digest of the uninterrupted run of the vdc-tia part was refused");
+    for (i = 0u; i < 4u && !c->harness; i++) {
+        struct booted bs;
+        struct booted bt;
+        const struct ds_instance *cs = NULL;
+        const struct ds_instance *ct = NULL;
+        struct ds_instance *ws;
+        struct ds_instance *wt;
+        struct hv_spec sp = spec[i];
+        uint64_t steps1;
+        uint8_t dig[DS_DIGEST_BYTES];
+        const char *diff;
+        char msg[200];
+
+        err = boot_built_rom(rom, req_src, &bs, &cs);
+        if (err != NULL) {
+            harness_error(c, err);
+            break;
+        }
+        err = boot_built_rom(rom, req_twin, &bt, &ct);
+        if (err != NULL) {
+            release_boot(&bs);
+            harness_error(c, err);
+            break;
+        }
+        ws = (struct ds_instance *)(void *)bs.mem;
+        wt = (struct ds_instance *)(void *)bt.mem;
+        memset(&rq, 0, sizeof rq);
+        memset(&res, 0, sizeof res);
+        rq.struct_size = (uint32_t)sizeof rq;
+        rq.until_mclk = until;
+        rq.stop = hv_stop;
+        rq.stop_ctx = &sp;
+        snprintf(msg, sizeof msg, "vdc-tia stop %u (opcode $%02X, %u bytes left): the run did not stop inside the block transfer of the VDC data port", i, (unsigned)sp.opcode, (unsigned)sp.remaining);
+        check(c, ds_run(ws, &rq, &res) == (uint32_t)DS_RUN_REASON_CALLBACK, msg);
+        steps1 = res.steps;
+        if (!c->failed) {
+            snprintf(msg, sizeof msg, "vdc-tia stop %u: ds_snapshot of the source was refused", i);
+            check(c, ds_snapshot(ws, snap, ds_snapshot_size(), NULL) == (uint32_t)DS_SNAPREF_NONE, msg);
+            snap_poison(wt, 0xA5u);
+            snprintf(msg, sizeof msg, "vdc-tia stop %u: ds_restore refused the snapshot of a machine inside a block transfer of the VDC data port", i);
+            check(c, ds_restore(wt, snap, ds_snapshot_size()) == (uint32_t)DS_SNAPREF_NONE, msg);
+            diff = snap_first_diff(ct, cs);
+            snprintf(msg, sizeof msg, "vdc-tia stop %u: the restored instance differs from the source in the member %s", i, diff != NULL ? diff : "-");
+            check(c, diff == NULL, msg);
+            memset(&rq, 0, sizeof rq);
+            memset(&res, 0, sizeof res);
+            rq.struct_size = (uint32_t)sizeof rq;
+            rq.until_mclk = until;
+            snprintf(msg, sizeof msg, "vdc-tia stop %u: the restored target did not run on to the deadline", i);
+            check(c, ds_run(wt, &rq, &res) == (uint32_t)DS_RUN_REASON_UNTIL, msg);
+            snprintf(msg, sizeof msg, "vdc-tia stop %u: the machine time or the step count of the restored chain differs from the uninterrupted run", i);
+            check(c, ct->machine_time == ref->machine_time && steps1 + res.steps == ref_steps, msg);
+            snprintf(msg, sizeof msg, "vdc-tia stop %u: the verdict RAM or the digest of the restored chain differs from the uninterrupted run", i);
+            check(c, memcmp(ct->ram8k + V_OFF, ref->ram8k + V_OFF, V_SIZE) == 0 && ds_digest(ct, dig) == 0u && memcmp(dig, ref_digest, DS_DIGEST_BYTES) == 0, msg);
+            diff = snap_first_diff(ct, ref);
+            snprintf(msg, sizeof msg, "vdc-tia stop %u: the member %s of the restored chain differs from the uninterrupted run (VRAM and the VDC state included)", i, diff != NULL ? diff : "-");
+            check(c, diff == NULL, msg);
+            (*stops)++;
+        }
+        release_boot(&bs);
+        release_boot(&bt);
+    }
+    release_boot(&br);
+    free(snap);
 }
 
 void kind_snapshot_hostile(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
@@ -2082,6 +2612,9 @@ void kind_snapshot_hostile(const struct kase *k, struct ctx *c, char *got, size_
     uint64_t until = 0u;
     unsigned want_cls = 0u;
     int want_block = 0;
+    int want_vdc = 0;
+    char vdc_rom[48];
+    unsigned vdc_stops = 0u;
     int first = 1;
     unsigned q;
     unsigned total = 0u;
@@ -2090,7 +2623,7 @@ void kind_snapshot_hostile(const struct kase *k, struct ctx *c, char *got, size_
     int ok = 1;
     uint32_t rc;
     int off = 0;
-    char detail[512];
+    char detail[1024];
 
     memset(&bs, 0, sizeof bs);
     memset(&bt, 0, sizeof bt);
@@ -2117,12 +2650,15 @@ void kind_snapshot_hostile(const struct kase *k, struct ctx *c, char *got, size_
             }
         } else if (strcmp(item, "mid-block") == 0 && !want_block) {
             want_block = 1;
+        } else if (strncmp(item, "vdc-tia=", 8u) == 0 && !want_vdc && strspn(item + 8, "abcdefghijklmnopqrstuvwxyz0123456789-") == strlen(item + 8) && strlen(item + 8) > 0u && strlen(item + 8) < sizeof vdc_rom) {
+            want_vdc = 1;
+            memcpy(vdc_rom, item + 8, strlen(item + 8) + 1u);
         } else {
             ok = 0;
         }
     }
     if (!ok || want_cls == 0u) {
-        harness_error(c, "a snapshot_hostile case needs fixture = authored:NAME, until_mclk, a seeded request and expect = a list of boundary, length, frame, sample, flip, data (each once)[;mid-block]");
+        harness_error(c, "a snapshot_hostile case needs fixture = authored:NAME, until_mclk, a seeded request and expect = a list of boundary, length, frame, sample, flip, data (each once)[;mid-block][;vdc-tia=NAME]");
         return;
     }
     s = sk_boot(c, k, rom, k->val[K_REQUEST], 1, &bs);
@@ -2185,11 +2721,18 @@ void kind_snapshot_hostile(const struct kase *k, struct ctx *c, char *got, size_
     }
     check(c, refused > 0u && accepted > 0u, "the corpus did not take both paths: it has no refused or no accepted input");
     check(c, e.ran == accepted, "an accepted input was not run");
+    if (want_vdc) {
+        hs_vdc_block(c, vdc_rom, until, &vdc_stops);
+        check(c, vdc_stops == 4u || c->harness, "the vdc-tia part did not restore at its four stops");
+    }
     snprintf(got, gotcap, "cases=%u refused=%u accepted=%u", total, refused, accepted);
     for (q = 0u; q < HC_N; q++) { /* the counts by class go to the evidence text */
         if ((want_cls & (1u << q)) != 0u && off >= 0 && (size_t)off < sizeof detail) {
             off += snprintf(detail + off, sizeof detail - (size_t)off, "class=%s cases=%u refused=%u accepted=%u\n", hc_names[q], e.n[q], e.refused[q], e.accepted[q]);
         }
+    }
+    if (want_vdc && off >= 0 && (size_t)off < sizeof detail) {
+        off += snprintf(detail + off, sizeof detail - (size_t)off, "class=vdc-tia stops=%u (restore inside a block transfer of the VDC data port, continued to the end, E0)\n", vdc_stops);
     }
     set_evidence_detail(detail);
 done:

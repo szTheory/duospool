@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The unmodelled-mode scene (plan 04-11; D-158, D-171, ER-10, ER-11): the authored fixture fixtures/src/bg_basic.s writes MWR = $0001 (VM = 1) in frame 8, and the runner kind video judges that frame 10 carries the UNMODELLED flag (bit 4) on every record, that frame 7 carries none, and that the pixels of frame 10 are the solid group again (a line drawn as VM = 0).
+# Class: ASSUMED LED-VID-0015 (deferred: the access-width modes are not modelled, only flagged). Role: literal (D-172); the fault sweep video_fault_sweep_unmodelled_mode shows the flag group live by F0. The evidence text prints video_sha256=... E0 repeatability: no hardware claim, and the word pass is not a support claim.
+id = "video_unmodelled_mode"
+kind = "video"
+fixture = "authored:bg-basic"
+request = ""
+expect = "rom=bg-basic;id=22;scene=video_unmodelled_mode"
+meaning = "A guest that writes MWR with VM = 1 makes every record of the frames after the next VBlank entry carry the UNMODELLED flag while the frame before the write carries none, and the line is drawn as VM = 0 (ASSUMED LED-VID-0015, deferred), E0 repeatability"
+required = true
+control = false
+expect_outcome = "pass"
+pins = ["LED-VID-0015"]
+until_mclk = 6000000
+checks = 6

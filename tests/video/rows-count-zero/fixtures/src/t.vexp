@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# rows-count-zero: a ROWS literal with COUNT 0 items (0*1,0*2,6*5), which would count three distinct values for a one-colour row: the literal grammar needs COUNT at least 1, VEXP_UNKNOWN_KEY. Review fix L-02 of the gate review (a regression row of the tag rule-unknown-key, whose selftest control is unknown-key).
+scene	rz	case=video_rz	role=literal
+group	rz	g1	form=ROWS	class=ASSUMED:LED-VID-0010	sym=order	kills=F0,F1
+row	rz	g1	line=active+0;x=0..5	index=0*1,0*2,6*5

@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The VDC status register and IRQ1 seen from the guest (plan 04-08; D-138, D-139, D-142, D-143, D-144, D-169, D-170, ER-4, ER-10, F-40): the authored fixture fixtures/src/vdc_stat.s is assembled by ca65 in the gate (never committed), sets a vertical sum of 264 lines, HDS 2, HDW 31 and RCR = 100, installs its own IRQ1 handler, and writes status bytes and request-register bytes
+# into a DSV1 verdict block that the runner judges from raw RAM. No absolute line or frame number is asserted (D-136): the waits are counted loops or polls and the rows judge status bytes and the order of events.
+# The RR and VD rows: each flag with its enable clear leaves the status 0 (the I flag is set, so a flag that got through would stay visible), with its enable set the status shows its bit alone (MAN H7-4), the read clears it and the second read gives 0.
+# Bit 1 of $1403 follows the level (ASSUMED LED-IRQ-0009) and the interrupt is taken once as IRQ1; enabling later creates no flag; bits 6 and 7 read 0 (ASSUMED LED-VID-0015).
+# The DV and DS rows (16 to 21) joined in plan 04-10: with its enable clear a transfer or a SATB copy leaves the bit 0, with it set the status shows the bit (alone for DV, with VD for DS), and the read clears it. The OR and CR rows join in plan 04-15. The case has no policies key, so the guest kind runs the ROM under its default policy list (zero, seeded-prng-v3 seed 1,
+# seed 2) and the check bytes must be equal in all three: every register is 0 at power-on and every cell the checks read is written first (D-167).
+# The literals come from the manual page H7-4 or the assumed ledger entries named in the checks file, not from DuoSpool output. Evidence tier E0: no accuracy, compatibility or hardware claim, and the word pass is not a support claim. The toys status-read-keeps-flags and vid-rcr-base of plan 04-17 turn this case and its siblings red.
+id = "vdc_stat"
+kind = "guest"
+fixture = "authored:vdc-stat"
+request = ""
+expect = "id=17"
+meaning = "The authored vdc_stat fixture drives the VDC RR, VD, DV and DS flags: nothing with the enables clear, the bit alone with the enable set, polled and taken as IRQ1, cleared by the read, the level following the status, enabling later creating no flag, 21 passing checks of classes MAN and ASSUMED, identical under three power-on policies"
+required = true
+control = false
+expect_outcome = "pass"
+pins = ["LED-IRQ-0009", "LED-VID-0008"]
+until_mclk = 5000000
+checks = 21

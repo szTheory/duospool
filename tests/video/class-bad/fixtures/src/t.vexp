@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# class-bad: three bad classes, each VEXP_CLASS: a MAN label with no img row in the cite registry, an ASSUMED id that names no ledger entry, and a GUEST model outside the closed allowlist (closed_form).
+scene	cb	case=video_cb	role=literal
+group	cb	g1	form=STRUCT	class=MAN:H9-99	sym=none	kills=F0,F5
+row	cb	g1	check=div_table	div=4,3;crw=0,1;gap=5460
+group	cb	g2	form=STRUCT	class=ASSUMED:LED-VID-9999	sym=none	kills=F4
+row	cb	g2	check=count	grid=1365
+group	cb	g3	form=STRUCT	class=GUEST:closed_form	sym=none	kills=F0
+row	cb	g3	check=border_after_pal	value=273

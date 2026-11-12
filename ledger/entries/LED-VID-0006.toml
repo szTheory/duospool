@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# VDC port and register file (D-146, D-148; VID-03). Supported (E1, documentary) by plan 04-13 under ER-2, scoped to the page-stated facts of the statement: the equality of the core with page statements, not a hardware measurement. The write latch, the increment moment, reserved reads, the port decode and the register field widths are outside the E1 part.
+# ER-2 record (plan 04-13, verifier gsd-executor, 2026-11-12). Condition 1: H7-3 (AR is write only, bits 4-0, R00 to R13), H7-5 (a high-byte write of MARR starts a read, a high-byte write of VWR starts a write and MAWR is incremented, a high-byte read of VRR triggers the next word), H7-7 (IW +1, +20h, +40h, +80h; the register is incremented by accessing the high byte)
+# and H7-25 (status: the high byte reads 00h; a register write is AR, low byte, high byte) were re-read as page images from a scratch copy of the HuC6270 manual (sha256 2bb87866..., never committed).
+# Condition 2: the literals are the MAN rows of fixtures/src/vdc_reg.s (checks 1 to 6, 11, 13, 17 to 22, 25), each written in the fixture before any DuoSpool output was read; none comes from the core or a hash. Condition 3: the statement says equals the manual's stated values. Condition 4: withheld lists hardware accuracy, timing and compatibility. Condition 5: pin
+# TEST:vdc_reg names the entry in its pins.
+id = "LED-VID-0006"
+statement = "VL0 (E1 documentary): DuoSpool's VDC register interface equals the manual's stated values: AR keeps bits 4-0 (H7-3); a high-byte write of VWR writes the word and MAWR steps by the IW increment +1, +$20, +$40 or +$80 (H7-5, H7-7); a high-byte write of MARR starts a read, a high-byte read of VRR triggers the next word and MARR steps likewise; the status high byte reads 00h (H7-25)."
+profile = "pce-hucard-2btn"
+status = "supported"
+sources = ["FACT|H7-2 H7-3 H7-5 H7-7 H7-25|register list R00-R13, AR bits 4-0, CR fields, IW +1 +20h +40h +80h, MARR and VWR and VRR high-byte triggers, status high byte 00h", "REPORT|pcetech.txt|reserved registers and write-latch behaviour, community reading"]
+evidence = ["E1|tests/conformance/cases/vdc_reg.toml: MAN rows of vdc_reg.s (AR bits 4-0, the VWR and VRR high-byte triggers, the four IW steps, the status high byte); pages re-read as images in plan 04-13", "E0|tests/conformance/cases/vdc_reg.toml: 37 checks identical under three power-on policies, repeatability only"]
+disagreement = "the increment moment of the read pointer differs between MAME and Mednafen (visible only if IW changes between a MARR write and the first VRR read); a MARR low-byte write triggers a read in MAME only; the manual prints no read value for R03 and R04 and no AR read-back"
+pinning_test = "TEST:vdc_reg"
+updated = "2026-11-12"
+assumption = "Write latch (never cleared), increment moment, AR values $14 to $1F, reserved reads (the read buffer byte), the port decode offset & 3 and the field widths of R00 to R13 are modelling choices outside the E1 statement (the widths are pinned by vdc_regmask against DuoSpool's own table). H7-2 prints VDW in the R0E row; the text and H7-11 say VCR."
+revisit_phase = 4
+withheld = ["hardware behaviour of reserved registers", "any claim about the write latch", "any claim about unlisted reads", "any claim of hardware accuracy", "any claim about timing", "any claim of game compatibility"]
+origin = "04-CONTEXT D-146"

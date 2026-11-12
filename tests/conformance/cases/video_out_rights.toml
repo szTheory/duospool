@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The rights rule of the --video-out option (plan 04-05; D-162, D-163, T-04-17, T-04-19): the runner writes the raw video stream of a case only on an explicit --video-out CASE_ID, only for a case of kind video whose fixture is an authored image listed in build/gate/fixtures-authored.used or a
+# synthetic recipe (a stream of a commercial image is a rendering of it), only to build/gate/video/CASE_ID.dsvr (the canonical stream: the bytes duospool-video NUL, u32 1, then the records) and CASE_ID.tsv (one row per line, pixels as run-length groups) built by the runner from an id of the form
+# [a-z0-9_]+, and never to stdout (stdout carries ids, counts, sizes and sha256 values only). This case runs the checks that come before any file is opened: fixture keys that are permitted (the listed authored vce-pal, the synthetic plain-256k) and refused (an authored name that is not listed, none, a
+# file path, a commercial title); the request for case video_vce_pal passes with its paths directly under build/gate/video/; the request for a case whose fixture is none (run_refuse_memory_invalid), for a case that is not a video case (vce_pal, a guest case) or for no case is refused and leaves no
+# file; ids with a slash, a dot-dot, upper case or a dot are refused with no path built and no file at any naive join. The writing of an allowed request is run by scripts/conformance-run with --video-out video_vce_pal, which recomputes the SHA-256 of the written .dsvr file with a host tool (shasum -a
+# 256 or sha256sum) and requires it to equal the video_sha256 the case run printed in its evidence file. Evidence tier E0 (a literal rule of this plan): no accuracy, compatibility, raster or hardware claim, and the word pass is not a support claim.
+id = "video_out_rights"
+kind = "video_out_rights"
+fixture = "none"
+request = ""
+expect = "allow_fixture=authored:vce-pal;allow_fixture=plain-256k;deny_fixture=authored:ghost-rom;deny_fixture=none;deny_fixture=/etc/passwd;deny_fixture=commercial:title;allow_case=video_vce_pal;deny_case=run_refuse_memory_invalid;deny_case=vce_pal;deny_case=no_such_case;bad_id=../x;bad_id=a/b;bad_id=Video_vce_pal;bad_id=video.vce;bad_id=;bad_id=video_vce_pal/../x"
+meaning = "A video request is refused unless the case is a video case whose fixture is an authored image listed in the gate's authored list or a synthetic recipe, and an id with a slash, dot-dot or any character outside [a-z0-9_] builds no path and writes no file"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

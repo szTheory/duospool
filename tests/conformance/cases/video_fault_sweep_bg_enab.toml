@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The record fault sweep of the scene video_bg_enab of the bg_enab ROM (plan 04-12; D-171, D-172, ER-10, ER-11): the runner kind video_fault_sweep runs the guest of the video case once, captures the raw records and the dev log, and for every group of the scene in fixtures/src/bg_enab.vexp applies each fault the group declares in kills= to a copy of the records in memory
+# (F0 perturbs the first number of the first row of the group; F1 shifts the dots of the focus line one dot, F3 drops the first active line of the frame, F7 zeroes every non-zero index and F8 swaps two adjacent lines, all at the line the group looks at first) and requires the group to come out as a failure.
+# A group that a declared fault leaves green, or on which the fault cannot act, is VIDEO_GROUP_VACUOUS and fails the case. A group whose only kill is F0 proves only that its comparison is live (amendment A7). E0: a mechanism that shows each literal comparison live, no claim about any video, and the word pass is not a support claim.
+id = "video_fault_sweep_bg_enab"
+kind = "video_fault_sweep"
+fixture = "authored:bg-enab"
+request = ""
+expect = "rom=bg-enab;id=24;scene=video_bg_enab"
+meaning = "Every group of the video_bg_enab turns into a failure under each record fault it declares (a pixel shifted, every index zeroed, a line dropped or swapped, a perturbed literal), so no literal group of the scene is vacuous, E0"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 6000000
+checks = 4

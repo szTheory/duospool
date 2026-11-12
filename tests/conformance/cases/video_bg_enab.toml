@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The enable scene (plan 04-12; D-137, D-155, D-157, D-161, D-169, D-170 bg_enab, D-171, D-172, ER-10, ER-11, ER-12, ER-13): the authored fixture fixtures/src/bg_enab.s writes the VDC control register with BB and SB in every combination and clears BB inside a display line, and the runner kind video (tests/conformance/videokinds.c) attaches a vid sink and a dev
+# sink, runs the guest to the end of its DSV1 verdict and judges the line records by group,
+# with the offsets written in that file, never from a core header. Role: literal (D-172). The literals are not in this file: they live in fixtures/src/bg_enab.vexp (hand-derived rows, the derivation in its comments). The write of the mid-frame toggle is joined to its line by its stamp in the dev log against the origins of the records, and a write within 250
+# master clocks of a line origin is refused as a fault of the case.
+# Class of each group (ER-10, the weakest class of the inputs of a row wins): the tile rows with BB set and the own line of the toggle are MAN H7-6 (BB and SB valid from the next horizontal display period) with the layout of H7-14 and H7-18 on solid tiles; the burst frame and the backdrop index of a frame with BB clear rest on the burst latch and on
+# bg_off_index (ASSUMED LED-VID-0010, which withholds burst timing and the backdrop colour);
+# the flag rows and the structure rows use the grid and the frame length (ASSUMED LED-VID-0004, LED-VID-0001). The evidence text prints video_sha256=... E0 repeatability: no raster-accurate, pixel-accurate or hardware claim, and the word pass is not a support claim.
+id = "video_bg_enab"
+kind = "video"
+fixture = "authored:bg-enab"
+request = ""
+expect = "rom=bg-enab;id=24;scene=video_bg_enab"
+meaning = "A guest that writes the VDC control register with BB and SB in every combination makes the core emit line records that show the tile indices with BB set, the backdrop index with SB alone, a burst frame of index 256 with neither, and a BB clear written inside a display line changing the next line and not its own (MAN H7-6, ASSUMED LED-VID-0010), E0 repeatability"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 6000000
+checks = 4

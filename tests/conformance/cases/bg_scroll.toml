@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The scroll fixture seen from the guest (plan 04-12; D-156, D-157, D-169, D-170, ER-4, ER-5): the authored fixture fixtures/src/bg_scroll.s is assembled by ca65 in the gate (never committed), is booted on the core, sets the 256-wide window, writes the palette by the bijection P(i) = (91 * i + 17) & 511, a 32 x 32 BAT and four solid tiles, reads the tiles and the palette
+# back, then writes BXR and BYR at counted instants in a display line and builds a 64 x 64 BAT with SCREEN 101, BXR 500 and BYR 300, and writes a DSV1 verdict block that the runner judges from raw RAM. The case has no policies key, so the guest kind runs the ROM under its default policy list (zero, seeded-prng-v3 seed 1, seed 2) and the check bytes must be
+# equal in all three: every value the guest
+# reads, it wrote first (D-167). The checks are readbacks of what the guest wrote (the tiles against the ROM table, the palette against an additive sum, all GUEST); the raster, the latch and the wrap are judged from the line records by the video cases video_bg_scroll and video_bg_scroll_asym.
+# Evidence tier E0: no accuracy, compatibility or hardware claim, and the word pass is not a support claim. until_mclk is a deadline above the point where the guest seals its block.
+id = "bg_scroll"
+kind = "guest"
+fixture = "authored:bg-scroll"
+request = ""
+expect = "id=23"
+meaning = "The authored bg_scroll fixture programs the window, the palette bijection, a 32 x 32 BAT and four solid tiles, reads the tiles and the palette back with expectations formed by different arithmetic than the writer and then writes the scroll registers at counted instants, 4 passing GUEST checks, identical under three power-on policies"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 6000000
+checks = 4

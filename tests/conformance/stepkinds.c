@@ -476,6 +476,7 @@ void kind_run_chunk_sum(const struct kase *k, struct ctx *c, char *got, size_t g
 
 #define RR_SINK_BYTES 64u
 #define RR_REC_RECORDS 4u
+#define RR_VID_BYTES 256u /* the byte capacity of the valid video sink (a vid capacity is a byte count, D-162) */
 #define RR_MACHINE_TIME_FIRST 600u /* the boot is run to this deadline first, so the instance is not at its boot state */
 
 static unsigned char rr_observed[DS_RUNREF_SLOTS];
@@ -483,6 +484,7 @@ static unsigned char rr_observed[DS_RUNREF_SLOTS];
  * memory too, so the refusal never depends on a bad pointer (W6) */
 static struct ds_insn_sink rr_insn;
 static struct ds_dev_sink rr_dev;
+static struct ds_vid_sink rr_vid; /* the video sink of plan 04-02: a struct and 8-byte aligned byte memory of RR_VID_BYTES bytes, so every refusal of its own is judged beside valid insn and dev sinks (W6) */
 static union {
     uint64_t align;
     unsigned char b[RR_REC_RECORDS * DS_INSN_RECORD_BYTES];
@@ -491,6 +493,10 @@ static union {
     uint64_t align;
     unsigned char b[RR_REC_RECORDS * DS_DEV_RECORD_BYTES];
 } rr_drec;
+static union {
+    uint64_t align;
+    unsigned char b[RR_VID_BYTES];
+} rr_vrec;
 
 /*
  * One refused call on instance arg (the live block w, or NULL) with request rq (or NULL): the refusal, the result fields and the unchanged instance. res is the result struct of the first call;
@@ -571,10 +577,11 @@ static void rr_variants(struct ctx *c, const char *code_name, struct ds_instance
     uint64_t until = inst->machine_time + UINT64_C(600);
 
     if (strcmp(code_name, "struct_size") == 0) {
-        const uint32_t size[5] = {(uint32_t)sizeof rq - 1u, (uint32_t)sizeof rq + 1u, (uint32_t)sizeof rq + 4u, 0u, 0xFFFFFFFFu};
+        /* the last variant is the request of the OLD size, before the vid member was appended (plan 04-02, F-16, T-04-06): a host built against the earlier layout is refused, never read past its end */
+        const uint32_t size[6] = {(uint32_t)sizeof rq - 1u, (uint32_t)sizeof rq + 1u, (uint32_t)sizeof rq + 4u, 0u, 0xFFFFFFFFu, (uint32_t)(sizeof rq - sizeof(void *))};
         unsigned i;
 
-        for (i = 0u; i < 5u; i++) {
+        for (i = 0u; i < 6u; i++) {
             rr_base_request(&rq, until);
             rq.struct_size = size[i];
             rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_struct_size);
@@ -641,6 +648,65 @@ static void rr_variants(struct ctx *c, const char *code_name, struct ds_instance
         big_dev.capacity = (uint32_t)DS_SINK_MAX_RECORDS;
         rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
         (*calls) += 7u;
+        /* the video sink (plan 04-02; D-162, T-04-05): its capacity is a byte count and its limit DS_VID_SINK_MAX_BYTES (64 MiB), judged before the byte memory like the others. The vid sink alone, beside a valid insn and dev sink, an oversized insn sink beside a
+         * valid vid sink, the largest capacity of all, and a NULL byte pointer (sink_unsupported, not memory_invalid); a capacity of exactly 64 MiB with a NULL pointer is memory_invalid (the boundary), and with real memory it is ACCEPTED (not refused, a call that takes no step). */
+        {
+            struct ds_vid_sink big_vid;
+            unsigned char *big_mem;
+
+            rr_insn.records = rr_rec.b;
+            rr_insn.capacity = RR_REC_RECORDS;
+            rr_dev.records = rr_drec.b;
+            rr_dev.capacity = RR_REC_RECORDS;
+            rr_vid.bytes = rr_vrec.b;
+            rr_vid.capacity = RR_VID_BYTES;
+            memset(&big_vid, 0, sizeof big_vid);
+            big_vid.bytes = rr_vrec.b;
+            memset(big_vid.header, 0xFF, sizeof big_vid.header);
+            big_vid.capacity = (uint32_t)DS_VID_SINK_MAX_BYTES + 1u;
+            rr_base_request(&rq, until);
+            rq.vid = &big_vid;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_sink_unsupported);
+            rr_base_request(&rq, until);
+            rq.insn = &rr_insn;
+            rq.dev = &rr_dev;
+            rq.vid = &big_vid;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_sink_unsupported);
+            rr_base_request(&rq, until);
+            rq.insn = &big_insn; /* capacity UINT32_MAX since the variants above */
+            rq.vid = &rr_vid;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_sink_unsupported);
+            big_vid.capacity = UINT32_MAX;
+            rr_base_request(&rq, until);
+            rq.vid = &big_vid;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_sink_unsupported);
+            big_vid.capacity = (uint32_t)DS_VID_SINK_MAX_BYTES + 1u;
+            big_vid.bytes = NULL;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_sink_unsupported);
+            big_vid.capacity = (uint32_t)DS_VID_SINK_MAX_BYTES;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+            (*calls) += 6u;
+            big_mem = (unsigned char *)malloc((size_t)DS_VID_SINK_MAX_BYTES);
+            if (big_mem == NULL) {
+                harness_error(c, "out of memory for the 64 MiB vid sink of the boundary variant");
+            } else {
+                big_vid.bytes = big_mem;
+                rr_base_request(&rq, inst->machine_time); /* a deadline that is not ahead: UNTIL with no step once the sink is accepted */
+                rq.vid = &big_vid;
+                rr_accept(c, w, inst, &rq, (uint32_t)DS_RUN_REASON_UNTIL);
+                {
+                    unsigned h;
+                    int zero = 1;
+
+                    for (h = 0u; h < DS_VID_HEADER_BYTES; h++) { /* count, lost, seq, bytes and the zero word of a call that took no step: all zero, and the 0xFF poison is gone */
+                        zero = zero && big_vid.header[h] == 0u;
+                    }
+                    check(c, zero, "the accepted 64 MiB vid sink did not get its header written");
+                }
+                free(big_mem);
+                (*calls)++;
+            }
+        }
     } else if (strcmp(code_name, "memory_invalid") == 0) {
         /* an insn sink whose memory the call owns or cannot use is refused with the instance byte-identical (plan 03-10; D-93, D-119, I4) */
         struct ds_insn_sink sink;
@@ -733,6 +799,98 @@ static void rr_variants(struct ctx *c, const char *code_name, struct ds_instance
             rq.dev = (struct ds_dev_sink *)(void *)(rr_rec.b + 8);
             rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
             (*calls) += 9u;
+            /* (19) a record range that would wrap the address space for the dev channel (the insn channel has it as variant 8) */
+            rr_base_request(&rq, until);
+            rq.dev = &dsk;
+            dsk.records = (uint8_t *)(UINTPTR_MAX & ~(uintptr_t)(DS_DEV_ALIGN - 1u));
+            dsk.capacity = 1u;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+            (*calls)++;
+        }
+        /* the video sink (plan 04-02; D-162, T-04-04), the same rules by byte memory: (20) vid bytes inside the instance, (21) over the request, (22) the vid struct inside the instance, (23) a misaligned byte pointer, (24) a NULL pointer with a nonzero capacity,
+         * (25) a range that would wrap the address space, (26) bytes over the result struct, (27) a misaligned vid struct, and the vid sink against the other two: (28) the vid struct over the insn struct, (29) over the dev struct, (30) vid bytes over the insn records,
+         * (31) over the dev records, (32) insn records over the vid struct, (33) dev records over the vid bytes, (34) the vid struct inside the dev records */
+        {
+            struct ds_vid_sink vsk;
+            struct ds_insn_sink isk;
+            struct ds_dev_sink dsk2;
+            struct ds_run_result vown;
+            unsigned char vsaved[sizeof vsk];
+
+            memset(&vsk, 0, sizeof vsk);
+            memset(&isk, 0, sizeof isk);
+            memset(&dsk2, 0, sizeof dsk2);
+            memset(rr_rec.b, 0, sizeof rr_rec.b); /* variants 34 reads the vid struct out of the dev record bytes: a zero capacity there */
+            memset(rr_drec.b, 0, sizeof rr_drec.b);
+            rr_insn.records = rr_rec.b;
+            rr_insn.capacity = RR_REC_RECORDS;
+            rr_dev.records = rr_drec.b;
+            rr_dev.capacity = RR_REC_RECORDS;
+            rr_vid.bytes = rr_vrec.b;
+            rr_vid.capacity = RR_VID_BYTES;
+            rr_base_request(&rq, until);
+            rq.vid = &vsk;
+            vsk.capacity = 16u;
+            vsk.bytes = (uint8_t *)in_ram;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+            vsk.bytes = (uint8_t *)(void *)&rq;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+            memcpy(vsaved, w->ram8k + (in_ram - (uintptr_t)w->ram8k), sizeof vsaved);
+            vsk.bytes = rr_vrec.b;
+            vsk.capacity = RR_VID_BYTES;
+            memcpy(w->ram8k + (in_ram - (uintptr_t)w->ram8k), &vsk, sizeof vsk);
+            rq.vid = (struct ds_vid_sink *)in_ram;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+            memcpy(w->ram8k + (in_ram - (uintptr_t)w->ram8k), vsaved, sizeof vsaved);
+            rq.vid = &vsk;
+            vsk.bytes = rr_vrec.b + 4;
+            vsk.capacity = 8u;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+            vsk.bytes = NULL;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+            vsk.bytes = (uint8_t *)(UINTPTR_MAX & ~(uintptr_t)(DS_VID_ALIGN - 1u));
+            vsk.capacity = 16u;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+            vsk.bytes = (uint8_t *)(void *)&vown;
+            rr_call_ex(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid, &vown, 0);
+            rq.vid = (struct ds_vid_sink *)(void *)((unsigned char *)&rr_vid + 4);
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+            rr_base_request(&rq, until);
+            rq.insn = &rr_insn;
+            rq.vid = (struct ds_vid_sink *)(void *)&rr_insn;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+            rr_base_request(&rq, until);
+            rq.dev = &rr_dev;
+            rq.vid = (struct ds_vid_sink *)(void *)&rr_dev;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+            vsk.bytes = rr_rec.b;
+            vsk.capacity = 16u;
+            rr_base_request(&rq, until);
+            rq.insn = &rr_insn;
+            rq.vid = &vsk;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+            vsk.bytes = rr_drec.b;
+            rr_base_request(&rq, until);
+            rq.dev = &rr_dev;
+            rq.vid = &vsk;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+            isk.records = (uint8_t *)(void *)&rr_vid;
+            isk.capacity = 1u;
+            rr_base_request(&rq, until);
+            rq.insn = &isk;
+            rq.vid = &rr_vid;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+            dsk2.records = rr_vrec.b;
+            dsk2.capacity = 1u;
+            rr_base_request(&rq, until);
+            rq.dev = &dsk2;
+            rq.vid = &rr_vid;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+            rr_base_request(&rq, until);
+            rq.dev = &rr_dev;
+            rq.vid = (struct ds_vid_sink *)(void *)(rr_drec.b + 8);
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+            (*calls) += 15u;
         }
     } else if (strcmp(code_name, "time_wrap") == 0) {
         uint64_t guard = ds_max_step_mclk();

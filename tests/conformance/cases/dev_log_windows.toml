@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
-# The window rule of the device-register log, driven through the bus choke point (plan 03-19; D-119, D-103): with MPR0 = $FF one write to every one of the eight $400-byte windows of the hardware page and one read of every window are made with a bus that carries a dev log,
-# then accesses through a NULL bus and to RAM, ROM and an unmapped bank, then the ST0 to ST2 physical writes and one dropped target ($1FE001). The log must hold exactly: the writes of windows 0 to 5 (not 6 and 7), the one read of window 4 (the $1000 window), and the three ST records;
+# The window rule of the device-register log, driven through the bus choke point (plans 03-19 and 04-19; D-119, D-149, D-103): with MPR0 = $FF one write to every one of the eight $400-byte windows of the hardware page and one read of every window are made with a bus that carries a dev log,
+# then accesses through a NULL bus and to RAM, ROM and an unmapped bank, then the ST0 to ST2 physical writes and one dropped target ($1FE001). The log must hold exactly: the writes of windows 0 to 5 (not 6 and 7), the reads of windows 0, 1 and 4 (D-149: the VDC and VCE windows and the $1000 window; a read of window 0 or 1 leaves the latch unchanged),
+# and the three ST records;
 # nothing for the other reads, the NULL bus, RAM, ROM, the unmapped bank or the dropped ST target. Each record's physical address, value (the byte written, or the byte the read returned), kind, flags (penalty bit below $1FE800, physical bit for ST) and aux (the latch after the access) are
 # checked against the rule written in the kind, and the stamp and pc are the instance's. A 4-record sink offered 10 records holds the first 4 and reads count 4, lost 6, seq 10 (drop-newest). Evidence tier E0 for the logging rule: the expected lists are written from D-119, not from
 # DuoSpool output; the latch values are read from the instance itself. No accuracy, compatibility or hardware claim, and the word pass is not a support claim.
@@ -11,7 +12,7 @@ kind = "dev_log"
 fixture = "none"
 request = ""
 expect = "mode=windows;rom=ds-proto"
-meaning = "The device-register log holds every write to windows 0 to 5, every read of window 4 and every ST physical write, and nothing for other reads, NULL-bus accesses, RAM, ROM, unmapped banks or dropped ST targets, with the drop-newest counts of a 4-record sink"
+meaning = "The device-register log holds every write to windows 0 to 5, every read of windows 0, 1 and 4 and every ST physical write, and nothing for other reads, NULL-bus accesses, RAM, ROM, unmapped banks or dropped ST targets, with the drop-newest counts of a 4-record sink"
 required = true
 control = false
 expect_outcome = "pass"

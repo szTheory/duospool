@@ -1,20 +1,20 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 4
-current_phase_name: VCE/VDC Raw Video
+current_phase: "04.1"
+current_phase_name: VDC Sprites
 current_plan: Not started
-status: planning
-stopped_at: Phase 3 complete, ready to plan Phase 4
-last_updated: "2026-11-11T23:29:29.786Z"
-last_activity: 2026-11-11
-last_activity_desc: Phase 3 complete, transitioned to Phase 4
-state_head: 12a7b411d71f4cef9c88aa421f8fec4629610a5b
+status: executing
+stopped_at: Phase 4 complete, ready to execute Phase 04.1
+last_updated: "2026-11-12T17:42:44.103Z"
+last_activity: 2026-11-12
+last_activity_desc: Phase 4 complete, transitioned to Phase 04.1
+state_head: 5ccd69784869345d88b0c14c9b5576928ca567f3
 progress:
-  total_phases: 6
-  completed_phases: 3
-  total_plans: 72
-  completed_plans: 72
-  percent: 50
+  total_phases: 7
+  completed_phases: 4
+  total_plans: 91
+  completed_plans: 88
+  percent: 57
 ---
 
 # Project State
@@ -24,22 +24,22 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-09)
 
 **Core value:** For every hardware/content profile DuoSpool claims to support, a fresh, deterministic, headless run can reproduce the machine's behavior and show the evidence (guest progress, machine time, raw video, raw audio) that backs the claim.
-**Current focus:** Phase 3 — HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
+**Current focus:** Phase 04.1 - VDC Sprites (Phase 4 complete locally, sprites split off at the D-180 cut)
 
 ## Current Position
 
-Phase: 4 — VCE/VDC Raw Video
+Phase: 04.1 — VDC Sprites
 Current Plan: Not started
-Total Plans in Phase: 38
-Status: Ready to plan
-Last activity: 2026-11-11 — Phase 3 complete, transitioned to Phase 4
+Total Plans in Phase: 3
+Status: Ready to execute
+Last activity: 2026-11-12 — Phase 4 complete, transitioned to Phase 04.1
 
-Progress: [█████░░░░░] 50%
+Progress: [██████░░░░] 57%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 72
+- Total plans completed: 88
 - Average duration: -
 - Total execution time: 0.0 hours
 
@@ -50,6 +50,7 @@ Progress: [█████░░░░░] 50%
 | 1 | 12 | - | - |
 | 2 | 22 | - | - |
 | 3 | 38 | - | - |
+| 4 | 16 | - | - |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -132,6 +133,20 @@ Progress: [█████░░░░░] 50%
 | Phase 03 P31 | 75min | 3 tasks | 12 files |
 | Phase 03 P32 | 190min | 3 tasks | 43 files |
 | Phase 03 P33 | 330min | 3 tasks | 30 files |
+| Phase 4 P01 | 90min | 3 tasks | 45 files |
+| Phase 04 P02 | 80min | 3 tasks | 17 files |
+| Phase 04 P18 | 110min | 2 tasks | 24 files |
+| Phase 04 P19 | 30min | 2 tasks | 30 files |
+| Phase 04 P05 | about 4h | 3 tasks | 22 files |
+| Phase 4 P06 | 39min | 3 tasks | 31 files |
+| Phase 04 P07 | 52min | 3 tasks | 39 files |
+| Phase 04 P08 | 28min | 2 tasks | 16 files |
+| Phase 04 P17 | 3h | 2 tasks | 32 files |
+| Phase 04 P09 | about 3 h | 3 tasks | 29 files |
+| Phase 04 P10 | about 2h | 3 tasks | 37 files |
+| Phase 04 P11 | about 50 min | 3 tasks | 30 files |
+| Phase 4 P12 | 1h | 3 tasks | 30 files |
+| Phase 04 P13 | 4h | 3 tasks | 22 files |
 
 ## Accumulated Context
 
@@ -270,6 +285,45 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-33: README supported-entry list is gated against the ledger (DOCS_SUPPORTED_LIST/MEANING) and the withheld claim words are legal only quoted on one policy line (DOCS_CLAIM_WORD)
 - [Phase 03]: 03-33: gate job timeout-minutes raised from 10 to 20 (estimated Phase 3 job 6 to 10 min, no CI row yet); second awk run stays a whole gate run (52 of 56 stages run awk); sanitizers-under-clang is a note for the owner, review after the first CI row
 - [Phase 03]: 03-33: WLA-DX one-off run gave 233 of 234 rows equal, BRK differs, no cross-assembler claim; tool uninstalled because the optional xasm path turns the gate red while it is on PATH
+- [Phase 4]: 04-01: no E1 candidate promoted; every literal cited by the 17 new entries was seen on its page image (ER-1, ER-2)
+- [Phase 4]: 04-01: LED-VID-0002 pcetech note reworded after re-read; its register and clock figures agree
+- [Phase 04]: A malformed vid offer (NULL or empty record) is counted lost, never copied and does not set the sticky full flag
+- [Phase 04]: The observer matrix gives the vid sink a byte capacity: closed form of the deadline for large, first four record sizes of the large run for drop4, 0 and 1 for cap0 and cap1
+- [Phase 04]: Table-driven sink checks landed in the tracer task because a run must not write through an unchecked vid pointer
+- [Phase 04]: 04-18: seeded-prng-v3 is additive (every v2 draw first, then VRAM____, SATB____, PAL_____ straight into the arrays, odd palette bytes keep bit 0); policy 4 accepted by dec_powr only with the allowed set; the default guest list is zero, v3 seed 1, v3 seed 2
+- [Phase 04]: 04-18: restore refusal rows of the seven Phase 4 regions are split over four cases (vdc, beam, timeline, vdma) because a case expect list is capped at 511 characters
+- [Phase 04]: 04-19: reads of VDC and VCE windows are dev-logged once for the phase (D-149); the restore refuses a next event outside [machine_time, machine_time + 2730), a valid satb_done_at outside [machine_time, machine_time + 4096] and a running dma_start after machine_time, judged after the lat_div rule
+- [Phase 04]: 04-19: the video kind decodes VCE writes by offset & 7 in the window, and OB_DEV_LARGE is 16384 (measured 10,980 dev records in the 32 random programs); vce.inc is frozen
+- [Phase 04]: 04-05: snapshot_restore_video restores at every stop of the 1364 and 1366 schedules over the first 600,000 clocks of vce_pal, strided plus line-event stops for schedule 7 (a restore costs about 0.7 ms; 4,000,000 clocks took 83 s)
+- [Phase 04]: 04-05: every observer case requires the large vid sink to have been offered the closed-form line count; the observer kind takes an optional policies key
+- [Phase 04]: 04-05: video_vce_pal is harness_failure (not guest_failure) under toy fold-skipped-at-step-end, so the A5 exception stands; vid-emit-mutates anchors in ds_vid_render
+- [Phase 04]: 04-05: --video-out accepts only video cases of authored or synthetic fixtures, writes build/gate/video ID.dsvr and ID.tsv, and the gate recomputes the stream SHA-256 with a host tool
+- [Phase 4]: Reads of the data pair return the read buffer byte for every AR; only an MSB read with AR = 2 (VRR) starts the next read operation
+- [Phase 4]: VWR MSB stores (msb << 8) | write latch at MAWR through the one accessor pair; the latch is never cleared; MAWR steps by the IW increment even when the store is dropped
+- [Phase 4]: vdc_regmask judges MARR after its read operation (a write of FFFF steps it to 0000); masks are field widths, not a read-back claim
+- [Phase 4]: mmu_mpr checks 23 and 24 take class ASSUMED:LED-PROF-0003 (VDC state 0 at power-on); numbers, count and image bytes unchanged
+- [Phase 4]: snapshot_hostile gains vdc-tia=NAME: restore stops chosen by block transfer state inside the TIA and TAI transfers of the VDC data port, continued to the end equal to one run
+- [Phase 04]: F-42 ruling (04-07): the video-check gate is ONE stage (stage_video_check runs the checker then the tests/video mini-roots, worst code wins), so the gate has 57 stages
+- [Phase 04]: 04-07: a video group has one class, so vce_pal has six groups (struct, frame, div, divline, border, dirty); the STRUCT check list is extended in vexp-rules.awk and videokinds.c together; faults act at the focus record of a group and F4 inserts a copy of the previous record
+- [Phase 04]: 04-07: the toy cross-rules of video-check run only where a root has a toy registry (VIDEO_TOY_EXEMPT or tests/controls); the golden digest of video_vce_pal_golden is E0 repeatability, repinned by any plan that changes the vce_pal records
+- [Phase 04]: 04-08: v_togo counts the lines of a vertical state still to come after the current line; the VBlank state entry is the transition out of VDW and a frame wrap that cuts VDW raises no VD (LED-IRQ-0001)
+- [Phase 04]: 04-08: model_param_vdc judges the VD (+96) and RR (-1365) status-read stamp shifts from the dev log within 15 master clocks, the longest foreground-loop instruction (ASSUMED LED-IRQ-0001, LED-IRQ-0010)
+- [Phase 04]: 04-17: the chain starts at the second RCR = 64 match (h_sync) because the vertical registers are written about 28 lines into frame 0; cycles 0 to 3 are judged
+- [Phase 04]: 04-17: the vector trampoline jmp (VEC_IRQ1) is part of every handler cost; h_last is 66 cycles, so the last-display-line handler returns before VD (A10 held)
+- [Phase 04]: 04-17: the EXPECT second column pass is read by conformance-run toy-expect and toy-verdict; judge=A-B judges a range of checks with the whole DSV1 block verified
+- [Phase 04]: 04-09: the active window is computed in vid.c from HSR, HDR and the latched divider at EV_LINE; a window past the line is clipped to the whole dots that fit (CLIPPED, active_x 0 when none fit); blank payload index 256 until 04-11
+- [Phase 04]: 04-09: the vce_pal golden moved with Task 1 (display lines now carry a payload); the mid-frame instant is guarded by a 250-clock margin check in the runner
+- [Phase 04]: The DMA completion and the DS time are applied in time order inside the fold by the closed form, not stored as events; ds_vdc_pending_time and the restore windows stay unchanged
+- [Phase 04]: BURST is set on the display lines of a burst frame only; the blank payload is unchanged until 04-11
+- [Phase 04]: The vce_pal golden moved with the first burst flag (a33b1f0e), the literal case passing first
+- [Phase 04]: The SATB copy is made at the VBlank state entry EV_LINE and DS is due 256 * 4 * lat_div master clocks later, an assumed modelling choice (LED-VID-0013)
+- [Phase 04]: 04-11: bg_y stepped at each display line in beam.c and set by a BYR write in vdc.c; bxr_line a local of vid.c; BB and SB flags on every record; UNMODELLED on every record while the latched MWR has VM or SM set
+- [Phase 04]: 04-11: ROWS selector gains ;frame=F and STRUCT check frame_flags; guest frames counted by delays (polling fills the 16,384-record device log)
+- [Phase 4]: 04-12: BXR latch rows use a 16-dot shift over a 32-dot period row, so the next-line rows are MAN H7-7 and direction-independent; direction and the 64x64 wrap are a separate ASSUMED LED-VID-0010 scene
+- [Phase 4]: 04-12: a latch row finds its line by counting record origins before the dev-log write stamp, with a 250-clock margin guard as a harness failure; toy vid-scroll-latch removes the BYR counter reload (D-173 wording unobservable under R1)
+- [Phase 4]: 04-12: the burst frame and the backdrop index are classed ASSUMED LED-VID-0010, not MAN H7-6 (burst timing and backdrop colour are withheld words)
+- [Phase 04]: 04-13: the quiet-gate cut-line trigger fired (262 to 374 s user CPU against 150 s, load-dependent) and the cut is recommended; D-176 lever 1 applied (toy object libraries), levers 2 to 4 recorded
+- [Phase 04]: 04-13: seven page-scoped entries (LED-VID-0006, 0008, 0009, 0013, 0014, 0016, 0017) promoted to supported under ER-2; LED-VID-0011 stays assumed
 
 ### Pending Todos
 
@@ -293,6 +347,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-11T22:26:36.867Z
-Stopped at: Phase 3 complete, ready to plan Phase 4
+Last session: 2026-11-12T16:12:03.728Z
+Stopped at: Phase 4 complete, ready to execute Phase 04.1
 Resume file: None

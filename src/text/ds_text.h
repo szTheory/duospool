@@ -31,9 +31,9 @@
 #define DS_TEXT_REASON_MAX 40u
 
 /* version of the record layout: bumped whenever a table or a key is added, removed or reordered (3: plan 03-18 adds the model tables, the constants table and the run table; 4: plan 03-23 adds the stimulus table after the model tables and four rows to the constants table; 5: plan 03-28 adds the input table, events and
- * schedule_sha256, between the stimulus and constants tables, 6: plan 03-29 prints [withheld] as count and one row id_N per ledger id, so the 24-id cap of the single ids line is gone)
+ * schedule_sha256, between the stimulus and constants tables, 6: plan 03-29 prints [withheld] as count and one row id_N per ledger id, so the 24-id cap of the single ids line is gone; 7: plan 04-03 adds the two model rows vd_irq_phase and rcr_origin, the two constants rows line_mclk and rcr_counter_poweron and their ledger ids to [withheld])
  */
-#define DS_TEXT_FORMAT_VERSION 6u
+#define DS_TEXT_FORMAT_VERSION 7u
 
 enum ds_text_status {
     DS_TEXT_OK = 0,

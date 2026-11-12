@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Fixture manifest entry (FIX-02, FIX-01, D-59 amended, D-123): one authored HuCard image of fixtures/src/vdc_irq.s. The bytes are assembled in the gate by ca65 and ld65 and are
+# never committed. scripts/fixture-check compares size and sha256 below with the bytes scripts/fixture-build wrote, as hashed by the host sha tool, so a changed source, library or
+# toolchain output turns the gate red. The pin was measured on the Homebrew cc65 2.19 bottle (see fixtures/lib/TOOLS.md); it proves the build is repeatable, nothing more.
+# Repin of the review fix L-01 of the gate review (RATIO_TOL 9 to 12 in fixtures/src/vdc_irq.s, one immediate operand): old sha256 a65f291669063f470f31f8a3cd7696be3c2f17f5580d0f525845f5e73a5db8eb, new 66cfde7be7e0e755a5d2cf17b8517b742ae9d53fd908c9ed9efdefc1db3371f1, measured with shasum -a 256 over the built image; the size is unchanged.
+id = "vdc_irq_263"
+kind = "authored"
+source = "fixtures/src/vdc_irq.s"
+recipe = "vdc-irq-263: ca65 --cpu huc6280 -D ROMBANKS=32 -D LINES=263 -I fixtures/lib -o build/gate/fx/vdc-irq-263.o fixtures/src/vdc_irq.s; ld65 -C fixtures/lib/hucard.cfg -D ROMBANKS=32 -o build/gate/fixtures/vdc-irq-263.pce build/gate/fx/vdc-irq-263.o"
+toolchain = "cc65 V2.19 (ca65 prints V2.18; identity by encoding-matrix bytes, plan 03-08), Homebrew bottle 2.19 locally, hashed by sha256sum or shasum -a 256"
+size = 262144
+sha256 = "66cfde7be7e0e755a5d2cf17b8517b742ae9d53fd908c9ed9efdefc1db3371f1"
+licence = "0BSD"
+notices = "none: assembled at gate time from the project-owned sources fixtures/src/vdc_irq.s and fixtures/lib/*.inc and hucard.cfg (0BSD); no HuC, PCEAS or cc65 library or startup code, no emulator code, no game content"
+redistribution = "generated-not-committed"
+meaning = "The 263-line variant of the authored vdc_irq diagnostic HuCard (conditional assembly on LINES): the same source and the same 16 checks as the plain image, whose frame-period literal is that of 263 lines. A pass is not a support claim."
+verdict_source = "manual-cite:H7-4+spec-literal:LED-VID-0001+spec-literal:LED-IRQ-0001+spec-literal:LED-IRQ-0010+spec-literal:LED-IRQ-0009+spec-literal:LED-VID-0015+guest-computed"

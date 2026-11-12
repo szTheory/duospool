@@ -37,11 +37,11 @@ E4 = differential vs another emulator (finds disagreements, decides nothing).
 
 ### Video (HuC6270 VDC / HuC6260 VCE)
 
-- [ ] **VID-01**: The VDC renders background layers from the BAT/VRAM with documented scroll-register latch timing (e.g. BXR/BYR rules), verified by authored display fixtures with literal expected values.
+- [x] **VID-01**: The VDC renders background layers from the BAT/VRAM with documented scroll-register latch timing (e.g. BXR/BYR rules), verified by authored display fixtures with literal expected values.
 - [ ] **VID-02**: The VDC renders sprites from the SAT with the documented per-line limit and overflow/collision status, verified by fixtures.
-- [ ] **VID-03**: The VDC implements VRAM read/write via the register interface, VRAM→SATB DMA, and VRAM-to-VRAM DMA to the documented level, with unverified timing labeled in the ledger.
-- [ ] **VID-04**: VDC interrupts (raster-compare and VBlank, status read/acknowledge) fire at the modelled position on the master-clock timeline, verified by a fixture that records interrupt scanlines in guest RAM.
-- [ ] **VID-05**: The VCE implements the 512-entry, 9-bit palette (write and readback) and the dot-clock modes, with per-line horizontal geometry derived from the selected dot clock.
+- [x] **VID-03**: The VDC implements VRAM read/write via the register interface, VRAM→SATB DMA, and VRAM-to-VRAM DMA to the documented level, with unverified timing labeled in the ledger.
+- [x] **VID-04**: VDC interrupts (raster-compare and VBlank, status read/acknowledge) fire at the modelled position on the master-clock timeline, verified by a fixture that records interrupt scanlines in guest RAM.
+- [x] **VID-05**: The VCE implements the 512-entry, 9-bit palette (write and readback) and the dot-clock modes, with per-line horizontal geometry derived from the selected dot clock.
 - [ ] **VID-06**: Raw video is emitted as per-scanline records (VCE colour indices/9-bit values plus dot-clock/width metadata and frame line count) before any host colour conversion or scaling. Mid-frame dot-clock or geometry changes are represented, not hidden.
 
 ### Audio (PSG)
@@ -166,12 +166,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CPU-04 | Phase 3 | Complete |
 | CPU-05 | Phase 3 | Complete |
 | CPU-06 | Phase 3 | Complete |
-| VID-01 | Phase 4 | Pending |
-| VID-02 | Phase 4 | Pending |
-| VID-03 | Phase 4 | Pending |
-| VID-04 | Phase 4 | Pending |
-| VID-05 | Phase 4 | Pending |
-| VID-06 | Phase 4 | Pending |
+| VID-01 | Phase 4 | Complete |
+| VID-02 | Phase 4.1 | Pending |
+| VID-03 | Phase 4 | Complete |
+| VID-04 | Phase 4 | Complete |
+| VID-05 | Phase 4 | Complete |
+| VID-06 | Phase 4.1 | Pending |
 | AUD-01 | Phase 5 | Pending |
 | AUD-02 | Phase 5 | Pending |
 | AUD-03 | Phase 5 | Pending |

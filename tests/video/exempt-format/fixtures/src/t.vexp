@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# exempt-format: the scene case is exempted by a sound line, and the exempt file holds one more line with no reason: VIDEO_EXEMPT_FORMAT. Review fix H-04: the control of the tag rule-video-exempt-format.
+scene	ef	case=video_ef	role=literal
+group	ef	g1	form=STRUCT	class=MAN:H6-3	sym=none	kills=F0,F5
+row	ef	g1	check=div_table	div=4,3;crw=0,1;gap=5460

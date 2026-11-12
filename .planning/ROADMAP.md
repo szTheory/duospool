@@ -19,7 +19,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Owner Decisions, Claim Ledger and Toolchain Spike** - Gate phase. Measured language spike, a first-profile record, and decision records for the owner to confirm. The claim ledger holds every open hardware fact (completed 2026-11-09)
 - [x] **Phase 2: Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate** - Typed accept/refuse of HuCard bytes into fresh, isolated, seeded instances. One local command and CI fail closed (completed 2026-11-10)
 - [x] **Phase 3: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad** - Authored fixtures report guest-RAM verdicts for the CPU, MMU, timer, IRQ, and SEL/CLR pad, with negative controls and resumable bounded runs (completed 2026-11-11)
-- [ ] **Phase 4: VCE/VDC Raw Video** - Per-scanline raw video and guest-recorded interrupt timing, checked against literal expectations for background, sprites, DMA, palette, and dot clock
+- [x] **Phase 4: VCE/VDC Raw Video** - Per-scanline raw video and guest-recorded interrupt timing, checked against literal expectations for background, DMA, palette, and dot clock (sprites moved to Phase 04.1 at the D-180 cut) (completed 2026-11-12)
+- [ ] **Phase 04.1: VDC Sprites** - Sprites from the SAT with the per-line limit and the overflow and collision flags written into guest RAM, checked against literal expectations (split from Phase 4 at the D-180 cut)
 - [ ] **Phase 5: PSG Raw Audio** - Timestamped PSG event log and PCM at a recorded format, checked by semantic properties. Can run in parallel with Phase 4
 - [ ] **Phase 6: Headless Runner, Installed-Consumer Proof and Staged Verification** - Separate observation artifacts, an independent consumer against the installed artifact, staged fuzzing, a benchmark, and a LibFuturo fit evaluation
 
@@ -169,20 +170,56 @@ Plans:
 - [x] 03-33-PLAN.md — W8: README wording with docs-check, timing re-baseline, optional WLA run, CI unverified record
 **Research**: Needed for targeted timing edges (C9, C10): block-transfer and CLI/RTI interrupt latency, speed-switch cycle count, TAM/TMA #0, power-up MPRs beyond MPR7, and ST0-ST2 (manual p. H8-3). Opcode tables come from the manual and follow a standard pattern.
 
-### Phase 4: VCE/VDC Raw Video
+### Phase 4: VCE/VDC Raw Video (cut at checkpoint 04-13; sprites in Phase 04.1)
 **Goal**: Authored display fixtures produce per-scanline raw video and record interrupt timing in guest RAM. Background, sprite, DMA, palette, and dot-clock behaviour are checked against literal expectations, never against a frame hash alone.
 **Mode:** mvp
 **Depends on**: Phase 3 (interrupt controller, timestamped CPU device access)
-**Requirements**: VID-01, VID-02, VID-03, VID-04, VID-05, VID-06
+**Requirements**: VID-01, VID-03, VID-04, VID-05, VID-06 (partial: the sprite share of the records is in Phase 04.1); VID-02 moved to Phase 04.1
 **Owner gates**: Lines-per-frame value from the first-profile record (decision 2). Any hardware capture that would settle IRQ position or geometry needs the owner's capture decision (10). None is assumed.
 **Success Criteria** (what must be TRUE):
   1. Background fixtures draw known tiles through the BAT with scroll writes. The per-scanline raw record contains VCE colour values, dot-clock divisor, active window, master-clock origin, and frame line count, and it matches literals derived from the fixture's own data. A scroll write takes effect at the documented latch point (BXR/BYR on the next line).
-  2. Sprite fixtures write the per-line limit and the overflow and collision status flags into guest RAM. Fixtures for VRAM register read/write, VRAM-to-SATB DMA, and VRAM-to-VRAM DMA verify the data moved. Each claim states its VDC simplification level, and any DMA or access-slot timing without a source is labelled in the ledger.
+  2. Fixtures for VRAM register read/write, VRAM-to-SATB DMA, and VRAM-to-VRAM DMA verify the data moved, and status-register reads acknowledge the flags in guest RAM. Each claim states its VDC simplification level, and any DMA or access-slot timing without a source is labelled in the ledger. (The sprite half of this criterion, the per-line limit and the overflow and collision flags written into guest RAM by sprite fixtures, is Phase 04.1.)
   3. A fixture writes the scanline and phase of raster-compare and VBlank interrupts into guest RAM. The recorded values agree with the modelled position for the profile's line count. They are labelled a modelling assumption, not a hardware claim, until a primary manual page or an owner-approved capture settles C3.
   4. All 512 9-bit palette entries round-trip through write and readback in guest RAM. A dot-clock change, including one mid-frame, shows up as changed per-line geometry in the raw record and is never normalised to a fixed width.
   5. A raw-video hash counts as a verdict only when paired with a semantic literal assertion, and that assertion is shown to fail when the renderer is deliberately broken.
-**Plans**: TBD
+**Plans**: 16/16 plans complete in 15 sequential waves, listed in execution order (context waves W1-W6 of 04-CONTEXT; the D-180 cut was taken at checkpoint 04-13, so W7-W8 became Phase 04.1; 04-17 is a planned split of 04-08; 04-18 and 04-19 are stop-rule splits of 04-03 and 04-04)
+
+Plans:
+- [x] 04-01-PLAN.md - W1: evidence data: ER-1 page-image reads, cites, ledger entries and amendments, claim words (data only)
+- [x] 04-02-PLAN.md - W1: vid sink plumbing and the fold placement in ds_cpu_step_obs, obs_begin callers, ABI-skew control
+- [x] 04-03-PLAN.md - W2: layout and the single serial 7 to 8 / epoch 4 to 5 bump, decoders with the restore domain rules, regenerated goldens (data only; Tasks 1-2 executed, rest split to 04-18)
+- [x] 04-18-PLAN.md - W2: seeded-prng-v3 at its nine sites, new default guest policy list, restore-refusal cases and hostile flips (stop-rule split of 04-03)
+- [x] 04-04-PLAN.md - W2: TRACER: guest VCE palette and CR writes to header-only scanline records to digest, end to end (Task 1 executed; rest split to 04-19)
+- [x] 04-19-PLAN.md - W2: vce_pal completion, vce.inc and RODATA, toy vid-palette-mask, dev read logging, mmu_mpr checks 25-26, fold-window restore rules (stop-rule split of 04-04)
+- [x] 04-05-PLAN.md - W2: tracer hardening: chunk tokens, sink sizing, observer matrix, first toy, stale-prose cleanup
+- [x] 04-06-PLAN.md - W3: VDC register file and VRAM interface, accessor sweep, mmu_mpr re-pins
+- [x] 04-07-PLAN.md - W3: video judge and the video-check stage: ROWS/REL/STRUCT, fault sweep, hash-role rules, class lint
+- [x] 04-08-PLAN.md - W4: raster timeline, status register and IRQ1 level, model_param_vdc
+- [x] 04-17-PLAN.md - W4: IRQ position fixtures (262 and 263 lines), ratio and agree kinds, pass column, toys (split from 04-08)
+- [x] 04-09-PLAN.md - W4: active window geometry and dot clock, mid-frame change visible in the records
+- [x] 04-10-PLAN.md - W4: VRAM-to-SATB and VRAM-to-VRAM DMA, BURST flag, restore divisor guards
+- [x] 04-11-PLAN.md - W5: background renderer: BAT, tiles, palette banks, border
+- [x] 04-12-PLAN.md - W5: scroll latch, enables, burst frame, bg fixtures and toy
+- [x] 04-13-PLAN.md - W6: Checkpoint A (cut line): full verification, timing record, owner cut-line inputs
+
 **Research**: Needed (heavy). VBlank and RCR IRQ position (C3), dot-clock register encoding (C4), 7 MHz active width (C5), and mid-frame width change (C11). For the VDC: VRAM slot model per dot mode, DMA timing, burst mode, and sprite overflow/collision semantics. Re-read manual pp. H7-6 to H7-11 and the cited HuC6260 pages before planning. If the phase grows too large, planning may split background/IRQ from sprites/DMA into separate plans or an inserted decimal phase.
+
+### Phase 04.1: VDC Sprites (INSERTED)
+**Goal**: Authored sprite fixtures draw sprites from the SAT into the per-scanline raw records and write the per-line limit and the overflow and collision status flags into guest RAM, checked against literal expectations and never against a frame hash alone. This closes the sprite rows of VID-02 and the sprite share of VID-06 that Phase 4 left at the D-180 cut.
+**Mode:** mvp
+**Depends on:** Phase 4
+**Requirements**: VID-02, VID-06
+**Success Criteria** (what must be TRUE):
+  1. Sprite fixtures write the per-line limit and the overflow and collision status flags into guest RAM, and sprites drawn from the SAT (both widths, three heights, flips, priority, clipping) match literals derived from the fixture's own data in the raw records (the sprite half of Phase 4 criterion 2).
+  2. A sprite raw-video hash counts as a verdict only when paired with a semantic literal assertion, and that assertion is shown to fail when the sprite renderer or slot limit is deliberately broken (the sprite half of Phase 4 criterion 5).
+**Plans**: 0/3 plans executed in 3 sequential waves, listed in execution order (CONTEXT plans 04-12..04-14; former files 04-14..04-16)
+
+Plans:
+- [ ] 04.1-01-PLAN.md - gate-cost levers (2)-(4) of D-176 with before and after times, then sprite decode and drawing through SATB DMA (spr_basic)
+- [ ] 04.1-02-PLAN.md - slot limit, overflow and collision, flags into guest RAM, OR and CR rows of vdc_stat, toy vid-spr-limit (spr_limit)
+- [ ] 04.1-03-PLAN.md - close-out for the sprite scope: timing and CI-efficiency inputs, sprite ledger promotions, README sprite sentences, 04.1-VALIDATION.md sign-off
+
+**Research**: No research needed beyond the Phase 4 context (the sprite decisions D-155, D-159 and D-160 in 04-CONTEXT).
 
 ### Phase 5: PSG Raw Audio
 **Goal**: Authored audio fixtures produce a timestamped PSG event log and PCM at a recorded format. Semantic properties are checked, and no pitch or timing claim goes beyond the available evidence.
@@ -239,6 +276,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phases 4 and 5
 | 1. Owner Decisions, Claim Ledger and Toolchain Spike | 12/12 | Complete    | 2026-11-09 |
 | 2. Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate | 22/22 | Complete    | 2026-11-10 |
 | 3. HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad | 38/38 | Complete    | 2026-11-11 |
-| 4. VCE/VDC Raw Video | 0/TBD | Not started | - |
+| 4. VCE/VDC Raw Video | 16/16 | Complete    | 2026-11-12 |
+| 04.1. VDC Sprites | 0/3 | Not started | - |
 | 5. PSG Raw Audio | 0/TBD | Not started | - |
 | 6. Headless Runner, Installed-Consumer Proof and Staged Verification | 0/TBD | Not started | - |

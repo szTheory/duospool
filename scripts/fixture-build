@@ -12,6 +12,7 @@
 #   the synthetic list OUT/fixtures.used stays with the fixtures mode of conformance-run (F3). Everything this script makes is removed first, so a stale image is never read.
 #   Beside every image it writes OUT/fixtures/NAME.observe, the observe rows of the fixture's .checks file (write_observe below; plan 03-10), and OUT/fixtures/NAME.classes, one line per check of the
 #   .checks file, the index, a TAB and the class MAN, GUEST or ASSUMED of its tag (write_classes below; plan 03-32, ER-4): the guest judge of the runner reads it and prints the per-class counts in the evidence file.
+#   A stem with a SRC/STEM.vexp (the hand-written literal rows of a video scene, plan 04-07) also gets OUT/fixtures/NAME.vexp.tsv, the rows with the comments dropped (write_vexp below): the runner kind video reads it, and scripts/video-check judges the source.
 #   Assembler identity is by behaviour (the encoding matrix of a later plan and the image hash pins), never by --version: the V2.19 tag prints
 #   V2.18 (D-128).
 # stdout: PREFLIGHT_MISSING NAME for each missing tool, or on success the marker line  STATUS fixture-build ok n=N
@@ -45,7 +46,9 @@ usage() {
 
 # the variants list: STEM NAME ROMBANKS FLAGS, one image per line, built from fixtures/src/STEM.s with its own ROMBANKS and the extra ca65 flags (plan 03-05, D-124; the ROMBANKS column is plan 03-20, D-127). NAME is a-z 0-9 and hyphens
 # (F2) and ROMBANKS a number of 8 KiB banks; a stem with no line here has only its own image (32 banks). The four ds-proto variants are the DSV1 protocol controls (see fixtures/lib/verdict.inc); the two mmu-mpr variants are the
-# 384 KiB and 1 MiB images of the memory-map fixture, whose literals that differ by image size come from conditional assembly on ROMBANKS in the one source. The two cpu-blk variants (plan 03-25) are the 65536-byte long transfer (-D LEN0) and the interrupt around a 4096-byte transfer (-D BLK_IRQ) of the block-transfer fixture.
+# 384 KiB and 1 MiB images of the memory-map fixture, whose literals that differ by image size come from conditional assembly on ROMBANKS in the one source. The two cpu-blk variants (plan 03-25) are the 65536-byte long transfer (-D LEN0) and the interrupt around a 4096-byte transfer (-D BLK_IRQ) of the block-transfer fixture. The vdc-irq-263 variant (plan 04-17, F-38) is the
+# 263-line image of the interrupt measurements (-D LINES=263), whose only difference is the frame-period literal.
+# The vce-pal-nopal variant (plan 04-13, D-167, Pitfall 13) is the vce_pal image with the palette-initialisation block left out (-D NOPAL): a control image whose border differs between the power-on policies, so the policy guard can fail; it carries no DSV1 judgement.
 variants='ds_proto ds-proto-predone 32 -D DSV_PREDONE
 ds_proto ds-proto-nodone 32 -D DSV_NODONE
 ds_proto ds-proto-badsum 32 -D DSV_BADSUM
@@ -53,7 +56,9 @@ ds_proto ds-proto-wrongid 32 -D DSV_WRONGID
 mmu_mpr mmu-mpr-384k 48
 mmu_mpr mmu-mpr-1m 128
 cpu_blk cpu-blk-len0 32 -D LEN0
-cpu_blk cpu-blk-irq 32 -D BLK_IRQ'
+cpu_blk cpu-blk-irq 32 -D BLK_IRQ
+vdc_irq vdc-irq-263 32 -D LINES=263
+vce_pal vce-pal-nopal 32 -D NOPAL'
 
 src=$root/fixtures/src
 out=$root/build/gate
@@ -66,7 +71,8 @@ while [ $# -gt 0 ]; do
     *) usage ;;
   esac
 done
-# IN-04: the cleanup below removes three names under $out, so an empty or root-like --out would remove /fx, /fixtures and /fixtures-authored.used (or the same names in the repository root or the home directory). Refuse an empty value, a value that is / (or only slashes), . or .. , a path with a .. component, and a directory that is the repository root or the home directory; an empty --src is refused too.
+# IN-04: the cleanup below removes three names under $out, so an empty or root-like --out would remove /fx, /fixtures and /fixtures-authored.used (or the same names in the repository root or the home directory). Refuse an empty value, a value that is / (or only slashes), . or .. , a path with a .. component, and a directory that is the repository root or the home directory; an
+# empty --src is refused too.
 for g_opt in src out; do
   eval "g_val=\$$g_opt"
   g_trim=$g_val
@@ -143,6 +149,36 @@ write_classes() {
   fi
 }
 
+# write_vexp STEM NAME (plan 04-07; D-171, F-5, F-38): OUT/fixtures/NAME.vexp.tsv carries the rows of SRC/STEM.vexp, the hand-written literal rows of a video scene, to the runner (the runner reads build/gate/fixtures/NAME.* by a relative path and takes no argument for it). Comments and blank lines are dropped; every other line is a row of one of the four kinds
+# scene (3 fields after the kind), group (6), row (4) and golden (2), TAB separated, no empty field and no space inside a field; the full grammar, the class lint and the role and kill rules are judged by scripts/video-check and again by the runner, so this writer only shapes the file. A malformed row, an unknown kind or no row at all is a harness error (exit 2), never an empty file.
+# The file is written only for the base image of a stem that has a .vexp source. awk runs with its status tested and nothing on the left of a pipe (CR-01).
+write_vexp() {
+  wv_vexp=$src/$1.vexp
+  [ -f "$wv_vexp" ] || return 0
+  if awk -F '\t' '
+    /^#/ || /^[ \t]*$/ { next }
+    {
+      want = 0
+      if ($1 == "scene") want = 4
+      else if ($1 == "group") want = 7
+      else if ($1 == "row") want = 5
+      else if ($1 == "golden") want = 3
+      if (want == 0 || NF != want) { bad = 1; next }
+      for (i = 1; i <= NF; i++) {
+        if ($i == "" || index($i, " ") > 0) bad = 1
+      }
+      n++
+      print $0
+    }
+    END { exit (bad || n == 0) ? 1 : 0 }
+  ' "$wv_vexp" > "$out/fixtures/$2.vexp.tsv"; then
+    :
+  else
+    echo "HARNESS_ERROR $wv_vexp has a row of an unknown kind, a row with the wrong number of fields, an empty field or a space inside a field, or no row at all"
+    exit 2
+  fi
+}
+
 # build_one STEM NAME ROMBANKS [ca65 flags...]: assemble SRC/STEM.s with ROMBANKS banks and link it into OUT/fixtures/NAME.pce, then hash and measure the image and append its used-list line
 build_one() {
   b_stem=$1
@@ -183,6 +219,7 @@ for s in "$src"/*.s; do
   esac
   name=$(printf '%s' "$stem" | tr '_' '-')
   build_one "$stem" "$name" 32
+  write_vexp "$stem" "$name"
   # the variants of this source: one image per line of the list, built from the same source with the -D switches of that line
   while read -r v_stem v_name v_banks v_flags; do
     [ "$v_stem" = "$stem" ] || continue

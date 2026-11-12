@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# VRAM size, out-of-range access and power-on contents (D-147, D-167; VID-03). A modelling assumption, not a hardware fact.
+id = "LED-VID-0007"
+statement = "VL0: VRAM is 32,768 words; a read at a word address $8000 to $FFFF returns 0 and a write there is dropped; power-on contents follow the power-on policy (drawn under seeded-prng-v3, zero otherwise) and every VDC register is 0. A modelling assumption."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["REPORT|pcetech.txt|VRAM size and out-of-range reads, a community reading", "UNKNOWN|VRAM size|H7-12 allows a block length of 64K words; no page held states the installed size"]
+evidence = []
+disagreement = "an out-of-range read is a mirror or corrupt data (pcetech), 0 (MAME) or an unwritten array (Mednafen); writes ignored is agreed by four sources"
+pinning_test = "TEST:vdc_vram_sweep"
+updated = "2026-11-11"
+assumption = "The size is the community figure; the out-of-range read value vdc_oob_read = 0 is a named constant. VRAM is stored as bytes, little endian, so the live span is the stream payload on every host. Pinned by the case vdc_vram_sweep (plan 04-06); E0, status stays assumed."
+revisit_phase = 4
+withheld = ["VRAM size", "VRAM mirroring", "power-on VRAM contents"]
+origin = "04-CONTEXT D-147"

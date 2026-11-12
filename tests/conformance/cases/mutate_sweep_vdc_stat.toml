@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Mutation sweep of the vdc_stat fixture (plan 04-08; D-126, D-169, D-170, ER-4, ER-5, ER-7, F-41, FIX-03): the built image of fixtures/src/vdc_stat.s (vdc-stat) is loaded once, its DCK1 literal table is found at file offset $1000, and for each of the 21 checks the value byte of its entry (the expected literal) is XORed with $FF in a fresh
+# in-memory copy that is booted and run in this same process. The unmutated image must pass first. Each mutation must flip exactly its own check to $46 and leave the others $50: a check whose literal can be changed without flipping it is vacuous and the case is guest_failure. The fixture has no observe-only row, so nothing is excluded (F-41: exclude equals the observe file, which is empty).
+# The sweep runs under the default power-on policy only. Evidence tier E0 (a mechanism check of the checks themselves): no accuracy or compatibility claim; the word pass is not a support claim.
+id = "mutate_sweep_vdc_stat"
+kind = "mutate_sweep"
+fixture = "authored:vdc-stat"
+request = ""
+expect = "id=17"
+meaning = "Changing the expected literal of any one of the 21 vdc_stat checks flips exactly that check to fail and no other, so none of the 21 checks is vacuous"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 5000000
+checks = 21

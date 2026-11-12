@@ -42,6 +42,13 @@ and evidenced is not supported, regardless of how it looks in a frontend.
   time, fresh isolated instances, bounded runs with absolute deadlines, and
   repeatable outputs, including chunked runs and snapshot/restore that match
   an uninterrupted run — Phase 3 (evidence tier E0, repeatability only)
+- ✓ Raw emulated video before host scaling or colour conversion: per-scanline
+  records with VCE values and indices, dot-clock divisor, active window, line
+  start in master clocks and frame line count, for the background, VRAM
+  register interface, both DMAs, palette and dot-clock scope; guest-recorded
+  interrupt positions agree with the model — Phase 4 (evidence tier E0
+  repeatability; positions are E2 self-consistency and a labelled modelling
+  assumption; sprites are Phase 4.1)
 
 ### Active
 
@@ -50,21 +57,23 @@ live in `.planning/REQUIREMENTS.md`.
 
 - [ ] A first named base PC Engine/TG-16 profile (region, console revision, CPU
       revision, video timing, controller signaling, content format) with
-      documented evidence for each behavior claimed. (Seven CPU, interrupt and
-      timer ledger entries are supported at E1 documentary level; the rest are
-      labelled modelling assumptions.)
+      documented evidence for each behavior claimed. (Thirteen CPU, interrupt,
+      timer and video ledger entries are supported at E1 documentary level; the
+      rest are labelled modelling assumptions.)
 - [ ] Separate observations of CPU/device effects, logical input, machine time,
       raw emulated video (before host scaling/colour conversion), raw audio
       (PSG events and PCM, before device playback), and guest progress.
       (Instruction and device-write sinks, the pad read log, machine time and
-      guest-RAM verdicts exist from Phase 3; video and audio are Phases 4 and 5.)
+      guest-RAM verdicts exist from Phase 3, the raw video sink from Phase 4
+      (sprites in Phase 4.1); audio is Phase 5.)
 - [ ] A headless runner (or equivalent consumer) that can load content, apply a
       scripted input, run for a bounded machine time, and emit observations.
 - [ ] Original, rights-cleared diagnostic fixtures with a manifest (source,
       build recipe, hashes, license, notices, redistribution terms, test
       meaning) as the dependable fast test suite. (CPU, MMU, timer, interrupt,
-      speed-switch and pad fixtures exist from Phase 3; display and audio
-      fixtures are still to come.)
+      speed-switch and pad fixtures exist from Phase 3, VDC and VCE display
+      fixtures from Phase 4 (sprites in Phase 4.1); audio fixtures are still
+      to come.)
 - [ ] An installed-consumer/package proof: an independent consumer built
       against the installed artifact with source/build paths unavailable.
 - [ ] Measured, workload-identified performance tracking, with correct output
@@ -205,4 +214,4 @@ This document evolves at phase transitions and milestone boundaries.
 5. Refresh only the sibling/LibFuturo evidence that could change the live decision
 
 ---
-*Last updated: 2026-11-11 after Phase 3 (HuC6280 CPU, bus, timer, interrupts and 2-button pad; E0 repeatability, E1 documentary for seven entries)*
+*Last updated: 2026-11-12 after Phase 4 (VCE/VDC raw video for the background, DMA, palette and dot-clock scope; E0 repeatability, E1 documentary for thirteen entries; sprites split to Phase 4.1)*

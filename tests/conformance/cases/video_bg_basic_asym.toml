@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The asymmetric background scene (plan 04-11; D-156, D-169, D-171, D-172, D-173, ER-10, ER-11, ER-12): the authored fixture fixtures/src/bg_basic.s draws a one-pixel diagonal tile (the pixel bit order) and solid tiles of pixel 1 and pixel 2 (the plane byte order) through the BAT, and the runner kind
+# video judges the line records of frame 5 by group with the rows of fixtures/src/bg_basic.vexp.
+# Class: every row is ASSUMED LED-VID-0010 (no page prints which byte of a word is which plane or which dot is leftmost; plane significance itself is page-stated, H7-18, and is judged by the solid scene). Role: literal (D-172). The toy vid-bit-order (the bit order of a tile row reversed) must turn
+# this case guest_failure while video_bg_basic_solid stays pass: the proof of the symmetry split (D-173).
+# The evidence text prints video_sha256=... E0 repeatability: no pixel-accurate or hardware claim, and the word pass is not a support claim.
+id = "video_bg_basic_asym"
+kind = "video"
+fixture = "authored:bg-basic"
+request = ""
+expect = "rom=bg-basic;id=22;scene=video_bg_basic_asym"
+meaning = "A guest that draws a one-pixel diagonal and solid tiles of pixel 1 and 2 through the BAT makes the core emit line records that show the diagonal at the dots a leftmost-bit-7 reading gives and the two pixel values in the order a low-byte-plane-0 reading gives (ASSUMED LED-VID-0010, the pixel order no page prints), E0 repeatability"
+required = true
+control = false
+expect_outcome = "pass"
+pins = ["LED-VID-0010"]
+until_mclk = 6000000
+checks = 6

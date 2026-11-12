@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# a case of the mini-root
+id = "vdc_poweron_policy_diff"
+kind = "vdc_poweron_policy_diff"
+expect = "roms=t@1;control=t-nopal@0"

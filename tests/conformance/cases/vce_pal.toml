@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The VCE colour table and registers seen from the guest (plans 04-04 and 04-19; D-152, D-153, D-169, D-170, ER-4, ER-5): the authored fixture fixtures/src/vce_pal.s is assembled by ca65 in the gate (never committed), is booted on the core, writes the VCE control register and all 512 colour table entries
+# P(i) = (91 * i + 17) & 511 through the bus (the product by shift and add), reads all of them back against the additive running sum, runs the register tests (unlisted reads, the increment after the high byte, the unused data bits, independent halves, the wrap, the window mirrors, a TIA block write)
+# and writes
+# a DSV1 verdict block that the runner judges from raw RAM. The case has no policies key, so the guest kind runs the ROM under its default policy list (zero, seeded-prng-v3 seed 1, seeded-prng-v3 seed 2), and the check bytes must be equal in all three: every entry the guest reads, it wrote first
+# (D-167). The 32 checks are class MAN (H6-3 and H6-5: the procedure, the increment after the high byte, the values the guest wrote), GUEST (pal-bijection: the 512 entries against a second computation) and ASSUMED LED-VID-0016 (the unlisted reads, the unused data bits, the wrap, the halves, the
+# mirrors, the block write); the literals come from the manual pages, the guest's own arithmetic or the ledger entry, and none comes from DuoSpool output. The toy vid-palette-mask (a palette store that keeps 8 bits) turns this case guest_failure; the sweep mutate_sweep_vce_pal flips every literal.
+# Evidence tier E0: no accuracy, compatibility or hardware claim, and the word pass is not a support claim. until_mclk is a deadline above the point where the guest seals its block.
+id = "vce_pal"
+kind = "guest"
+fixture = "authored:vce-pal"
+request = ""
+expect = "id=15"
+meaning = "The authored vce_pal fixture writes the VCE control register and all 512 colour table entries through the bus, reads them all back against a second computation and runs the register tests (unlisted reads, increment after the high byte, unused data bits, halves, wrap, mirrors, block write), 32 passing checks of classes MAN, GUEST and ASSUMED, identical under three power-on policies"
+required = true
+control = false
+expect_outcome = "pass"
+pins = ["LED-VID-0016"]
+until_mclk = 4000000
+checks = 32
