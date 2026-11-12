@@ -42,7 +42,8 @@ created: "2026-11-11"
 
 ## Per-Task Verification Map
 
-Filled at checkpoint A (plan 04-13) from the plans 04-01 to 04-12, 04-17 to 04-19 and this plan; plans 04-14 to 04-16 add their own rows. Green means the task verify and the full gate passed at its commit (see each SUMMARY). Requirement rows (VID-01..VID-06 with literal source, failure control and wave) are in `04-RESEARCH.md` section "Phase Requirements to Test Map".
+Filled at checkpoint A (plan 04-13) from the plans 04-01 to 04-12, 04-17 to 04-19 and this plan; the cut was taken, so the former plans 04-14 to 04-16 are Phase 4.1 plans 04.1-01 to 04.1-03 and keep their rows in the Phase 4.1 validation file that those plans create. Green means the task verify and the full gate passed at its commit (see each SUMMARY). Requirement rows
+(VID-01..VID-06 with literal source, failure control and wave) are in `04-RESEARCH.md` section "Phase Requirements to Test Map".
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
@@ -96,7 +97,7 @@ Filled at checkpoint A (plan 04-13) from the plans 04-01 to 04-12, 04-17 to 04-1
 
 | # | Item | Ruling | Owner plan |
 |---|------|--------|------------|
-| A1 | Plan set | 19 plans in 18 waves: CONTEXT 04-03 = 04-03 (layout, bump), 04-18 (v3, refusals), 04-04 (tracer Task 1), 04-19 (vce_pal completion, toy, read logging, window rules), 04-05 (hardening); 04-18 and 04-19 are stop-rule splits. CONTEXT 04-06 = 04-08 and 04-17. Checkpoint 04-13, close-out 04-16, spares 04-20, 04-21; order follows depends_on and waves | all |
+| A1 | Plan set | 16 plans in 15 waves after the D-180 cut at 04-13: 04-01, 04-02, 04-03, 04-18, 04-04, 04-19, 04-05, 04-06, 04-07, 04-08, 04-17, 04-09, 04-10, 04-11, 04-12, 04-13 (04-17 planned split; 04-18, 04-19 stop-rule splits). The sprite plans 04-14..04-16 are Phase 4.1 plans 04.1-01..04.1-03. Spares 04-20, 04-21 | all |
 | A2 | Plan sizing | Phase 2 D-81 file caps superseded for Phase 4: 04-CONTEXT.md reconciliations, writer note 6 | all |
 | A3 | Toy vid-scroll-latch (D-173) | D-173's "scroll applied to the current line" is unobservable under R1 (the write's own line is emitted at its EV_LINE; from line n+1 on it equals the next-line rule). The toy instead removes the row-counter reload on a BYR write (vdc.c), killed by the BYR next-line rows [MAN H7-7] | 04-11 (anchor), 04-12 (toy) **Observed by 04-12:** the toy (tests/controls/vid-scroll-latch, anchor the one statement of the BYR write path in vdc.c, replacement an empty statement) turns guest_failure exactly video_bg_scroll (its byr_next rows, MAN H7-7) and video_fault_sweep_bg_scroll (its baseline); a run of every case against the toy binary shows no other guest_failure, and the real core passes both (REQUIRED). EXPECT names those two ids. |
 | A4 | BXR next-line liveness | No renderer mutant (toy cap of 10 spent; under R1 the only mutant class, a late or missing latch, is what record faults emulate). The BXR rows are live by fault sweep F1 (shift) and F8 (swap lines K and K+1) and the REL scroll_x_shift row: a recorded limit | 04-12 **Observed by 04-12:** the fault sweep video_fault_sweep_bg_scroll flips the BXR group latch under F0, F1, F7 and F8 (its first row is the line after the first write, so F8 exchanges the unshifted line with the shifted one) and the REL group latch_rel under F0, F1 and F7 (all declared faults flipped, none vacuous); the BXR rows are classed MAN H7-7 on a 32-dot period row that holds for a scroll in either direction (a shift of 16 dots, ER-12), and the judge refuses a write within 250 master clocks of a line origin as a fault of the case (A6). The limit stands: no renderer mutant exists for a late or missing BXR latch. |
@@ -123,7 +124,7 @@ IRQ-0001, LED-IRQ-0010); the handler cost itself rests on ASSUMED LED-CPU-0009 (
 - [x] dev read logging of windows 0 and 1 and the D-166 fold-window restore rules (plan file 04-19)
 - [x] optional second EXPECT column for stays-green toys (04-17, before the first stays-green toy)
 - [x] `.vexp.tsv` channel in `fixture-build` and the `video-check` stage with its mini-roots (plan file 04-07)
-- [ ] (done at checkpoint A except spr.inc, which plan 04-14 creates) `RODATA` segment in `hucard.cfg` and the first per-feature include `fixtures/lib/vce.inc` (plan file 04-19, the stop-rule split of 04-04); later includes vdc.inc (04-06), vdma.inc (04-10), bg.inc (04-11), spr.inc (04-14), spin.inc (04-17); there is no video.inc
+- [x] (done at checkpoint A; spr.inc moved with the sprite plans to Phase 4.1, plan 04.1-01) `RODATA` segment in `hucard.cfg` and the first per-feature include `fixtures/lib/vce.inc` (plan file 04-19, the stop-rule split of 04-04); later includes vdc.inc (04-06), vdma.inc (04-10), bg.inc (04-11), spr.inc (Phase 4.1, 04.1-01), spin.inc (04-17); there is no video.inc
 
 ---
 

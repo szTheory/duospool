@@ -12,8 +12,8 @@ Phases 1 to 3 are complete locally. The core is a deterministic machine shell th
 profile, and it executes the authored fixture suite through a bounded run measured in master clocks. Every outcome comes from a
 fresh, headless, repeatable run, and a matching hash proves repeatability only.
 
-Phase 4 (raw video from the VDC and the VCE) is at its checkpoint A: the background half is done locally and the sprite plans have not run.
-DuoSpool now executes the authored VDC/VCE diagnostic fixtures and emits a per-scanline raw video record (9-bit values and indices,
+Phase 4 (raw video from the VDC and the VCE) is complete locally for its background, interrupt, DMA, palette and dot-clock scope. Sprites
+were split off at the cut line and are Phase 4.1, which has not run. DuoSpool now executes the authored VDC/VCE diagnostic fixtures and emits a per-scanline raw video record (9-bit values and indices,
 dot-clock divisor, active window, line start in master clocks, frame line count) before any colour conversion or scaling. No sprite
 behaviour is claimed. A hash of that record is repeatability evidence (E0) and never a verdict; every expected literal in a video case
 comes from a manual page, from an in-guest computation or from a named ledger entry, and each literal group is turned red by a fault

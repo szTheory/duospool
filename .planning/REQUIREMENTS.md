@@ -167,11 +167,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CPU-05 | Phase 3 | Complete |
 | CPU-06 | Phase 3 | Complete |
 | VID-01 | Phase 4 | Pending |
-| VID-02 | Phase 4 | Pending |
+| VID-02 | Phase 4.1 | Pending |
 | VID-03 | Phase 4 | Pending |
 | VID-04 | Phase 4 | Pending |
 | VID-05 | Phase 4 | Pending |
-| VID-06 | Phase 4 | Pending |
+| VID-06 | Phase 4.1 | Pending |
 | AUD-01 | Phase 5 | Pending |
 | AUD-02 | Phase 5 | Pending |
 | AUD-03 | Phase 5 | Pending |
