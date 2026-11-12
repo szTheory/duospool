@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: "04.1"
 current_phase_name: VDC Sprites
-current_plan: 2
+current_plan: 3
 status: executing
-stopped_at: Completed 04.1-01-PLAN.md
-last_updated: "2026-11-12T20:04:20.805Z"
+stopped_at: Completed 04.1-02-PLAN.md
+last_updated: "2026-11-12T21:33:29.015Z"
 last_activity: 2026-11-12
 last_activity_desc: Phase 4 complete, transitioned to Phase 04.1
-state_head: 7fd73fa9646f688e081daf4ab873c2ca0cfc4853
+state_head: bdb33bb7fcd50a3ae44c2eb730abbf1e8c26b7be
 progress:
   total_phases: 7
   completed_phases: 4
   total_plans: 91
-  completed_plans: 89
+  completed_plans: 90
   percent: 57
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 04.1 — VDC Sprites
-Current Plan: 2
+Current Plan: 3
 Total Plans in Phase: 3
 Status: Ready to execute
 Last activity: 2026-11-12 — Phase 4 complete, transitioned to Phase 04.1
@@ -148,6 +148,7 @@ Progress: [██████░░░░] 57%
 | Phase 4 P12 | 1h | 3 tasks | 30 files |
 | Phase 04 P13 | 4h | 3 tasks | 22 files |
 | Phase 04.1 P01 | 57min | 4 tasks | 36 files |
+| Phase 04.1 P02 | about 1.7 h (local) | 3 tasks | 27 files |
 
 ## Accumulated Context
 
@@ -328,6 +329,10 @@ Recent decisions affecting current work:
 - [Phase 04.1]: Sprites are drawn from the SATB by the STATE and PIXEL split of D-155: ds_vid_sprites at every EV_LINE, composition only with a sink
 - [Phase 04.1]: Plan 04.1-01 levers: (2) video noninterference, restore and observer runs under two policies, (3) schedule 3072 dropped from the video chunk cases, (4) recorded not applied
 - [Phase 04.1]: bg_enab zeroes its SATB before SB is first set: a seeded power-on SATB draws random sprites (found by vdc_poweron_policy_diff)
+- [Phase 04.1]: Overflow is set when a covering sprite or half is dropped for lack of slots (a 17th sets it, ASSUMED LED-VID-0012); fixtures assert 16 and 18 as MAN H7-19 rows and 17 as an ASSUMED row
+- [Phase 04.1]: The record covering counts the covering entries among the searched ones; a narrow display searches 2d + 1 entries (MAN H7-19)
+- [Phase 04.1]: COLLISION is sprite 0 against a taken entry of another SATB index, both opaque at a dot of the window; the flag is in the record with the IE bits clear and in the status only through ds_vdc_flag at the EV_RCR of the displayed line
+- [Phase 04.1]: The cap of 16 shows only where 2 * (e - 2) exceeds 16, so the 17 sprite scene runs with HDE 5 and carries the guest check the toy vid-spr-limit turns red
 
 ### Pending Todos
 
@@ -351,6 +356,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12T20:04:13.266Z
-Stopped at: Completed 04.1-01-PLAN.md
+Last session: 2026-11-12T21:33:28.317Z
+Stopped at: Completed 04.1-02-PLAN.md
 Resume file: None
