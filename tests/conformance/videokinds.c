@@ -8,7 +8,7 @@
  *             rom, id        the built image build/gate/fixtures/NAME.pce and the fixture id its DSV1 block carries; the case also needs the keys until_mclk and checks (as the guest kind does)
  *             role           literal (the only role of the first slice; D-172 adds struct and golden): the case holds literal rows from the fixture source beside the digest
  *             frame_lines    the frame length the request binds (262), restated from the profile default, class ASSUMED LED-VID-0001
- *             crw            the values the guest writes to the VCE control register, in order (restated from the fixture source); the writes are found in the dev log by physical address $1FE400 and their stamps are the join points
+ *             crw            the values the guest writes to the VCE control register, in order (restated from the fixture source); the writes are found in the dev log by the register (offset & 7) of a physical address in the VCE window and their stamps are the join points
  *             div            the dot clock divider each CR value must give (MAN H6-3: content 00h division ratio 4, 01h division ratio 3), one per value of crw
  *             border         the 9-bit value of palette entry $100 the guest left (GUEST: pure in-guest arithmetic, 91 * 256 + 17 = 23313 = 45 * 512 + 273)
  *             gap            the least number of master clocks the guest leaves between two CR writes (the fixture's counted delay, at least four lines): a case whose measured gap is shorter is harness_failure (the window of judged records could be empty)
@@ -18,7 +18,7 @@
  *     div, class MAN H6-3: every record that lies wholly at least one line after the stamp of CR write j and, when another CR write follows, at least one line before it (origin >= t_j + 1365 and origin + 2 * 1365 <= t_(j+1)) carries the divider of crw j. Such a record does not depend on the grid phase or on the tie rule; the window of each
  *       write must hold at least one record (the case is harness_failure if it is empty).
  *     first change, class ASSUMED LED-VID-0004 (the tie rule of D-138: an event at or before the stamp of an access precedes it): the first record whose origin is after the stamp of the second CR write carries the new divider and the record before it the old one.
- *     line_dirty, class ASSUMED LED-VID-0004 (the join of a write stamp to the grid): bit 0 is set on exactly the first record after each CR write and on no other record, bit 4 on exactly the first record after each palette data write ($1FE404 or $1FE405) and on no other record.
+ *     line_dirty, class ASSUMED LED-VID-0004 (the join of a write stamp to the grid): bit 0 is set on exactly the first record after each CR write and on no other record, bit 4 on exactly the first record after each palette data write (register 4 or 5 of the window, mirrors included) and on no other record.
  *     border, class GUEST (pal_bijection): every record whose origin is at least one line after the last palette write carries the border the case lists; the window must hold at least one record.
  *   The evidence text carries video_sha256=HEX E0 repeatability: the SHA-256 of the stream "duospool-video" NUL, u32 1 (little-endian), then the records back to back (D-163). A hash is a change detector and never a verdict (ER-11): the literal rows above decide the case.
  *   A lost record of either sink, a missing sink, an irq_stim key, a measured gap below the case's gap and an empty judged window are harness_failure.
@@ -52,9 +52,11 @@
 #define VK_GRID 1365u
 #define VK_DEV_CAP 16384u
 #define VK_CRW_MAX 4u
-#define VK_PHYS_CR 0x1FE400u
-#define VK_PHYS_CTW_LO 0x1FE404u
-#define VK_PHYS_CTW_HI 0x1FE405u
+#define VK_PHYS_WIN 0x1FE400u /* the base of the VCE window; the register of an access is the offset & 7 (MAN H6-2), so $1FE408 is a mirror of CR and $1FE444 a mirror of CTW low */
+#define VK_PHYS_WIN_END 0x1FE800u
+#define VK_REG_CR 0u
+#define VK_REG_CTW_LO 4u
+#define VK_REG_CTW_HI 5u
 #define VK_DEV_REC 24u
 
 struct vk_expect {
@@ -214,7 +216,7 @@ struct vk_log {
     uint64_t t_pal_last;
 };
 
-/* the CR writes and the palette data writes of the dev log, found by physical address and kind (the stamps are the join points of the rows); 0 when the log is well formed */
+/* the CR writes and the palette data writes of the dev log, found by the register of the physical address in the VCE window (offset & 7, MAN H6-2, mirrors included) and by kind (the stamps are the join points of the rows); 0 when the log is well formed */
 static int vk_scan_dev(const uint8_t *recs, uint32_t count, struct vk_log *lg)
 {
     uint32_t i;
@@ -227,14 +229,17 @@ static int vk_scan_dev(const uint8_t *recs, uint32_t count, struct vk_log *lg)
         if ((unsigned)r[13] != (unsigned)DS_DEV_WRITE) {
             continue;
         }
-        if (phys == (uint32_t)VK_PHYS_CR) {
+        if (phys < (uint32_t)VK_PHYS_WIN || phys >= (uint32_t)VK_PHYS_WIN_END) {
+            continue;
+        }
+        if ((phys & 7u) == (uint32_t)VK_REG_CR) {
             if (lg->n_cr >= VK_CRW_MAX) {
                 return -1;
             }
             lg->t_cr[lg->n_cr] = vk_u64(r);
             lg->v_cr[lg->n_cr] = (unsigned)r[12];
             lg->n_cr++;
-        } else if (phys == (uint32_t)VK_PHYS_CTW_LO || phys == (uint32_t)VK_PHYS_CTW_HI) {
+        } else if ((phys & 7u) == (uint32_t)VK_REG_CTW_LO || (phys & 7u) == (uint32_t)VK_REG_CTW_HI) {
             if (lg->n_pal >= (unsigned)(sizeof lg->t_pal / sizeof lg->t_pal[0])) {
                 return -1;
             }

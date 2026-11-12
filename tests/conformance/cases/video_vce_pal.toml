@@ -2,6 +2,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
 # The raw video record of the tracer (plan 04-04; D-137, D-138, D-141, D-161, D-163, D-169, ER-10, ER-11, ER-13): the authored fixture fixtures/src/vce_pal.s writes VCE CR $00, waits 9,216 master clocks, writes CR $01 and writes the 512 palette entries P(i) = (91 * i + 17) & 511; the runner kind video (tests/conformance/videokinds.c) attaches a vid sink and a dev sink,
+# (plan 04-19 completed the fixture: the unlisted reads, a shift-add writer, a readback against an additive sum and the register tests follow CR $01; the writes are found by the register offset & 7, so the window mirror $0444 and $0445 writes count as palette data writes, and the toy vid-palette-mask turns this case guest_failure on the border row)
 # runs the guest to the end of its DSV1 verdict and judges the header-only line records (D-161) by the OFFSETS WRITTEN IN THAT FILE, never from a core header. Role: literal (D-172: a hash alone is never a verdict; the digest below is a change detector).
 # The classes of the rows (ER-10, the weakest class of the inputs of a row wins): STRUCT rows (count = floor((M - 1) / 1365) + 1 for the machine time M reached, origin k * 1365, frame and line from (frame * frame_lines + line) * 1365 = origin, frame_lines 262, line_mclk 1365, version 1, rec_bytes, zero reserved word, values below 512) are ASSUMED LED-VID-0004 and LED-VID-0001,
 # because every one of them uses the 1365-clock grid or the frame length; the div rows are MAN H6-3 (content 00h gives division ratio 4, 01h gives 3) and are judged only on records that lie wholly at least one line (1365 clocks) after the stamp of the CR write that sets them and, between two writes, at least one line before the next one, so they depend neither on the
@@ -19,6 +20,6 @@ meaning = "A guest that writes VCE CR $00, waits, writes CR $01 and writes the p
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
-until_mclk = 700000
-checks = 4
+pins = ["LED-VID-0018"]
+until_mclk = 4000000
+checks = 32

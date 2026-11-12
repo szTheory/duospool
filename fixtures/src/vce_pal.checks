@@ -1,12 +1,40 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
-# vce_pal.checks - one row per CHECK of fixtures/src/vce_pal.s (D-125, plan 04-04). Columns separated by one TAB: check index (1-based), slug, class tag, meaning.
-# Class tags: MAN:<page> (a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model>, ASSUMED:<LED-id>. The table is 512 entries of 9 bits, written low byte then high byte with the address incremented after the high byte (H6-3, H6-5); the values read back are the P(i) = (91 * i + 17) & 511 the guest wrote.
-# This is the first slice of the fixture (plan 04-04): the checks that the line record joins to; the rest of the register and palette checks land in the second task of the plan. A pass is not a support claim (ER-4).
+# vce_pal.checks - one row per CHECK of fixtures/src/vce_pal.s (D-125, plans 04-04 and 04-19). Columns separated by one TAB: check index (1-based), slug, class tag, meaning.
+# Class tags: MAN:<page> (a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model>, ASSUMED:<LED-id>. The table is 512 entries of 9 bits, written low byte then high byte with the address incremented after the high byte (H6-3, H6-5); the values read back are the P(i) = (91 * i + 17) & 511 the guest wrote, or the sentinel entries each test writes first.
+# The unlisted reads, the unused data bits, the wrap, the independent halves, the window mirrors and the block write are modelling choices of LED-VID-0016 (assumed); a pass is not a support claim (ER-4).
 id=15
-checks=4
-1	pal-entry0-low-roundtrip	MAN:H6-5	Entry 0 of the colour table reads back the low byte the guest wrote: P(0) = 17 = $11
-2	pal-entry0-bit8	MAN:H6-5	Entry 0 reads back bit 8 clear: P(0) = 17 is below 256
-3	pal-entry100-low-roundtrip	MAN:H6-5	Entry $100 reads back the low byte the guest wrote: P(256) = 273, low byte $11
-4	pal-entry100-bit8	MAN:H6-5	Entry $100 reads back bit 8 set: P(256) = 273 is at least 256
+checks=32
+1	cr-read-unused	ASSUMED:LED-VID-0016	A read of CR ($0400) gives the unused value $FF
+2	cta-low-read-unused	ASSUMED:LED-VID-0016	A read of CTA low ($0402) gives the unused value $FF
+3	cta-high-read-unused	ASSUMED:LED-VID-0016	A read of CTA high ($0403) gives the unused value $FF
+4	addr-0401-read-unused	ASSUMED:LED-VID-0016	A read of the unlisted address $0401 gives the unused value $FF
+5	addr-0406-read-unused	ASSUMED:LED-VID-0016	A read of the unlisted address $0406 gives the unused value $FF
+6	addr-0407-read-unused	ASSUMED:LED-VID-0016	A read of the unlisted address $0407 gives the unused value $FF
+7	cr-mirror-0408-read-unused	ASSUMED:LED-VID-0016	A read of $0408, the window mirror of CR (offset & 7 = 0), gives the unused value $FF
+8	pal-entry0-low-roundtrip	MAN:H6-5	Entry 0 of the colour table reads back the low byte the guest wrote: P(0) = 17 = $11
+9	pal-entry0-bit8	MAN:H6-5	Entry 0 reads back bit 8 clear: P(0) = 17 is below 256
+10	pal-entry100-low-roundtrip	MAN:H6-5	Entry $100 reads back the low byte the guest wrote: P(256) = 273, low byte $11
+11	pal-entry100-bit8	MAN:H6-5	Entry $100 reads back bit 8 set: P(256) = 273 is at least 256
+12	pal-512-low-bijection	GUEST:pal-bijection	All 512 low bytes read back equal the additive running sum E(i + 1) = (E(i) + 91) & 511 from 17, a different computation from the shift-add writer; the OR of the differences is zero (an 8-bit address alias would not be)
+13	pal-512-bit8-bijection	GUEST:pal-bijection	All 512 bit 8 values read back equal the same additive running sum; the OR of the differences is zero
+14	cta-no-step-after-low	MAN:H6-3	Two low byte writes in a row reach the same entry: the address is not incremented after the low byte (entry $20 reads the second value $A5)
+15	cta-entry20-bit8	MAN:H6-3	Entry $20 reads bit 8 set after the high byte write $01
+16	cta-step-after-high	MAN:H6-3	After the high byte the address was incremented once: the next entry ($21) reads the low byte $33 written without a new address
+17	cta-entry21-bit8	MAN:H6-3	Entry $21 reads bit 8 clear after the high byte write $00
+18	ctr-high-unused-bits-set	ASSUMED:LED-VID-0016	A CTR high read of an entry with bit 8 set reads $FF (bits 7 to 1 read 1)
+19	ctr-high-unused-bits-clear	ASSUMED:LED-VID-0016	A CTR high read of an entry with bit 8 clear reads $FE (bits 7 to 1 read 1)
+20	half-low-rewrite-low	ASSUMED:LED-VID-0016	Entry $30 = $1FF then a low byte write of $00 alone: the low byte reads $00
+21	half-low-rewrite-bit8	ASSUMED:LED-VID-0016	Entry $30 keeps bit 8 set after the low byte write alone
+22	half-high-rewrite-low	ASSUMED:LED-VID-0016	Entry $31 = $07E then a high byte write of $01 alone: the low byte still reads $7E
+23	half-high-rewrite-bit8	ASSUMED:LED-VID-0016	Entry $31 reads bit 8 set after the high byte write alone
+24	cta-low-write-keeps-bit8	ASSUMED:LED-VID-0016	A CTA low write of $60 with the address at $161 gives $160: entry $160 reads the low byte $A9
+25	cta-high-write-bit0-only	ASSUMED:LED-VID-0016	A CTA high write of $FE (bit 0 clear) with the address at $160 gives $060: entry $60 reads the low byte $56
+26	cta-wrap-entry0	ASSUMED:LED-VID-0016	After a write to entry $1FF the address wraps to 0 and the next write reaches entry 0: it reads $2B
+27	cta-wrap-entry1ff	ASSUMED:LED-VID-0016	Entry $1FF reads the low byte $C4 written before the wrap
+28	mirror-0444-write-040c-read	ASSUMED:LED-VID-0016	A low byte written through $0444 and read through $040C reaches the same entry: $6D
+29	mirror-0445-040d-bit8	ASSUMED:LED-VID-0016	A high byte written through $0445 and read through $040D reaches the same bit 8: set
+30	tia-entry50-low	ASSUMED:LED-VID-0016	A TIA block write of eight bytes alternates CTW low and CTW high: entry $50 reads the low byte $9D
+31	tia-entry50-bit8	ASSUMED:LED-VID-0016	Entry $50 reads bit 8 set after the block write
+32	tia-entry51-low	ASSUMED:LED-VID-0016	The address stepped after the high byte inside the block: entry $51 reads the low byte $11

@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Toy control (D-85, D-173, F-39; a toy of the Phase 4 set): a palette store that keeps 8 bits, made from the live src/core/vce.c by scripts/control-mutate. The anchor is the nine-bit mask and the shift of the one statement of ds_vce_write that stores the high byte of an entry (the entry is the low byte already held with the written byte above it, kept to 9 bits, then
+# the high byte is taken); the replacement keeps 8 bits, so the high byte is always zero and bit 8 of every entry is lost, the plausible mistake of a palette kept in bytes. The two cases in EXPECT must come out guest_failure on the toy: vce_pal reads entry 0 and entry $100 back (check 11 reads bit 8 = 1 for P(256) = 273) and compares all 512 entries with the additive sum, and
+# video_vce_pal judges the border of the line record against the 273 the guest wrote. The real core passes both (REQUIRED cases).
+tag=rule-vid-palette-mask
+file=src/core/vce.c
+anchor=& 0x1FFu) >> 8u);
+replace=& 0xFFu) >> 8u);
