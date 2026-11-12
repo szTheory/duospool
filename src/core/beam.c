@@ -206,12 +206,14 @@ static void dma_line(struct ds_instance *inst, uint64_t t)
     }
 }
 
-/* EV_LINE of line line_idx, the items of D-138 this plan has, in order: (2) the vertical machine, (3) the RCR counter, (4) the divider latch and the event offsets, (5) at the VBlank state entry the MWR latch and VD, (7) render and offer the record when a sink is attached (the want_pixels gate of D-164), (8) clear the dirty flags; then the line advances.
+/* EV_LINE of line line_idx, the items of D-138 this plan has, in order: (2) the vertical machine, (3) the RCR counter, (4) the divider latch and the event offsets, (5) at the VBlank state entry the MWR latch and VD, (7) evaluate the sprites of the line (the STATE part, always, D-155) and render and offer the record when a sink is attached (the want_pixels gate of D-164), (8)
+ * clear the dirty flags; then the line advances.
  * Item 1 (DMA words due) is applied by the fold before this function runs, item 4 for the transfer is dma_line, and the other latches belong to later plans. VD of phase line_start is raised here, at this EV_LINE; phase hdw_start leaves it outstanding (vd_pending) for the EV_VD of this line. The divider is latched before the offsets are computed from it */
 static void ev_line(struct ds_instance *inst, struct ds_obs_log *obs)
 {
     uint64_t k = inst->line_idx;
     int vblank = vertical_step(inst, k);
+    struct ds_vid_spr spr;
 
     rcr_step(inst);
     bg_step(inst);
@@ -231,9 +233,10 @@ static void ev_line(struct ds_instance *inst, struct ds_obs_log *obs)
         }
     }
     schedule_offsets(inst);
+    ds_vid_sprites(inst, &spr); /* the STATE part of the line (D-155): sprite evaluation runs at every EV_LINE with or without a sink (plan 04.1-02 raises the collision and overflow flags from it); it reads the instance and writes the stack only */
     if (obs != NULL && obs->vid.on) { /* the want_pixels gate: the record is built and offered only when a vid sink is attached; nothing the line does to the instance depends on it */
         uint8_t rec[DS_VID_MAX_REC_BYTES];
-        uint32_t n = ds_vid_render(inst, line_origin(k), rec);
+        uint32_t n = ds_vid_render(inst, line_origin(k), &spr, rec);
 
         ds_vid_emit(obs, rec, n);
     }

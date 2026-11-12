@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# spr_basic.checks - one row per CHECK of fixtures/src/spr_basic.s (D-125, plan 04.1-01). Columns separated by one TAB: check index (1-based), slug, class tag, meaning.
+# Class tags: MAN:<page> (a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model>, ASSUMED:<LED-id>.
+# Every check here is a readback of what the guest wrote, compared with an expectation the guest forms by a different computation than the writer (the pattern and the SATB source against the ROM tables the block uploads took them from, the palette against an additive sum), so it holds under every power-on policy (D-167).
+# The sprites themselves, their placement, index and priority are judged from the line records by the video cases (fixtures/src/spr_basic.vexp), and the SATB contents after the copy by the case vdc_satb_data_spr, not here. A pass is not a support claim (ER-4).
+id=25
+checks=6
+1	pattern-low-bytes	GUEST:pattern-readback	The low bytes of the sprite pattern words read back through VRR equal the ROM table the block upload took them from: the OR of the differences is zero
+2	pattern-high-bytes	GUEST:pattern-readback	The high bytes of the sprite pattern words equal the ROM table
+3	satb-low-bytes	GUEST:satb-readback	The low bytes of the 256 SATB source words read back through VRR equal the ROM table the block upload took them from
+4	satb-high-bytes	GUEST:satb-readback	The high bytes of the 256 SATB source words equal the ROM table
+5	pal-low-sum	GUEST:pal-bijection	The 512 palette entry low bytes equal the additive running sum E(i + 1) = (E(i) + 91) & 511 from E(0) = 17, a different computation from the multiplicative writer
+6	pal-bit8-sum	GUEST:pal-bijection	The 512 palette entry bit 8 values equal the same running sum

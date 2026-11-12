@@ -321,3 +321,6 @@ snapshot_restore_video_bg
 vdc_random_regs
 vdc_poweron_policy_diff
 chunk_equiv_random32_video
+spr_basic
+video_spr_basic_solid
+video_fault_sweep_spr_basic

@@ -101,15 +101,26 @@ tloop:  lda a:VDC_LO
         CHECK_LIT 1                     ; check 1 GUEST:tile-readback
         lda a:VDC_DIFF_HI
         CHECK_LIT 2                     ; check 2 GUEST:tile-readback
+; the SATB (plan 04.1-01): no sprite is drawn here, but SB is set in two of the phases, so a seeded power-on SATB and VRAM would draw random sprites (D-167: a guest must initialise what the renderer reads). The 256 words at VRAM word $1000 are zeroed and the high byte write of DVSSR (R13) copies them to the SATB at the next vertical blanking (H7-12), before the first phase
+; that sets SB; a zero SATB covers no display line (Y = 0 is above the display).
+        VDC_REG BG_R_MAWR, $1000
+        VDC_SEL BG_R_VWR
+        ldx #0
+satz:   st1 #0
+        st2 #0
+        dex
+        bne satz                        ; 256 words of zero
+        VDC_REG $13, $1000              ; DVSSR: the copy runs at the next vertical blanking
 ; the enable matrix, two frames a phase: BB (write 1), BB and SB (2), SB (3), neither (4, a burst frame), BB (5)
         BE_PHASE $0080
         BE_PHASE $00C0
         BE_PHASE $0040
         BE_PHASE $0000
-; BB again (write 5), one frame, then 37 * 1542 + 24 * 6 + 2 = 57,200 cycles (about 125.7 lines of 455 cycles) so that the next write falls about 3 display lines into a frame (a calibration of the counted sequence, never a literal of any row: a write placed wrongly is refused by the judge), then BB clear and SB set (write 6), two frames
+; BB again (write 5), one frame, then 34 * 1542 + 107 * 6 + 2 = 53,072 cycles (about 116.6 lines of 455 cycles; plan 04.1-01 took the 4,128 cycles of the SATB block above from the 57,200 cycles this hold had, so that the write below sits where it sat before the block) so that the next write falls about 3 display lines into a frame (a calibration of the counted sequence, never
+; a literal of any row: a write placed wrongly is refused by the judge), then BB clear and SB set (write 6), two frames
         VDC_REG BG_R_CR, $0080
         BG_FRAME
-        BG_HOLD 37, 24
+        BG_HOLD 34, 107
         VDC_REG BG_R_CR, $0040
         BG_FRAME
         BG_FRAME

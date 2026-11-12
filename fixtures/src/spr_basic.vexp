@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# spr_basic.vexp - the hand-derived literal rows of the spr_basic video scenes (plan 04.1-01; D-155, D-159, D-160, D-161, D-169, D-171, D-172, ER-10, ER-11, ER-12, F-13).
+# scripts/fixture-build writes this file, comments dropped, as build/gate/fixtures/spr-basic.vexp.tsv; the runner kind video (tests/conformance/videokinds.c) reads only that file. One source holds the literals: no expected value lives in a case file, and none comes from a run of DuoSpool, another emulator or a hash.
+# The grammar is the one of bg_basic.vexp (scripts/lib/vexp-rules.awk). The fixture (fixtures/src/spr_basic.s) writes the vertical setup (VPR $0F02, VDW 239, VCR 4), HSR $0202 and HDR $031F (HDS 2, HDW 31: active_x 24, active_w 256 dots), MWR 0 (a 32 x 32 BAT), BXR = BYR = 0, the palette P(i) = (91 * i + 17) & 511, a BAT of the transparent tile (code $040, pixel 0 everywhere)
+# with one solid tile of pixel 15 (code $041, bank 0)
+# at BAT row 2 column 7, one solid 16 x 16 sprite pattern of pixel 15 at VRAM word $2000 (PC $100), and the 256 SATB words at VRAM word $1000, copied by the SATB DMA of the first vertical blanking after the DVSSR write; then CR = $00C0 (BB and SB set) for six frames.
+# The frames: the numbers below were read from the guest's own sequence (the counted delays of spr_basic.s) on one run, as a calibration and never as a literal: the SATB is copied at the first vertical blanking after the DVSSR write (frame 2) and CR = $00C0 is written once in frame 3, so frames 4 to 9 (the last frame of the run) hold the same scene. The rows use ;held=5, the
+# author's mark that a neighbouring frame holds the same values.
+# Display line K of a frame is the K-th record with an active window (line=active+K); with BYR = 0 the display line K shows virtual row K, so BAT row K / 8 (D-156). The dots of the window are numbered from 0 (BXR = 0): dot i is virtual column i, BAT column i / 8.
+# The sprite (MAN H7-20: word 0 Y bits 9-0, word 1 X bits 9-0, word 2 pattern code, word 3 palette bits 3-0; H7-13 and H7-21: the sprite coordinates (32, 64) are the display top-left): sprite 0 has Y = 84, X = 72, PC = $100 (pattern at word $100 * 32 = $2000, H7-21: PC bits 10-1 are address bits 15-6), palette 2, SPBG 0. It covers the display lines Y - 64 = 20 to 35 (a 16 x 16
+# sprite) and the dots X - 32 = 40 to 55.
+# The pattern is solid pixel 15: all four planes SG0 to SG3 are $FFFF in every row (H7-24: SG0 at the 64-word aligned address, SG1 at +16, SG2 at +32, SG3 at +48), so VD3 to VD0 = 1111 whatever the bit order (ER-12). The index of a sprite dot is VD8 = 1, VD7 to VD4 = the palette, VD3 to VD0 = the pixel (H7-24): 256 + 2 * 16 + 15 = 303.
+# Line 20, dots 38 to 58: the BAT row 2 (display lines 16 to 23) holds the transparent tile in columns 4 to 6 (dots 32 to 55) and the solid tile of pixel 15 in column 7 (dots 56 to 63), whose index is (0 << 4) | 15 = 15 (H7-18). So dots 38 and 39 are the transparent background (index 0, VD3 to VD0 all 0 forces VD7 to VD4 to 0, H7-18), dots 40 to 55 are the sprite (SPBG 0 and a
+# transparent background dot: the sprite is shown, H7-21), 303,
+# and dots 56 to 58 are the background tile, 15 (the sprite does not reach them). Three distinct values and transitions: the non-vacuity rule of D-171.
+# The values (GUEST pal_bijection, ER-10: the weaker of MAN and GUEST): P(i) = (91 * i + 17) & 511 for every index i, written by the guest and read back against an additive sum (checks 5 and 6): P(0) = 17; P(15) = 1365 + 17 = 1382 = 2 * 512 + 358 = 358; P(303) = 27573 + 17 = 27590 = 53 * 512 + 454 = 454.
+# The border (GUEST pal_bijection): palette entry $100 is P(256) = 23296 + 17 = 23313 = 45 * 512 + 273 = 273, and the header field border carries it on every record, judged a whole line after the last palette data write.
+# Classes (ER-10): the structure rows use the 1365-clock grid and the frame length (ASSUMED LED-VID-0004). The index rows are MAN H7-24 (with the origin H7-13, the code and attribute layout H7-20 and the priority H7-21): the pattern is solid, so they hold for every bit order, byte order and flip; sym=order. The value rows rest on the guest's palette (GUEST pal_bijection).
+# Kills (D-172): F1 shifts the dots of the focus line one dot to the right (a transition inside the x range turns the row red), F7 zeroes every non-zero index of that line; F0 perturbs the first number of the first row. F2 (two index bits swapped) is not declared by these groups: it is left to the groups whose indices have unequal low bits.
+scene	video_spr_basic_solid	case=video_spr_basic_solid	role=literal
+group	video_spr_basic_solid	struct	form=STRUCT	class=ASSUMED:LED-VID-0004	sym=none	kills=F4,F8,F9
+row	video_spr_basic_solid	struct	check=count	grid=1365
+row	video_spr_basic_solid	struct	check=origins	step=1365
+row	video_spr_basic_solid	struct	check=rec_bytes	header=64;version=1;max_w=682
+row	video_spr_basic_solid	struct	check=values_below_512	limit=512
+group	video_spr_basic_solid	spx	form=ROWS	class=MAN:H7-24	sym=order	kills=F0,F1,F7
+row	video_spr_basic_solid	spx	line=active+20;x=38..58;held=5	index=2*0,16*303,3*15
+group	video_spr_basic_solid	spxval	form=ROWS	class=GUEST:pal_bijection	sym=order	kills=F0,F1
+row	video_spr_basic_solid	spxval	line=active+20;x=38..58;held=5	value=2*17,16*454,3*358
+group	video_spr_basic_solid	border	form=STRUCT	class=GUEST:pal_bijection	sym=none	kills=F0
+row	video_spr_basic_solid	border	check=border_after_pal	value=273

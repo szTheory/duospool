@@ -56,8 +56,16 @@ uint32_t ds_vce_divider(uint32_t cr);
  * event; 0 when they do not (stage 1 or 2 with line_idx 0, a stage 1 without vd_pending or with vd_off none, a stage 2 with rcr_off none, a stage above 2, a time beyond 2^64). A pure function, the one place the restore rule and the fold read the time from. */
 int ds_vdc_pending_time(uint64_t *time, uint64_t line_idx, uint32_t stage, uint32_t vd_pending, uint32_t vd_off, uint32_t rcr_off);
 
-/* the DSVR v1 line record (plan 04-04; D-155, D-161): render the header of the line whose grid origin is origin into rec (DS_VID_MAX_REC_BYTES bytes) from the machine state at its EV_LINE, which it cannot change (const), and return the record length; ds_vid_emit offers it to the sink (vid.c) */
-uint32_t ds_vid_render(const struct ds_instance *inst, uint64_t origin, uint8_t *rec);
+/* the DSVR v1 line record (plan 04-04, sprites from plan 04.1-01; D-155, D-161): render the header of the line whose grid origin is origin into rec (DS_VID_MAX_REC_BYTES bytes) from the machine state at its EV_LINE, which it cannot change (const), and return the record length; ds_vid_emit offers it to the sink (vid.c) */
+/* the sprite state of one display line (plan 04.1-01; D-155, D-159, D-160): the STATE part of the line, a pure function of the instance at its EV_LINE that lives on the caller's stack and writes no machine state. on is 1 when the line is a display line with SB set (nothing else in the struct is valid otherwise); for dot j below the active width dot[j] is 0 where no sprite pixel is
+ * opaque and otherwise bit 15 = the SPBG bit of the winning sprite (the first opaque pixel in SATB order, D-160) and bits 8-0 = its 9-bit index (256 | palette << 4 | px); covering counts the SATB entries whose coordinate range covers the line (0 to 64). ds_vid_sprites is called at every EV_LINE whether or not a sink is attached (D-155); ds_vid_render only composes */
+struct ds_vid_spr {
+    uint16_t dot[DS_VID_MAX_DOTS];
+    uint8_t covering;
+    uint8_t on;
+};
+void ds_vid_sprites(const struct ds_instance *inst, struct ds_vid_spr *spr);
+uint32_t ds_vid_render(const struct ds_instance *inst, uint64_t origin, const struct ds_vid_spr *spr, uint8_t *rec);
 void ds_vid_emit(struct ds_obs_log *obs, const uint8_t *rec, uint32_t rec_bytes);
 
 #endif
