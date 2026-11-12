@@ -1650,7 +1650,8 @@ void kind_vdc_regmask(const struct kase *k, struct ctx *c, char *got, size_t got
  *   In each run the status reads of the VDC window ($1FE000, kind R, with the stamp of the access) are taken from the dev log: the VD stamp is the stamp of the LAST read whose value has bit 5 set (the read in the IRQ1 handler of the VBlank interrupt; the foreground read before it also has bit 5), the RR stamp that of the FIRST read whose value has bit 2 set (the read in the
  *   handler of the RCR interrupt).
  *   The stamps are judged from the dev log and the literals of the case, never from a literal copied out of the core: the VD stamp of run A minus that of the default run is vd_shift (+96: the window start of HDS = 2 at divider 4 is (2 + 1) * 8 * 4 master clocks after the line start, ASSUMED LED-IRQ-0001) and the RR stamp of run B minus that of the default run is rr_shift (-1365: the
- *   origin line is one line earlier, so the same RCR value matches one line sooner, ASSUMED LED-IRQ-0010), each within plus or minus tol master clocks. tol is the longest instruction of the foreground wait loop of the fixture, lda abs of 5 cycles at 3 master clocks (15): an interrupt is taken at the first instruction boundary after the event, so the stamp of the handler read moves by the shift
+ *   origin line is one line earlier, so the same RCR value matches one line sooner, ASSUMED LED-IRQ-0010), each within plus or minus tol master clocks. tol is the longest instruction of the foreground wait loop of the fixture, lda abs of 5 cycles at 3 master clocks (15): an interrupt is taken at the first instruction boundary after the event, so the stamp of the handler read
+ * moves by the shift
  *   less than one instruction. The two cross rows hold the other parameter fixed: the VD stamp of run B and the RR stamp of run A equal those of the default run within tol (each parameter moves its own event only). Evidence E0: the model compared with the case's own literals; no hardware or accuracy claim.
  */
 #define MV_DEV_CAP 512u
@@ -2191,6 +2192,9 @@ void kind_vdc_advance_pure(const struct kase *k, struct ctx *c, char *got, size_
  * vdc_satb_data: the SATB words the VRAM-to-SATB copy stored, read from the instance bytes (D-175 (c)). The SATB is not CPU-readable (MAN H7-20), so the guest judges only the DS flag and this kind reads the 512 SATB bytes: expect = rom=NAME;satb=W0:STEP:COUNT, the words (W0 + STEP * i) & $FFFF for i below COUNT (256), the multiplication the assembler of the
  * fixture forms its pattern with (restated from fixtures/src/vdc_satb.s; the guest's own check is the DS flag). The fixture runs to the end of its DSV1 verdict under each of the three default power-on policies and every word, assembled here byte by byte (word i = byte 2i | byte 2i+1 << 8, no accessor and no port path), must equal the pattern: a copy that did not run, ran from
  * the wrong address, stored the bytes swapped or from the first pattern instead of the rewritten source fails. Evidence tier E0; no accuracy or hardware claim.
+ * Plan 04.1-01 adds the second form expect = rom=NAME;satb=vram:ADDR:256 for a guest whose 256 SATB source words are sprite entries, not an arithmetic progression (the spr_basic fixture): the expected word j is the VRAM word ADDR + j of the instance at the end of the verdict, assembled here byte by byte from the instance's VRAM bytes (no accessor, no port path),
+ * so the SATB must equal the source block the guest copied from, in every power-on policy of the list. The guest's own checks 3 and 4 compare that source block, read back through VRR, with the ROM table it was uploaded from (GUEST), so the chain ROM table, VRAM source block, SATB has two links read by two different paths. The block must hold at least 16 distinct words, so a
+ * copy of an all-equal region cannot pass.
  */
 void kind_vdc_satb_data(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
 {
@@ -2198,13 +2202,23 @@ void kind_vdc_satb_data(const struct kase *k, struct ctx *c, char *got, size_t g
     unsigned long long w0 = 0u;
     unsigned long long step = 0u;
     unsigned long long count = 0u;
+    unsigned long long vaddr = 0u;
+    int from_vram = 0;
     uint64_t until = 0u;
     unsigned p;
     unsigned words = 0u;
     const char *e = k->has[K_EXPECT] ? k->val[K_EXPECT] : "";
 
-    if (!k->has[K_EXPECT] || sscanf(e, "rom=%47[a-z0-9-];satb=%llu:%llu:%llu", rom, &w0, &step, &count) != 4 || w0 > 0xFFFFu || step > 0xFFFFu || count != 256u || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until < 1000u) {
-        harness_error(c, "a vdc_satb_data case needs until_mclk and expect = rom=NAME;satb=W0:STEP:256 (decimal numbers: the first word, the step and the word count)");
+    int parsed = k->has[K_EXPECT];
+
+    if (parsed && strstr(e, ";satb=vram:") != NULL) { /* the second form: the source block in the instance's VRAM (plan 04.1-01) */
+        parsed = sscanf(e, "rom=%47[a-z0-9-];satb=vram:%llu:%llu", rom, &vaddr, &count) == 3 && count == 256u && vaddr + count <= 0x8000u;
+        from_vram = parsed;
+    } else if (parsed) {
+        parsed = sscanf(e, "rom=%47[a-z0-9-];satb=%llu:%llu:%llu", rom, &w0, &step, &count) == 4 && w0 <= 0xFFFFu && step <= 0xFFFFu && count == 256u;
+    }
+    if (!parsed || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until < 1000u) {
+        harness_error(c, "a vdc_satb_data case needs until_mclk and expect = rom=NAME;satb=W0:STEP:256 (decimal numbers: the first word, the step and the word count) or rom=NAME;satb=vram:ADDR:256 (the source block at the VRAM word ADDR, below $8000)");
         return;
     }
     for (p = 0u; p < (unsigned)VD_POLICIES && !c->harness; p++) {
@@ -2241,8 +2255,23 @@ void kind_vdc_satb_data(const struct kase *k, struct ctx *c, char *got, size_t g
             harness_error(c, "the guest of a vdc_satb_data case did not reach the end of its DSV1 verdict before until_mclk: its SATB is not final");
             return;
         }
+        if (from_vram) { /* the block must not be a copy of an all-equal region: at least 16 distinct words (a vacuity guard) */
+            unsigned distinct = 0u;
+
+            for (j = 0u; j < (unsigned)count; j++) {
+                uint32_t wj = (uint32_t)ci->vdc_vram[2u * (vaddr + j)] | ((uint32_t)ci->vdc_vram[2u * (vaddr + j) + 1u] << 8u);
+                unsigned m;
+                int seen = 0;
+
+                for (m = 0u; m < j && !seen; m++) {
+                    seen = wj == ((uint32_t)ci->vdc_vram[2u * (vaddr + m)] | ((uint32_t)ci->vdc_vram[2u * (vaddr + m) + 1u] << 8u));
+                }
+                distinct += seen ? 0u : 1u;
+            }
+            check(c, distinct >= 16u, "the source block of a vdc_satb_data case in the second form holds fewer than 16 distinct words: the case could pass on an empty copy");
+        }
         for (j = 0u; j < (unsigned)count; j++) {
-            uint32_t want = (uint32_t)((w0 + step * (unsigned long long)j) & 0xFFFFu);
+            uint32_t want = from_vram ? ((uint32_t)ci->vdc_vram[2u * (vaddr + j)] | ((uint32_t)ci->vdc_vram[2u * (vaddr + j) + 1u] << 8u)) : (uint32_t)((w0 + step * (unsigned long long)j) & 0xFFFFu);
             uint32_t have = (uint32_t)ci->vdc_satb[2u * j] | ((uint32_t)ci->vdc_satb[2u * j + 1u] << 8u);
             char msg[200];
 

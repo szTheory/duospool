@@ -16,6 +16,6 @@ meaning = "A guest that copies a sprite attribute table into the SATB by DMA mak
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-VID-0011"]
 until_mclk = 6000000
 checks = 6
