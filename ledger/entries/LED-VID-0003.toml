@@ -8,7 +8,7 @@ status = "assumed"
 sources = ["REPORT|pcetech.txt|display table gives 320 (SUMMARY C5)", "CODE|Geargrafx|k_huc6260_line_width table (SUMMARY C5)", "CODE|Mednafen|overscan comments give 341 and 341.3 (SUMMARY C5)", "FACT|H7-10 H7-13|HDW bits 6-0 is N-1 characters and a character is 8 dots; no page held states a pixel width", "UNKNOWN|active width|unresolved (SUMMARY C5)"]
 evidence = []
 disagreement = "320 pixels (pcetech display table) versus 341 and 341.3 in Mednafen overscan comments and the Geargrafx line width table; unresolved. This model asserts no width: 320 is what a program that sets HDW = 39 gets, and 341 and 342 are host crop figures"
-pinning_test = "PENDING:4"
+pinning_test = "TEST:vid_active_window"
 updated = "2026-11-11"
 assumption = "Raw video records the full line plus the active window (active_x and active_w in dots, from the registers and the divider); the core asserts no fixed width. The pin is vid_active_window (set by the plan that lands it). Listed in unresolved_behaviours of the profile."
 revisit_phase = 4

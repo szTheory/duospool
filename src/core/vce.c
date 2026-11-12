@@ -16,10 +16,9 @@
 #include "ds_core.h"
 #include "ds_vdc.h"
 
-/* the dot clock divider by the two low bits of CR (D-141): the one table, a constant row of constants.def per entry; the divider the fold latches at EV_LINE is read from here and from nowhere else */
+/* the dot clock divider by the two low bits of CR (D-141): the one table, a constant row of constants.def per entry (the first two entries share a line: that line is the one anchor of the toy vid-dot-div of plan 04-09); the divider the fold latches at EV_LINE is read from here and from nowhere else */
 static const uint8_t vce_divider[4] = {
-    (uint8_t)DS_CONST_vce_div_cr0,
-    (uint8_t)DS_CONST_vce_div_cr1,
+    (uint8_t)DS_CONST_vce_div_cr0, (uint8_t)DS_CONST_vce_div_cr1,
     (uint8_t)DS_CONST_vce_div_cr2,
     (uint8_t)DS_CONST_vce_div_cr3,
 };

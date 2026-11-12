@@ -15,6 +15,6 @@ meaning = "With the frame length bound to 263 lines the vce_dot guest makes the 
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-VID-0001"]
 until_mclk = 4000000
 checks = 4

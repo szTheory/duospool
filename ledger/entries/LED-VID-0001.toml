@@ -8,9 +8,9 @@ status = "assumed"
 sources = ["REPORT|pcetech.txt|263 lines fixed (SUMMARY C2)", "CODE|MAME|screen config 263, TODO for a 263-line mode (SUMMARY C2)", "CODE|Mednafen, Geargrafx, Ares|default 262, 263 selectable by a VCE bit (SUMMARY C2)", "FACT|H6-3 H7-13|fCLOCK 6fsc; no page held states a line count", "UNKNOWN|H6-6|sync generator page absent from the HuC6260 copy"]
 evidence = []
 disagreement = "262 lines (default of three codebases that also model 263) versus 263 fixed (pcetech report; MAME screen config with a TODO for the other mode); CR bit 2 polarity: Geargrafx 263 when set, MAME dead code in the opposite sense, pcetech calls it blur; the H7-13 sum (VSW+1)+(VDS+2)+(VDW+1)+VCR gives 264 for VPR 0F02, VDW 239, VCR 4 and is not followed"
-pinning_test = "PENDING:4"
+pinning_test = "TEST:vid_frame_lines"
 updated = "2026-11-11"
-assumption = "lines_per_frame is the profile field, 262 by default as a labelled placeholder; 263 would be 358995 clocks (derived). It is constant for the run and no power-on or guest-selected count exists. 1365 = 6 x 227.5 uses a line length of 227.5 fsc that no page held states (H6-3 gives fCLOCK = 6fsc). The pin stays PENDING:4: the plan that lands vid_frame_lines sets TEST."
+assumption = "lines_per_frame is the profile field, 262 by default as a labelled placeholder; 263 would be 358995 clocks (derived). It is constant for the run and no power-on or guest-selected count exists. 1365 = 6 x 227.5 uses a line length of 227.5 fsc that no page held states (H6-3 gives fCLOCK = 6fsc). The pin is TEST:vid_frame_lines (E0, the 263 binding; 262 is judged in video_vce_dot)."
 revisit_phase = 4
 withheld = ["any frame length claim", "any frame rate claim", "any samples-per-frame claim", "any claim about the polarity of CR bit 2"]
 origin = "SUMMARY C2"

@@ -15,6 +15,6 @@ meaning = "A guest that programs a window of 256 dots, the border entry and VCE 
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-VID-0002", "LED-VID-0017"]
 until_mclk = 4000000
 checks = 4

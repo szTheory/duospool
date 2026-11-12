@@ -15,6 +15,6 @@ meaning = "The vce_dot guest programs window setups, a frame each: the display l
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-VID-0003", "LED-VID-0005"]
 until_mclk = 4000000
 checks = 4
