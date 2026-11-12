@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 4
 current_phase_name: VCE/VDC Raw Video
-current_plan: 9
+current_plan: 10
 status: executing
-stopped_at: Completed 04-06-PLAN.md
-last_updated: "2026-11-12T07:58:03.887Z"
+stopped_at: Completed 04-07-PLAN.md
+last_updated: "2026-11-12T08:51:37.943Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 3 complete, transitioned to Phase 4
-state_head: c9d4dd708199b52f3a21529acf763b324d5cb263
+state_head: 574db2a4dd7628517a82afcf0a2fe1c1febdccd9
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 91
-  completed_plans: 80
+  completed_plans: 81
   percent: 50
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 4 (VCE/VDC Raw Video) — READY TO EXECUTE
-Current Plan: 9
+Current Plan: 10
 Total Plans in Phase: 19
 Status: Ready to execute
 Last activity: 2026-11-11 — Phase 3 complete, transitioned to Phase 4
@@ -138,6 +138,7 @@ Progress: [█████░░░░░] 50%
 | Phase 04 P19 | 30min | 2 tasks | 30 files |
 | Phase 04 P05 | about 4h | 3 tasks | 22 files |
 | Phase 4 P06 | 39min | 3 tasks | 31 files |
+| Phase 04 P07 | 52min | 3 tasks | 39 files |
 
 ## Accumulated Context
 
@@ -294,6 +295,9 @@ Recent decisions affecting current work:
 - [Phase 4]: vdc_regmask judges MARR after its read operation (a write of FFFF steps it to 0000); masks are field widths, not a read-back claim
 - [Phase 4]: mmu_mpr checks 23 and 24 take class ASSUMED:LED-PROF-0003 (VDC state 0 at power-on); numbers, count and image bytes unchanged
 - [Phase 4]: snapshot_hostile gains vdc-tia=NAME: restore stops chosen by block transfer state inside the TIA and TAI transfers of the VDC data port, continued to the end equal to one run
+- [Phase 04]: F-42 ruling (04-07): the video-check gate is ONE stage (stage_video_check runs the checker then the tests/video mini-roots, worst code wins), so the gate has 57 stages
+- [Phase 04]: 04-07: a video group has one class, so vce_pal has six groups (struct, frame, div, divline, border, dirty); the STRUCT check list is extended in vexp-rules.awk and videokinds.c together; faults act at the focus record of a group and F4 inserts a copy of the previous record
+- [Phase 04]: 04-07: the toy cross-rules of video-check run only where a root has a toy registry (VIDEO_TOY_EXEMPT or tests/controls); the golden digest of video_vce_pal_golden is E0 repeatability, repinned by any plan that changes the vce_pal records
 
 ### Pending Todos
 
@@ -317,6 +321,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12T07:58:03.513Z
-Stopped at: Completed 04-06-PLAN.md
+Last session: 2026-11-12T08:51:37.534Z
+Stopped at: Completed 04-07-PLAN.md
 Resume file: None
