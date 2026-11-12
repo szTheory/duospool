@@ -2,8 +2,8 @@
 phase: 04-vce-vdc-raw-video
 plan: 03
 subsystem: core-state-layout
-tags: [layout, serial-bump, regions, snapshot, regeneration, w2, partial]
-status: partial
+tags: [layout, serial-bump, regions, snapshot, regeneration, w2]
+status: complete
 
 requires:
   - phase: 04-vce-vdc-raw-video
@@ -68,7 +68,7 @@ duration: 150min
 completed: 2026-11-11
 ---
 
-# Phase 4 Plan 03: Complete state layout and the one bump (partial: Tasks 1 and 2) Summary
+# Phase 4 Plan 03: Complete state layout and the one bump (Tasks 1 and 2; the rest is plan 04-18) Summary
 
 **The complete Phase 4 state layout (seven regions, 67,178 payload bytes), the single serial 7 to 8 / epoch 4 to 5 / text 6 to 7 bump, the restore decoders for the new regions and the whole regeneration cascade landed in one green commit; Tasks 3 (seeded-prng-v3) and 4 (restore refusal labels and hostile flips) were NOT started because the stop rule of the plan fired.**
 
