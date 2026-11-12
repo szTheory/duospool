@@ -12,10 +12,10 @@ kind = "guest"
 fixture = "authored:spr-limit"
 request = ""
 expect = "id=26"
-meaning = "The authored spr_limit fixture shows 16 and 18 sprites on one line with 16 slots and reads the status after each, 4 passing checks of classes GUEST and MAN, identical under three power-on policies"
+meaning = "The authored spr_limit fixture shows 16, 17 and 18 sprites on one line with 16 slots, the same 16 with 12 slots, and sprite 0 over another sprite with the CR enable set and clear, and reads the status after each, 8 passing checks of classes GUEST, MAN and ASSUMED, identical under three power-on policies"
 required = true
 control = false
 expect_outcome = "pass"
 pins = []
-until_mclk = 4000000
-checks = 4
+until_mclk = 7500000
+checks = 8

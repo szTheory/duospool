@@ -3,11 +3,16 @@
 #
 # spr_limit.checks - one row per CHECK of fixtures/src/spr_limit.s (D-125, plan 04.1-02). Columns separated by one TAB: check index (1-based), slug, class tag, meaning.
 # Class tags: MAN:<page> (a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model>, ASSUMED:<LED-id>.
-# Checks 1 and 2 are readbacks of what the guest wrote against an additive sum (the palette), so they hold under every power-on policy (D-167). Checks 3 and 4 are the status byte the guest reads after one clean frame of each sprite scene (the SATB is written first and copied by DMA before the sprites are switched on, so the byte does not depend on the power-on content).
-# The 16 and 18 point rows are MAN H7-19. The raster, the slot counts and the flags of the records are judged from the line records by the video case (fixtures/src/spr_limit.vexp). A pass is not a support claim (ER-4).
+# Checks 1 and 2 are readbacks of what the guest wrote against an additive sum (the palette), so they hold under every power-on policy (D-167). Checks 3 to 8 are the status byte the guest reads after one clean frame of each sprite scene (the SATB is written first and copied by DMA before the sprites are switched on, so the byte does not depend on the power-on content).
+# The 16 and 18 point rows are MAN H7-19 (the 17 point is ASSUMED LED-VID-0012, the disagreement of H7-4 and H7-19); the CR rows are MAN H7-4 (CR is sprite 0 against another sprite; a flag is set only when its enable is set). The raster, the slot counts, the dropped sprites and the flags of the records are judged from the line records by the video case
+# (fixtures/src/spr_limit.vexp). A pass is not a support claim (ER-4).
 id=26
-checks=4
+checks=8
 1	pal-low-sum	GUEST:pal-bijection	The 512 palette entry low bytes equal the additive running sum E(i + 1) = (E(i) + 91) & 511 from E(0) = 17, a different computation from the multiplicative writer
 2	pal-bit8-sum	GUEST:pal-bijection	The 512 palette entry bit 8 values equal the same running sum
 3	or-clear-16	MAN:H7-19	16 sprites cover one line with 16 slots (HDE 3, e = 10): no OR flag, the status read after a clean frame is $00
-4	or-set-18	MAN:H7-19	18 sprites cover one line with 16 slots: OR is set, bit 1 alone
+4	or-set-e8	MAN:H7-19	The same 16 sprites with HDE 1 (e = 8, 2 * (8 - 2) = 12 slots): four are dropped and OR (bit 1) is set alone
+5	or-set-18	MAN:H7-19	18 sprites cover one line with 16 slots: OR is set, bit 1 alone
+6	or-set-17	ASSUMED:LED-VID-0012	17 sprites cover one line: the model sets OR (H7-19 says 17 or more, H7-4 says more than 17), bit 1 alone
+7	cr-set	MAN:H7-4	Sprite 0 opaque over another sprite with CR bit 0 set: the CR flag, bit 0, alone
+8	cr-gated	MAN:H7-4	The same scene with CR bit 0 clear: the flag is not set and the status read is $00

@@ -15,5 +15,5 @@ required = true
 control = false
 expect_outcome = "pass"
 pins = []
-until_mclk = 4000000
-checks = 4
+until_mclk = 7500000
+checks = 8

@@ -13,10 +13,10 @@ kind = "video"
 fixture = "authored:spr-limit"
 request = ""
 expect = "rom=spr-limit;id=26;scene=video_spr_limit"
-meaning = "A guest that copies a sprite attribute table into the SATB by DMA makes the core emit line records that show 16 sprites on a line taking 16 slots and 18 sprites dropping two for lack of slots with OVERFLOW set (MAN H7-19, H7-24), E0 repeatability"
+meaning = "A guest that copies sprite attribute tables into the SATB by DMA makes the core emit line records that show the per-line slot limit (16, 12 with HDE 1, the cap with HDE 5), the dropped sprites, slots_used, covering, OVERFLOW, COLLISION and the search count of a narrow display (MAN H7-4, H7-19, H7-24; ASSUMED LED-VID-0011, LED-VID-0012), E0 repeatability"
 required = true
 control = false
 expect_outcome = "pass"
 pins = []
-until_mclk = 4000000
-checks = 4
+until_mclk = 7500000
+checks = 8

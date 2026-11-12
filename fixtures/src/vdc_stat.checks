@@ -3,9 +3,9 @@
 #
 # vdc_stat.checks - one row per CHECK of fixtures/src/vdc_stat.s (D-125, plan 04-08). Columns separated by one TAB: check index (1-based), slug, class tag, meaning.
 # Class tags: MAN:<page> (a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model>, ASSUMED:<LED-id>. The status layout and the rule that a flag is set only when its enable bit is set and cleared by the read are H7-4. The level that follows the status and is delivered once is LED-IRQ-0009 (assumed).
-# Two rows need the frame to be longer than the distance between the VBlank the fixture synchronises on and the next RCR match, so they take LED-VID-0001 (ER-10); the BSY level is LED-VID-0015. The DV and DS rows (16 to 21) joined in plan 04-10 and the OR and CR rows join in plan 04-15. A pass is not a support claim (ER-4).
+# Two rows need the frame to be longer than the distance between the VBlank the fixture synchronises on and the next RCR match, so they take LED-VID-0001 (ER-10); the BSY level is LED-VID-0015. The DV and DS rows (16 to 21) joined in plan 04-10 and the OR and CR rows (22 to 27) in plan 04.1-02 (the sprite flags: 18 sprites on a line for OR, sprite 0 over sprite 1 for CR). A pass is not a support claim (ER-4).
 id=17
-checks=21
+checks=27
 1	gate-clear-status-zero	ASSUMED:LED-VID-0008	With every enable clear and the I flag set, more than two frames pass and the status read gives $00: an RCR match and a VBlank leave no flag
 2	vd-level-before-read	ASSUMED:LED-IRQ-0009	With VD enabled and the flag not yet read, bit 1 of $1403 (the IRQ1 level) reads 1 and bit 0 reads 0
 3	vd-flag-bit5-alone	ASSUMED:LED-VID-0008	The VBlank flag is bit 5 of the status and no other bit: CR bit 2 is clear, so the RCR matches that pass leave bit 2 clear
@@ -27,3 +27,9 @@ checks=21
 19	ds-gate-clear	ASSUMED:LED-VID-0013	A VRAM-to-SATB copy carried out at a VBlank with DCR bit 0 clear sets no DS: after the VBlank and a wait the status is $20, VD alone
 20	ds-set	ASSUMED:LED-VID-0013	With DCR bit 0 set the same copy sets DS, bit 3: the status is $28, VD and DS
 21	ds-read-clears	MAN:H7-4	The status read cleared DS and VD: the next read is $00
+22	or-gate-clear	ASSUMED:LED-VID-0008	With CR bit 1 clear, 18 sprites on a line (more than 17, so too many for the 6 slots of this setup under any threshold) set no OR flag: the status read after a wait of more than a frame is $00
+23	or-set-alone	MAN:H7-4	With CR bit 1 set the same line sets OR, bit 1 of the status, alone (the CR enable is clear): $02
+24	or-read-clears	MAN:H7-4	The status read cleared OR: the next read is $00
+25	cr-gate-clear	ASSUMED:LED-VID-0008	With CR bit 0 clear, sprite 0 opaque over sprite 1 sets no CR flag: the status read after a wait of more than a frame is $00
+26	cr-set-alone	MAN:H7-4	With CR bit 0 set the same collision sets CR, bit 0 of the status, alone (two sprites on the line, so no OR): $01
+27	cr-read-clears	MAN:H7-4	The status read cleared CR: the next read is $00
