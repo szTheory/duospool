@@ -303,3 +303,5 @@ video_unmodelled_mode
 video_fault_sweep_unmodelled_mode
 video_bg_basic_golden
 mutate_sweep_bg_basic
+bg_scroll
+video_bg_scroll

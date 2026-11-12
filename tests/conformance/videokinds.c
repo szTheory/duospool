@@ -42,6 +42,7 @@
 #define VK_O_FLAGS 31u
 #define VK_O_LINE_DIRTY 32u
 #define VK_FLAG_ACTIVE 0x01u
+#define VK_FLAG_BURST 0x02u
 #define VK_FLAG_CLIPPED 0x20u
 #define VK_O_VERSION 35u
 #define VK_O_RESERVED 56u
@@ -57,6 +58,11 @@
 #define VK_PHYS_VDC_END 0x1FE400u
 #define VK_VDC_AR_HSR 10u
 #define VK_VDC_AR_HDR 11u
+#define VK_VDC_AR_CR 5u /* the VDC registers whose data writes the runner records for the latch rows (plan 04-12): CR (BB and SB), BXR and BYR */
+#define VK_VDC_AR_BXR 7u
+#define VK_VDC_AR_BYR 8u
+#define VK_VW_MAX 32u /* the data writes (low byte, then high byte) of each of those registers: 16 register writes */
+#define VK_MARGIN 250u /* a latch row is judged only on a write at least this many master clocks from every line origin (Pitfall 2, ER-10 margin guard) */
 #define VK_REG_CR 0u
 #define VK_REG_CTW_LO 4u
 #define VK_REG_CTW_HI 5u
@@ -487,6 +493,8 @@ struct vk_log {
     uint64_t t_pal_last;
     uint64_t t_hv[VK_HV_MAX]; /* the stamps of the data writes of HSR and HDR, in order, two for each register write (the low byte, then the high byte: each sets the dirty bit of its own line, so the two can fall in two lines); the VDC window is joined by AR as the guest set it */
     unsigned n_hv;
+    uint64_t t_vw[3][VK_VW_MAX]; /* the stamps of the data writes of BXR (0), BYR (1) and the VDC CR (2), in order, two for each register write (plan 04-12) */
+    unsigned n_vw[3];
     uint64_t m; /* the machine time the run reached */
 };
 
@@ -512,6 +520,13 @@ static int vk_scan_dev(const uint8_t *recs, uint32_t count, struct vk_log *lg)
                     return -1;
                 }
                 lg->t_hv[lg->n_hv++] = vk_u64(r);
+            } else if ((phys & 3u) >= 2u && (ar == VK_VDC_AR_CR || ar == VK_VDC_AR_BXR || ar == VK_VDC_AR_BYR)) {
+                unsigned cls = ar == VK_VDC_AR_BXR ? 0u : ar == VK_VDC_AR_BYR ? 1u : 2u;
+
+                if (lg->n_vw[cls] >= VK_VW_MAX) {
+                    return -1;
+                }
+                lg->t_vw[cls][lg->n_vw[cls]++] = vk_u64(r);
             }
             continue;
         }
@@ -853,6 +868,8 @@ static int vk_s_values(struct vk_rc *rc)
 }
 
 static uint32_t vk_dot(const uint8_t *rec, uint32_t j, int which);
+static unsigned vk_active_lines(const struct vk_walk *w, uint64_t *out, unsigned cap, int pick, uint32_t pick_frame);
+static int vk_wjoin(struct vk_rc *rc, const struct vk_walk *w, const struct vk_log *lg, unsigned cls, uint64_t n, uint64_t *pos);
 
 /* the record with origin o lies wholly inside the window of CR write j: at least one line after the stamp of write j and, when write j + 1 exists, ending a line before it (origin + 2 lines <= the next stamp), so it depends neither on the grid phase nor on the tie rule and never on the power-on CR */
 static int vk_in_window(const struct vk_rc *rc, unsigned j, uint64_t o)
@@ -1367,6 +1384,104 @@ static int vk_s_frame_flags(struct vk_rc *rc)
     return VG_PASS;
 }
 
+/* every dot of the record has the index idx and the record has an active window; the text of the failure names the line and the dot */
+static int vk_flat_rec(struct vk_rc *rc, const uint8_t *rec, uint64_t idx, uint64_t m)
+{
+    uint32_t aw = vk_u16(rec + VK_O_ACTIVE_W);
+    uint32_t x;
+
+    if (aw == 0u) {
+        snprintf(rc->why, rc->cap, "STRUCT flat: line %llu of the checked set has no active window", (unsigned long long)m);
+        return VG_FAIL;
+    }
+    for (x = 0u; x < aw; x++) {
+        if ((uint64_t)vk_dot(rec, x, 0) != idx) {
+            snprintf(rc->why, rc->cap, "STRUCT flat: dot %u of line %llu of the checked set has the index %u, the row says %llu", x, (unsigned long long)m, (unsigned)vk_dot(rec, x, 0), (unsigned long long)idx);
+            return VG_FAIL;
+        }
+    }
+    return VG_PASS;
+}
+
+/* STRUCT flat_frame (plan 04-12): the count active lines from the one numbered from of frame number frame all have the index on every dot, and the flag BURST (b1 of the flags byte, set on display lines only) equals burst. The frame is a flat line set (a burst frame, or the backdrop of BB = 0), which a ROWS row cannot state (D-171 non-vacuity); a null renderer that draws index 0 everywhere passes this check alone and fails every other group of its scene */
+static int vk_s_flat_frame(struct vk_rc *rc)
+{
+    static const char *const keys[] = {"index", "frame", "from", "count", "burst"};
+    uint64_t v[5];
+    uint64_t lines[512];
+    unsigned nl;
+    unsigned i;
+    uint64_t m;
+
+    for (i = 0u; i < 5u; i++) {
+        if (vk_need(rc, keys, 5u) != 0 || vk_num(rc, keys[i], &v[i]) != 0) {
+            return vk_bad(rc, "STRUCT flat_frame needs the items index, frame, from, count and burst (decimal)");
+        }
+    }
+    if (v[1] > (uint64_t)UINT32_MAX || v[3] == 0u || v[4] > 1u || v[2] + v[3] > 512u) {
+        return vk_bad(rc, "STRUCT flat_frame: a frame number above u32, a count of 0, a burst above 1 or a range above 512 lines");
+    }
+    nl = vk_active_lines(rc->w, lines, 512u, 1, (uint32_t)v[1]);
+    if ((uint64_t)nl < v[2] + v[3]) {
+        snprintf(rc->why, rc->cap, "STRUCT flat_frame: frame %llu holds %u active lines, the row looks at lines %llu to %llu", (unsigned long long)v[1], nl, (unsigned long long)v[2], (unsigned long long)(v[2] + v[3] - 1u));
+        vk_focus(rc, rc->w->n / 2u);
+        return VG_FAIL;
+    }
+    vk_focus(rc, lines[v[2]]);
+    for (m = 0u; m < v[3]; m++) {
+        const uint8_t *rec = rc->w->rec[lines[v[2] + m]];
+        int fv;
+
+        if ((uint64_t)((rec[VK_O_FLAGS] & VK_FLAG_BURST) != 0u ? 1u : 0u) != v[4]) {
+            snprintf(rc->why, rc->cap, "STRUCT flat_frame: line %llu of frame %llu has the BURST flag %u, the row says %llu", (unsigned long long)(v[2] + m), (unsigned long long)v[1], (unsigned)((rec[VK_O_FLAGS] & VK_FLAG_BURST) != 0u ? 1u : 0u), (unsigned long long)v[4]);
+            return VG_FAIL;
+        }
+        fv = vk_flat_rec(rc, rec, v[0], v[2] + m);
+        if (fv != VG_PASS) {
+            return fv;
+        }
+    }
+    return VG_PASS;
+}
+
+/* STRUCT flat_at (plan 04-12): the count lines from the line d after the line that holds register write wr of register reg (0 BXR, 1 BYR, 2 the VDC CR; the write join of vk_wjoin, with its margin guard) all have the index on every dot. d = 1 is the first line the write can show on */
+static int vk_s_flat_at(struct vk_rc *rc)
+{
+    static const char *const keys[] = {"index", "reg", "wr", "d", "count"};
+    uint64_t v[5];
+    uint64_t pos = 0u;
+    unsigned i;
+    uint64_t m;
+    int jv;
+
+    for (i = 0u; i < 5u; i++) {
+        if (vk_need(rc, keys, 5u) != 0 || vk_num(rc, keys[i], &v[i]) != 0) {
+            return vk_bad(rc, "STRUCT flat_at needs the items index, reg, wr, d and count (decimal)");
+        }
+    }
+    if (v[1] > 2u || v[3] > 64u || v[4] == 0u || v[4] > 64u) {
+        return vk_bad(rc, "STRUCT flat_at: a register above 2, a line offset above 64 or a count outside 1 to 64");
+    }
+    jv = vk_wjoin(rc, rc->w, rc->lg, (unsigned)v[1], v[2], &pos);
+    if (jv != 0) {
+        return jv;
+    }
+    if (pos + v[3] + v[4] > rc->w->n) {
+        snprintf(rc->why, rc->cap, "STRUCT flat_at: the stream ends before the %llu lines that follow the write", (unsigned long long)v[4]);
+        vk_focus(rc, rc->w->n / 2u);
+        return VG_FAIL;
+    }
+    vk_focus(rc, pos + v[3]);
+    for (m = 0u; m < v[4]; m++) {
+        int fv = vk_flat_rec(rc, rc->w->rec[pos + v[3] + m], v[0], v[3] + m);
+
+        if (fv != VG_PASS) {
+            return fv;
+        }
+    }
+    return VG_PASS;
+}
+
 struct vk_chk {
     const char *name;
     int (*fn)(struct vk_rc *);
@@ -1391,6 +1506,8 @@ static const struct vk_chk vk_checks[] = {
     {"line_dirty_hv", vk_s_line_dirty_hv},
     {"cr_change", vk_s_cr_change},
     {"frame_flags", vk_s_frame_flags},
+    {"flat_frame", vk_s_flat_frame},
+    {"flat_at", vk_s_flat_at},
 };
 
 /* F0 (D-172): the first decimal number of a literal grows by one, so the row is made to claim something its own source does not say; 0 when the text holds a number */
@@ -1510,6 +1627,69 @@ static int vk_scan_u(const char *p, uint64_t *out, const char **end)
     return 0;
 }
 
+/* ---- the write join (plan 04-12; D-171): a latch row names a register write of the dev log (BXR, BYR or the VDC CR, the n-th register write of the guest, from 0, two data writes each) and finds its lines from the stamps against the origins of the records themselves, never from the core's tables ---- */
+
+/* NAME N of a write selector (bxr, byr or cr, then the register write number in decimal): the class 0, 1 or 2 and the number, the end of the text in *end; 0 on success, -1 when the text is not of that form */
+static int vk_wname(const char *p, unsigned *cls, uint64_t *n, const char **end)
+{
+    if (strncmp(p, "bxr", 3u) == 0) {
+        *cls = 0u;
+        p += 3;
+    } else if (strncmp(p, "byr", 3u) == 0) {
+        *cls = 1u;
+        p += 3;
+    } else if (strncmp(p, "cr", 2u) == 0) {
+        *cls = 2u;
+        p += 2;
+    } else {
+        return -1;
+    }
+    return vk_scan_u(p, n, end);
+}
+
+/* the position of "line n" of the register write number n of class cls: the number of records whose origin is before the stamp of the low byte write, less one. Both data writes must fall in that one line and every origin must be at least VK_MARGIN clocks from both stamps, or the tie rule of D-138 could decide and the case cannot judge it (VG_HARNESS, with the offsets so the counted delay can be placed). The position counts origins, so a fault that swaps or duplicates records moves the line the row reads. 0 on success, else VG_HARNESS with the text set */
+static int vk_wjoin(struct vk_rc *rc, const struct vk_walk *w, const struct vk_log *lg, unsigned cls, uint64_t n, uint64_t *pos)
+{
+    uint64_t tlo;
+    uint64_t thi;
+    uint64_t k;
+    uint64_t before = 0u;
+    uint64_t before_hi = 0u;
+    uint64_t last_lo = 0u;
+    uint64_t last_hi = 0u;
+    int too_close = 0;
+
+    if (cls > 2u || n >= (uint64_t)VK_VW_MAX / 2u || 2u * n + 1u >= (uint64_t)lg->n_vw[cls]) {
+        return vk_bad(rc, "a latch row names a register write that the dev log does not hold");
+    }
+    tlo = lg->t_vw[cls][2u * n];
+    thi = lg->t_vw[cls][2u * n + 1u];
+    for (k = 0u; k < w->n; k++) {
+        uint64_t o = vk_u64(w->rec[k] + VK_O_ORIGIN);
+
+        if ((o > tlo ? o - tlo : tlo - o) < (uint64_t)VK_MARGIN || (o > thi ? o - thi : thi - o) < (uint64_t)VK_MARGIN) {
+            too_close = 1;
+        }
+        if (o < tlo) {
+            before++;
+            last_lo = o > last_lo ? o : last_lo;
+        }
+        if (o < thi) {
+            before_hi++;
+            last_hi = o > last_hi ? o : last_hi;
+        }
+    }
+    if (too_close) {
+        snprintf(rc->why, rc->cap, "the write is within %u master clocks of a line origin (the data writes fall %llu and %llu clocks after the origin of their line): the tie rule would decide, so the case cannot judge it", (unsigned)VK_MARGIN, (unsigned long long)(tlo - last_lo), (unsigned long long)(thi - last_hi));
+        return VG_HARNESS;
+    }
+    if (before != before_hi || before == 0u) {
+        return vk_bad(rc, "the two data writes of a latch row fall in two lines, or no line precedes the write");
+    }
+    *pos = before - 1u;
+    return 0;
+}
+
 static int vk_rows_row(struct vk_rc *rc, const struct vx_row *r, int perturb)
 {
     uint64_t kk = 0u;
@@ -1517,6 +1697,10 @@ static int vk_rows_row(struct vk_rc *rc, const struct vx_row *r, int perturb)
     uint64_t x1 = 0u;
     uint64_t frame_no = 0u;
     int have_frame = 0;
+    int wform = 0;
+    unsigned wcls = 0u;
+    uint64_t wn = 0u;
+    uint64_t wpos = 0u;
     const char *p = r->sel;
     const char *lv;
     uint32_t want[VK_MAX_DOTS];
@@ -1531,10 +1715,19 @@ static int vk_rows_row(struct vk_rc *rc, const struct vx_row *r, int perturb)
     const uint8_t *rec;
     uint32_t aw;
 
-    if (strncmp(p, "line=active+", 12u) != 0 || vk_scan_u(p + 12, &kk, &p) != 0 || strncmp(p, ";x=", 3u) != 0 || vk_scan_u(p + 3, &x0, &p) != 0 || strncmp(p, "..", 2u) != 0 || vk_scan_u(p + 2, &x1, &p) != 0) {
+    if (strncmp(p, "line=active+", 12u) == 0) {
+        if (vk_scan_u(p + 12, &kk, &p) != 0) {
+            return vk_bad(rc, "a ROWS row has the selector line=active+K;x=X0..X1");
+        }
+    } else if (strncmp(p, "line=", 5u) == 0 && vk_wname(p + 5, &wcls, &wn, &p) == 0 && *p == '+' && vk_scan_u(p + 1, &kk, &p) == 0) { /* line=NAME N+D: the record D lines after the line that holds the write (plan 04-12) */
+        wform = 1;
+    } else {
         return vk_bad(rc, "a ROWS row has the selector line=active+K;x=X0..X1");
     }
-    if (strncmp(p, ";frame=", 7u) == 0) { /* the optional frame number (u32, as the record header holds it) */
+    if (strncmp(p, ";x=", 3u) != 0 || vk_scan_u(p + 3, &x0, &p) != 0 || strncmp(p, "..", 2u) != 0 || vk_scan_u(p + 2, &x1, &p) != 0) {
+        return vk_bad(rc, "a ROWS row has the selector line=active+K;x=X0..X1");
+    }
+    if (!wform && strncmp(p, ";frame=", 7u) == 0) { /* the optional frame number (u32, as the record header holds it) */
         have_frame = 1;
         if (vk_scan_u(p + 7, &frame_no, &p) != 0 || frame_no > (uint64_t)UINT32_MAX) {
             return vk_bad(rc, "a ROWS row has the selector line=active+K;x=X0..X1 with the optional item ;frame=F");
@@ -1573,7 +1766,23 @@ static int vk_rows_row(struct vk_rc *rc, const struct vx_row *r, int perturb)
     if (perturb) {
         want[0]++; /* F0: the first expected value of the row is made wrong */
     }
-    nl = vk_active_lines(rc->w, lines, 512u, have_frame, (uint32_t)frame_no);
+    if (wform) {
+        int jv = vk_wjoin(rc, rc->w, rc->lg, wcls, wn, &wpos);
+
+        if (jv != 0) {
+            return jv;
+        }
+        if (wpos + kk >= rc->w->n) {
+            snprintf(rc->why, rc->cap, "ROWS: the stream ends before the line %llu after the write", (unsigned long long)kk);
+            vk_focus(rc, rc->w->n / 2u);
+            return VG_FAIL;
+        }
+        lines[0] = wpos + kk;
+        nl = 1u;
+        kk = 0u;
+    } else {
+        nl = vk_active_lines(rc->w, lines, 512u, have_frame, (uint32_t)frame_no);
+    }
     if (kk >= (uint64_t)nl) {
         snprintf(rc->why, rc->cap, "ROWS: the run has %u active lines and the row asks for active+%llu", nl, (unsigned long long)kk);
         vk_focus(rc, rc->w->n / 2u);
@@ -1621,11 +1830,116 @@ static int vk_fail_rel(struct vk_rc *rc, const char *rel, const char *what)
     return VG_FAIL;
 }
 
+/* REL at-form (plan 04-12): the relation on the lines around a register write of the dev log, both lines in the one run named by the row (runs=main,main). scroll_x_shift (dx): line n + 1 shows line n moved left by dx dots, B[x] = A[x + dx], where line n holds the write and line n + 1 follows it. scroll_y_shift (dy, lines) with fa=prev: B is the lines n + 1 to n + lines of the frame that holds the write, A the lines of the frame before it, and B line i shows A line i + dy, with i the index of the line among the active lines of its frame. The direction of a scroll is a modelling reading (ASSUMED), which the group class says; the relation itself names none */
+static int vk_rel_at(struct vk_rc *rc, const char *rel, const char *at, const char *fa, const struct vk_run *ra, const struct vk_run *rb)
+{
+    unsigned cls = 0u;
+    uint64_t n = 0u;
+    uint64_t pos = 0u;
+    uint64_t v1 = 0u;
+    uint64_t v2 = 0u;
+    const char *end = at;
+    int jv;
+
+    if (vk_wname(at, &cls, &n, &end) != 0 || *end != '\0') {
+        return vk_bad(rc, "a REL at item is NAME N: bxr, byr or cr and a register write number");
+    }
+    jv = vk_wjoin(rc, ra->w, ra->lg, cls, n, &pos);
+    if (jv != 0) {
+        return jv;
+    }
+    if (strcmp(rel, "scroll_x_shift") == 0) {
+        static const char *const keys[] = {"dx"};
+        const uint8_t *a = ra->w->rec[pos];
+        const uint8_t *b;
+        uint32_t aw = vk_u16(a + VK_O_ACTIVE_W);
+        uint32_t x;
+        unsigned observable = 0u;
+
+        if (fa[0] != '\0' || vk_need(rc, keys, 1u) != 0 || vk_num(rc, "dx", &v1) != 0 || v1 == 0u) {
+            return vk_bad(rc, "REL scroll_x_shift with at needs the single item dx=N (at least 1) and no fa");
+        }
+        if (pos + 1u >= rb->w->n) {
+            return vk_fail_rel(rc, rel, "the stream ends at the line of the write");
+        }
+        b = rb->w->rec[pos + 1u];
+        vk_focus(rc, pos + 1u);
+        if (aw == 0u || vk_u16(b + VK_O_ACTIVE_W) != aw || v1 >= (uint64_t)aw) {
+            return vk_fail_rel(rc, rel, "the line of the write or the line after it has no active window, or they differ in width, or dx is not below the width");
+        }
+        for (x = 0u; x + (uint32_t)v1 < aw; x++) {
+            if (vk_row_differs(b, x, a, x + (uint32_t)v1)) {
+                snprintf(rc->why, rc->cap, "REL scroll_x_shift: dot %u of the line after the write is not dot %u of the line that holds it", x, x + (unsigned)v1);
+                return VG_FAIL;
+            }
+            if (vk_row_differs(a, x + (uint32_t)v1, a, x)) {
+                observable = 1u;
+            }
+        }
+        return observable ? VG_PASS : vk_bad(rc, "REL scroll_x_shift: the line of the write is constant along x, so a shift cannot be observed");
+    }
+    if (strcmp(rel, "scroll_y_shift") == 0) {
+        static const char *const keys[] = {"dy", "lines"};
+        uint64_t la[512];
+        uint64_t lb[512];
+        unsigned na;
+        unsigned nb;
+        unsigned i0 = 0u;
+        unsigned m;
+        unsigned observable = 0u;
+        uint32_t fb;
+
+        if (strcmp(fa, "prev") != 0 || vk_need(rc, keys, 2u) != 0 || vk_num(rc, "dy", &v1) != 0 || v1 == 0u || vk_num(rc, "lines", &v2) != 0 || v2 == 0u) {
+            return vk_bad(rc, "REL scroll_y_shift with at needs fa=prev and the items dy=N and lines=N (both at least 1)");
+        }
+        if (pos + 1u >= rb->w->n) {
+            return vk_fail_rel(rc, rel, "the stream ends at the line of the write");
+        }
+        vk_focus(rc, pos + 1u);
+        fb = vk_u32(rb->w->rec[pos + 1u] + VK_O_FRAME);
+        if (fb == 0u) {
+            return vk_fail_rel(rc, rel, "the line after the write is in frame 0, which has no frame before it");
+        }
+        nb = vk_active_lines(rb->w, lb, 512u, 1, fb);
+        na = vk_active_lines(ra->w, la, 512u, 1, fb - 1u);
+        while (i0 < nb && lb[i0] != pos + 1u) {
+            i0++;
+        }
+        if (i0 == nb || na == 0u || (uint64_t)i0 + v2 > (uint64_t)nb || (uint64_t)i0 + v2 + v1 > (uint64_t)na) {
+            return vk_fail_rel(rc, rel, "the line after the write is not an active line of its frame, or the frame before has no line dy below the compared lines");
+        }
+        for (m = 0u; (uint64_t)m < v2; m++) {
+            const uint8_t *bb = rb->w->rec[lb[i0 + m]];
+            const uint8_t *aa = ra->w->rec[la[i0 + m + (unsigned)v1]];
+            const uint8_t *a0 = ra->w->rec[la[i0 + m]];
+            uint32_t aw = vk_u16(bb + VK_O_ACTIVE_W);
+            uint32_t x;
+
+            if (vk_u16(aa + VK_O_ACTIVE_W) != aw) {
+                return vk_fail_rel(rc, rel, "a compared line has another width in B than in A");
+            }
+            for (x = 0u; x < aw; x++) {
+                if (vk_row_differs(bb, x, aa, x)) {
+                    snprintf(rc->why, rc->cap, "REL scroll_y_shift: dot %u of line %u after the write is not that of line %u of the frame before", x, m + 1u, i0 + m + (unsigned)v1);
+                    return VG_FAIL;
+                }
+                if (vk_row_differs(aa, x, a0, x)) {
+                    observable = 1u;
+                }
+            }
+        }
+        return observable ? VG_PASS : vk_bad(rc, "REL scroll_y_shift: the lines of the frame before are all alike, so a shift cannot be observed");
+    }
+    return vk_bad(rc, "a REL at item is for scroll_x_shift and scroll_y_shift only");
+}
+
 static int vk_rel_row(struct vk_rc *rc, const struct vx_row *r, const struct vk_run *runs, unsigned nruns, int perturb)
 {
     char lit[VX_LIT + 8u];
     char rel[24];
     char names[72];
+    char at[16];
+    char fa[8];
     char *comma;
     const struct vk_run *ra;
     const struct vk_run *rb;
@@ -1638,8 +1952,19 @@ static int vk_rel_row(struct vk_rc *rc, const struct vx_row *r, const struct vk_
     uint64_t v2 = 0u;
     int sel;
 
-    if (vk_kv_parse(r->sel, rc) != 0 || rc->nkv != 2u || strcmp(rc->kv[0].k, "rel") != 0 || strcmp(rc->kv[1].k, "runs") != 0 || strlen(rc->kv[0].v) >= sizeof rel) {
-        return vk_bad(rc, "a REL row has the selector rel=NAME;runs=A,B");
+    at[0] = '\0';
+    fa[0] = '\0';
+    if (vk_kv_parse(r->sel, rc) != 0 || rc->nkv < 2u || rc->nkv > 4u || strcmp(rc->kv[0].k, "rel") != 0 || strcmp(rc->kv[1].k, "runs") != 0 || strlen(rc->kv[0].v) >= sizeof rel) {
+        return vk_bad(rc, "a REL row has the selector rel=NAME;runs=A,B with the optional items at=NAME N and fa=prev");
+    }
+    for (i = 2u; i < rc->nkv; i++) { /* the optional items of plan 04-12, in this order: at (a register write of the dev log) and fa (the frame before the one that holds it) */
+        if (strcmp(rc->kv[i].k, "at") == 0 && i == 2u && strlen(rc->kv[i].v) < sizeof at) {
+            memcpy(at, rc->kv[i].v, strlen(rc->kv[i].v) + 1u);
+        } else if (strcmp(rc->kv[i].k, "fa") == 0 && at[0] != '\0' && strlen(rc->kv[i].v) < sizeof fa) {
+            memcpy(fa, rc->kv[i].v, strlen(rc->kv[i].v) + 1u);
+        } else {
+            return vk_bad(rc, "a REL row has the selector rel=NAME;runs=A,B with the optional items at=NAME N and fa=prev");
+        }
     }
     memcpy(rel, rc->kv[0].v, strlen(rc->kv[0].v) + 1u);
     memcpy(names, rc->kv[1].v, strlen(rc->kv[1].v) + 1u);
@@ -1659,6 +1984,9 @@ static int vk_rel_row(struct vk_rc *rc, const struct vx_row *r, const struct vk_
     }
     if (vk_kv_parse(lit, rc) != 0) {
         return vk_bad(rc, "the literal of a REL row is not key=value items separated by semicolons");
+    }
+    if (at[0] != '\0') {
+        return vk_rel_at(rc, rel, at, fa, ra, rb);
     }
     na = vk_active_lines(ra->w, la, 512u, 0, 0u);
     nb = vk_active_lines(rb->w, lb, 512u, 0, 0u);
@@ -3100,6 +3428,65 @@ static void jf_sweep(struct jf_ctx *jf, const struct jf_stream *s, const struct 
     }
 }
 
+/* the latch forms of plan 04-12 on the base stream (line k at origin k * 1365; lines 1 and 2 are active) and on the shifted rows of jf_rel: a register write joined to its line by the stamp against the origins, the 250-clock margin guard, the REL at-form and the flat checks */
+static void jf_writes(struct jf_ctx *jf, const struct jf_stream *s, const struct vk_log *lg0)
+{
+    static const uint32_t ia[3][8] = {{1, 2, 3, 4, 5, 6}, {2, 3, 4, 5, 6, 7}, {3, 4, 5, 6, 7, 8}};
+    static const uint32_t ca[3][8] = {{201, 202, 203, 204, 205, 206}, {202, 203, 204, 205, 206, 207}, {203, 204, 205, 206, 207, 208}};
+    struct vk_log lg = *lg0;
+    struct vk_log nearw = *lg0;
+    struct vk_log split = *lg0;
+    struct jf_stream flat;
+    struct jf_stream sh;
+    struct vk_run run;
+    struct vk_run runsh;
+
+    lg.n_vw[0] = 2u; /* BXR write 0: both data writes 600 clocks into line 1 (origin 1365) */
+    lg.t_vw[0][0] = (uint64_t)VK_GRID + 600u;
+    lg.t_vw[0][1] = (uint64_t)VK_GRID + 620u;
+    nearw = lg;
+    nearw.t_vw[0][0] = (uint64_t)VK_GRID + 100u; /* 100 clocks after an origin: the tie rule would decide */
+    nearw.t_vw[0][1] = (uint64_t)VK_GRID + 120u;
+    split = lg;
+    split.t_vw[0][1] = 2u * (uint64_t)VK_GRID + 600u; /* the low byte in line 1, the high byte in line 2 */
+    lg.n_vw[2] = 2u;
+    lg.t_vw[2][0] = (uint64_t)VK_GRID + 600u;
+    lg.t_vw[2][1] = (uint64_t)VK_GRID + 620u;
+    jf_run1(&run, s, &lg);
+    jf_want(jf, "ROWS write form: the line that holds the write shows its own rows", jf_eval(jf, "ROWS", "F0", "line=bxr0+0;x=0..3", "index=4,6,1,3", &run, 1u, 0), VG_PASS);
+    jf_want(jf, "ROWS write form: the line after the write shows the next rows", jf_eval(jf, "ROWS", "F0", "line=bxr0+1;x=0..3", "index=7,2,4,6", &run, 1u, 0), VG_PASS);
+    jf_want(jf, "ROWS write form: the rows of the next line are not those of the line that holds the write", jf_eval(jf, "ROWS", "F0", "line=bxr0+0;x=0..3", "index=7,2,4,6", &run, 1u, 0), VG_FAIL);
+    jf_want(jf, "ROWS write form: F0 on the right literal fails", jf_eval(jf, "ROWS", "F0", "line=bxr0+1;x=0..3", "index=7,2,4,6", &run, 1u, 1), VG_FAIL);
+    jf_want(jf, "ROWS write form: a register write that the dev log does not hold is a fault of the case", jf_eval(jf, "ROWS", "F0", "line=bxr3+0;x=0..3", "index=4,6,1,3", &run, 1u, 0), VG_HARNESS);
+    jf_want(jf, "ROWS write form: a write of a register with no stamps is a fault of the case", jf_eval(jf, "ROWS", "F0", "line=byr0+0;x=0..3", "index=4,6,1,3", &run, 1u, 0), VG_HARNESS);
+    jf_want(jf, "ROWS write form: the VDC CR write is joined like the others", jf_eval(jf, "ROWS", "F0", "line=cr0+1;x=0..3", "index=7,2,4,6", &run, 1u, 0), VG_PASS);
+    jf_run1(&run, s, &nearw);
+    jf_want(jf, "ROWS write form: a write within 250 clocks of a line origin is a fault of the case", jf_eval(jf, "ROWS", "F0", "line=bxr0+0;x=0..3", "index=4,6,1,3", &run, 1u, 0), VG_HARNESS);
+    jf_run1(&run, s, &split);
+    jf_want(jf, "ROWS write form: data writes in two lines are a fault of the case", jf_eval(jf, "ROWS", "F0", "line=bxr0+0;x=0..3", "index=4,6,1,3", &run, 1u, 0), VG_HARNESS);
+    jf_rows_stream(&sh, 6u, 4u, 7u, ia, ca);
+    lg.t_vw[0][0] = 600u; /* in the shifted stream line 0 starts at 0 and line 1 shows line 0 moved left by one dot */
+    lg.t_vw[0][1] = 620u;
+    runsh.name = "a";
+    runsh.w = &sh.w;
+    runsh.lg = &lg;
+    jf_want(jf, "REL scroll_x_shift at a write: the line after shows the line of the write moved by dx", jf_eval(jf, "REL", "F0", "rel=scroll_x_shift;runs=a,a;at=bxr0", "dx=1", &runsh, 1u, 0), VG_PASS);
+    jf_want(jf, "REL scroll_x_shift at a write with another dx fails", jf_eval(jf, "REL", "F0", "rel=scroll_x_shift;runs=a,a;at=bxr0", "dx=2", &runsh, 1u, 0), VG_FAIL);
+    jf_want(jf, "REL scroll_x_shift at a write with F0 on dx fails the pair", jf_eval(jf, "REL", "F0", "rel=scroll_x_shift;runs=a,a;at=bxr0", "dx=1", &runsh, 1u, 1), VG_FAIL);
+    jf_want(jf, "REL scroll_x_shift at a write that the log does not hold is a fault of the case", jf_eval(jf, "REL", "F0", "rel=scroll_x_shift;runs=a,a;at=bxr4", "dx=1", &runsh, 1u, 0), VG_HARNESS);
+    jf_base(&flat, 2, 0u);
+    lg.t_vw[0][0] = (uint64_t)VK_GRID + 600u;
+    lg.t_vw[0][1] = (uint64_t)VK_GRID + 620u;
+    jf_run1(&run, &flat, &lg);
+    jf_want(jf, "STRUCT flat_frame on a frame of one index passes", jf_eval(jf, "STRUCT", "F0", "check=flat_frame", "index=0;frame=0;from=0;count=2;burst=0", &run, 1u, 0), VG_PASS);
+    jf_want(jf, "STRUCT flat_frame with another index fails", jf_eval(jf, "STRUCT", "F0", "check=flat_frame", "index=7;frame=0;from=0;count=2;burst=0", &run, 1u, 0), VG_FAIL);
+    jf_want(jf, "STRUCT flat_frame with the BURST flag wanted on a frame without it fails", jf_eval(jf, "STRUCT", "F0", "check=flat_frame", "index=0;frame=0;from=0;count=2;burst=1", &run, 1u, 0), VG_FAIL);
+    jf_want(jf, "STRUCT flat_frame past the active lines of the frame fails", jf_eval(jf, "STRUCT", "F0", "check=flat_frame", "index=0;frame=0;from=0;count=3;burst=0", &run, 1u, 0), VG_FAIL);
+    jf_want(jf, "STRUCT flat_at on the line after a write on a flat stream passes", jf_eval(jf, "STRUCT", "F0", "check=flat_at", "index=0;reg=0;wr=0;d=1;count=1", &run, 1u, 0), VG_PASS);
+    jf_run1(&run, s, &lg);
+    jf_want(jf, "STRUCT flat_at on the line after a write on a stream of many indices fails", jf_eval(jf, "STRUCT", "F0", "check=flat_at", "index=0;reg=0;wr=0;d=1;count=1", &run, 1u, 0), VG_FAIL);
+}
+
 void kind_video_judge_forms(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
 {
     struct jf_ctx jf;
@@ -3124,6 +3511,7 @@ void kind_video_judge_forms(const struct kase *k, struct ctx *c, char *got, size
     jf_struct(&jf, &base, &skew, &lg);
     jf_rows(&jf, &base, &lg);
     jf_rel(&jf, &lg);
+    jf_writes(&jf, &base, &lg);
     jf_null(&jf, &lg);
     jf_sweep(&jf, &base, &lg);
     /* a whole scene on the base stream through the parser of the file: every STRUCT group passes (the groups are ASSUMED test data) */

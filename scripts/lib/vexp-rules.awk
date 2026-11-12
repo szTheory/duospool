@@ -18,7 +18,7 @@
 # Grammar (four row kinds, TAB separated, keys closed, the order of the keys fixed):
 #   scene   NAME  case=CASE_ID  role=literal|struct|golden          a scene NAME may have one line per case, for example its literal case and its golden case
 #   group   SCENE GID  form=ROWS|REL|STRUCT  class=MAN:<label>|GUEST:<model>|ASSUMED:<LED-id>  sym=order|asym|none  kills=F0,F5,...
-#   row     SCENE GID  SELECTOR  LITERAL                             ROWS selector line=active+K;x=X0..X1 (optionally ;frame=F: the frame numbered F, else the first frame with an active line) with literal index=LIST or value=LIST (LIST items V or COUNT*V: COUNT dots of the value V); STRUCT selector check=NAME with key=value items; REL selector rel=NAME;runs=A,B with key=value items
+#   row     SCENE GID  SELECTOR  LITERAL                             ROWS selector line=active+K;x=X0..X1 (optionally ;frame=F: the frame numbered F, else the first frame with an active line) with literal index=LIST or value=LIST (LIST items V or COUNT*V: COUNT dots of the value V); or line=NAME N+D;x=X0..X1 (NAME bxr, byr or cr: the line D after the line that holds register write N of the guest, found from the dev log stamps and the record origins, with a 250-clock margin guard); STRUCT selector check=NAME with key=value items; REL selector rel=NAME;runs=A,B (optionally ;at=NAME N and ;fa=prev) with key=value items
 #   golden  SCENE sha256=HEX                                         one pinned stream digest of a golden scene
 # Codes: VEXP_FORMAT (a shape error), VEXP_UNKNOWN_KEY (an unknown row kind, key, check, relation or selector), VEXP_CLASS (a class that is not MAN with an img cite, GUEST with an allowlisted model or ASSUMED with a ledger id, or a grid-dependent check under a class other than ASSUMED), VEXP_ASYM_CLASS (ER-12: a sym=asym group
 #   with a class other than ASSUMED), INV_VIDEO_GROUP_UNKILLED (an empty kills list), VIDEO_GROUP_VACUOUS (a kills list none of whose faults can apply to the form of the group, by the closed form-by-fault table below), VIDEO_ROWS_VACUOUS (a ROWS literal with fewer than 3 distinct values or no transition, D-171), INV_VIDEO_HASH_ONLY (a golden scene
@@ -122,6 +122,8 @@ BEGIN {
   ck["line_dirty_hv"] = "hv_bit"
   ck["cr_change"] = "div_a,crw,hvw,div_b,w_a,w_b,x_a,x_b,margin"
   ck["frame_flags"] = "want,frame,bit"
+  ck["flat_frame"] = "index,frame,from,count,burst"
+  ck["flat_at"] = "index,reg,wr,d,count"
   # the checks that use the 1365-clock grid, the frame length, the window origin or the join of a write stamp to the grid: their class is ASSUMED (ER-10, the weakest class of the inputs wins)
   split("count origins frame_lines records_per_frame display_lines div_first line_dirty window display_flags line_dirty_hv cr_change frame_flags", gl, " ")
   for (i = 1; i in gl; i++) {
@@ -308,8 +310,8 @@ END {
         }
       }
     } else if (form == "ROWS") {
-      if (sel !~ /^line=active\+[0-9]+;x=[0-9]+\.\.[0-9]+(;frame=[0-9]+)?$/) {
-        violf(r_file[i], "VEXP_UNKNOWN_KEY", r_ln[i], "a ROWS row has the selector line=active+K;x=X0..X1 with the optional item ;frame=F")  # rule-unknown-key
+      if (sel !~ /^line=active\+[0-9]+;x=[0-9]+\.\.[0-9]+(;frame=[0-9]+)?$/ && sel !~ /^line=(bxr|byr|cr)[0-9]+\+[0-9]+;x=[0-9]+\.\.[0-9]+$/) {
+        violf(r_file[i], "VEXP_UNKNOWN_KEY", r_ln[i], "a ROWS row has the selector line=active+K;x=X0..X1 with the optional item ;frame=F, or line=NAME N+D;x=X0..X1 with NAME bxr, byr or cr (the line D after the line that holds register write N)")  # rule-unknown-key
       } else if (lit !~ /^(index|value)=[0-9]+(\*[0-9]+)?(,[0-9]+(\*[0-9]+)?)*$/) {
         violf(r_file[i], "VEXP_UNKNOWN_KEY", r_ln[i], "a ROWS row has the literal index=LIST or value=LIST, the items of the list V or COUNT*V")  # rule-unknown-key
       } else {
@@ -350,8 +352,8 @@ END {
         }
       }
     } else {
-      if (sel !~ /^rel=[a-z_]+;runs=[a-z][a-z0-9_]*,[a-z][a-z0-9_]*$/) {
-        violf(r_file[i], "VEXP_UNKNOWN_KEY", r_ln[i], "a REL row has the selector rel=NAME;runs=A,B")  # rule-unknown-key
+      if (sel !~ /^rel=[a-z_]+;runs=[a-z][a-z0-9_]*,[a-z][a-z0-9_]*(;at=(bxr|byr|cr)[0-9]+(;fa=prev)?)?$/) {
+        violf(r_file[i], "VEXP_UNKNOWN_KEY", r_ln[i], "a REL row has the selector rel=NAME;runs=A,B with the optional items ;at=NAME N and ;fa=prev (the lines around register write N of bxr, byr or cr)")  # rule-unknown-key
       } else {
         rel = sel
         sub(/;.*$/, "", rel)
@@ -359,7 +361,7 @@ END {
         if (!(rel in rk)) {
           violf(r_file[i], "VEXP_UNKNOWN_KEY", r_ln[i], "the REL relation " rel " is not in the closed list (scroll_x_shift scroll_y_shift palette_subst blank_is_border dot_width_scale)")  # rule-unknown-key
         } else {
-          litcheck(r_file[i], r_ln[i], lit, rk[rel], "REL " rel)
+          litcheck(r_file[i], r_ln[i], lit, (rel == "scroll_y_shift" && sel ~ /;at=/) ? "dy,lines" : rk[rel], "REL " rel)
         }
       }
     }

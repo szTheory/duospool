@@ -302,7 +302,7 @@ void kind_insn_sink_shapes(const struct kase *k, struct ctx *c, char *got, size_
 /* ---- kind opcode_exercise (deferred) ---- */
 
 #define OX_SINK_RECORDS 1048576u
-#define OX_ROMS_MAX 32u
+#define OX_ROMS_MAX 40u
 #define OX_PER_LINE 16u
 
 struct ox_rom {
@@ -411,7 +411,7 @@ void kind_opcode_exercise(const struct kase *k, struct ctx *c, char *got, size_t
     }
     nroms = ox_collect(roms);
     if (nroms < 1) {
-        harness_error(c, nroms < 0 ? "more than 32 distinct guest ROMs: raise OX_ROMS_MAX" : "no guest case with an authored ROM and an until_mclk was found");
+        harness_error(c, nroms < 0 ? "more than 40 distinct guest ROMs: raise OX_ROMS_MAX" : "no guest case with an authored ROM and an until_mclk was found");
         return;
     }
     sink = (struct ds_insn_sink *)calloc(1u, sizeof *sink);
