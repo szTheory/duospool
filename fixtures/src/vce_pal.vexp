@@ -27,6 +27,8 @@
 # Old digest 6c510913928bfa8703e0f5006bba728f894ccf9ce910ede9b7fcef50afd09c55, new digest c667ac7ada36e13b97178cf7a1c011e4494b6f4b3ec79359b894eafddaf35253, recomputed with shasum -a 256 over the --video-out file; the literal case video_vce_pal passed on the changed records first.
 # Repin of plan 04-09 (E0 change detector, ER-11): a display line now carries its active window and payload (HDS 0, HDW 0 here, so 8 dots of index 256 and the colour of palette entry $100: rec_bytes 96 on every display line, 64 elsewhere).
 # Old digest c667ac7ada36e13b97178cf7a1c011e4494b6f4b3ec79359b894eafddaf35253, new digest 03fa9142760f089c51cd33fc1a0e1cfec16547dbafcd652d40dc4cc23ddf8a85, recomputed with shasum -a 256 over the --video-out file; the literal case video_vce_pal passed on the changed records first.
+# Old digest 03fa9142760f089c51cd33fc1a0e1cfec16547dbafcd652d40dc4cc23ddf8a85, new digest a33b1f0eb45e7b32c3aab68d5b08023a7c11f7c13cb77ebe4a4bb677b4802364, recomputed with shasum -a 256 over the --video-out file; the literal case video_vce_pal passed on the changed records first.
+# Reason (plan 04-10): the display lines of a burst frame (CR = 0, so SB = BB = 0 at display line 0) now carry the BURST flag, the burst latch of D-157.
 scene	vce_pal	case=video_vce_pal	role=literal
 scene	vce_pal	case=video_vce_pal_golden	role=golden
 group	vce_pal	struct	form=STRUCT	class=ASSUMED:LED-VID-0004	sym=none	kills=F4,F8,F9
@@ -45,4 +47,4 @@ group	vce_pal	border	form=STRUCT	class=GUEST:pal_bijection	sym=none	kills=F0
 row	vce_pal	border	check=border_after_pal	value=273
 group	vce_pal	dirty	form=STRUCT	class=ASSUMED:LED-VID-0004	sym=none	kills=F0,F4
 row	vce_pal	dirty	check=line_dirty	cr_bit=0;pal_bit=4
-golden	vce_pal	sha256=03fa9142760f089c51cd33fc1a0e1cfec16547dbafcd652d40dc4cc23ddf8a85
+golden	vce_pal	sha256=a33b1f0eb45e7b32c3aab68d5b08023a7c11f7c13cb77ebe4a4bb677b4802364

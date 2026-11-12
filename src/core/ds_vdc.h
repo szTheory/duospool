@@ -29,6 +29,11 @@ void ds_vdc_flag(struct ds_instance *inst, uint32_t bit);
 uint16_t ds_vdc_vram_read(const struct ds_instance *inst, uint32_t word);
 void ds_vdc_vram_write(struct ds_instance *inst, uint32_t word, uint16_t value);
 
+/* the DMA of plan 04-10 (vdc.c; D-150, D-151): apply the words of the VRAM-to-VRAM transfer due at time t by the closed form (DV on completion), copy SATB at the VBlank entry line, and raise DS when its time t has come; all three are called by the fold in beam.c in time order with the events and nowhere else */
+void ds_vdc_dma_apply(struct ds_instance *inst, uint64_t t);
+void ds_vdc_satb_copy(struct ds_instance *inst, uint64_t t);
+void ds_vdc_satb_due(struct ds_instance *inst, uint64_t t);
+
 /* a register read or write of the VDC window (reg = A1-A0) and of the VCE window (reg = A2-A0) at the access stamp, after the fold; a read of a window register may change the status flags, a write changes registers */
 uint8_t ds_vdc_read(struct ds_instance *inst, uint32_t reg, uint64_t stamp);
 void ds_vdc_write(struct ds_instance *inst, uint32_t reg, uint8_t value, uint64_t stamp);

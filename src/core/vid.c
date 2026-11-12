@@ -6,7 +6,8 @@
  *   +32 u8 line_dirty  +33 u8 slots_used  +34 u8 covering  +35 u8 version  +36 u16 rcr_counter  +38 u16 bxr_eff  +40 u16 byr_row  +42 u16 hsr  +44 u16 hdr  +46 u16 vpr  +48 u16 vdw  +50 u16 vcr  +52 u16 mwr_eff  +54 u16 vdc_cr  +56 u64 reserved (zero)
  * The payload is two u16 arrays of active_w entries (the index, then the colour) and zero padding to a multiple of 8; a non-display line is the header alone (rec_bytes 64, active_w 0, active_x 0). Plan 04-08 fills v_state, active_k (the display line index inside VDW, 0xFFFF off display), rcr_counter and the ACTIVE flag from the vertical machine.
  * Plan 04-09 gives a display line its active window from the registers HSR and HDR and the divider latched at EV_LINE (D-140): active_x = (HDS+1)*8 and active_w = (HDW+1)*8 dots of that line's divider; a window that would end past the 1365 master clocks of the line is clipped to the whole dots that fit (possibly none, then active_x is 0) and the CLIPPED flag is set; nothing is padded and no width is fixed anywhere.
- * Until the background renderer of plan 04-11 every active dot is index 256 with the colour of palette entry $100, the result D-157 gives for a frame with BB = SB = 0; the render reads no VRAM. The BURST flag is not derived yet (plan 04-10), so that blank payload appears without it: an intended and temporary inconsistency.
+ * Until the background renderer of plan 04-11 every active dot is index 256 with the colour of palette entry $100, the result D-157 gives for a frame with BB = SB = 0; the render reads no VRAM. Since plan 04-10 the BURST flag (b1) is set on the display lines of a burst frame (the latch of D-157, taken at display line 0 as !(BB ||
+ * SB) and kept for the frame), so the blank payload of a BB = SB = 0 frame now carries it; a display line of a frame that is not burst keeps the blank payload without the flag until the renderer of plan 04-11.
  * The render function takes a CONST instance and a stack record and can write no machine state: the record is a pure function of the state at the line event (R1), and what the fold does with the record (emit or drop) changes nothing in the instance (D-164).
  * The layout is a project definition, not a hardware claim (LED-VID-0018, ER-13). The header offsets are asserted below.
  */
@@ -144,7 +145,7 @@ uint32_t ds_vid_render(const struct ds_instance *inst, uint64_t origin, uint8_t 
     put_le(rec, OFF_BORDER, (uint64_t)pal_entry(inst, BORDER_ENTRY), 2u);
     put_le(rec, OFF_ACTIVE_K, display ? (uint64_t)inst->display_k : (uint64_t)0xFFFFu, 2u); /* the display line index inside VDW, 0xFFFF on every other line (plan 04-08) */
     put_le(rec, OFF_V_STATE, (uint64_t)inst->v_state, 1u);
-    put_le(rec, OFF_FLAGS, (display ? (uint64_t)FLAG_ACTIVE : UINT64_C(0)) | (inst->burst != 0u ? (uint64_t)FLAG_BURST : UINT64_C(0)) | (clipped != 0u ? (uint64_t)FLAG_CLIPPED : UINT64_C(0)), 1u);
+    put_le(rec, OFF_FLAGS, (display ? (uint64_t)FLAG_ACTIVE : UINT64_C(0)) | (display && inst->burst != 0u ? (uint64_t)FLAG_BURST : UINT64_C(0)) | (clipped != 0u ? (uint64_t)FLAG_CLIPPED : UINT64_C(0)), 1u);
     put_le(rec, OFF_LINE_DIRTY, (uint64_t)inst->line_dirty, 1u);
     put_le(rec, OFF_SLOTS, UINT64_C(0), 1u);
     put_le(rec, OFF_COVERING, UINT64_C(0), 1u);

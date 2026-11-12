@@ -286,3 +286,5 @@ vid_active_window
 video_fault_sweep_vce_dot
 video_fault_sweep_vid_frame_lines
 video_fault_sweep_vid_active_window
+vdc_dma
+vdc_dma_vram

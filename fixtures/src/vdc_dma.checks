@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# vdc_dma.checks - one row per CHECK of fixtures/src/vdc_dma.s (D-125, plan 04-10). Columns separated by one TAB: check index (1-based), slug, class tag, meaning, and for a raw measurement row a fifth column, the word observe (D-169, F-41).
+# Class tags: MAN:<page> (a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model>, ASSUMED:<LED-id>. The transfer count LENR + 1 and the LENR high byte trigger are H7-12; the copy takes time is a modelling choice of LED-VID-0014 (VL1: no speed is claimed). A pass is not a support claim (ER-4).
+id=20
+checks=4
+1	dst-low-sum	GUEST:vram-sum	The 64 destination low bytes of the transfer equal an additive running sum, a different computation from the assembler's multiplication that formed the source table: the OR of the differences is zero
+2	dst-high-sum	GUEST:vram-sum	The 64 destination high bytes equal the same running sum
+3	last-word-not-yet	ASSUMED:LED-VID-0014	Right after the LENR high byte write the last destination word still holds its sentinel: an instant transfer fails this row
+4	word-after-block	MAN:H7-12	The word after the block still holds its sentinel: LENR + 1 words moved and not one more

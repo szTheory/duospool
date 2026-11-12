@@ -6,7 +6,9 @@
  * The grid (plan 04-04): line k starts at DS_CONST_raster_phase_mclk + k * DS_CONST_line_mclk and its EV_LINE is DS_CONST_line_sample_offset_mclk after that; the stored next event is derived from (line_idx, stage, vd_off, rcr_off), no clock value is stored (D-137). The fold processes every event with time <= stamp in time order, an event at the
  * stamp of an access BEFORE the access (the tie rule of D-138, ASSUMED LED-VID-0004), and never rewinds: a stamp below the next event does nothing. At EV_LINE the divider is latched from the control register, the record of the line is rendered from the state and offered to the sink when one is attached, the dirty flags are cleared with or without a sink (D-164),
  * and the line index advances. Plan 04-08 adds the vertical machine, the RCR counter and the two interrupt events of the ladder: at EV_LINE, in the order of D-138, the vertical cycle advances (D-139), the RCR counter steps (D-142), the divider is latched and the two event offsets are computed, and the VBlank state entry latches MWR and raises VD (D-143);
- * EV_VD and EV_RCR of the line follow at their offsets and raise VD and RR through ds_vdc_flag, whose enable gate is read at that instant (D-144). The DMA closed forms are plans 04-10 and later, so the DMA step of the ladder is empty. Plan 04-09 gives a display line its active window in the record from HSR, HDR and the divider latched here (vid.c, D-140). The positions are modelling assumptions (ASSUMED LED-IRQ-0001, LED-IRQ-0010, LED-VID-0004), not hardware measurements.
+ * EV_VD and EV_RCR of the line follow at their offsets and raise VD and RR through ds_vdc_flag, whose enable gate is read at that instant (D-144). Plan 04-10 adds the DMA: the closed form of the VRAM-to-VRAM transfer and the DS time are applied in time order before every event and at the target stamp (item 1 of D-138), the burst
+ * latch, the cancel at display start and the start of a pending transfer are at EV_LINE (dma_line), and the SATB copy is at the VBlank state entry. Plan 04-09 gives a display line its active window in the record from HSR, HDR and the divider latched here (vid.c, D-140). The positions are modelling assumptions (ASSUMED LED-
+ * IRQ-0001, LED-IRQ-0010, LED-VID-0004), not hardware measurements.
  * Plan 04-03 added the power-on state (ds_vdc_poweron) and the state layout of the instance (ds_core.h).
  */
 #include <stddef.h>
@@ -22,7 +24,9 @@
 enum { STAGE_LINE = 0, STAGE_VD = 1, STAGE_RCR = 2 };
 /* the vertical states of D-139 (v_state) and the register slots the ladder reads (the slot is the register number, vdc.c) */
 enum { VS_VDS = 0, VS_VDW = 1, VS_VCR = 2, VS_VSW = 3 };
-enum { SLOT_RCR = 6, SLOT_MWR = 9, SLOT_HSR = 10, SLOT_HDR = 11, SLOT_VPR = 12, SLOT_VDW = 13, SLOT_VCR = 14 };
+enum { SLOT_CR = 5, SLOT_RCR = 6, SLOT_MWR = 9, SLOT_HSR = 10, SLOT_HDR = 11, SLOT_VPR = 12, SLOT_VDW = 13, SLOT_VCR = 14, SLOT_DCR = 15 };
+/* CR bits 7 (BB, background) and 6 (SB, sprites): both clear makes a frame burst (D-157), and DCR bit 4 repeats the SATB copy at every VBlank entry (D-150) */
+enum { CR_BB_SB = 0xC0, DCR_DSR = 0x10 };
 /* the status flag numbers of ds_vdc_flag (D-144): RR is bit 2 and VD bit 5 */
 enum { FLAG_RR = 2, FLAG_VD = 5 };
 
@@ -162,8 +166,28 @@ static void schedule_offsets(struct ds_instance *inst)
     }
 }
 
+/* item 4 of D-138 for the VRAM-to-VRAM transfer (D-151, D-157), at the EV_LINE of time t after the vertical step and the divider latch: at the first display line (VDW, display_k 0) the burst latch is evaluated as !(BB || SB) from CR as it stands now and persists for the frame, and a frame that is not burst cancels a pending or running
+ * transfer with no DV, the counters as reached (the words due at this instant were applied before the event); then a pending transfer starts here when the bus is free (not VDW, or burst) and the divider is latched: its first word is due one word time after t, and the word time is latched from this divider. A transfer started
+ * during a display period of a frame that is not burst stays pending until a later line finds the bus free */
+static void dma_line(struct ds_instance *inst, uint64_t t)
+{
+    if ((uint32_t)inst->v_state == (uint32_t)VS_VDW && inst->display_k == (uint16_t)0u) {
+        inst->burst = ((uint32_t)inst->vdc_reg[SLOT_CR] & (uint32_t)CR_BB_SB) == 0u ? (uint8_t)1u : (uint8_t)0u;
+        if (inst->burst == 0u && inst->dma_state != 0u) {
+            inst->dma_state = 0u;
+            inst->dma_done = 0u;
+        }
+    }
+    if (inst->dma_state == 1u && inst->lat_div != 0u && ((uint32_t)inst->v_state != (uint32_t)VS_VDW || inst->burst != 0u)) {
+        inst->dma_state = 2u;
+        inst->dma_start = t;
+        inst->dma_done = 0u;
+        inst->dma_word_mclk = (uint16_t)((uint32_t)DS_CONST_vdc_dma_dots_per_word * (uint32_t)inst->lat_div);
+    }
+}
+
 /* EV_LINE of line line_idx, the items of D-138 this plan has, in order: (2) the vertical machine, (3) the RCR counter, (4) the divider latch and the event offsets, (5) at the VBlank state entry the MWR latch and VD, (7) render and offer the record when a sink is attached (the want_pixels gate of D-164), (8) clear the dirty flags; then the line advances.
- * Item 1 (DMA words due) and the other latches belong to plans 04-09 and later. VD of phase line_start is raised here, at this EV_LINE; phase hdw_start leaves it outstanding (vd_pending) for the EV_VD of this line. The divider is latched before the offsets are computed from it */
+ * Item 1 (DMA words due) is applied by the fold before this function runs, item 4 for the transfer is dma_line, and the other latches belong to later plans. VD of phase line_start is raised here, at this EV_LINE; phase hdw_start leaves it outstanding (vd_pending) for the EV_VD of this line. The divider is latched before the offsets are computed from it */
 static void ev_line(struct ds_instance *inst, struct ds_obs_log *obs)
 {
     uint64_t k = inst->line_idx;
@@ -171,10 +195,14 @@ static void ev_line(struct ds_instance *inst, struct ds_obs_log *obs)
 
     rcr_step(inst);
     inst->lat_div = (uint8_t)ds_vce_divider((uint32_t)inst->vce_cr);
+    dma_line(inst, line_origin(k) + (uint64_t)DS_CONST_line_sample_offset_mclk);
     inst->vd_off = (uint16_t)EV_OFF_NONE;
     inst->vd_pending = 0u;
     if (vblank != 0) {
         inst->mwr_active = (uint16_t)((uint32_t)inst->vdc_reg[SLOT_MWR] & 0xFFu);
+        if (inst->satb_pending != 0u || ((uint32_t)inst->vdc_reg[SLOT_DCR] & (uint32_t)DCR_DSR) != 0u) { /* the SATB copy instant, whatever CR.VC says (D-150); no arbitration with a VRAM transfer (VL1) */
+            ds_vdc_satb_copy(inst, line_origin(k) + (uint64_t)DS_CONST_line_sample_offset_mclk);
+        }
         if (inst->vd_irq_phase == 0u) {
             ds_vdc_flag(inst, (uint32_t)FLAG_VD);
         } else {
@@ -206,6 +234,8 @@ void ds_vdc_advance(struct ds_instance *inst, uint64_t stamp, struct ds_obs_log 
         if (!ds_vdc_pending_time(&t, inst->line_idx, (uint32_t)inst->stage, (uint32_t)inst->vd_pending, (uint32_t)inst->vd_off, (uint32_t)inst->rcr_off) || t > stamp) {
             break;
         }
+        ds_vdc_dma_apply(inst, t); /* the words due and the DS time that come up to this event are applied before it, in time order (item 1 of D-138) */
+        ds_vdc_satb_due(inst, t);
         switch ((uint32_t)inst->stage) {
         case (uint32_t)STAGE_VD: /* the VBlank flag of phase hdw_start, gated by CR bit 3 at this instant (D-143, D-144) */
             inst->vd_pending = 0u;
@@ -225,6 +255,8 @@ void ds_vdc_advance(struct ds_instance *inst, uint64_t stamp, struct ds_obs_log 
             break;
         }
     }
+    ds_vdc_dma_apply(inst, stamp); /* then the words and the DS time up to the target stamp, before the access that carries it (never a rewind: a stamp below the folded point finds nothing due) */
+    ds_vdc_satb_due(inst, stamp);
 }
 
 /* power-on state of the VCE, the VDC and the beam (plan 04-03; D-165, D-167, F-11, F-48): ds_boot has zeroed the instance, so every register, latch, status, DMA and beam byte is already 0 under every policy; this sets the three non-zero bytes. The RCR counter is a constant (it is not a draw), the frame length is the bound
