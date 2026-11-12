@@ -12,6 +12,6 @@ meaning = "A guest that writes MWR with VM = 1 makes every record of the frames 
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-VID-0015"]
 until_mclk = 6000000
 checks = 6

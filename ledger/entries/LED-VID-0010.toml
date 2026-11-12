@@ -8,7 +8,7 @@ status = "assumed"
 sources = ["FACT|H7-6 H7-9 H7-14 H7-15 H7-18|SB and BB valid from the next display period, BAT word layout, CG0 and CG1 words for CH0-CH3, VD7-VD4 colour and VD3-VD0 = CH3-CH0, border VD8 = 1 with VD7-VD0 = 0", "REPORT|pcetech.txt|pixel bit order and backdrop reading, community"]
 evidence = []
 disagreement = "the backdrop when BB = 0 (index 0 versus 256) and the burst latch instant differ between sources; H7-15 draws CH1 left of CH0 inside a word but prints no bit numbers"
-pinning_test = "PENDING:4"
+pinning_test = "TEST:video_bg_basic_asym"
 updated = "2026-11-11"
 assumption = "Plane significance is page-stated (H7-18); which byte of a word is which plane and which pixel is leftmost is not, so those checks are ASSUMED class and sit apart from the order-insensitive solid-tile checks (ER-12)."
 revisit_phase = 4

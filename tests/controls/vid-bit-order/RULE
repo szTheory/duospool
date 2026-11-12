@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Toy control (D-85, D-173, F-39; a toy of the Phase 4 set): the pixel bit order of a tile row reversed (the leftmost dot of a row is bit 0 and not bit 7), made from the live src/core/vid.c by scripts/control-mutate. The anchor is the one statement of bg_index that forms the bit a dot reads from its column; the replacement takes the bit from the column itself, the plausible mistake of a reader that takes the community bit order for the opposite one.
+# The case in EXPECT without a second column must come out guest_failure on the toy: video_bg_basic_asym judges the one-pixel diagonal, whose set dot moves from tile column r to column 7 - r. The case with the column pass must STAY pass (F-4): video_bg_basic_solid judges tiles of one pixel value only, which no bit order, byte order or flip can change, so it is the proof that the order-insensitive group (MAN H7-14, H7-18) does not depend on the assumption of LED-VID-0010 (ER-12).
+# The real core passes both (REQUIRED cases).
+tag=rule-vid-bit-order
+file=src/core/vid.c
+anchor=uint32_t bit = 7u - (col & 7u);
+replace=uint32_t bit = col & 7u;
