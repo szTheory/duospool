@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 4
 current_phase_name: VCE/VDC Raw Video
-current_plan: 13
+current_plan: 14
 status: executing
-stopped_at: Completed 04-09-PLAN.md
-last_updated: "2026-11-12T11:02:58.162Z"
+stopped_at: Completed 04-10-PLAN.md
+last_updated: "2026-11-12T11:57:01.660Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 3 complete, transitioned to Phase 4
-state_head: 3848966c0a37fe9a14cac20b7118fac7216deb89
+state_head: f89f6d41e18b0d2a6ab3aa322fb132803cdfcb83
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 91
-  completed_plans: 84
+  completed_plans: 85
   percent: 50
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 4 (VCE/VDC Raw Video) — READY TO EXECUTE
-Current Plan: 13
+Current Plan: 14
 Total Plans in Phase: 19
 Status: Ready to execute
 Last activity: 2026-11-11 — Phase 3 complete, transitioned to Phase 4
@@ -142,6 +142,7 @@ Progress: [█████░░░░░] 50%
 | Phase 04 P08 | 28min | 2 tasks | 16 files |
 | Phase 04 P17 | 3h | 2 tasks | 32 files |
 | Phase 04 P09 | about 3 h | 3 tasks | 29 files |
+| Phase 04 P10 | about 2h | 3 tasks | 37 files |
 
 ## Accumulated Context
 
@@ -308,6 +309,10 @@ Recent decisions affecting current work:
 - [Phase 04]: 04-17: the EXPECT second column pass is read by conformance-run toy-expect and toy-verdict; judge=A-B judges a range of checks with the whole DSV1 block verified
 - [Phase 04]: 04-09: the active window is computed in vid.c from HSR, HDR and the latched divider at EV_LINE; a window past the line is clipped to the whole dots that fit (CLIPPED, active_x 0 when none fit); blank payload index 256 until 04-11
 - [Phase 04]: 04-09: the vce_pal golden moved with Task 1 (display lines now carry a payload); the mid-frame instant is guarded by a 250-clock margin check in the runner
+- [Phase 04]: The DMA completion and the DS time are applied in time order inside the fold by the closed form, not stored as events; ds_vdc_pending_time and the restore windows stay unchanged
+- [Phase 04]: BURST is set on the display lines of a burst frame only; the blank payload is unchanged until 04-11
+- [Phase 04]: The vce_pal golden moved with the first burst flag (a33b1f0e), the literal case passing first
+- [Phase 04]: The SATB copy is made at the VBlank state entry EV_LINE and DS is due 256 * 4 * lat_div master clocks later, an assumed modelling choice (LED-VID-0013)
 
 ### Pending Todos
 
@@ -331,6 +336,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12T11:02:57.785Z
-Stopped at: Completed 04-09-PLAN.md
+Last session: 2026-11-12T11:57:01.285Z
+Stopped at: Completed 04-10-PLAN.md
 Resume file: None
