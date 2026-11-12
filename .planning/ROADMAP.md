@@ -181,7 +181,7 @@ Plans:
   3. A fixture writes the scanline and phase of raster-compare and VBlank interrupts into guest RAM. The recorded values agree with the modelled position for the profile's line count. They are labelled a modelling assumption, not a hardware claim, until a primary manual page or an owner-approved capture settles C3.
   4. All 512 9-bit palette entries round-trip through write and readback in guest RAM. A dot-clock change, including one mid-frame, shows up as changed per-line geometry in the raw record and is never normalised to a fixed width.
   5. A raw-video hash counts as a verdict only when paired with a semantic literal assertion, and that assertion is shown to fail when the renderer is deliberately broken.
-**Plans**: 7/19 plans executed in 18 sequential waves, listed in execution order (context waves W1-W8 of 04-CONTEXT; the cut line is checkpoint 04-13, after which W7 would become Phase 4.1; 04-17 is a planned split of 04-08; 04-18 and 04-19 are stop-rule splits of 04-03 and 04-04)
+**Plans**: 8/19 plans executed in 18 sequential waves, listed in execution order (context waves W1-W8 of 04-CONTEXT; the cut line is checkpoint 04-13, after which W7 would become Phase 4.1; 04-17 is a planned split of 04-08; 04-18 and 04-19 are stop-rule splits of 04-03 and 04-04)
 
 Plans:
 - [x] 04-01-PLAN.md - W1: evidence data: ER-1 page-image reads, cites, ledger entries and amendments, claim words (data only)
@@ -191,7 +191,7 @@ Plans:
 - [x] 04-04-PLAN.md - W2: TRACER: guest VCE palette and CR writes to header-only scanline records to digest, end to end (Task 1 executed; rest split to 04-19)
 - [x] 04-19-PLAN.md - W2: vce_pal completion, vce.inc and RODATA, toy vid-palette-mask, dev read logging, mmu_mpr checks 25-26, fold-window restore rules (stop-rule split of 04-04)
 - [x] 04-05-PLAN.md - W2: tracer hardening: chunk tokens, sink sizing, observer matrix, first toy, stale-prose cleanup
-- [ ] 04-06-PLAN.md - W3: VDC register file and VRAM interface, accessor sweep, mmu_mpr re-pins
+- [x] 04-06-PLAN.md - W3: VDC register file and VRAM interface, accessor sweep, mmu_mpr re-pins
 - [ ] 04-07-PLAN.md - W3: video judge and the video-check stage: ROWS/REL/STRUCT, fault sweep, hash-role rules, class lint
 - [ ] 04-08-PLAN.md - W4: raster timeline, status register and IRQ1 level, model_param_vdc
 - [ ] 04-17-PLAN.md - W4: IRQ position fixtures (262 and 263 lines), ratio and agree kinds, pass column, toys (split from 04-08)
@@ -261,6 +261,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phases 4 and 5
 | 1. Owner Decisions, Claim Ledger and Toolchain Spike | 12/12 | Complete    | 2026-11-09 |
 | 2. Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate | 22/22 | Complete    | 2026-11-10 |
 | 3. HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad | 38/38 | Complete    | 2026-11-11 |
-| 4. VCE/VDC Raw Video | 7/19 | In Progress | - |
+| 4. VCE/VDC Raw Video | 8/19 | In Progress | - |
 | 5. PSG Raw Audio | 0/TBD | Not started | - |
 | 6. Headless Runner, Installed-Consumer Proof and Staged Verification | 0/TBD | Not started | - |
