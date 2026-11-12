@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 4
 current_phase_name: VCE/VDC Raw Video
-current_plan: 4
+current_plan: 5
 status: executing
-stopped_at: Stopped after 04-03 Task 1+2 (stop rule); Tasks 3 and 4 proposed as plan 04-18
-last_updated: "2026-11-12T04:50:58.713Z"
+stopped_at: Completed 04-18-PLAN.md
+last_updated: "2026-11-12T05:19:41.389Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 3 complete, transitioned to Phase 4
-state_head: 33823486008a01e8a25f1f9b9d1ff92450c04172
+state_head: a95170ad8669ff84ae1c9befe876b7e57eb7a5f4
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 90
-  completed_plans: 75
+  completed_plans: 76
   percent: 50
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 4 (VCE/VDC Raw Video) — READY TO EXECUTE
-Current Plan: 4
+Current Plan: 5
 Total Plans in Phase: 18
 Status: Ready to execute
 Last activity: 2026-11-11 — Phase 3 complete, transitioned to Phase 4
@@ -134,6 +134,7 @@ Progress: [█████░░░░░] 50%
 | Phase 03 P33 | 330min | 3 tasks | 30 files |
 | Phase 4 P01 | 90min | 3 tasks | 45 files |
 | Phase 04 P02 | 80min | 3 tasks | 17 files |
+| Phase 04 P18 | 110min | 2 tasks | 24 files |
 
 ## Accumulated Context
 
@@ -277,6 +278,8 @@ Recent decisions affecting current work:
 - [Phase 04]: A malformed vid offer (NULL or empty record) is counted lost, never copied and does not set the sticky full flag
 - [Phase 04]: The observer matrix gives the vid sink a byte capacity: closed form of the deadline for large, first four record sizes of the large run for drop4, 0 and 1 for cap0 and cap1
 - [Phase 04]: Table-driven sink checks landed in the tracer task because a run must not write through an unchecked vid pointer
+- [Phase 04]: 04-18: seeded-prng-v3 is additive (every v2 draw first, then VRAM____, SATB____, PAL_____ straight into the arrays, odd palette bytes keep bit 0); policy 4 accepted by dec_powr only with the allowed set; the default guest list is zero, v3 seed 1, v3 seed 2
+- [Phase 04]: 04-18: restore refusal rows of the seven Phase 4 regions are split over four cases (vdc, beam, timeline, vdma) because a case expect list is capped at 511 characters
 
 ### Pending Todos
 
@@ -300,6 +303,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12T04:46:24.834Z
-Stopped at: Stopped after 04-03 Task 1+2 (stop rule); Tasks 3 and 4 proposed as plan 04-18
+Last session: 2026-11-12T05:19:41.039Z
+Stopped at: Completed 04-18-PLAN.md
 Resume file: None
