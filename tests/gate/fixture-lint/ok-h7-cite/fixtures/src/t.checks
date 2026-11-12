@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# fixture-lint control mini-root: registered HuC6270 and HuC6260 page labels are accepted (plan 04-01)
+id=1
+checks=2
+1	one	MAN:H7-4	status bit layout page
+2	two	MAN:H6-3	colour encoder divider page

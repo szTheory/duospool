@@ -18,7 +18,7 @@
 #   FIX_BAD_LICENCE              licence is not one of 0BSD MIT Apache-2.0 BSD-2-Clause BSD-3-Clause ISC Zlib CC0-1.0 (the SPDX ids that
 #                                docs/decisions/0007-copied-code-provenance.md allows)
 #   FIX_BAD_VERDICT_SOURCE       verdict_source is a list of one or more forms joined by + (no blanks), each one of spec-literal:LED-AREA-NNNN,
-#                                guest-computed, independent-script or manual-cite:PAGE (PAGE is H8-n, S8-n or BIOS-n, n decimal); the literal
+#                                guest-computed, independent-script or manual-cite:PAGE (PAGE is H8-n, S8-n, BIOS-n, H7-n or H6-n, n decimal); the literal
 #                                duospool-output (the emulator judging itself, FIX-03) is rejected as a form, in any list, as is any other value
 #   FIX_AUTHORED_REDIST          kind = authored with a redistribution other than generated-not-committed (D-123): an authored ROM is built in the
 #                                gate and never committed, so the only admitted value is the one that says so
@@ -59,7 +59,7 @@ END {
     vbad = 0
     for (i = 1; i <= np; i++) {
       q = vp[i]
-      if (q != "guest-computed" && q != "independent-script" && q !~ /^spec-literal:LED-(PROF|CPU|VID|AUD|IRQ|LOAD|IO|TOOL)-[0-9][0-9][0-9][0-9]$/ && q !~ /^manual-cite:(H8|S8|BIOS)-[0-9][0-9]*$/) vbad = 1
+      if (q != "guest-computed" && q != "independent-script" && q !~ /^spec-literal:LED-(PROF|CPU|VID|AUD|IRQ|LOAD|IO|TOOL)-[0-9][0-9][0-9][0-9]$/ && q !~ /^manual-cite:(H8|S8|BIOS|H7|H6)-[0-9][0-9]*$/) vbad = 1
     }
     if (vbad) viol("FIX_BAD_VERDICT_SOURCE", ln["verdict_source"], "verdict_source " v)
   }

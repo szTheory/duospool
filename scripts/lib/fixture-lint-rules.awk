@@ -26,6 +26,7 @@
 #   FXL_UNKNOWN_MNEMONIC a first word of a source line (any case) that is not a mnemonic of the opcode table and not a macro defined by a .macro line of a source or of fixtures/lib (an assignment  name = value  is not an instruction)  rule-unknown-mnemonic
 # A RAW line is any source line whose comment holds the word RAW: raw instruction bytes written in place of an instruction. Data tables are .byte lines without the marker.
 # The mnemonic set is the table of tests/oracle/huc6280-opcodes.tsv (plan 03-08), not a list kept here, so the size-hint rule and the unknown-mnemonic rule cannot drift from the manual transcription.
+# A page label is H8-n or S8-n (HuC6280 manuals), H7-n (HuC6270 manual) or H6-n (HuC6260 manual) with n decimal, or CDBIOS-pN (plan 04-01 added H7 and H6).
 # The two ledger rules (plan 03-32) read the stage-0 summary: a page named in a FACT source of a supported entry is a page that backs a support claim, and must be img in cites.txt (ER-1); a FACT ref lists page labels
 # separated by spaces and may name a range  S8-17 to S8-20  (every registered label inside the range counts). An ASSUMED:<id> tag must name an entry of the ledger that is read.
 BEGIN {
@@ -53,7 +54,7 @@ BEGIN {
   nobl = split("tai tdd tia tii tin", bl, " ")                  # block transfers take absolute operands only: their small numbers are lengths, not zero page
   for (i = 1; i <= nobl; i++) isblock[bl[i]] = 1
 }
-function islabel(t) { return (t ~ /^(H8-[0-9]+|S8-[0-9]+|CDBIOS-p[0-9]+)$/) }
+function islabel(t) { return (t ~ /^(H8-[0-9]+|S8-[0-9]+|H7-[0-9]+|H6-[0-9]+|CDBIOS-p[0-9]+)$/) }
 function labnum(t) { sub(/^[A-Za-z0-9]+-p?/, "", t); return t + 0 }
 function labpfx(t) { sub(/[0-9]+$/, "", t); return t }
 # one FACT ref of a supported entry: every page label (and every registered label inside a  A to B  range) is recorded as backing a support claim; it must be registered and img (ER-1)
