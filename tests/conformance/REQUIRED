@@ -313,3 +313,5 @@ bg_enab
 video_bg_enab
 video_fault_sweep_bg_enab
 mutate_sweep_bg_enab
+chunk_equiv_video_bg_scroll
+snapshot_restore_video_bg

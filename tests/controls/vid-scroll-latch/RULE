@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Toy control (D-85, D-173, F-39; a toy of the Phase 4 set): a BYR write no longer reloads the background row counter, made from the live src/core/vdc.c by scripts/control-mutate. D-173 words this toy as "scroll applied to the current line", which is not observable here: the record of the line that holds a write is emitted at its own line event, before the
+# write, and from the next line on "applied to the current line"
+# equals the next-line rule of H7-7 for BXR and for BYR alike (plan 04-12, plan-check ruling 4, 04-VALIDATION.md A3). The toy is therefore the latch rule of D-156 removed: the anchor is the one statement of the BYR write path that sets the counter bg_y to the written 9-bit value, and the replacement is an empty statement, so the next line shows the old counter
+# plus one instead of BYR + 1.
+# The cases in EXPECT must come out guest_failure on the toy: video_bg_scroll (its byr_next rows, MAN H7-7: the line after a write of BYR = 63 shows row 64, not the old counter plus one) and the fault sweep of that scene, whose baseline then fails. The real core passes both (REQUIRED cases).
+tag=rule-vid-scroll-latch
+file=src/core/vdc.c
+anchor=inst->bg_y = (uint16_t)((uint32_t)inst->vdc_reg[VDC_BYR] & 0x1FFu);
+replace=;

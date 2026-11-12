@@ -18,6 +18,6 @@ meaning = "A guest that writes BXR 16 and BYR 63 at counted instants inside disp
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-VID-0009"]
 until_mclk = 6000000
 checks = 4

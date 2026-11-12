@@ -7,6 +7,5 @@ video_vce_pal_golden	golden change detector beside the literal case video_vce_pa
 vid_frame_lines	the divider toy does not change line counts or the frame length: the scene is killed by the faults F4 and F9 of its sweep
 video_bg_basic_golden	golden change detector beside the literal cases video_bg_basic_solid and video_bg_basic_asym, which vid-palette-mask and vid-bit-order kill
 video_unmodelled_mode	a flag case: the toys leave the line records of the unmodelled frames alone, the scene is killed by the F0 of its fault sweep and by the negative row of frame 7
-video_bg_scroll	the toy vid-scroll-latch follows in Task 3 of plan 04-12; until then the scene is killed by F0, F1, F7 and F8 of its fault sweep (added by Task 2)
 video_bg_scroll_asym	killed by F0, F1, F7 and F8 of its fault sweep; the toy vid-scroll-latch moves only the BYR latch rows of video_bg_scroll, and the wrap and direction rows are ASSUMED readings that no mutant of the renderer is spent on (toy cap of 10)
 video_bg_enab	killed by F0, F1, F7 and F3 of its fault sweep (the tile rows, the burst frame and the backdrop frame) and by F0 and F8 of the post-toggle rows; no toy of the renderer is spent on it (toy cap of 10)
