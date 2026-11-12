@@ -6,8 +6,8 @@
  * The instruction sink (insn) receives one fixed-size record per executed instruction:
  *   record (DS_INSN_RECORD_BYTES = 24, little-endian, written byte by byte from widened unsigned values, the state BEFORE the instruction runs):
  *     +00 u64 start stamp (machine time in master clocks)  +08 u16 pc  +10 u8 opcode  +11 u8 A  +12 u8 X  +13 u8 Y  +14 u8 S  +15 u8 P  +16 u8 speed  +17..+23 zero
- * The device-register sink (dev, plan 03-19) receives one record per logged access to the hardware page: every write to windows 0 to 5 ($0000-$17FF of the page, the ST0 to ST2 physical writes included) and every read and write of
- * window 4 (the $1000 window); reads of the other windows are not logged:
+ * The device-register sink (dev, plan 03-19) receives one record per logged access to the hardware page: every write to windows 0 to 5 ($0000-$17FF of the page, the ST0 to ST2 physical writes included), every read of window 4 (the $1000 window) and, since plan 04-19
+ * (D-149), every read of windows 0 and 1 (the VDC and VCE windows, with the stamp the fold used and the latch unchanged); reads of the other windows ($1403, the PSG, the timer) are not logged:
  *   record (DS_DEV_RECORD_BYTES = 24, little-endian): +00 u64 stamp (the stamp of the access in master clocks, since plan 03-21 the access stamp of the bus: the instruction's start stamp plus the cycle of the access inside it times the cycle length, D-92 and D-108; seq orders accesses with one stamp)
  *     +08 u32 phys (physical address, $1FE000 | offset in the page)  +12 u8 value (the byte written, or the byte the read returned)  +13 u8 kind (DS_DEV_WRITE, DS_DEV_READ or DS_DEV_ST)
  *     +14 u8 flags (DS_DEV_FLAG_PENALTY: the access paid the VDC and VCE penalty, DS_DEV_FLAG_PHYS: a physical access that did not consult the mapping registers)  +15 u8 aux (the bus latch io_buffer after the access, D-104)

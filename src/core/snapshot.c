@@ -18,6 +18,7 @@
 #include "ds_poweron.h"
 #include "ds_serial.h"
 #include "ds_snapshot.h"
+#include "ds_vdc.h"
 
 /* the refusal names, generated from snapshot_refusals.def */
 #define DS_SNAPREF(name, number) [number] = "snapshot." #name,
@@ -688,6 +689,15 @@ static uint32_t dec_beam(struct ds_instance *inst, struct vctx *v, struct rd *r,
     if (lat_div == 0u ? line_idx != UINT64_C(0) : (lat_div < 2u || lat_div > 4u)) {
         return (uint32_t)DS_SNAPREF_field;
     }
+    /* the fold window (D-166, T-04-14), judged after the divider rule so that a divider of 0 after line 0 is refused for its own reason: the next event the members name is not before machine_time and is less than two lines after it, because a live run folds every step to its last clock (F-9),
+     * so the next event is at most one line ahead; a time far behind machine_time would make the next fold loop for as many lines. The helper returns 0 for members that name no event (refused too) and never overflows; the difference is taken only after the order is known. */
+    {
+        uint64_t pending = 0u;
+
+        if (!ds_vdc_pending_time(&pending, line_idx, (uint32_t)stage, (uint32_t)vd_pending, (uint32_t)vd_off, (uint32_t)rcr_off) || pending < v->time || pending - v->time >= UINT64_C(2) * (uint64_t)DS_CONST_line_mclk) {
+            return (uint32_t)DS_SNAPREF_field;
+        }
+    }
     if ((uint32_t)vd_irq_phase >= model_values((uint32_t)DS_MODEL_vd_irq_phase) || (uint32_t)rcr_origin >= model_values((uint32_t)DS_MODEL_rcr_origin)) {
         return (uint32_t)DS_SNAPREF_field;
     }
@@ -704,7 +714,6 @@ static uint32_t dec_vdma(struct ds_instance *inst, struct vctx *v, struct rd *r,
     uint16_t dma_word_mclk = r_u16(r);
     uint32_t dma_done = r_u32(r);
 
-    (void)v;
     if (commit) {
         inst->satb_pending = satb_pending;
         inst->satb_done_valid = satb_done_valid;
@@ -718,8 +727,15 @@ static uint32_t dec_vdma(struct ds_instance *inst, struct vctx *v, struct rd *r,
     if (satb_pending > 1u || satb_done_valid > 1u || dma_state > 2u || dma_done > SNAP_DMA_WORDS_MAX) {
         return (uint32_t)DS_SNAPREF_field;
     }
-    /* the master clocks per word are 4 dots of the divider latched at the start (2, 3 or 4): the divisor of the closed form of the transfer, so a transfer in progress never has any other (D-151); the time windows of satb_done_at and dma_start land with the fold (plan 04-04) */
+    /* the master clocks per word are 4 dots of the divider latched at the start (2, 3 or 4): the divisor of the closed form of the transfer, so a transfer in progress never has any other (D-151) */
     if (dma_state != 0u && dma_word_mclk != 8u && dma_word_mclk != 12u && dma_word_mclk != 16u) {
+        return (uint32_t)DS_SNAPREF_field;
+    }
+    /* the time windows (D-166, T-04-14): a SATB transfer that is valid ends from machine_time to 4096 clocks after it, and a transfer in progress started at or before machine_time; both are judged by comparison first, so no sum can overflow */
+    if (satb_done_valid != 0u && (satb_done_at < v->time || satb_done_at - v->time > UINT64_C(4096))) {
+        return (uint32_t)DS_SNAPREF_field;
+    }
+    if (dma_state != 0u && dma_start > v->time) {
         return (uint32_t)DS_SNAPREF_field;
     }
     return (uint32_t)DS_SNAPREF_NONE;

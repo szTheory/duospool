@@ -1337,6 +1337,8 @@ static void ed_time_max(uint8_t *b)
 static void ed_time_below(uint8_t *b)
 {
     sk_put64(b + sk_payload_off(RG_TIME), (UINT64_C(1) << 63) - 1u);
+    /* the fold window rule of plan 04-19 (D-166) refuses a beam whose next event is behind the machine time, so the beam follows the time: the next line event is the first one at or after it (ceiling of time / 1365), which the line-limit rule also allows */
+    sk_put64(b + sk_payload_off(RG_BEAM), ((UINT64_C(1) << 63) - UINT64_C(1) + UINT64_C(1364)) / UINT64_C(1365));
 }
 static void ed_p_b_bit(uint8_t *b)
 {
@@ -1615,6 +1617,98 @@ static void ed_ld_0_late(uint8_t *b)
     sk_put64(BM_AT(b, 0u), UINT64_C(5));
     b[sk_payload_off(RG_BEAM) + 29u] = 0u;
 }
+/* the fold window rules (D-166, T-04-14; plan 04-19): the next event the BEAM members name must lie in [machine_time, machine_time + 2730), judged after the divider rule, which is 2 in these rows so that it is not what refuses them. The rows that need a machine time set it to a multiple of 1365 plus a delta, and the
+ * line index to a count that the line-limit rule accepts (at most time / 1365 + 2); stage 0 names the EV_LINE of line_idx at line_idx * 1365 (raster_phase_mclk 0, ASSUMED LED-VID-0004), stage 1 the EV_VD of line_idx - 1 at its origin plus vd_off */
+static void win_set(uint8_t *b, uint64_t time, uint64_t line_idx, uint8_t stage)
+{
+    sk_put64(b + sk_payload_off(RG_TIME), time);
+    sk_put64(BM_AT(b, 0u), line_idx);
+    b[sk_payload_off(RG_BEAM) + 8u] = stage;
+    b[sk_payload_off(RG_BEAM) + 29u] = 2u;
+}
+static void ed_ev_before(uint8_t *b)
+{
+    sk_put64(BM_AT(b, 0u), UINT64_C(1)); /* the event of line 1 is at 1365, far behind the machine time of the snapshot */
+    b[sk_payload_off(RG_BEAM) + 8u] = 0u;
+    b[sk_payload_off(RG_BEAM) + 29u] = 2u;
+}
+static void ed_ev_far(uint8_t *b)
+{
+    win_set(b, UINT64_C(74) * UINT64_C(1365), UINT64_C(76), 0u); /* the event is at 76 * 1365 = time + 2730 exactly */
+}
+static void ed_ev_2729(uint8_t *b)
+{
+    win_set(b, UINT64_C(74) * UINT64_C(1365) + UINT64_C(1), UINT64_C(76), 0u); /* the event is time + 2729, the last clock the window holds */
+}
+static void ed_ev_now(uint8_t *b)
+{
+    win_set(b, UINT64_C(74) * UINT64_C(1365), UINT64_C(74), 0u); /* the event is at the machine time itself */
+}
+static void ed_ev_none(uint8_t *b)
+{
+    win_set(b, sk_get64(b + sk_payload_off(RG_TIME)), UINT64_C(5), 1u); /* stage 1 with no VD flag outstanding names no event */
+    b[sk_payload_off(RG_BEAM) + 30u] = 0u;
+}
+static void ed_ev_vd_before(uint8_t *b)
+{
+    win_set(b, sk_get64(b + sk_payload_off(RG_TIME)), UINT64_C(1), 1u); /* the EV_VD of line 0 at 100, behind the machine time */
+    b[sk_payload_off(RG_BEAM) + 30u] = 1u;
+    sk_put16(BM_AT(b, 25u), 100u);
+}
+static void ed_ev_vd_ahead(uint8_t *b)
+{
+    win_set(b, sk_get64(b + sk_payload_off(RG_TIME)), sk_get64(b + sk_payload_off(RG_TIME)) / UINT64_C(1365) + UINT64_C(2), 1u); /* the EV_VD of the line before the last allowed index: its origin plus 100 is less than one line ahead */
+    b[sk_payload_off(RG_BEAM) + 30u] = 1u;
+    sk_put16(BM_AT(b, 25u), 100u);
+}
+/* satb_done_at is judged only when valid, in [machine_time, machine_time + 4096]; dma_start only while a transfer runs, at or before the machine time */
+static void sat_set(uint8_t *b, uint8_t valid, uint64_t at)
+{
+    b[sk_payload_off(RG_VDMA) + 1u] = valid;
+    sk_put64(b + sk_payload_off(RG_VDMA) + 2u, at);
+}
+static void ed_sat_before(uint8_t *b)
+{
+    sat_set(b, 1u, sk_get64(b + sk_payload_off(RG_TIME)) - UINT64_C(1));
+}
+static void ed_sat_now(uint8_t *b)
+{
+    sat_set(b, 1u, sk_get64(b + sk_payload_off(RG_TIME)));
+}
+static void ed_sat_4096(uint8_t *b)
+{
+    sat_set(b, 1u, sk_get64(b + sk_payload_off(RG_TIME)) + UINT64_C(4096));
+}
+static void ed_sat_4097(uint8_t *b)
+{
+    sat_set(b, 1u, sk_get64(b + sk_payload_off(RG_TIME)) + UINT64_C(4097));
+}
+static void ed_sat_max(uint8_t *b)
+{
+    sat_set(b, 1u, UINT64_MAX);
+}
+static void ed_sat_idle_far(uint8_t *b)
+{
+    sat_set(b, 0u, UINT64_MAX);
+}
+static void dst_set(uint8_t *b, uint8_t state, uint64_t start)
+{
+    b[sk_payload_off(RG_VDMA) + 10u] = state;
+    sk_put64(b + sk_payload_off(RG_VDMA) + 11u, start);
+    sk_put16(b + sk_payload_off(RG_VDMA) + 19u, 8u);
+}
+static void ed_dst_ahead(uint8_t *b)
+{
+    dst_set(b, 1u, sk_get64(b + sk_payload_off(RG_TIME)) + UINT64_C(1));
+}
+static void ed_dst_now(uint8_t *b)
+{
+    dst_set(b, 1u, sk_get64(b + sk_payload_off(RG_TIME)));
+}
+static void ed_dst_idle_far(uint8_t *b)
+{
+    dst_set(b, 0u, UINT64_MAX);
+}
 /* a transfer in progress has 8, 12 or 16 master clocks per word, never 0 (the closed form divides by it) */
 static void ed_dma_word_0(uint8_t *b)
 {
@@ -1769,6 +1863,22 @@ static const struct {
     {"dma-word-12", M_EDIT, ed_dw_12_run},
     {"dma-word-16", M_EDIT, ed_dw_16_run},
     {"dma-word-9-idle", M_EDIT, ed_dw_9_idle},
+    {"event-before-time", M_EDIT, ed_ev_before},
+    {"event-too-far", M_EDIT, ed_ev_far},
+    {"event-2729", M_EDIT, ed_ev_2729},
+    {"event-at-time", M_EDIT, ed_ev_now},
+    {"event-none", M_EDIT, ed_ev_none},
+    {"event-vd-before", M_EDIT, ed_ev_vd_before},
+    {"event-vd-ahead", M_EDIT, ed_ev_vd_ahead},
+    {"satb-done-before", M_EDIT, ed_sat_before},
+    {"satb-done-now", M_EDIT, ed_sat_now},
+    {"satb-done-4096", M_EDIT, ed_sat_4096},
+    {"satb-done-4097", M_EDIT, ed_sat_4097},
+    {"satb-done-max", M_EDIT, ed_sat_max},
+    {"satb-done-idle-far", M_EDIT, ed_sat_idle_far},
+    {"dma-start-ahead", M_EDIT, ed_dst_ahead},
+    {"dma-start-now", M_EDIT, ed_dst_now},
+    {"dma-start-idle-far", M_EDIT, ed_dst_idle_far},
     {"null-buffer", M_NULL, ed_none},
     {"buffer-in-instance", M_OVERLAP, ed_none},
     {"snapshot-capacity", M_SNAP_CAPACITY, ed_none},
@@ -1914,6 +2024,18 @@ void kind_snapshot_refuse(const struct kase *k, struct ctx *c, char *got, size_t
 
                 accepted++;
                 check(c, ds_snapshot(t, check_buf, size, &w2) == (uint32_t)DS_SNAPREF_NONE && w2 == size && memcmp(check_buf, edit, size) == 0, "an accepted snapshot does not re-serialise to the same bytes");
+                if (strncmp(item, "event-", 6u) == 0 || strncmp(item, "satb-done-", 10u) == 0 || strncmp(item, "dma-start-", 10u) == 0) { /* plan 04-19: an accepted edge of a fold window still runs defined: a bounded run from it (the fold loops over a few lines at most) ends for a declared reason and its state snapshots again */
+                    struct ds_run_request rq3;
+                    struct ds_run_result res3;
+
+                    memset(&rq3, 0, sizeof rq3);
+                    memset(&res3, 0, sizeof res3);
+                    rq3.struct_size = (uint32_t)sizeof rq3;
+                    rq3.until_mclk = t->machine_time + UINT64_C(6000);
+                    rc = ds_run(t, &rq3, &res3);
+                    check(c, rc == (uint32_t)DS_RUN_REASON_UNTIL || rc == (uint32_t)DS_RUN_REASON_REFUSED, "a bounded run from an accepted edge of a fold window ended for no declared reason");
+                    check(c, ds_snapshot(t, check_buf, size, NULL) == (uint32_t)DS_SNAPREF_NONE, "the snapshot of a state reached by a run from an accepted edge of a fold window was refused");
+                }
                 if (strcmp(item, "time-2-63-1") == 0) { /* T-03-84: the largest machine time that restore accepts must not be one that a run can wrap: a deadline near 2^64 is refused, and a short run from there takes steps and ends below 2^64 */
                     struct ds_run_request rq2;
                     struct ds_run_result res2;

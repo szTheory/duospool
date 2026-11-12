@@ -10,7 +10,8 @@
  *                    The literals: the BRK handler first is the S8-30 flag row (I set) with the H8-12 masking of IRQ1 by I, and the IRQ1 handler second is the level that is still high after the RTI (ASSUMED:LED-IRQ-0005 for the sample after RTI).
  *   dev_record_pc    The pc field of the device-register records of a block transfer (WR-02). The program is LDA #$FF, TAM #2 (MPR1 = the hardware page, so the zero page and the stack at logical $2000-$21FF reach the page), then a TII of three bytes from
  *                    $E000 to $2002 (the VDC window) at $E004. Every dev record of the transfer, the three pushes of the prologue and the three byte writes, must carry the address of the TII ($E004, hand-assembled here and written in the case as pc=0xE004)
- *                    and the same address as the one insn record of the transfer. The expect is pc=0xNNNN;records=N (the count, 3 pushes + 3 byte writes, from the instruction definition: Y, A and X are pushed and three bytes move).
+ *                    and the same address as the one insn record of the transfer. The expect is pc=0xNNNN;records=N (the count, 3 pushes + 3 byte writes + 3 pops, from the instruction definition: Y, A and X are pushed, three bytes move and the epilogue pops them again; with MPR1 mapped to the hardware page
+ *                    the stack is window 0, whose reads are logged since plan 04-19, D-149, so the pops are records too).
  */
 #include <stdint.h>
 #include <stdio.h>
@@ -311,7 +312,7 @@ void kind_dev_record_pc(const struct kase *k, struct ctx *c, char *got, size_t g
     check(c, tii == 1u, msg);
     snprintf(msg, sizeof msg, "the insn record of the TII has pc %04X, the hand-assembled image puts it at %04X", (unsigned)tii_pc, (unsigned)want_pc);
     check(c, tii_pc == want_pc, msg);
-    snprintf(msg, sizeof msg, "the dev log holds %u records, the transfer makes %u (three pushes and three byte writes)", (unsigned)dcount, (unsigned)want_n);
+    snprintf(msg, sizeof msg, "the dev log holds %u records, the transfer makes %u (three pushes, three byte writes and three pops of the epilogue, D-149)", (unsigned)dcount, (unsigned)want_n);
     check(c, dcount == want_n, msg);
     for (i = 0u; i < dcount; i++) {
         const unsigned char *r = du.b + (size_t)i * DS_DEV_RECORD_BYTES;

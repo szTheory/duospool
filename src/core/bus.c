@@ -66,6 +66,7 @@ static uint32_t offset_of(uint16_t addr)
  *   io_buffer (D-104, ASSUMED LED-CPU-0013) is the byte of the last read or write in $0800-$17FF (windows 2 to 5): a read returns its stub value with the upper bits of the byte the window does not drive taken from io_buffer
  *   (the PSG window all eight bits, the timer bit 7 over its 7-bit counter, $1402 and $1403 the upper five bits over three register bits, the interrupt registers $1400 and $1401 all eight, the I/O window nothing: the pad drives all eight lines), and the byte read becomes the new io_buffer;
  *   a write in those windows stores its byte in io_buffer (the I/O window's byte is also the latch of port O). Reads and writes in the VDC and VCE windows and in the empty windows do not touch io_buffer.
+ * The dev log (D-119, D-149) holds every write to windows 0 to 5, the ST physical writes, the reads of the I/O window and, since plan 04-19, the reads of windows 0 and 1, each with the stamp the fold used and the latch unchanged.
  */
 enum hw_window { HW_VDC = 0, HW_VCE = 1, HW_PSG = 2, HW_TIMER = 3, HW_IO = 4, HW_IRQ = 5 };
 
@@ -120,12 +121,16 @@ static uint8_t hw_read(struct ds_instance *inst, struct ds_bus *bus, uint32_t of
     charge_penalty(bus, offset);
     stamp = access_stamp(inst, bus, 1);
     switch ((enum hw_window)(offset >> 10u)) {
-    case HW_VDC: /* the fold goes first with the stamp computed above, never recomputed (D-137 (1), F-24, Pitfall 2); the VDC window stays a stub until plan 04-06 */
+    case HW_VDC: /* the fold goes first with the stamp computed above, never recomputed (D-137 (1), F-24, Pitfall 2); the VDC window stays a stub until plan 04-06; the read is logged with that same stamp and never touches io_buffer (D-149, F-27) */
         ds_vdc_advance(inst, stamp, bus != NULL ? bus->obs : NULL);
-        return (uint8_t)DS_VDC_STUB_READ;
-    case HW_VCE: /* the VCE answers at the access stamp after the fold and never touches io_buffer (plan 04-04; D-152, F-27) */
+        value = (uint8_t)DS_VDC_STUB_READ;
+        log_dev(inst, bus, stamp, offset, value, (uint32_t)DS_DEV_READ);
+        return value;
+    case HW_VCE: /* the VCE answers at the access stamp after the fold, is logged with that stamp and never touches io_buffer (plan 04-04; D-149, D-152, F-27) */
         ds_vdc_advance(inst, stamp, bus != NULL ? bus->obs : NULL);
-        return ds_vce_read(inst, reg, stamp);
+        value = ds_vce_read(inst, reg, stamp);
+        log_dev(inst, bus, stamp, offset, value, (uint32_t)DS_DEV_READ);
+        return value;
     case HW_PSG:
         value = inst->io_buffer;
         break;
@@ -146,7 +151,7 @@ static uint8_t hw_read(struct ds_instance *inst, struct ds_bus *bus, uint32_t of
         return value;
     }
     inst->io_buffer = value;
-    if ((enum hw_window)(offset >> 10u) == HW_IO) { /* the $1000 window is the one whose reads are logged (D-119) */
+    if ((enum hw_window)(offset >> 10u) == HW_IO) { /* the reads of windows 2 to 5 that are logged are the $1000 window's (D-119); $1403 and the PSG reads stay unlogged (D-149) */
         log_dev(inst, bus, stamp, offset, value, (uint32_t)DS_DEV_READ);
     }
     return value;

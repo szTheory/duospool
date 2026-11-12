@@ -1,20 +1,24 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
-# The device-register log of the authored cyc-probe (plan 03-19; D-119, D-106): the penalty section of the fixture runs ST0 #$22 at logical $E182, a read of the VDC window, STA $0400 (a write to the VCE window) at $E187 and further reads, with MPR0 = $FF. The dev sink
-# must hold exactly two records, in order: (1) pc $E182, kind ST (the physical write of ST0), physical address $1FE000 (H8-8 Table 2-2-3, S8-80: ST0 writes the VDC address register at $1FE000), value $22 (the immediate of the fixture source, GUEST);
-# (2) pc $E187, kind W (a write through the mapping registers), physical address $1FE400 (the VCE window starts at $1FE400, H8-9), value A (the byte the accumulator held, read from the insn record of that pc, so no literal of DuoSpool output). Each
-# record's stamp must equal the start stamp of the insn record at its pc plus the cycle of the access inside the instruction times 12 master clocks (the access stamp of plan 03-21, D-92: the last cycle of the instruction, with the penalty cycle charged first):
-# the item ends in that cycle index, 4 for ST0 (4 cycles in the table, H8-25, minus 1 plus the 1 penalty cycle of ASSUMED:LED-CPU-0017) and 5 for STA abs (5 cycles, S8-83, minus 1 plus the penalty), so the literals are page counts and the assumption, not a DuoSpool run. Its pc field must be that pc,
-# its flags must carry the penalty bit for an address below $1FE800 (D-107, ASSUMED:LED-CPU-0017) and, for ST, the physical bit, and its spare bytes must be zero. The reads of
-# the VDC window ($0000), of $07FF, $0800 and $0C00 and the zero-page read are not logged (D-119 logs reads of the $1000 window only). The pcs come from the ca65 listing of the second subroutine as in case vdc_penalty_assumed. Evidence tier E0 for the log layout
-# against the case's literals; no accuracy, compatibility, cycle-accurate or hardware claim, and the word pass is not a support claim.
+# The device-register log of the authored cyc-probe (plans 03-19 and 04-19; D-119, D-106, D-149): the penalty section of the fixture runs ST0 #$22 at logical $E182, reads and writes of the VDC and VCE windows and further reads, with MPR0 = $FF. The dev sink must hold exactly six records, in order:
+# (1) pc $E182, kind ST (the physical write of ST0), physical address $1FE000 (H8-8 Table 2-2-3, S8-80: ST0 writes the VDC address register at $1FE000), value $22 (the immediate of the fixture source, GUEST);
+# (2) pc $E184, kind R, physical address $1FE000 (LDA $0000 reads the VDC window, H8-9), value $00 (the status read of a VDC that has raised no flag: the stub of D-104 until plan 04-06, ASSUMED LED-VID-0006);
+# (3) pc $E187, kind W (a write through the mapping registers), physical address $1FE400 (the VCE window starts at $1FE400, H8-9), value A (the byte the accumulator held, read from the insn record of that pc, so no literal of DuoSpool output);
+# (4) pc $E18A, kind R, physical address $1FE7FF (LDA $07FF, the last byte of the VCE window), value $FF (offset 7 of the window is an unlisted register, whose read gives the unused value, ASSUMED LED-VID-0016);
+# (5) pc $E197, kind R, physical address $1FE010 (LDA ZPV with ZPV = $10 while MPR1 maps the hardware page: the zero page lands in the VDC window), value $00 (status, as (2));
+# (6) pc $E19E, kind R, physical address $1FE000 (the same VDC read after CSH, at the high speed), value $00 (status, as (2)).
+# Each record's stamp must equal the start stamp of the insn record at its pc plus the cycle of the access inside the instruction times the master clocks of one cycle (the access stamp of plan 03-21, D-92: the last cycle of the instruction, with the penalty cycle charged first): the item ends in that cycle index, 4 for ST0
+# (4 cycles in the table, H8-25, minus 1 plus the 1 penalty cycle of ASSUMED:LED-CPU-0017), 5 for LDA abs and STA abs (5 cycles, S8-83, minus 1 plus the penalty), 4 for the zero-page read (LDA zp has 4 cycles, minus 1 plus the penalty), and 5H for the read after CSH (the suffix H: 3 master clocks
+# per cycle at the high speed, D-90). So the literals are page counts and the assumption, not a DuoSpool run.
+# Its pc field must be that pc, its flags must carry the penalty bit for an address below $1FE800 (D-107, ASSUMED:LED-CPU-0017) and, for ST, the physical bit, and its spare bytes must be zero. The reads of the PSG window ($0800) and the timer window ($0C00) are not logged (D-149 logs the reads of windows 0, 1 and the $1000 window).
+# The pcs come from the ca65 listing of the second subroutine as in case vdc_penalty_assumed. Evidence tier E0 for the log layout against the case's literals; no accuracy, compatibility, cycle-accurate or hardware claim, and the word pass is not a support claim.
 id = "dev_log_records"
 kind = "dev_log"
 fixture = "none"
 request = ""
-expect = "mode=guest;rom=cyc-probe;rec=0xE182:ST:0x1FE000:0x22:4;rec=0xE187:W:0x1FE400:A:5"
-meaning = "With a device-register sink on cyc-probe the log holds the ST0 physical write to $1FE000 and the VCE window write to $1FE400 in order, with the ST kind and physical flag on the ST0 record, the instruction's stamp and pc on each, and nothing for the reads of the VDC and timer windows"
+expect = "mode=guest;rom=cyc-probe;rec=0xE182:ST:0x1FE000:0x22:4;rec=0xE184:R:0x1FE000:0x00:5;rec=0xE187:W:0x1FE400:A:5;rec=0xE18A:R:0x1FE7FF:0xFF:5;rec=0xE197:R:0x1FE010:0x00:4;rec=0xE19E:R:0x1FE000:0x00:5H"
+meaning = "With a device-register sink on cyc-probe the log holds, in order, the ST0 write, the VDC read, the VCE write, the read of the last VCE byte, the zero-page-mapped VDC read and the high-speed VDC read, each with the instruction's stamp, pc, kind, flags and the value the rule gives, and nothing for the PSG and timer reads"
 required = true
 control = false
 expect_outcome = "pass"

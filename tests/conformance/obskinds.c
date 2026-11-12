@@ -23,9 +23,10 @@
  *                     consistent (count = min(seq, capacity), lost = seq - count, insn seq = steps), the guard bytes and the record memory past the count untouched (a poisoned header never read), the records of a limited sink the
  *                     first records of the large sink, and, in a chunked run, the logs accumulated over the chunks equal the logs of the whole run. A large sink that lost a record is harness_failure (the log is evidence here).
  *                     E0: the core is compared with itself (non-interference), nothing here is an oracle. A hook that changes machine state turns this red (the trace-hook-mutates toy).
- *   dev_log           (plan 03-19) expect = mode=guest;rom=NAME;rec=PC:KIND:PHYS:VALUE:CYCLE;rec=... (until_mclk required; CYCLE is the zero-based cycle of the access inside its instruction, plan 03-21): the built ROM runs to the deadline with an insn sink and a dev sink; the dev log must hold exactly the listed records in order,
+ *   dev_log           (plan 03-19) expect = mode=guest;rom=NAME;rec=PC:KIND:PHYS:VALUE:CYCLE;rec=... (until_mclk required; CYCLE is the zero-based cycle of the access inside its instruction, plan 03-21,
+ *                     with the suffix H for an instruction run at the high speed, 3 master clocks per cycle, plan 04-19): the built ROM runs to the deadline with an insn sink and a dev sink; the dev log must hold exactly the listed records in order,
  *                     each with the stamp of the insn record at that pc, the pc, kind (W, R, ST), physical address, value (a number, or A for the A register in that insn record), the flags the address implies and zero spare bytes; or
- *                     mode=windows;rom=NAME: the accesses of every window driven through the bus choke point, which logs the writes of windows 0 to 5, the reads of window 4 and the ST physical writes and nothing else, and
+ *                     mode=windows;rom=NAME: the accesses of every window driven through the bus choke point, which logs the writes of windows 0 to 5, the reads of windows 0, 1 and 4 (plan 04-19, D-149) and the ST physical writes and nothing else, and
  *                     the drop-newest arithmetic of the hook. E0, with literals from the case (PC, physical address and immediates from the fixture source and the hardware manual), none from DuoSpool output.
  *   trace_out_rights  (plan 03-19) the rule of the --trace-out option, below.
  */
@@ -498,7 +499,7 @@ void kind_opcode_exercise(const struct kase *k, struct ctx *c, char *got, size_t
 /* ---- kind observer: the non-interference matrix (plan 03-19; D-119, D-131, CORE-06, T-03-53) ---- */
 
 #define OB_INSN_LARGE 262144u /* records: more than any run of the matrix executes, so a large sink never drops */
-#define OB_DEV_LARGE 4096u
+#define OB_DEV_LARGE 16384u /* records: the logged reads of windows 0 and 1 (plan 04-19, D-149, F-45) make the 32 random programs offer up to 10,980 dev records in a large run (measured once with a counter that was removed), above the 4096 of Phase 3; the rule that a large sink never loses a record is unchanged */
 #define OB_VID_LARGE (16u * 1024u * 1024u) /* bytes: the ceiling of a large vid sink (the closed form of D-137 for the deadline is used when it is smaller, ob_matrix) */
 #define OB_VID_LINE_MAX 2792u              /* DS_VID_MAX_REC_BYTES: the longest record */
 #define OB_CHUNKS_MAX 64u
@@ -1316,7 +1317,8 @@ void kind_observer(const struct kase *k, struct ctx *c, char *got, size_t gotcap
 #define DL_DEV_CAP 64u
 #define DL_INSN_CAP 262144u
 #define DL_WIN_CAP 4u
-#define DL_MCLK_LOW 12u /* master clocks per CPU cycle at the power-up low speed (D-90), a literal of the judge: the two stores of the cyc-probe penalty section run before its CSH */
+#define DL_MCLK_LOW 12u /* master clocks per CPU cycle at the power-up low speed (D-90), a literal of the judge: the stores and reads of the cyc-probe penalty section before its CSH run at it */
+#define DL_MCLK_HIGH 3u /* master clocks per CPU cycle at the high speed (D-90), a literal of the judge: the item cycle suffix H selects it for the read after the CSH of the cyc-probe penalty section (plan 04-19) */
 
 /* one expected record of a guest log: the pc of the instruction, kind (W write, R read, ST), the physical address and the byte (a number, or A for the A register in the insn record of that instruction) */
 struct dl_item {
@@ -1326,6 +1328,7 @@ struct dl_item {
     uint32_t value;
     int value_is_a;
     uint32_t cycle; /* the zero-based cycle of the instruction in which the access happens (plan 03-21, D-92): its page cycle count minus one plus the VDC and VCE penalty cycles of the assumption */
+    uint32_t mclk;  /* master clocks per cycle of that instruction: DL_MCLK_LOW, or DL_MCLK_HIGH when the item's cycle ends in H (an instruction run at the high speed) */
 };
 
 static int dl_parse_item(const char *text, struct dl_item *it)
@@ -1346,6 +1349,11 @@ static int dl_parse_item(const char *text, struct dl_item *it)
             return -1;
         }
         f[n++] = tok;
+    }
+    it->mclk = DL_MCLK_LOW;
+    if (n == 5u && strlen(f[4]) >= 2u && f[4][strlen(f[4]) - 1u] == 'H') { /* a cycle with the suffix H runs at the high speed */
+        f[4][strlen(f[4]) - 1u] = '\0';
+        it->mclk = DL_MCLK_HIGH;
     }
     if (n != 5u || parse_u64(f[4], &v) != 0 || v > 63u) {
         return -1;
@@ -1497,8 +1505,8 @@ static void dl_guest(struct ctx *c, const char *rom, const char *request, uint64
             }
             snprintf(msg, sizeof msg, "dev record %u: the instruction at pc %04X is not in the insn log exactly once", i, (unsigned)items[i].pc);
             check(c, hits == 1u, msg);
-            snprintf(msg, sizeof msg, "dev record %u: the stamp is not the start stamp of the instruction at pc %04X in the insn log plus %u cycles of %u master clocks (the access stamp, D-92)", i, (unsigned)items[i].pc, (unsigned)items[i].cycle, DL_MCLK_LOW);
-            check(c, get_u64(r) == stamp + (uint64_t)items[i].cycle * (uint64_t)DL_MCLK_LOW, msg);
+            snprintf(msg, sizeof msg, "dev record %u: the stamp is not the start stamp of the instruction at pc %04X in the insn log plus %u cycles of %u master clocks (the access stamp, D-92)", i, (unsigned)items[i].pc, (unsigned)items[i].cycle, (unsigned)items[i].mclk);
+            check(c, get_u64(r) == stamp + (uint64_t)items[i].cycle * (uint64_t)items[i].mclk, msg);
             snprintf(msg, sizeof msg, "dev record %u: the pc field is not %04X", i, (unsigned)items[i].pc);
             check(c, get_u16(r + 16) == items[i].pc, msg);
             snprintf(msg, sizeof msg, "dev record %u: the kind byte is not %u", i, (unsigned)items[i].kind);
@@ -1529,7 +1537,7 @@ static void dl_guest(struct ctx *c, const char *rom, const char *request, uint64
 }
 
 /* the bus-level view of the window rule (D-119): one instance, one dev sink, accesses driven through the choke point with MPR0 mapped to the hardware page. The expected records are written from the rule itself
- * (writes to windows 0 to 5 and reads of window 4 are logged, everything else is not), the aux byte from the instance's own latch after each access. A NULL bus logs nothing. */
+ * (writes to windows 0 to 5 and reads of windows 0, 1 and 4 are logged, everything else is not; D-119, D-149), the aux byte from the instance's own latch after each access (unchanged by a read of window 0 or 1). A NULL bus logs nothing. */
 struct dl_exp {
     uint32_t phys;
     uint32_t value;
@@ -1588,12 +1596,12 @@ static void dl_windows(struct ctx *c, const char *rom, const char *request, char
             nexp++;
         }
     }
-    /* a read of every window: only window 4 is logged; the value it returns and the latch after it are what the record must hold */
+    /* a read of every window: windows 0, 1 and 4 are logged (D-119, D-149); the value it returns and the latch after it are what the record must hold (a read of window 0 or 1 leaves the latch unchanged, so its aux is the latch as it stands after the read) */
     for (k = 0u; k < 8u; k++) {
         uint32_t off = k * 0x400u + 1u;
         uint8_t v = ds_bus_read(w, &bus, (uint16_t)off);
 
-        if (k == 4u) {
+        if (k <= 1u || k == 4u) {
             want[nexp].phys = 0x1FE000u | off;
             want[nexp].value = (uint32_t)v;
             want[nexp].kind = (uint32_t)DS_DEV_READ;
@@ -1684,7 +1692,7 @@ void kind_dev_log(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
     uint64_t until = 0u;
 
     if (dl_parse(k->val[K_EXPECT], &windows, rom, sizeof rom, items, &nitems) != 0 || (!windows && (!k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until == 0u))) {
-        harness_error(c, "a dev_log case needs until_mclk and expect = mode=guest;rom=NAME;rec=PC:KIND:PHYS:VALUE:CYCLE;rec=... (KIND W, R or ST; VALUE a number or A; CYCLE 0 to 63) or mode=windows;rom=NAME");
+        harness_error(c, "a dev_log case needs until_mclk and expect = mode=guest;rom=NAME;rec=PC:KIND:PHYS:VALUE:CYCLE;rec=... (KIND W, R or ST; VALUE a number or A; CYCLE 0 to 63, optionally ending in H for the high speed) or mode=windows;rom=NAME");
         return;
     }
     if (windows) {

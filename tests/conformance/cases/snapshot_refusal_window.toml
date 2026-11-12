@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Restore fold-window rules of the BEAM and VDMA regions (plan 04-19; D-166, T-04-14, F-34): same method as snapshot_refusal_beam, with the rows of tests/conformance/snapkinds.c that need the machine time of the snapshot. The fold loops from the stored next event to the access stamp, so a next event far behind machine_time would make it loop for as many lines as the gap holds: restore refuses
+# (as field, before any commit) a next event the members name that is before machine_time or at least two lines (2730 clocks) after it, members that name no event, a valid satb_done_at outside [machine_time, machine_time + 4096] and a dma_start after machine_time while a transfer runs. The divider rule comes first, so lat-div-0-late still proves its own rule (snapshot_refusal_beam).
+# Rows: event-before-time (the event of line 1 at 1365), event-too-far (the event at machine_time + 2730, machine time a multiple of 1365), event-2729 and event-at-time (accepted edges), event-none (stage 1 without a VD flag), event-vd-before and event-vd-ahead (stage 1 belongs to the line before line_idx), satb-done-before, -4097 and -max (refused), -now, -4096 and -idle-far (accepted),
+# dma-start-ahead (refused) and dma-start-now and dma-start-idle-far (accepted). Each accepted row must re-serialise to the same bytes and then run 6000 clocks and snapshot again (the new rules leave no accepted input that runs undefined). The edge values are written from the rule (D-166), not from a run. Evidence tier E0: the core compared with its own written domain rules, no hardware claim.
+id = "snapshot_refusal_window"
+kind = "snapshot_refuse"
+fixture = "authored:ds-proto"
+request = "bind.powerup_policy=seeded-prng-v2;seed=3"
+expect = "event-before-time=field|event-too-far=field|event-2729=accept|event-at-time=accept|event-none=field|event-vd-before=field|event-vd-ahead=accept|satb-done-before=field|satb-done-now=accept|satb-done-4096=accept|satb-done-4097=field|satb-done-max=field|satb-done-idle-far=accept|dma-start-ahead=field|dma-start-now=accept|dma-start-idle-far=accept"
+meaning = "A snapshot whose next VDC event is behind the machine time or two lines or more ahead of it, names no event, or whose SATB end time or DMA start time leaves its window is refused as field with the instance byte-identical, so no restored state can drive the fold far behind; the edge values are accepted, re-serialise identically and run defined"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 100000

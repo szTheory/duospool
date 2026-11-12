@@ -246,6 +246,7 @@ poweron_v3_smoke
 snapshot_refusal_vdc
 snapshot_refusal_beam
 snapshot_refusal_timeline
+snapshot_refusal_window
 snapshot_refusal_vdma
 vce_pal
 mutate_sweep_vce_pal

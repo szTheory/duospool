@@ -30,8 +30,8 @@ checks=65
 22	psg-power-on-zero	ASSUMED:LED-CPU-0013	io_buffer is constant 0 at power-on under every policy: before any read or write in $0800-$17FF the PSG window, which reads io_buffer, returns $00
 23	vdc-window-stub	ASSUMED:LED-CPU-0012	The VDC window (physical $1FE000, H8-24) has no device yet: it reads the stub $00 whatever io_buffer holds ($A5 here)
 24	vdc-window-last-byte	ASSUMED:LED-CPU-0012	The last byte of the 1 KiB VDC window reads the stub $00: the register is selected by A1-A0 and the window repeats
-25	vce-window-stub	ASSUMED:LED-CPU-0012	The VCE window (physical $1FE400) has no device yet: it reads the stub $FF whatever io_buffer holds ($00 here)
-26	vce-window-last-byte	ASSUMED:LED-CPU-0012	The last byte of the 1 KiB VCE window reads the stub $FF: the register is selected by A2-A0 and the window repeats
+25	empty-window-reads-ff	ASSUMED:LED-CPU-0012	Window 6 of the hardware page (physical $1FF800, H8-9: no chip enable) has no device: it reads the unmapped constant $FF whatever io_buffer holds ($00 here)
+26	vce-readback	MAN:H6-5	The VCE colour table entry 0 reads back the low byte the fixture wrote first through CTA and CTW (H6-5: address low and high, then the data low byte first): $5A, whatever io_buffer holds ($00 here)
 27	vdc-read-keeps-iobuf	ASSUMED:LED-CPU-0013	A read in the VDC window does not change io_buffer, which is the byte of the last access in $0800-$17FF only: the PSG window still reads $A5
 28	vce-read-keeps-iobuf	ASSUMED:LED-CPU-0013	A read in the VCE window does not change io_buffer: the PSG window still reads $A5
 29	psg-reads-iobuf	ASSUMED:LED-CPU-0013	The PSG window (physical $1FE800) has no device yet and reads io_buffer: $C3 after a write of $C3 to the I/O window

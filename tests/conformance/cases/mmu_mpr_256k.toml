@@ -15,7 +15,7 @@ kind = "guest"
 fixture = "authored:mmu-mpr"
 request = ""
 expect = "id=8;observe=49:248;observe=59:249;observe=60:249;observe=61:policy;observe=62:policy;observe=63:policy;observe=64:policy;observe=65:policy"
-meaning = "The authored mmu_mpr fixture maps banks through MPR3 and MPR4 and leaves a consistent DSV1 block of 65 passing checks: unmapped banks read $FF, the work RAM is mirrored, HuCard banks show their tag bytes, ROM and unmapped writes are ignored, and each hardware-page window reads its stub and treats io_buffer as assumed"
+meaning = "The authored mmu_mpr fixture maps banks through MPR3 and MPR4 and leaves a consistent DSV1 block of 65 passing checks: unmapped banks read $FF, work RAM is mirrored, HuCard banks show their tag bytes, ROM writes are ignored, the VDC window reads its stub, an empty window reads $FF, the VCE window reads back a colour table entry (MAN H6-5)"
 required = true
 control = false
 expect_outcome = "pass"
