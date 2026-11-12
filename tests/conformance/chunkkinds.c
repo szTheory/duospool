@@ -5,6 +5,9 @@
  * on fresh boots, in calls whose deadlines follow each schedule of the case; every schedule must end with the machine time, the step count, the verdict RAM (the DSV1 block), the digest and the sequence of step boundaries of the uninterrupted run.
  * The schedules are named by the case key chunks (a comma list): 1, 7, 168 and 3072 are fixed sizes in master clocks (deadlines j * size), frame is the fixed size 357368 (a frame-sized chunk, labelled a fixed size because the machine has no frame yet),
  * and tick-1 and tick+1 are the deadlines 3072 * j - 1 and 3072 * j + 1, one master clock either side of a timer prescaler step (3072 master clocks); the schedule 3072 is the deadlines on the steps themselves (3072k), so the three ticks are tick-1, 3072 and tick+1.
+ * Plan 04-05 (D-137, D-163, D-176, F-20, F-44) adds the video schedules: 1364 and 1366 (one master clock either side of the 1365-clock line grid) and vframe, the fixed size 357630 = 262 * 1365 (one frame of 262 lines, a line-grid frame; the historical frame above is not reused for video). A case with a 263-line frame
+ * uses 263 * 1365 = 358995 by binding: that size has no token yet and a plan that needs it adds one. The compare item video attaches a vid sink to every call of every run (the uninterrupted run and each schedule), copies the records of each call into one accumulator (the shape of ob_log_append) and compares the two streams with memcmp, never
+ * hashes (D-163), in addition to the verdict, the machine time, the stops and the digest; a record lost by a call, or a vid header that disagrees with the closed form of the line count, is harness_failure. The schedule 1 is not listed by a video case (D-176). A video case takes no restore=N: the restore of a video run is the kind snapshot_restore_video.
  * The case key input (plan 03-29) names an input script whose events are pushed to every run before its first step, like the irq_stim list.
  * The step boundary sequence is the stop sequence of the kind: a stop callback that never holds is called before the first step and after every step, and folds the machine time, the registers, the bus latch and the block transfer state at each distinct
  * machine time, so a run that loses or repeats part of a transfer at a stop, or reaches the same end by another path, differs even when its last state is equal. The ordered stop reasons are checked too: every call ends on its deadline (UNTIL), and
@@ -13,7 +16,7 @@
  * The restore schedule (plan 03-31; D-122, D-127, CORE-05; item restore=N): a run is stopped at N stops drawn from a fixed splitmix64 stream (one stop in each of N+1 equal parts of the run, at a draw inside the middle half of its part, so any stop may fall inside a block transfer, between SET and the next instruction or in the shadow of a pending interrupt),
  * snapshotted, restored into a FRESH instance booted from the same image whose restorable members are poisoned (0xA5, then 0x5A, then alternating), compared member by member with the source (the helpers of snapkinds.c), and run on from there with the same stop callback state, so that the machine time, step count, verdict RAM, digest and stop sequence of the whole chain must equal those of the
  * uninterrupted run. The target is given no stimulus and no input script: they travel in the snapshot. Evidence tier E0: the core compared with itself (repeatability and consistency, ER-7); a pass is not a support claim and no literal comes from a DuoSpool run.
- *   expect   compare=verdict,machine_time,stops,digest (the four things compared, each once), then optionally block-stop, pending-stop, restore=N (1 to 4 restore stops per program), random=N (N programs of randprog.c, 1 to 64, instead of a fixture)
+ *   expect   compare=verdict,machine_time,stops,digest[,video] (the four things compared, each once, and video for the vid stream), then optionally block-stop, pending-stop, restore=N (1 to 4 restore stops per program, not with video), random=N (N programs of randprog.c, 1 to 64, instead of a fixture)
  *   fixture  authored:NAME (the built image) or none (with random=N);  until_mclk the deadline;  chunks the schedule list;  irq_stim the declared test stimulus
  * Test code only, never installed.
  */
@@ -23,11 +26,14 @@
 #include <string.h>
 
 #include "ds_core.h"
+#include "ds_obs.h"
 #include "ds_serial.h"
 #include "ds_snapshot.h"
 #include "runner.h"
 
 #define CS_SCHED_MAX 8u
+#define CS_GRID 1365u        /* master clocks per line (ASSUMED LED-VID-0004), the unit of the video schedules and of the sink size */
+#define CS_VID_LINE_MAX 2792u /* the longest record of a vid sink (D-161) */
 #define CS_FNV_BASIS UINT64_C(14695981039346656037)
 #define CS_FNV_PRIME UINT64_C(1099511628211)
 #define CS_PENDING_BOTH 5u /* the request register bits of the timer interrupt (bit 2) and IRQ2 (bit 0) */
@@ -42,6 +48,7 @@ static const struct cs_sched cs_table[] = {
     {"1", 1u, 0},   {"7", 7u, 0},          {"168", 168u, 0},  {"3072", 3072u, 0}, /* 3072 is also the schedule on the prescaler steps (3072k) */
     {"frame", 357368u, 0},                                                         /* a fixed size of one frame: the machine has no frame yet */
     {"tick-1", 3072u, -1}, {"tick+1", 3072u, 1},
+    {"1364", 1364u, 0},    {"1366", 1366u, 0},    {"vframe", 357630u, 0}, /* the video schedules (F-20): one clock under and over the line grid, and 262 * 1365 = 357,630 for a frame of 262 lines (a 263-line frame is 358,995 by binding) */
 };
 #define CS_TABLE_N (sizeof cs_table / sizeof cs_table[0])
 
@@ -53,6 +60,16 @@ struct cs_seen {
     uint64_t fold;
     int done;
     uint64_t done_at;
+};
+
+/* the vid stream of a run (plan 04-05, F-44): a per-call sink buffer and an accumulator of what the calls stored, one byte string whose length is the sum of the bytes stored */
+struct cs_vid {
+    uint8_t *call;  /* the record memory of one call, reused */
+    uint8_t *acc;   /* the records of all the calls, back to back */
+    uint32_t cap;   /* the byte capacity of both */
+    uint64_t bytes; /* bytes in acc */
+    uint64_t count; /* records in acc */
+    uint64_t seq;   /* records offered over the calls */
 };
 
 static void cs_fold(uint64_t *f, uint64_t v)
@@ -110,7 +127,29 @@ struct cs_out {
     int digest_ok;
     uint8_t verdict[V_SIZE];
     uint8_t digest[DS_DIGEST_BYTES];
+    uint8_t *vid;       /* the accumulated vid stream (NULL when the case does not compare video, or the run stored no byte) */
+    uint64_t vid_bytes;
+    uint64_t vid_count;
+    uint64_t vid_seq;
+    int vid_bad;        /* a call lost a record or its header disagreed with the records it stored */
 };
+
+static void cs_out_free(struct cs_out *o)
+{
+    free(o->vid);
+    o->vid = NULL;
+}
+
+/* the little-endian fields of a vid header written by hand (D-162): count at +0 (u32), lost at +4 (u32), seq at +8 (u64), bytes at +16 (u64), zero word at +24 (u64) */
+static uint32_t cs_u32(const uint8_t *p)
+{
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
+static uint64_t cs_u64(const uint8_t *p)
+{
+    return (uint64_t)cs_u32(p) | ((uint64_t)cs_u32(p + 4) << 32);
+}
 
 /* the deadline of call j (from 1) of a schedule, clipped to the end of the run; a NULL schedule is the one call to the end */
 static uint64_t cs_deadline(const struct cs_sched *s, uint64_t j, uint64_t until)
@@ -126,7 +165,7 @@ static uint64_t cs_deadline(const struct cs_sched *s, uint64_t j, uint64_t until
 }
 
 /* boot the program, apply the case's stimulus, run it on the schedule: 0 on success, -1 after a harness error */
-static int cs_exec(struct ctx *c, const struct kase *k, const struct cs_prog *pg, uint64_t until, const struct cs_sched *sc, struct cs_out *o)
+static int cs_exec(struct ctx *c, const struct kase *k, const struct cs_prog *pg, uint64_t until, const struct cs_sched *sc, int video, struct cs_out *o)
 {
     struct booted b;
     const struct ds_instance *ci = NULL;
@@ -134,6 +173,8 @@ static int cs_exec(struct ctx *c, const struct kase *k, const struct cs_prog *pg
     struct ds_run_request rq;
     struct ds_run_result res;
     struct cs_seen seen;
+    struct cs_vid vid;
+    struct ds_vid_sink vsk;
     uint32_t refusal = 0u;
     uint32_t input_refusal = 0u;
     uint64_t j = 0u;
@@ -141,6 +182,7 @@ static int cs_exec(struct ctx *c, const struct kase *k, const struct cs_prog *pg
     const char *err = pg->random ? boot_random(pg->img, k->val[K_REQUEST], &b, &ci) : boot_built_rom(pg->rom, k->val[K_REQUEST], &b, &ci);
 
     memset(o, 0, sizeof *o);
+    memset(&vid, 0, sizeof vid);
     if (err != NULL) {
         harness_error(c, err);
         return -1;
@@ -152,8 +194,29 @@ static int cs_exec(struct ctx *c, const struct kase *k, const struct cs_prog *pg
         harness_error(c, err != NULL ? err : "ds_irq_stim_set refused the irq_stim list of the case");
         return -1;
     }
+    if (video) { /* the vid sink memory: the closed form of D-137 for the deadline (lines due plus the overshoot of a step and the line before the span) at the longest record, so no call of any schedule can drop a record (a lost record is harness_failure below, D-162) */
+        uint64_t cap = (until / (uint64_t)CS_GRID + 4u) * (uint64_t)CS_VID_LINE_MAX;
+
+        if (cap > (uint64_t)DS_VID_SINK_MAX_BYTES) {
+            release_boot(&b);
+            harness_error(c, "the video chunk case is too long for one vid sink (until_mclk needs more than 64 MiB)");
+            return -1;
+        }
+        vid.cap = (uint32_t)cap;
+        vid.call = (uint8_t *)malloc((size_t)cap);
+        vid.acc = (uint8_t *)malloc((size_t)cap);
+        if (vid.call == NULL || vid.acc == NULL) {
+            free(vid.call);
+            free(vid.acc);
+            release_boot(&b);
+            harness_error(c, "out of memory for the vid stream of a chunk case");
+            return -1;
+        }
+    }
     err = apply_input(w, k, &input_refusal); /* the declared input script of the case, pushed before the first step of every run and every schedule (plan 03-29; D-117, D-118): the input is part of the machine, so the chunking must not move it */
     if (err != NULL || input_refusal != 0u) {
+        free(vid.call);
+        free(vid.acc);
         release_boot(&b);
         harness_error(c, err != NULL ? err : "ds_input_push refused the input script of the case");
         return -1;
@@ -172,6 +235,12 @@ static int cs_exec(struct ctx *c, const struct kase *k, const struct cs_prog *pg
         rq.until_mclk = d;
         rq.stop = cs_stop;
         rq.stop_ctx = &seen;
+        if (video) {
+            memset(&vsk, 0, sizeof vsk);
+            vsk.bytes = vid.call;
+            vsk.capacity = vid.cap;
+            rq.vid = &vsk;
+        }
         memset(&res, 0, sizeof res);
         if (ds_run(w, &rq, &res) != (uint32_t)DS_RUN_REASON_UNTIL || res.reason != (uint32_t)DS_RUN_REASON_UNTIL) {
             o->bad = 1;
@@ -179,6 +248,23 @@ static int cs_exec(struct ctx *c, const struct kase *k, const struct cs_prog *pg
         }
         o->steps += res.steps;
         o->calls++;
+        if (video) { /* the records this call stored are appended to the stream: count, lost, seq, bytes and the zero word of the header are read by hand (D-162) */
+            uint32_t cnt = cs_u32(vsk.header);
+            uint32_t lost = cs_u32(vsk.header + 4);
+            uint64_t seq = cs_u64(vsk.header + 8);
+            uint64_t nb = cs_u64(vsk.header + 16);
+
+            if (lost != 0u || (uint64_t)cnt != seq || nb > (uint64_t)vid.cap - vid.bytes || cs_u64(vsk.header + 24) != 0u) {
+                o->vid_bad = 1;
+                break;
+            }
+            if (nb > 0u) { /* a copy of zero bytes still must not get a null pointer */
+                memcpy(vid.acc + vid.bytes, vid.call, (size_t)nb);
+            }
+            vid.bytes += nb;
+            vid.count += (uint64_t)cnt;
+            vid.seq += seq;
+        }
         if (res.steps > 0u && res.stop_point == (uint32_t)DS_STOP_BLOCK_BYTE) {
             o->bstops++;
             if (ds_irq_pending_query(ci, ci->machine_time) == CS_PENDING_BOTH) {
@@ -206,6 +292,13 @@ static int cs_exec(struct ctx *c, const struct kase *k, const struct cs_prog *pg
     o->done_at = seen.done_at;
     memcpy(o->verdict, ci->ram8k + V_OFF, V_SIZE);
     o->digest_ok = ds_digest(ci, o->digest) == 0u;
+    if (video) {
+        o->vid = vid.acc;
+        o->vid_bytes = vid.bytes;
+        o->vid_count = vid.count;
+        o->vid_seq = vid.seq;
+        free(vid.call);
+    }
     release_boot(&b);
     return 0;
 }
@@ -352,9 +445,10 @@ struct cs_items {
     int pending_stop;
     unsigned random;  /* 0 = a fixture */
     unsigned restore; /* 0 = no restore schedule, else the number of restore stops per program (plan 03-31) */
+    int video;        /* the vid stream is compared too (plan 04-05, D-163) */
 };
 
-/* expect = compare=verdict,machine_time,stops,digest, then block-stop, pending-stop, restore=N and random=N, each at most once; 0 on success */
+/* expect = compare=verdict,machine_time,stops,digest[,video], then block-stop, pending-stop, restore=N and random=N, each at most once; 0 on success */
 static int cs_parse_expect(const char *text, struct cs_items *it)
 {
     char list[PK_LIST_MAX];
@@ -380,13 +474,14 @@ static int cs_parse_expect(const char *text, struct cs_items *it)
             }
             r2 = item + 8;
             while ((w = pk_next_item(&r2, ',')) != NULL) {
-                unsigned bit = strcmp(w, "verdict") == 0 ? 1u : strcmp(w, "machine_time") == 0 ? 2u : strcmp(w, "stops") == 0 ? 4u : strcmp(w, "digest") == 0 ? 8u : 0u;
+                unsigned bit = strcmp(w, "verdict") == 0 ? 1u : strcmp(w, "machine_time") == 0 ? 2u : strcmp(w, "stops") == 0 ? 4u : strcmp(w, "digest") == 0 ? 8u : strcmp(w, "video") == 0 ? 16u : 0u;
 
                 if (bit == 0u || (seen & bit) != 0u) {
                     return -1;
                 }
                 seen |= bit;
             }
+            it->video = (seen & 16u) != 0u;
         } else if (strcmp(item, "block-stop") == 0 && !it->block_stop) {
             it->block_stop = 1;
         } else if (strcmp(item, "pending-stop") == 0 && !it->pending_stop) {
@@ -399,7 +494,13 @@ static int cs_parse_expect(const char *text, struct cs_items *it)
             return -1;
         }
     }
-    return seen == 15u ? 0 : -1;
+    return (seen & 15u) == 15u && !(it->video && it->restore != 0u) ? 0 : -1;
+}
+
+/* the closed form of the number of lines due at the machine time M (D-137, ASSUMED LED-VID-0004, LED-VID-0001): floor((M - 1) / 1365) + 1, written here and nowhere else of this file; it shares no code with the core */
+static uint64_t cs_lines_due(uint64_t m)
+{
+    return m == 0u ? 0u : (m - 1u) / (uint64_t)CS_GRID + 1u;
 }
 
 /* the chunks key: schedule names from cs_table, each once, at most CS_SCHED_MAX */
@@ -449,6 +550,12 @@ static void cs_compare(struct ctx *c, const struct cs_out *ref, const struct cs_
     check(c, o->stop_n == ref->stop_n && o->stop_fold == ref->stop_fold, msg);
     snprintf(msg, sizeof msg, "%s: the schedule %s made one call only: it does not split the run", what, sc->name);
     check(c, o->calls > 1u, msg);
+    if (it->video) {
+        snprintf(msg, sizeof msg, "%s: the vid stream under the schedule %s differs from the uninterrupted run (record count, offered count, byte count or bytes, compared with memcmp)", what, sc->name);
+        check(c, !o->vid_bad && !ref->vid_bad && o->vid_count == ref->vid_count && o->vid_seq == ref->vid_seq && o->vid_bytes == ref->vid_bytes
+                     && (ref->vid_bytes == 0u || (o->vid != NULL && ref->vid != NULL && memcmp(o->vid, ref->vid, (size_t)ref->vid_bytes) == 0)),
+              msg);
+    }
     if (it->block_stop || it->pending_stop) {
         snprintf(msg, sizeof msg, "%s: no call of the schedule %s took a step and ended inside a block transfer (no block byte stop)", what, sc->name);
         check(c, o->bstops > 0u, msg);
@@ -479,7 +586,7 @@ void kind_chunk_equiv(const struct kase *k, struct ctx *c, char *got, size_t got
     memset(&rst, 0, sizeof rst);
     if (cs_parse_expect(k->val[K_EXPECT], &it) != 0 || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until == 0u || !k->has[K_CHUNKS]
         || cs_parse_scheds(k->val[K_CHUNKS], sc, &nsc) != 0) {
-        harness_error(c, "a chunk_equiv case needs expect = compare=verdict,machine_time,stops,digest[;block-stop][;pending-stop][;restore=N][;random=N], until_mclk and chunks = a list of 1, 7, 168, 3072, frame, tick-1, tick+1 (each once)");
+        harness_error(c, "a chunk_equiv case needs expect = compare=verdict,machine_time,stops,digest[,video][;block-stop][;pending-stop][;restore=N][;random=N] (no restore with video), until_mclk and chunks = a list of 1, 7, 168, 3072, frame, tick-1, tick+1, 1364, 1366, vframe (each once, at most 8)");
         return;
     }
     if (it.random != 0u) {
@@ -511,10 +618,21 @@ void kind_chunk_equiv(const struct kase *k, struct ctx *c, char *got, size_t got
         } else {
             snprintf(what, sizeof what, "%s", pg.rom);
         }
-        if (cs_exec(c, k, &pg, until, NULL, &ref) != 0) {
+        if (cs_exec(c, k, &pg, until, NULL, it.video, &ref) != 0) {
             break;
         }
         runs++;
+        if (it.video && (ref.vid_bad || ref.vid_count == 0u)) { /* a lost record, a header that disagrees with the records stored, or no record at all: the stream would be incomplete or empty evidence (D-162) */
+            cs_out_free(&ref);
+            harness_error(c, "a call of the uninterrupted run lost a vid record, its vid header disagreed with the records it stored, or the run stored no record: the stream comparison would be vacuous");
+            break;
+        }
+        if (it.video) {
+            char vmsg[200];
+
+            snprintf(vmsg, sizeof vmsg, "%s: the uninterrupted run holds %llu vid records, the closed form floor((M - 1) / 1365) + 1 of its machine time %llu is %llu", what, (unsigned long long)ref.vid_count, (unsigned long long)ref.time, (unsigned long long)cs_lines_due(ref.time));
+            check(c, ref.vid_count == cs_lines_due(ref.time) && ref.vid_seq == ref.vid_count, vmsg);
+        }
         if (pi == 0u) {
             note_run(c, ref.time, (uint32_t)DS_RUN_REASON_UNTIL);
         }
@@ -526,19 +644,26 @@ void kind_chunk_equiv(const struct kase *k, struct ctx *c, char *got, size_t got
         for (si = 0u; si < nsc && !c->harness; si++) {
             struct cs_out o;
 
-            if (cs_exec(c, k, &pg, until, sc[si], &o) != 0) {
+            if (cs_exec(c, k, &pg, until, sc[si], it.video, &o) != 0) {
                 break;
             }
             runs++;
+            if (o.vid_bad) {
+                cs_out_free(&o);
+                harness_error(c, "a call of a chunked run lost a vid record or its vid header disagreed with the records it stored: the stream would be incomplete evidence (D-162)");
+                break;
+            }
             cs_compare(c, &ref, &o, sc[si], &it, what);
             blocks += o.bstops;
             pends += o.pstops;
+            cs_out_free(&o);
         }
         if (it.restore != 0u && !c->harness) {
             struct cs_out o;
             char msg[200];
 
             if (cs_exec_restore(c, k, &pg, until, it.restore, &o, &rst) != 0) {
+                cs_out_free(&ref);
                 break;
             }
             runs++;
@@ -553,6 +678,7 @@ void kind_chunk_equiv(const struct kase *k, struct ctx *c, char *got, size_t got
             snprintf(msg, sizeof msg, "%s: the step boundary sequence of the restore schedule differs from the uninterrupted run (stop sequence)", what);
             check(c, o.stop_n == ref.stop_n && o.stop_fold == ref.stop_fold, msg);
         }
+        cs_out_free(&ref);
     }
     free(pg.img);
     if (it.restore != 0u) {

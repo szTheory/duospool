@@ -251,3 +251,4 @@ snapshot_refusal_vdma
 vce_pal
 mutate_sweep_vce_pal
 video_vce_pal
+chunk_equiv_video_vce_pal
