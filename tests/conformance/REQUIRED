@@ -240,3 +240,6 @@ snapshot_hostile
 brk_irq_sample
 dev_record_pc
 vid_chan_append
+poweron_v3_draw_order
+poweron_v3_domain_independence
+poweron_v3_smoke

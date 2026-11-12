@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Power-on, seeded-prng-v3 with seed 42 (D-167, D-50 additive, D-75, F-33): extends LED-PROF-0002 (whose pin stays poweron_draw_order). Every literal was recomputed by a throwaway python3 script outside the repo, run once (arbitrary-precision integers masked to 64 bits, no C code and no DuoSpool run involved): for each domain sub = one splitmix64 step started from
+# (seed XOR DOMAIN_CONST), the domain stream starts at sub, each draw is written as little-endian bytes, and byte k of the draws is byte k of the stream. The constants are the ASCII names padded with underscores to eight bytes (the script derived each from its name): vram "VRAM____" 0x5652414D5F5F5F5F,
+# satb "SATB____" 0x534154425F5F5F5F, pal "PAL_____" 0x50414C5F5F5F5F5F. The script also reproduced every committed seed-42 literal of poweron_v2_draw_order (cpu, mpr, tmr) and the v1 ram@0 and ram@8184 literals, which checks that its splitmix64 and its derivation are the ones of D-75.
+# The layout under test: v3 draws every v2 domain unchanged, then vram fills the 65,536 bytes of VRAM from its own stream (word w is bytes 2w and 2w+1, little-endian), satb the 512 bytes of SATB, and pal 1,024 bytes of the palette, after which bits 1..7 of every odd byte are cleared (a colour entry has 9 bits).
+# Seed 42 stream bytes: vram first 16 1e392bd630c8e4695e2a728c89e5f489 and last 8 29d8a7e87a2d484f; satb first 16 e6e33e2447afd9d6ed1f78c865bf9851 and last 8 6a9fc2f65e58c243; pal raw first 16 597f55549c0d92343ce9cc8d30d5c635, which after the clear of the odd bytes is 590155009c0192003c01cc013001c601 (the odd bytes 7f 54 0d 34 e9 8d d5 35 become 01 00 01 00 01 01 01 01),
+# and the last 8 palette bytes after the clear are 1801810016006000. The v2 literals are those of poweron_v2_draw_order, unchanged: A = $8A, X = $EB, Y = $57, S = $BE, P = $87, MPR0 to MPR6 dacbc62869a061, timer reload $73 and counter $2D. A stream that starts at the bare XOR with no splitmix step gives other bytes. Evidence tier E0, a modelling assumption and not a hardware claim.
+id = "poweron_v3_draw_order"
+kind = "poweron"
+fixture = "plain-256k"
+request = "bind.powerup_policy=seeded-prng-v3;seed=42"
+expect = "policy=seeded-prng-v3;seed=42;a=0x8a;x=0xeb;y=0x57;s=0xbe;p=0x87;mpr@0=dacbc62869a061;timer_reload=0x73;timer_counter=0x2d;vram@0=1e392bd630c8e4695e2a728c89e5f489;satb@0=e6e33e2447afd9d6ed1f78c865bf9851;pal@0=590155009c0192003c01cc013001c601;palbits=clear;time=0"
+meaning = "A seed-42 boot under seeded-prng-v3 holds the v2 literals in the CPU, MPR and timer registers, and the independently derived first 16 bytes of VRAM, SATB and the palette with every odd palette byte reduced to bit 0"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

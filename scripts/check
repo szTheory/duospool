@@ -2163,7 +2163,7 @@ selftest() {
   fi
 
   # (policies) a guest that reads power-on state must turn its case red (plan 03-11; D-127, T-03-33). A scratch mini-root holds a copy of fixture-build, of ds_proto.s and its .checks, of the linker config, of the four fixture library
-  # files and of the case ds_proto (no policies key, so the guest kind runs its default list: zero and seeded-prng-v2 seeds 1 and 2, plan 03-24). The unmutated copy is built and run first and must give RESULT ds_proto pass. Then the single line that invokes a
+  # files and of the case ds_proto (no policies key, so the guest kind runs its default list: zero and seeded-prng-v3 seeds 1 and 2, plan 04-18). The unmutated copy is built and run first and must give RESULT ds_proto pass. Then the single line that invokes a
   # CHECK macro with the argument 2 (exit 2 unless exactly one line matches) is preceded by a load of work RAM that the guest never wrote ($2500) stored as the expected byte, so the check still passes under every policy but its observed byte
   # is the power-on byte. The copy is rebuilt into the scratch directory and the same runner must give guest_failure and say that the seeded policy differs from the zero policy at check 2. Nothing is written under fixtures/ or build/gate/fixtures/.
   if st_want mutation-policies-uninit; then

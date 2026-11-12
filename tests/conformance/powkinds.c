@@ -180,6 +180,58 @@ void kind_poweron(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
                 break;
             }
             check(c, memcmp(inst->ram8k + off, want, (size_t)n) == 0, "the work RAM differs from the independently derived literal");
+        } else if (strncmp(item, "vram@", 5) == 0 || strncmp(item, "satb@", 5) == 0 || strncmp(item, "pal@", 4) == 0) {
+            const int is_vram = item[0] == 'v';
+            const int is_satb = item[0] == 's';
+            const unsigned char *arr = is_vram ? inst->vdc_vram : is_satb ? inst->vdc_satb : inst->vce_pal;
+            const size_t arr_len = is_vram ? sizeof inst->vdc_vram : is_satb ? sizeof inst->vdc_satb : sizeof inst->vce_pal;
+            char *eq = strchr(item, '=');
+            unsigned char want[64];
+            size_t off;
+            long n;
+
+            if (eq == NULL) {
+                harness_error(c, "a vram@, satb@ or pal@ item has no =");
+                break;
+            }
+            *eq = '\0';
+            n = hex_bytes(eq + 1, want, sizeof want);
+            if (parse_size(item + (item[0] == 'p' ? 4 : 5), &off) != 0 || n < 0 || off > arr_len || (size_t)n > arr_len - off) {
+                harness_error(c, "a vram@, satb@ or pal@ item is malformed or outside its array");
+                break;
+            }
+            check(c, memcmp(arr + off, want, (size_t)n) == 0, "the video array differs from the independently derived literal");
+        } else if (strcmp(item, "video=zero") == 0) {
+            check(c, is_all_zero(inst->vdc_vram, sizeof inst->vdc_vram) && is_all_zero(inst->vdc_satb, sizeof inst->vdc_satb) && is_all_zero(inst->vce_pal, sizeof inst->vce_pal),
+                  "VRAM, SATB or the palette is not all zero");
+        } else if (strcmp(item, "drawn=vram") == 0) {
+            check(c, !is_all_zero(inst->vdc_vram, sizeof inst->vdc_vram), "the vram domain drew nothing: VRAM is all 0");
+        } else if (strcmp(item, "drawn=satb") == 0) {
+            check(c, !is_all_zero(inst->vdc_satb, sizeof inst->vdc_satb), "the satb domain drew nothing: SATB is all 0");
+        } else if (strcmp(item, "drawn=pal") == 0) {
+            check(c, !is_all_zero(inst->vce_pal, sizeof inst->vce_pal), "the pal domain drew nothing: the palette is all 0");
+        } else if (strcmp(item, "palbits=clear") == 0) {
+            size_t pi;
+            unsigned bad = 0u;
+
+            for (pi = 1u; pi < sizeof inst->vce_pal; pi += 2u) {
+                bad += (inst->vce_pal[pi] & 0xFEu) != 0u ? 1u : 0u;
+            }
+            check(c, bad == 0u, "an odd palette byte has a bit set among bits 1 to 7");
+        } else if (strcmp(item, "vid=constants") == 0) {
+            unsigned regs = 0u;
+            unsigned i;
+
+            for (i = 0u; i < 20u; i++) {
+                regs |= inst->vdc_reg[i];
+            }
+            check(c, regs == 0u && inst->vdc_rdbuf == 0u && inst->vdc_ar == 0u && inst->vdc_status == 0u && inst->vdc_wlatch == 0u, "a VDC register, the read buffer, the address register, the status or the write latch is not 0 at power-on (D-167)");
+            check(c, inst->vce_cr == 0u && inst->vce_cta == 0u, "the VCE control register or colour table address is not 0 at power-on (D-167)");
+            check(c, inst->stage == 0u && inst->v_state == 0u && inst->burst == 0u && inst->line_idx == 0u && inst->v_togo == 0u && inst->bg_y == 0u && inst->mwr_active == 0u, "a beam member is not 0 at power-on (D-167)");
+            check(c, inst->vd_off == 0u && inst->rcr_off == 0u && inst->line_dirty == 0u && inst->sprite_pend == 0u && inst->lat_div == 0u && inst->vd_pending == 0u, "a beam event or record member is not 0 at power-on (D-167)");
+            check(c, inst->satb_pending == 0u && inst->satb_done_valid == 0u && inst->satb_done_at == 0u && inst->dma_start == 0u && inst->dma_done == 0u && inst->dma_word_mclk == 0u && inst->dma_state == 0u, "a DMA member is not 0 at power-on (D-167)");
+            check(c, is_all_zero(inst->vid_pad, sizeof inst->vid_pad), "the video block padding is not 0");
+            check(c, inst->rcr_counter == 16384u && inst->display_k == 0xFFFFu && (inst->frame_lines == 262u || inst->frame_lines == 263u), "a boot field (rcr_counter, display_k, frame_lines) is not its constant");
         } else if (strcmp(item, "cpu=zero") == 0) {
             check(c, inst->a == 0u && inst->x == 0u && inst->y == 0u && inst->s == 0u && inst->p == 0x04u, "the CPU registers are not the zero constants (A, X, Y, S 0 and only I set in P)");
         } else if (strcmp(item, "tmr=zero") == 0) {

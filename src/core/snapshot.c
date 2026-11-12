@@ -259,8 +259,8 @@ static uint32_t dec_powr(struct ds_instance *inst, struct vctx *v, struct rd *r,
         return (uint32_t)DS_SNAPREF_NONE;
     }
     bound = ds_policy_of(inst->profile.field[DS_FIELD_powerup_policy].value);
-    if (policy < (uint32_t)DS_POLICY_ZERO || policy > (uint32_t)DS_POLICY_SEEDED_V2) {
-        return (uint32_t)DS_SNAPREF_field; /* a policy outside 1 to 3 */
+    if (policy < (uint32_t)DS_POLICY_ZERO || policy > (uint32_t)DS_POLICY_SEEDED_V3) {
+        return (uint32_t)DS_SNAPREF_field; /* a policy outside 1 to 4 */
     }
     if (policy != bound) {
         return (uint32_t)DS_SNAPREF_profile; /* a valid policy that is not the one the instance's profile binds: the snapshot of another profile */

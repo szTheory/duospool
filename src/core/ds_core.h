@@ -141,7 +141,7 @@ struct ds_instance {
     /* power-on state (D-50, D-75, D-91): the work RAM and the mapping registers; none of it is a hardware claim (LED-PROF-0002) */
     uint8_t ram8k[DS_RAM8K_BYTES];
     uint8_t mpr[DS_MPR_COUNT]; /* MPR0 to MPR6 are 0 under zero and seeded-prng-v1 and drawn under seeded-prng-v2, MPR7 is $00 at reset under every policy (D-114) */
-    uint32_t powerup_policy;   /* enum ds_policy of ds_poweron.h: 1 zero, 2 seeded-prng-v1, 3 seeded-prng-v2 */
+    uint32_t powerup_policy;   /* enum ds_policy of ds_poweron.h: 1 zero, 2 seeded-prng-v1, 3 seeded-prng-v2, 4 seeded-prng-v3 */
     uint32_t has_seed;         /* 1 when the request carried a seed */
     uint64_t powerup_seed;     /* the seed of the run, 0 when has_seed is 0 */
     /* the declared IRQ1 and IRQ2 test stimulus (plan 03-22, irq.c; D-112, ER-5): up to DS_IRQ_STIM_MAX events, slot i holding the machine time at which line irq_stim_line[i] (1 or 2, 0 = an unused slot) takes the level irq_stim_level[i] (0 or 1). Written only by ds_irq_stim_set before the first step; the level of a line at a stamp is a pure function of these arrays. A test hook, never a claim about the VDC. The three arrays are one live span of 160 bytes (region IRQS) and the 8-byte times come first so that the span sits on the 8-byte boundary after the power-up seed */

@@ -1342,9 +1342,9 @@ static void ed_p_b_bit(uint8_t *b)
 {
     b[sk_payload_off(RG_CPU0) + 4u] |= 0x10u;
 }
-static void ed_policy4(uint8_t *b)
+static void ed_policy5(uint8_t *b)
 {
-    sk_put32(b + sk_payload_off(RG_POWR), 4u);
+    sk_put32(b + sk_payload_off(RG_POWR), 5u); /* policy 5 is the first unknown policy since seeded-prng-v3 took 4 (plan 04-18) */
 }
 static void ed_policy_other(uint8_t *b)
 {
@@ -1529,7 +1529,7 @@ static const struct {
     {"time-max", M_EDIT, ed_time_max},
     {"time-2-63-1", M_EDIT, ed_time_below},
     {"p-b-bit", M_EDIT, ed_p_b_bit},
-    {"policy-4", M_EDIT, ed_policy4},
+    {"policy-5", M_EDIT, ed_policy5},
     {"policy-other", M_EDIT, ed_policy_other},
     {"seed-no-flag", M_EDIT, ed_seed_no_flag},
     {"tma-zero-2", M_EDIT, ed_tma2},

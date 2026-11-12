@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
-# Restore at sampled stops of ds_proto (plan 03-30 tasks 1 and 3; CORE-05, D-121, D-122): the boot state, the state at the deadline and every 97th boundary of a run under the seeded-prng-v2 policy; the stops past the first words of the program have A, X, Y and S pairwise different, which the boot
+# Restore at sampled stops of ds_proto (plan 03-30 tasks 1 and 3; CORE-05, D-121, D-122): the boot state, the state at the deadline and every 97th boundary of a run under the seeded-prng-v3 policy (policy 4 of the POWR region restores since plan 04-18, and the drawn VRAM, SATB and palette bytes
+# travel through the snapshot); the stops past the first words of the program have A, X, Y and S pairwise different, which the boot
 # state cannot show (a swap of those registers by restore would pass there), and the case requires at least one such stop. The runner (kind snapshot_restore, tests/conformance/snapkinds.c) runs the fixture once, uninterrupted, one step at a time, keeping the machine time, pc, opcode and record fold of
 # every step and a copy of the machine at the deadline; a second run of the same fixture is stopped at each planned boundary, snapshotted and restored into a FRESH instance booted with another seed, the defaults of the model parameters, no schedule and no stimulus, whose restorable members are then
 # poisoned (0xA5, and again 0x5A). The restored instance must equal the source in every member of the hand-written tiling list except the ROM (raw compare), re-serialise to the same snapshot, run in lockstep with the uninterrupted run over the window, and, at the lead stop of each class (finish), end
@@ -9,7 +10,7 @@
 id = "snapshot_restore_sampled"
 kind = "snapshot_restore"
 fixture = "authored:ds-proto"
-request = "bind.powerup_policy=seeded-prng-v2;seed=3"
+request = "bind.powerup_policy=seeded-prng-v3;seed=3"
 expect = "stops=first,last,kth:97;window=32;finish;perturb"
 meaning = "Snapshots of ds_proto taken at the first, the last and every 97th boundary restore into a fresh poisoned instance booted with another seed, equal to the source in every member except the ROM, and run in lockstep with the uninterrupted run and to its end"
 required = true
