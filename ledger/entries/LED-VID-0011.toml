@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 # Sprite decode, pattern addressing and slots (D-159; VID-02). E1 candidate scoped to the origin, the 16 per line limit and the H7-19 table for SM = 0 only (ER-2); assumed until a closing plan promotes it.
-# Witnesses (plan 04.1-01, E0 repeatability): TEST:video_spr_basic_solid (MAN H7-20, H7-21, H7-24 rows: origin, index, plane offsets, SPBG, entry order), video_spr_basic_asym (ASSUMED rows: the leftmost pixel is bit 15, flips, the CGY field 2 drawn as 64 lines, clipping), vdc_satb_data_spr (the SATB equals its source block); the slot limit, overflow and collision rows follow
-# in plan 04.1-02. No promotion here (ER-2 at close-out).
+# Witnesses (plan 04.1-01, E0 repeatability): TEST:video_spr_basic_solid (MAN H7-20, H7-21, H7-24 rows: origin, index, plane offsets, SPBG, entry order), video_spr_basic_asym (ASSUMED rows: the leftmost pixel is bit 15, flips, the CGY field 2 drawn as 64 lines, clipping), vdc_satb_data_spr (the SATB equals its source block); the slot limit rows (16, 12 and capped slots, 2d + 1
+# entries searched, the left-cell-only rule) are TEST:video_spr_limit of plan 04.1-02 and the toy vid-spr-limit. No promotion here (ER-2 at close-out).
 id = "LED-VID-0011"
 statement = "R2: sprites are decoded from SATB words with origin (32,64), at most 16 per line, slots = min(16, 2(e-2)) and 64 or 2d+1 entries searched, for SM = 0. E1 candidate: only the origin, the 16 limit and the H7-19 table (printed for SM = 0) equal the manual; CGY 2 as 3, the partial-half rule and the 2-slot rule are community readings."
 profile = "pce-hucard-2btn"

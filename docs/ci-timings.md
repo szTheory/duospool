@@ -977,3 +977,22 @@ The levers of D-176 that weaken no evidence are exhausted: the stage stays over 
 machine. The sprite cases of Phase 4.1 therefore land on a gate that is only 2.8 s cheaper than before; the cost of the cases themselves is recorded in the plan summaries. The
 remaining candidates are decisions for the efficiency review after the first CI run of Phase 4 and 4.1, with the CI job time in hand: the second awk run's share (the parallel job of the quick task
 already cuts the critical path), a skip of the `sanitizers` stage in the second awk run (needs a skip mechanism, which the fail-closed rule discourages) and the cost of the toy controls. None is applied here.
+
+## Phase 4.1 plan 04.1-02: the cost of the sprite limit cases (local runs, not CI runs)
+
+The plan adds four cases (`spr_limit`, `mutate_sweep_spr_limit`, `video_spr_limit`, `video_fault_sweep_spr_limit`), grows `vdc_stat` from 21 to 27 checks and adds the tenth toy (`vid-spr-limit`). No lever
+is applied here and no case beyond those the plan lists was added. Per case user CPU, one `ds_runner --only` run each on a warm tree (gate preset, loaded development machine, so only the ratios mean anything):
+
+| Case | Before | After | Note |
+|------|--------|-------|------|
+| `spr_limit` (guest, 3 power-on policies) | none | 0.22 s | 8 checks, 6.8 million master clocks to the verdict, deadline 7.5 million |
+| `mutate_sweep_spr_limit` (9 runs of the image) | none | 0.64 s | one run per check and the unmutated image |
+| `video_spr_limit` (2 policies, 15 groups) | none | 0.24 s | 19 frames of records |
+| `video_fault_sweep_spr_limit` | none | 0.15 s | one run, faults applied in memory |
+| `vdc_stat` | 0.14 s | 0.19 s | 27 checks, 5.55 million clocks to the verdict (was 21 checks, about 2.3 million) |
+| `mutate_sweep_vdc_stat` (28 runs instead of 22) | 0.76 s | 1.69 s | the longer guest and 6 more checks |
+| `vdc_poweron_policy_diff` (7 ROMs instead of 6) | | 2.31 s | `spr-limit@2` added; the before figure was not measured |
+
+The sum of the new and the changed cases is about 2.3 s of user CPU more than before (1.25 s new cases, 1.0 s for `vdc_stat` and its sweep, the rest for the policy diff and the toy), against a stage of 60 to 90 s on this machine: about 3 percent. The toy
+`vid-spr-limit` runs 4 cases and one extra toy binary build. `conformance` read 88 s on the full gate run at the second task commit and 155 s at the third (other jobs were running on the machine; the trigger is 60 s); `sh scripts/check --timing` read 424 s and 479 s user CPU on those runs (the trigger of D-180 is 150 s). Both
+triggers were already over at 04.1-01, so this plan only adds to a recorded excess; the efficiency review after the first CI run decides what to stage.

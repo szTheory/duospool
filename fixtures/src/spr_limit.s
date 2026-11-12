@@ -10,7 +10,8 @@
 ; The sprite attribute table (SATB) is not CPU-writable (H7-20): the guest forms the 256 words in VRAM at SPR_SATB_SRC with the writers BAND (n entries of one Y, X stepping by dx, one pattern code, the palette counting up from a base) and ZFILL (zero words: Y = 0 does not cover a display line, which starts at 64) and a write of the high byte of DVSSR copies them at the next
 ; vertical blanking (H7-12, D-150). Sprites are
 ; switched on (CR bits 7 and 6) only after the first copy: a seeded power-on SATB would draw random sprites. The scenes (each has its own SATB or its own HSR or HDR; the frames the vexp judges are measured from the sequence, not computed):
-; S16 16 sprites of 16 dots at one line (display line 20), dots 0 to 255 side by side, palette 0 to 15. S16 again with HDR $011F (HDE 1: e = 8, 12 slots). S18 18 sprites, X step 14 (dots 14 * i, overlapping by two). S18 with HDR $051F (HDE 5: e = 12, so 2 * (e - 2) = 20 and the cap of 16 binds). S17 17 sprites, X step 15. SPART seven 32-wide sprites, a 16-wide and a 32-wide at
+; S16 16 sprites of 16 dots at one line (display line 20), dots 0 to 255 side by side, palette 0 to 15. S16 again with HDR $011F (HDE 1: e = 8, 12 slots). S18 18 sprites, X step 14 (dots 14 * i, overlapping by two). S18 with HDR $051F (HDE 5: e = 12, so 2 * (e - 2) = 20 and the cap of 16 binds). S17 17 sprites, X step 15, with HDR $051F (e = 12) like the scene before it: only
+; a cap of 16 (the formula gives 20) leaves the 17th without a slot. SPART seven 32-wide sprites, a 16-wide and a 32-wide at
 ; display line 140: 15 slots used,
 ;   one left. SNAR entries 55 to 63 only (zeros before), with HDR $031B (HDW 27: d = 28, 2d + 1 = 57 entries searched). SCOL a 32-wide, 64-high sprite 0 with a collider that overlaps its transparent half (lines 36 to 51), one that overlaps its opaque half (lines 52 to 67) and two other sprites that overlap each other (lines 100 to 115).
 ; The guest reads the status register after one clean frame (a read clears bits 0 to 5, H7-4) and stores it as a check: CR bit 1 (OR) enables the overflow flag and CR bit 0 the collision flag (H7-4); the status polled, not taken as IRQ1 (vdc_stat judges the level). Nothing here is read from a DuoSpool run. No HuC, PCEAS, emulator or cc65 library code.
@@ -34,7 +35,7 @@ DSV_CHECKS = 8
         LIT 3, $00                      ; MAN:H7-19 16 sprites on a line with 16 slots (e = 10): no OR flag, the status read after a clean frame is $00
         LIT 4, $02                      ; MAN:H7-19 the same 16 sprites with e = 8 (2 * (8 - 2) = 12 slots): four are dropped and OR is set, bit 1 alone
         LIT 5, $02                      ; MAN:H7-19 18 sprites on a line with 16 slots: OR is set, bit 1 alone
-        LIT 6, $02                      ; ASSUMED:LED-VID-0012 17 sprites (H7-19 says 17 or more, H7-4 says more than 17): the model sets OR
+        LIT 6, $02                      ; ASSUMED:LED-VID-0012 17 sprites with e = 12 (20 slots by the formula, the cap of 16 binds; H7-19 says 17 or more, H7-4 says more than 17): the model sets OR
         LIT 7, $01                      ; MAN:H7-4 sprite 0 opaque over another sprite with CR bit 0 set: the CR flag, bit 0 alone
         LIT 8, $00                      ; MAN:H7-4 the same scene with CR bit 0 clear: the flag is not set, the status read is $00
 
@@ -164,8 +165,7 @@ fixture_main:
         CHECK_LIT 5                  ; check 5 MAN:H7-19: 18 sprites, OR set
         VDC_REG BG_R_HDR, HDR_E12
         BG_FRAME                        ; a clean frame with the cap of 16 binding (no status check: the record rows judge it)
-; ---- S17 ----
-        VDC_REG BG_R_HDR, HDR_A
+; ---- S17, still with e = 12: the formula gives 20 slots and the cap of 16 binds, so the 17th sprite is the one that finds no slot ----
         SATB_START
         BAND 17, 84, 32, 15, $100, 0
         ZFILL 188
@@ -174,6 +174,7 @@ fixture_main:
         PHASE_STATUS
         CHECK_LIT 6                  ; check 6 ASSUMED:LED-VID-0012: 17 sprites, OR set
 ; ---- SPART: seven 32-wide sprites, a 16-wide one and a 32-wide one (one slot left) ----
+        VDC_REG BG_R_HDR, HDR_A
         SATB_START
         BAND 7, 204, 32, 32, $104, SPR_CGX
         BAND 1, 204, 256, 0, $100, 7

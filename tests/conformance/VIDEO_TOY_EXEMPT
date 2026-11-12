@@ -13,4 +13,3 @@ video_bg_enab	killed by F0, F1, F7 and F3 of its fault sweep (the tile rows, the
 video_spr_basic_solid	killed by fault sweep F0, F1 and F7 of its ROWS groups (F2 does not act on the indices of the solid groups); toy cap of D-173 reached
 video_spr_basic_asym	killed by fault sweep F0, F1, F2 and F7 of its four groups, whose rows are ASSUMED readings of LED-VID-0011; toy cap of D-173 reached
 video_spr_basic_golden	golden change detector beside the literal cases video_spr_basic_solid and video_spr_basic_asym, whose groups the fault sweeps F0, F1, F2 and F7 show live; the toy cap of D-173 is reached
-video_spr_limit	killed by fault sweep F0, F1, F4, F7 and F8 of its groups (the slot, search, collision and half rows); the toy of the limit follows in task 3 of the same plan

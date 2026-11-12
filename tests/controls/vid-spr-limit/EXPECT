@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Case ids that must come out guest_failure on the toy, one per line. spr_limit is the guest literal (the status of 17 sprites with e = 12), video_spr_limit the literal role (slots_used and the dropped sprites of the e = 12 scenes), the two sweep cases run those judges and the 8 checks as their baseline.
+spr_limit
+video_spr_limit
+video_fault_sweep_spr_limit
+mutate_sweep_spr_limit

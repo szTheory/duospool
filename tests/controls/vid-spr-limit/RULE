@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Toy control (D-85, D-173, F-39; the tenth and last toy of the Phase 4 set, plan 04.1-02): the per line sprite limit 17 and not 16, made from the live src/core/vid.c by scripts/control-mutate. The anchor is the one statement of ds_vid_sprites that forms the slot count min(16, 2 * (e - 2)) from HSR and HDR (MAN H7-19); the replacement raises the cap from 16 to 17 in both places, the plausible
+# mistake of a reader who takes 17 or more as the threshold and not as the number shown. At e = 10 the formula itself gives 16, so the scenes with the blanking fields HDE 3 are unchanged: the cases in EXPECT judge the scenes where the formula gives more than 16 (HDE 5, e = 12: 18 and 17 sprites), where the 17th sprite finds a slot on the toy.
+# The cases in EXPECT must come out guest_failure on the toy: spr_limit reads the status after 17 sprites with e = 12 (the OR flag, check 6), video_spr_limit judges slots_used 16 and the dropped 17th and 18th sprites of those scenes in the line records, and the two sweep cases run those judges as their baseline. The real core passes all four (REQUIRED cases).
+tag=rule-vid-spr-limit
+file=src/core/vid.c
+anchor=(2u * (e - 2u) < 16u ? 2u * (e - 2u) : 16u)
+replace=(2u * (e - 2u) < 17u ? 2u * (e - 2u) : 17u)

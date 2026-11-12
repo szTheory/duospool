@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 # Sprite overflow and collision flags (D-160; VID-02, VID-04). A modelling assumption: the two pages disagree on the overflow count and no page gives the raising instant inside a line.
+# Witnesses (plan 04.1-02, E0 repeatability): TEST:video_spr_limit (the 17th sprite rows ASSUMED here, the 16 and 18 point rows MAN H7-19, the collision rows and the record flags with the IE bit clear), spr_limit (checks 6 to 8: the OR and CR status bits), vdc_stat (checks 22 to 27: OR and CR gated by their enables, set alone, cleared by the read); the toy vid-spr-limit proves
+# the slot cap live. Status stays assumed; no E1 promotion.
 id = "LED-VID-0012"
 statement = "R1: OVERFLOW is set iff a covering sprite or sprite half is dropped for lack of slots (a 17th sets it); COLLISION follows the sprite 0 rule; both flags are raised at the end of the active window of the displayed line. A modelling assumption."
 profile = "pce-hucard-2btn"
@@ -8,8 +10,8 @@ status = "assumed"
 sources = ["FACT|H7-4 H7-19|OR is set when an attempt is made to display more than 17 sprites on a line (H7-4); 17 or more shows the 16 of higher priority (H7-19); CR means sprite 0 against sprites 1 to 63"]
 evidence = []
 disagreement = "H7-4 says more than 17 sprites while H7-19 says 17 or more; whether transparent pixels collide is not stated on any page held"
-pinning_test = "PENDING:4"
-updated = "2026-11-11"
+pinning_test = "TEST:video_spr_limit"
+updated = "2026-11-12"
 assumption = "The model follows H7-19 (the 17th sprite is dropped and sets OVERFLOW); the 17 point is ASSUMED and the fixtures test 16 and 18. Flag timing inside a line is a modelling choice."
 revisit_phase = 4
 withheld = ["overflow timing", "collision timing", "sprite-accurate"]
