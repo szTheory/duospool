@@ -278,3 +278,5 @@ vdc_irq_agree_263
 vdc_irq_agree_hdw
 vdc_irq_agree_lb
 vdc_irq_ratio
+vce_dot
+video_vce_dot

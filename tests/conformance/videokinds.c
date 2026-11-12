@@ -11,7 +11,7 @@
  *   group   SCENE GID  form=ROWS|REL|STRUCT  class=MAN:L|GUEST:M|ASSUMED:LED  sym=order|asym|none  kills=F0,F5,...      a group; the outcome of a case is the conjunction of its groups (D-171, ER-4)
  *   row     SCENE GID  SELECTOR  LITERAL                           one assertion of the group (SELECTOR and LITERAL are key=value items separated by semicolons)
  *   golden  SCENE sha256=HEX                                       the pinned stream digest of a golden scene (E0 repeatability, never a verdict, ER-11)
- * STRUCT rows (selector check=NAME), the checks written here: count, origins, frame_lines, records_per_frame, rec_bytes, values_below_512, div_table, div_first, border_after_pal, line_dirty.
+ * STRUCT rows (selector check=NAME), the checks written here: count, origins, frame_lines, records_per_frame, rec_bytes, values_below_512, div_table, div_window, window (plan 04-09), div_first, border_after_pal, line_dirty, display_lines, width_set.
  * Their classes (ER-10: the weakest class of the inputs wins) are in the .vexp file: a row that uses the 1365-clock grid, the frame length or the join of a write stamp to the grid is ASSUMED (LED-VID-0004, LED-VID-0001);
  * a div row is MAN H6-3 and is judged only on records at least one whole line away from the write that sets it; the border row is GUEST pal_bijection (pure in-guest arithmetic over the values the guest wrote).
  * The evidence text carries video_sha256=HEX E0 repeatability: the SHA-256 of the stream "duospool-video" NUL, u32 1 (little-endian), then the records back to back (D-163). A hash is a change detector and never a verdict (ER-11): the literal groups decide the case.
@@ -36,18 +36,27 @@
 #define VK_O_REC_BYTES 16u
 #define VK_O_LINE_MCLK 18u
 #define VK_O_DIV 20u
+#define VK_O_ACTIVE_X 22u
 #define VK_O_ACTIVE_W 24u
 #define VK_O_BORDER 26u
+#define VK_O_FLAGS 31u
 #define VK_O_LINE_DIRTY 32u
+#define VK_FLAG_ACTIVE 0x01u
+#define VK_FLAG_CLIPPED 0x20u
 #define VK_O_VERSION 35u
 #define VK_O_RESERVED 56u
 #define VK_MAX_DOTS 682u
 #define VK_MAX_REC (VK_HDR + 4u * VK_MAX_DOTS + 8u)
 #define VK_GRID 1365u
 #define VK_DEV_CAP 16384u
-#define VK_CRW_MAX 4u
+#define VK_CRW_MAX 12u
+#define VK_HV_MAX 16u /* the HSR and HDR register writes the runner records (plan 04-09) */
 #define VK_PHYS_WIN 0x1FE400u /* the base of the VCE window; the register of an access is the offset & 7 (MAN H6-2), so $1FE408 is a mirror of CR and $1FE444 a mirror of CTW low */
 #define VK_PHYS_WIN_END 0x1FE800u
+#define VK_PHYS_VDC 0x1FE000u /* the VDC window: the register of an access is the offset & 3 (A1 and A0, MAN H8-24): 0 = AR, 2 = data LSB, 3 = data MSB */
+#define VK_PHYS_VDC_END 0x1FE400u
+#define VK_VDC_AR_HSR 10u
+#define VK_VDC_AR_HDR 11u
 #define VK_REG_CR 0u
 #define VK_REG_CTW_LO 4u
 #define VK_REG_CTW_HI 5u
@@ -476,19 +485,36 @@ struct vk_log {
     uint64_t t_pal[4096];
     unsigned n_pal;
     uint64_t t_pal_last;
+    uint64_t t_hv[VK_HV_MAX]; /* the stamps of the data MSB writes of HSR and HDR (the write that completes a register write), in order; the VDC window is joined by AR as the guest set it */
+    unsigned n_hv;
     uint64_t m; /* the machine time the run reached */
 };
 
-/* the CR writes and the palette data writes of the dev log, found by the register of the physical address in the VCE window (offset & 7, MAN H6-2, mirrors included) and by kind (the stamps are the join points of the rows); 0 when the log is well formed */
+/* the CR writes, the palette data writes and the HSR and HDR register writes of the dev log, found by the register of the physical address (VCE window: offset & 7, MAN H6-2, mirrors included; VDC window: offset & 3, MAN H8-24, with AR as the guest last set it) and by kind (the stamps are the join points of the rows); 0 when the log is well formed. The physical writes of ST0 to ST2 are logged as DS_DEV_ST, the others as DS_DEV_WRITE */
 static int vk_scan_dev(const uint8_t *recs, uint32_t count, struct vk_log *lg)
 {
     uint32_t i;
+    unsigned ar = 0u;
 
     memset(lg, 0, sizeof *lg);
     for (i = 0u; i < count; i++) {
         const uint8_t *r = recs + (size_t)i * VK_DEV_REC;
         uint32_t phys = vk_u32(r + 8);
 
+        if ((unsigned)r[13] != (unsigned)DS_DEV_WRITE && (unsigned)r[13] != (unsigned)DS_DEV_ST) {
+            continue;
+        }
+        if (phys >= (uint32_t)VK_PHYS_VDC && phys < (uint32_t)VK_PHYS_VDC_END) {
+            if ((phys & 3u) == 0u) {
+                ar = (unsigned)r[12] & 0x1Fu;
+            } else if ((phys & 3u) == 3u && (ar == VK_VDC_AR_HSR || ar == VK_VDC_AR_HDR)) {
+                if (lg->n_hv >= VK_HV_MAX) {
+                    return -1;
+                }
+                lg->t_hv[lg->n_hv++] = vk_u64(r);
+            }
+            continue;
+        }
         if ((unsigned)r[13] != (unsigned)DS_DEV_WRITE) {
             continue;
         }
@@ -552,7 +578,7 @@ static void vk_walk_records(const uint8_t *bytes, uint64_t stored, uint64_t coun
 
 enum { VG_PASS = 0, VG_FAIL = 1, VG_HARNESS = 2 };
 #define VK_NOFOCUS UINT64_MAX
-#define VK_KV_MAX 6u
+#define VK_KV_MAX 12u
 
 struct vk_run {
     const char *name;
@@ -826,48 +852,55 @@ static int vk_s_values(struct vk_rc *rc)
     return VG_PASS;
 }
 
-/* STRUCT div_table (MAN H6-3): the records wholly inside the window of CR write j carry the divider div[j]. A record lies wholly in the window when its origin is at least one line after the stamp of write j and, when write j + 1 exists, ends a line before it (origin + 2 lines <= the next stamp), so it depends neither on the grid phase nor on the tie rule and never on the power-on CR.
- * The log must hold exactly the CR writes crw lists, at least gap clocks apart (an empty window is a fault of the case, not a pass) */
-static int vk_s_div_table(struct vk_rc *rc)
+static uint32_t vk_dot(const uint8_t *rec, uint32_t j, int which);
+
+/* the record with origin o lies wholly inside the window of CR write j: at least one line after the stamp of write j and, when write j + 1 exists, ending a line before it (origin + 2 lines <= the next stamp), so it depends neither on the grid phase nor on the tie rule and never on the power-on CR */
+static int vk_in_window(const struct vk_rc *rc, unsigned j, uint64_t o)
 {
-    static const char *const keys[] = {"div", "crw", "gap"};
-    unsigned dv[VK_CRW_MAX];
-    unsigned cw[VK_CRW_MAX];
-    unsigned nd = 0u;
-    unsigned nc = 0u;
-    uint64_t gap = 0u;
+    if (o < rc->lg->t_cr[j] + (uint64_t)VK_GRID) {
+        return 0;
+    }
+    return !(j + 1u < rc->lg->n_cr && o + 2u * (uint64_t)VK_GRID > rc->lg->t_cr[j + 1u]);
+}
+
+/* the CR writes of the log are exactly the values cw[0..nc) and at least gap clocks apart (an empty window is a fault of the case, not a pass); 0 when they are, else the harness verdict is already set */
+static int vk_crw_match(struct vk_rc *rc, const unsigned *cw, unsigned nc, uint64_t gap)
+{
     unsigned j;
 
-    if (vk_need(rc, keys, 3u) != 0 || vk_lst(rc, "div", dv, VK_CRW_MAX, &nd) != 0 || vk_lst(rc, "crw", cw, VK_CRW_MAX, &nc) != 0 || nd != nc || vk_num(rc, "gap", &gap) != 0) {
-        return vk_bad(rc, "STRUCT div_table needs the items div=D,D, crw=V,V (the same count) and gap=N");
-    }
     if (rc->lg->n_cr != nc) {
-        return vk_bad(rc, "the dev log does not hold exactly the CR writes the div_table row lists");
+        return vk_bad(rc, "the dev log does not hold exactly the CR writes the row lists");
     }
     for (j = 0u; j < nc; j++) {
         if (rc->lg->v_cr[j] != cw[j] || (j > 0u && rc->lg->t_cr[j] - rc->lg->t_cr[j - 1u] < gap)) {
-            return vk_bad(rc, "a CR write of the guest has another value than the div_table row lists, or two CR writes are closer than its gap (the window of judged records could be empty)");
+            return vk_bad(rc, "a CR write of the guest has another value than the row lists, or two CR writes are closer than its gap (the window of judged records could be empty)");
         }
     }
+    return 0;
+}
+
+/* the divider of the records wholly inside the window of each CR write j whose bit is set in judge (MAN H6-3 for the contents 00h and 01h, ASSUMED LED-VID-0002 for 02h and 03h: the class of the group says which); the window of a judged write must hold a record */
+static int vk_div_windows(struct vk_rc *rc, const unsigned *dv, const unsigned *cw, unsigned nc, unsigned judge)
+{
+    unsigned j;
+
     for (j = 0u; j < nc; j++) {
         uint64_t k;
         uint64_t judged = 0u;
 
+        if (((judge >> j) & 1u) == 0u) {
+            continue;
+        }
         for (k = 0u; k < rc->w->n; k++) {
-            uint64_t o = vk_u64(rc->w->rec[k] + VK_O_ORIGIN);
-
-            if (o < rc->lg->t_cr[j] + (uint64_t)VK_GRID) {
+            if (!vk_in_window(rc, j, vk_u64(rc->w->rec[k] + VK_O_ORIGIN))) {
                 continue;
             }
-            if (j + 1u < nc && o + 2u * (uint64_t)VK_GRID > rc->lg->t_cr[j + 1u]) {
-                continue;
-            }
-            if (j == 0u && judged == 0u) {
+            if (judged == 0u) {
                 vk_focus(rc, k);
             }
             judged++;
             if ((unsigned)rc->w->rec[k][VK_O_DIV] != dv[j]) {
-                snprintf(rc->why, rc->cap, "div (MAN H6-3): record %llu, at least one line after CR write %u (value %u) and before the next one, does not carry divider %u", (unsigned long long)k, j + 1u, cw[j], dv[j]);
+                snprintf(rc->why, rc->cap, "div: record %llu, at least one line after CR write %u (value %u) and before the next one, does not carry divider %u", (unsigned long long)k, j + 1u, cw[j], dv[j]);
                 return VG_FAIL;
             }
         }
@@ -876,6 +909,104 @@ static int vk_s_div_table(struct vk_rc *rc)
         }
     }
     return VG_PASS;
+}
+
+/* STRUCT div_table (MAN H6-3): the records wholly inside the window of every CR write j carry the divider div[j]; the log must hold exactly the CR writes crw lists, at least gap clocks apart */
+static int vk_s_div_table(struct vk_rc *rc)
+{
+    static const char *const keys[] = {"div", "crw", "gap"};
+    unsigned dv[VK_CRW_MAX];
+    unsigned cw[VK_CRW_MAX];
+    unsigned nd = 0u;
+    unsigned nc = 0u;
+    uint64_t gap = 0u;
+
+    if (vk_need(rc, keys, 3u) != 0 || vk_lst(rc, "div", dv, VK_CRW_MAX, &nd) != 0 || vk_lst(rc, "crw", cw, VK_CRW_MAX, &nc) != 0 || nd != nc || vk_num(rc, "gap", &gap) != 0) {
+        return vk_bad(rc, "STRUCT div_table needs the items div=D,D, crw=V,V (the same count) and gap=N");
+    }
+    if (vk_crw_match(rc, cw, nc, gap) != 0) {
+        return VG_HARNESS;
+    }
+    return vk_div_windows(rc, dv, cw, nc, (1u << nc) - 1u);
+}
+
+/* STRUCT div_window: as div_table, but only the windows of the CR writes listed in judge=J,J are judged (the others are still checked to be the writes the row lists): the contents 00h and 01h of one group are MAN H6-3, the contents 02h and 03h of another are ASSUMED LED-VID-0002 */
+static int vk_s_div_window(struct vk_rc *rc)
+{
+    static const char *const keys[] = {"div", "crw", "gap", "judge"};
+    unsigned dv[VK_CRW_MAX];
+    unsigned cw[VK_CRW_MAX];
+    unsigned jl[VK_CRW_MAX];
+    unsigned nd = 0u;
+    unsigned nc = 0u;
+    unsigned nj = 0u;
+    unsigned mask = 0u;
+    unsigned j;
+    uint64_t gap = 0u;
+
+    if (vk_need(rc, keys, 4u) != 0 || vk_lst(rc, "div", dv, VK_CRW_MAX, &nd) != 0 || vk_lst(rc, "crw", cw, VK_CRW_MAX, &nc) != 0 || nd != nc || vk_lst(rc, "judge", jl, VK_CRW_MAX, &nj) != 0 || vk_num(rc, "gap", &gap) != 0) {
+        return vk_bad(rc, "STRUCT div_window needs the items div=D,D, crw=V,V (the same count), gap=N and judge=J,J");
+    }
+    for (j = 0u; j < nj; j++) {
+        if (jl[j] >= nc) {
+            return vk_bad(rc, "STRUCT div_window judges a CR write the row does not list");
+        }
+        mask |= 1u << jl[j];
+    }
+    if (vk_crw_match(rc, cw, nc, gap) != 0) {
+        return VG_HARNESS;
+    }
+    return vk_div_windows(rc, dv, cw, nc, mask);
+}
+
+/* STRUCT window (ASSUMED LED-VID-0005, D-140, D-161): inside the window of CR write crw every display line (flag ACTIVE) carries the divider div, active_x, active_w, rec_bytes, the CLIPPED flag clipped and a payload of active_w index words equal to index and active_w colour words equal to the border of its own record, and every other line is header-only (active_w 0, active_x 0, rec_bytes 64, no CLIPPED). At least one display line must be judged */
+static int vk_s_window(struct vk_rc *rc)
+{
+    static const char *const keys[] = {"crw", "div", "active_x", "active_w", "rec_bytes", "clipped", "index"};
+    uint64_t v[7];
+    uint64_t k;
+    uint64_t judged = 0u;
+    unsigned i;
+
+    for (i = 0u; i < 7u; i++) {
+        if (vk_need(rc, keys, 7u) != 0 || vk_num(rc, keys[i], &v[i]) != 0) {
+            return vk_bad(rc, "STRUCT window needs the items crw, div, active_x, active_w, rec_bytes, clipped and index (decimal)");
+        }
+    }
+    if (v[0] >= (uint64_t)rc->lg->n_cr || v[5] > 1u || v[4] != (uint64_t)VK_HDR + ((4u * v[3] + 7u) & ~(uint64_t)7u)) {
+        return vk_bad(rc, "STRUCT window names a CR write the log does not hold, a clipped other than 0 or 1, or a rec_bytes that is not 64 + ((4 * active_w + 7) & ~7)");
+    }
+    for (k = 0u; k < rc->w->n; k++) {
+        const uint8_t *r = rc->w->rec[k];
+        uint32_t aw = vk_u16(r + VK_O_ACTIVE_W);
+        uint32_t j;
+        int ok;
+
+        if (!vk_in_window(rc, (unsigned)v[0], vk_u64(r + VK_O_ORIGIN))) {
+            continue;
+        }
+        if ((r[VK_O_FLAGS] & VK_FLAG_ACTIVE) == 0u) { /* a blanking line is header-only */
+            if (aw != 0u || vk_u16(r + VK_O_ACTIVE_X) != 0u || vk_u16(r + VK_O_REC_BYTES) != VK_HDR || (r[VK_O_FLAGS] & VK_FLAG_CLIPPED) != 0u) {
+                snprintf(rc->why, rc->cap, "window (ASSUMED LED-VID-0005): record %llu, a line outside the display, is not header-only (active_w, active_x, rec_bytes 64, no CLIPPED)", (unsigned long long)k);
+                vk_focus(rc, k);
+                return VG_FAIL;
+            }
+            continue;
+        }
+        if (judged == 0u) {
+            vk_focus(rc, k);
+        }
+        judged++;
+        ok = (uint64_t)r[VK_O_DIV] == v[1] && (uint64_t)vk_u16(r + VK_O_ACTIVE_X) == v[2] && (uint64_t)aw == v[3] && (uint64_t)vk_u16(r + VK_O_REC_BYTES) == v[4] && (uint64_t)((r[VK_O_FLAGS] & VK_FLAG_CLIPPED) != 0u ? 1u : 0u) == v[5];
+        for (j = 0u; j < aw && ok; j++) {
+            ok = (uint64_t)vk_dot(r, j, 0) == v[6] && vk_dot(r, j, 1) == vk_u16(r + VK_O_BORDER);
+        }
+        if (!ok) {
+            snprintf(rc->why, rc->cap, "window (ASSUMED LED-VID-0005): display record %llu, inside the window of CR write %llu, does not carry div %llu, active_x %llu, active_w %llu, rec_bytes %llu, CLIPPED %llu and a blank payload (index %llu, colour = border)", (unsigned long long)k, (unsigned long long)v[0] + 1u, (unsigned long long)v[1], (unsigned long long)v[2], (unsigned long long)v[3], (unsigned long long)v[4], (unsigned long long)v[5], (unsigned long long)v[6]);
+            return VG_FAIL;
+        }
+    }
+    return judged >= 1u ? VG_PASS : vk_bad(rc, "the window of the CR write holds no display line: the case cannot judge the geometry");
 }
 
 /* STRUCT div_first (ASSUMED LED-VID-0004, the tie rule of D-138): the first record whose origin is after the stamp of CR write crw carries divider div and the record before it divider prev */
@@ -1070,6 +1201,8 @@ static const struct vk_chk vk_checks[] = {
     {"rec_bytes", vk_s_rec_bytes},
     {"values_below_512", vk_s_values},
     {"div_table", vk_s_div_table},
+    {"div_window", vk_s_div_window},
+    {"window", vk_s_window},
     {"div_first", vk_s_div_first},
     {"border_after_pal", vk_s_border},
     {"line_dirty", vk_s_line_dirty},

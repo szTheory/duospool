@@ -4,3 +4,4 @@
 # The scene cases of fixtures/src/*.vexp that no toy EXPECT lists, one per line: CASE_ID, a TAB and the reason (plan 04-07; D-172, D-173, amendment A5). scripts/video-check reads this file; a line with no reason is VIDEO_EXEMPT_FORMAT, and the count of lines is printed in the VIDEO_CHECK status line.
 # A scene case that a toy EXPECT lists with no second column needs no line here.
 video_vce_pal_golden	golden change detector beside the literal case video_vce_pal, which vid-palette-mask kills
+video_vce_dot	the toy vid-dot-div (plan 04-09 Task 3) names this scene; until then no toy lists it

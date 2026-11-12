@@ -10,8 +10,8 @@
 #   row     SCENE GID  SELECTOR  LITERAL      (STRUCT: SELECTOR check=NAME; LITERAL key=value items separated by semicolons)
 #   golden  SCENE sha256=HEX                  (one pinned stream digest of a golden scene: E0 repeatability, valid only beside a literal case of the same scene, ER-11)
 # The fixture (fixtures/src/vce_pal.s) writes VCE CR $00, waits at least 5,460 master clocks (four lines; the speed is stated in vce_pal.s), writes CR $01 and writes the 512 palette entries P(i) = (91 * i + 17) & 511.
-# Its records are header-only (no active window yet), so only the faults that act on a header declare a kill here: F0 (a perturbed literal), F4 (a duplicated line), F5 (a changed divider), F8 (two swapped lines), F9 (an origin moved by one clock).
-# F1 F2 F3 F6 F7 act on pixels and active lines and change nothing in a header-only stream.
+# Its groups judge headers only (the 8-dot blank window of a display line, since plan 04-09, is not judged here), so only the faults that act on a header declare a kill here: F0 (a perturbed literal), F4 (a duplicated line), F5 (a changed divider), F8 (two swapped lines), F9 (an origin moved by one clock).
+# F1 F2 F3 F6 F7 act on pixels and active lines and no group of this scene reads them.
 # Classes (ER-10, the weakest class of the inputs of a row wins): the struct and frame groups use the 1365-clock grid and the frame length, so they are ASSUMED (LED-VID-0004, LED-VID-0001).
 # The div group is MAN H6-3 (content 00h gives division ratio 4, 01h gives 3). It is judged only on records that lie wholly at least one line (1365 clocks) after the stamp of the CR write that sets them and, between two writes, at least one line before the next one,
 # so it depends neither on the grid phase nor on the tie rule; it is never judged on a record before the CR $00 write, which would rest on the power-on CR of LED-PROF-0003 (amendment A11).
@@ -25,6 +25,8 @@
 # E0 repeatability only. It is valid only beside the literal case of the same scene (the runner refuses video-hash-only and scripts/video-check says INV_VIDEO_HASH_ONLY otherwise). A change of the stream (a later plan that changes the records) repins it by the procedure of that plan.
 # Repin of plan 04-08 (E0 change detector, ER-11): the vertical machine and the RCR counter now run, so every record carries its v_state, the ACTIVE flag on display lines, active_k and a stepping rcr_counter (the vce_pal guest leaves every vertical register at 0, so the cycle is 4 lines: 2 of VDS, 1 of VDW, 1 of VSW).
 # Old digest 6c510913928bfa8703e0f5006bba728f894ccf9ce910ede9b7fcef50afd09c55, new digest c667ac7ada36e13b97178cf7a1c011e4494b6f4b3ec79359b894eafddaf35253, recomputed with shasum -a 256 over the --video-out file; the literal case video_vce_pal passed on the changed records first.
+# Repin of plan 04-09 (E0 change detector, ER-11): a display line now carries its active window and payload (HDS 0, HDW 0 here, so 8 dots of index 256 and the colour of palette entry $100: rec_bytes 96 on every display line, 64 elsewhere).
+# Old digest c667ac7ada36e13b97178cf7a1c011e4494b6f4b3ec79359b894eafddaf35253, new digest 03fa9142760f089c51cd33fc1a0e1cfec16547dbafcd652d40dc4cc23ddf8a85, recomputed with shasum -a 256 over the --video-out file; the literal case video_vce_pal passed on the changed records first.
 scene	vce_pal	case=video_vce_pal	role=literal
 scene	vce_pal	case=video_vce_pal_golden	role=golden
 group	vce_pal	struct	form=STRUCT	class=ASSUMED:LED-VID-0004	sym=none	kills=F4,F8,F9
@@ -43,4 +45,4 @@ group	vce_pal	border	form=STRUCT	class=GUEST:pal_bijection	sym=none	kills=F0
 row	vce_pal	border	check=border_after_pal	value=273
 group	vce_pal	dirty	form=STRUCT	class=ASSUMED:LED-VID-0004	sym=none	kills=F0,F4
 row	vce_pal	dirty	check=line_dirty	cr_bit=0;pal_bit=4
-golden	vce_pal	sha256=c667ac7ada36e13b97178cf7a1c011e4494b6f4b3ec79359b894eafddaf35253
+golden	vce_pal	sha256=03fa9142760f089c51cd33fc1a0e1cfec16547dbafcd652d40dc4cc23ddf8a85

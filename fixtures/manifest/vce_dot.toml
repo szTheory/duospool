@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Fixture manifest entry (FIX-02, FIX-01, D-59 amended, D-123): one authored HuCard image of fixtures/src/vce_dot.s. The bytes are assembled in the gate by ca65 and ld65 and are
+# never committed. scripts/fixture-check compares size and sha256 below with the bytes scripts/fixture-build wrote, as hashed by the host sha tool, so a changed source, library or
+# toolchain output turns the gate red. The pin was measured on the Homebrew cc65 2.19 bottle (see fixtures/lib/TOOLS.md); it proves the build is repeatable, nothing more.
+id = "vce_dot"
+kind = "authored"
+source = "fixtures/src/vce_dot.s"
+recipe = "vce-dot: ca65 --cpu huc6280 -D ROMBANKS=32 -I fixtures/lib -o build/gate/fx/vce-dot.o fixtures/src/vce_dot.s; ld65 -C fixtures/lib/hucard.cfg -D ROMBANKS=32 -o build/gate/fixtures/vce-dot.pce build/gate/fx/vce-dot.o"
+toolchain = "cc65 V2.19 (ca65 prints V2.18; identity by encoding-matrix bytes, plan 03-08), Homebrew bottle 2.19 locally, hashed by sha256sum or shasum -a 256"
+size = 262144
+sha256 = "ad528a28619bb84b050cf1d53e24bf9189f130b62c354dc3873d800233c6e6a2"
+licence = "0BSD"
+notices = "none: assembled at gate time from the project-owned sources fixtures/src/vce_dot.s and fixtures/lib/*.inc and hucard.cfg (0BSD); no HuC, PCEAS or cc65 library or startup code, no emulator code, no game content"
+redistribution = "generated-not-committed"
+meaning = "Authored diagnostic HuCard of 256 KiB: the vertical setup of 264 lines, HSR and HDR (HDS 2, HDW 31), the border palette entry $100 by an additive running sum, the VCE CR written to each dot clock setting and a window setup held for about a frame each; 4 DSV1 checks. The raster is judged from the line records by the video cases. A pass is not a support claim."
+verdict_source = "manual-cite:H6-5+manual-cite:H7-25+spec-literal:LED-VID-0016"
