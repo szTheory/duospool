@@ -56,7 +56,7 @@ Filled by the planner and executors. Requirement rows (VID-01..VID-06 with liter
 
 | # | Item | Ruling | Owner plan |
 |---|------|--------|------------|
-| A1 | Plan set | 17 plans: CONTEXT 04-03 split into 04-03 (data-only layout and bump), 04-04 (tracer), 04-05 (hardening); CONTEXT 04-06 split into 04-08 (ladder, status, IRQ1) and 04-17 (guest interrupt measurements, pass column, toys, pins; runs right after 04-08). Checkpoint 04-13, close-out 04-16, spares 04-18 and 04-19. Execution order follows depends_on and waves | all |
+| A1 | Plan set | 18 plans in 17 waves: CONTEXT 04-03 = 04-03 (layout and bump, Tasks 1-2 executed), 04-18 (v3 and restore refusals, stop-rule split, after 04-03), 04-04 (tracer), 04-05 (hardening); CONTEXT 04-06 = 04-08 and 04-17 (after 04-08). Checkpoint 04-13, close-out 04-16, spares 04-19, 04-20; order follows depends_on and waves | all |
 | A2 | Plan sizing | Phase 2 D-81 file caps superseded for Phase 4: 04-CONTEXT.md reconciliations, writer note 6 | all |
 | A3 | Toy vid-scroll-latch (D-173) | D-173's "scroll applied to the current line" is unobservable under R1 (the write's own line is emitted at its EV_LINE; from line n+1 on it equals the next-line rule). The toy instead removes the row-counter reload on a BYR write (vdc.c), killed by the BYR next-line rows [MAN H7-7] | 04-11 (anchor), 04-12 (toy) |
 | A4 | BXR next-line liveness | No renderer mutant (toy cap of 10 spent; under R1 the only mutant class, a late or missing latch, is what record faults emulate). The BXR rows are live by fault sweep F1 (shift) and F8 (swap lines K and K+1) and the REL scroll_x_shift row: a recorded limit | 04-12 |
@@ -75,6 +75,7 @@ Filled by the planner and executors. Requirement rows (VID-01..VID-06 with liter
 - [ ] ledger entries and amendments; each constants row id exists before `constants.def` lands (04-01)
 - [ ] sink channel table with a `vid` channel and no producer; fold placement in `ds_cpu_step_obs` (04-02)
 - [ ] snapshot capacities, hand tables and the two goldens (plan file 04-03)
+- [ ] seeded-prng-v3, the new default guest policy list and the restore-refusal cases snapshot_refusal_vdc (plan file 04-18, the stop-rule split of 04-03)
 - [ ] optional second EXPECT column for stays-green toys (04-17, before the first stays-green toy)
 - [ ] `.vexp.tsv` channel in `fixture-build` and the `video-check` stage with its mini-roots (plan file 04-07)
 - [ ] `RODATA` segment in `hucard.cfg` and the first per-feature include `fixtures/lib/vce.inc` (plan file 04-04); later includes vdc.inc (04-06), vdma.inc (04-10), bg.inc (04-11), spr.inc (04-14), spin.inc (04-17); there is no video.inc
