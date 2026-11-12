@@ -387,6 +387,15 @@ const char *snap_first_diff(const struct ds_instance *a, const struct ds_instanc
 int list_fixtures(const size_t *sweep, size_t nsweep);
 
 /* the kinds added after the Phase 3 code review (reviewkinds.c): brk_irq_sample (WR-01, BRK with an interrupt pending, both values of irq_i_sample) and dev_record_pc (WR-02, the pc field of the dev records of a block transfer) */
+/* the VDC and VCE C-level kinds (vdckinds.c, plan 04-05): vdc_fold (random partitions of the fold against one jump, the tie rule through the bus write path, the next-event invariant), vid_noninterference (a vid-only sink in four shapes against no sink under three policies) and snapshot_restore_video (restores at the stops of the video schedules, the concatenated stream compared); vd_policy_request appends policy fragment i (0 zero, 1 and 2 seeded-prng-v3 seeds 1 and 2) to a case's request, as kind_guest does for its default list */
+#define VD_POLICIES 3u
+void kind_vdc_fold(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_vid_noninterference(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_snapshot_restore_video(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+const char *vd_policy_name(unsigned i);
+int vd_policy_request(unsigned i, const char *base, char *out, size_t cap);
+int vd_compose_request(const char *base, const char *fragment, char *out, size_t cap); /* the request with one policy fragment appended: the observer kind uses it for its policies key */
+
 void kind_brk_irq_sample(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_dev_record_pc(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 

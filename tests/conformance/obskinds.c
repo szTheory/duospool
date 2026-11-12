@@ -22,6 +22,7 @@
  *                     verdict RAM (the DSV1 block), digest and stop sequence (the count and an FNV-1a fold of the machine time, pc, registers and bus latch at every call of the stop callback). The sinks themselves are checked too: headers
  *                     consistent (count = min(seq, capacity), lost = seq - count, insn seq = steps), the guard bytes and the record memory past the count untouched (a poisoned header never read), the records of a limited sink the
  *                     first records of the large sink, and, in a chunked run, the logs accumulated over the chunks equal the logs of the whole run. A large sink that lost a record is harness_failure (the log is evidence here).
+ *                     Plan 04-05: the offered number seq of the large vid sink of every mode equals the closed form floor((M - 1) / 1365) + 1 of the machine time of its run (ASSUMED LED-VID-0004, LED-VID-0001), and the optional case key policies (request fragments separated by ||, as in a guest case) runs the whole matrix once under each fragment.
  *                     E0: the core is compared with itself (non-interference), nothing here is an oracle. A hook that changes machine state turns this red (the trace-hook-mutates toy).
  *   dev_log           (plan 03-19) expect = mode=guest;rom=NAME;rec=PC:KIND:PHYS:VALUE:CYCLE;rec=... (until_mclk required; CYCLE is the zero-based cycle of the access inside its instruction, plan 03-21,
  *                     with the suffix H for an instruction run at the high speed, 3 master clocks per cycle, plan 04-19): the built ROM runs to the deadline with an insn sink and a dev sink; the dev log must hold exactly the listed records in order,
@@ -504,6 +505,7 @@ void kind_opcode_exercise(const struct kase *k, struct ctx *c, char *got, size_t
 #define OB_VID_LINE_MAX 2792u              /* DS_VID_MAX_REC_BYTES: the longest record */
 #define OB_CHUNKS_MAX 64u
 #define OB_MODES_MAX 6u
+#define OB_POLICIES_MAX 4u /* the request fragments of the policies key of an observer case (plan 04-05) */
 #define OB_CFG_MAX 6u
 #define OB_FNV_BASIS UINT64_C(14695981039346656037)
 #define OB_FNV_PRIME UINT64_C(1099511628211)
@@ -597,6 +599,7 @@ struct ob_src {
     unsigned index;
     const unsigned char *img; /* the image of the random program, built once for the runs of the whole matrix */
     const struct kase *k;
+    const char *request;      /* the request text every boot of the matrix uses: the case's request, with the power-on policy fragment of the policies key appended (plan 04-05) */
 };
 
 /* the observable outcome of one run: everything a sink must not change, plus the two logs; bstops counts the calls that took a step and ended inside a block transfer and pstops those of them with the timer interrupt and IRQ2 both pending at the stop stamp */
@@ -859,7 +862,7 @@ static int ob_exec(struct ctx *c, const struct ob_src *src, uint64_t until, cons
     uint32_t refusal = 0u;
     uint32_t input_refusal = 0u;
     char msg[200];
-    const char *err = src->random ? boot_random(src->img, src->k->val[K_REQUEST], &b, &ci) : boot_built_rom(src->rom, src->k->val[K_REQUEST], &b, &ci);
+    const char *err = src->random ? boot_random(src->img, src->request, &b, &ci) : boot_built_rom(src->rom, src->request, &b, &ci);
     int rc = 0;
 
     memset(o, 0, sizeof *o);
@@ -1160,6 +1163,12 @@ static int ob_parse_modes(const char *text, struct ob_mode *modes, unsigned *nmo
     return *nmodes >= 1u && modes[0].kind == OBM_WHOLE ? 0 : -1;
 }
 
+/* the lines due at the machine time M by the closed form of D-137: floor((M - 1) / 1365) + 1, 0 for M = 0 (ASSUMED LED-VID-0004 and LED-VID-0001); written here, no code shared with the core */
+static uint64_t ob_lines_due(uint64_t m)
+{
+    return m == 0u ? 0u : (m - 1u) / UINT64_C(1365) + 1u;
+}
+
 /* the whole matrix for one program: every mode, each with the no-sink reference and every configuration; *runs counts the machine runs */
 static void ob_matrix(struct ctx *c, const struct ob_src *src, uint64_t until, const int *want, const struct ob_mode *modes, unsigned nmodes, int pending, unsigned *runs)
 {
@@ -1210,6 +1219,13 @@ static void ob_matrix(struct ctx *c, const struct ob_src *src, uint64_t until, c
         }
         (*runs)++;
         ob_same_as(c, &ref, &large, cfg[1].name, modes[mi].name);
+        {
+            char msg[200];
+
+            snprintf(msg, sizeof msg, "the vid sink of the large run in mode %s was offered %llu records, the closed form floor((M - 1) / 1365) + 1 of its machine time %llu is %llu (ASSUMED LED-VID-0004)", modes[mi].name, (unsigned long long)large.vlog.seq, (unsigned long long)large.e.mclk,
+                     (unsigned long long)ob_lines_due(large.e.mclk));
+            check(c, large.vlog.seq == ob_lines_due(large.e.mclk), msg);
+        }
         if (large.ilog.lost != 0u || large.dlog.lost != 0u || large.vlog.lost != 0u) {
             harness_error(c, "the large sink of the observer matrix lost a record: the log is evidence here and would be incomplete");
         }
@@ -1280,6 +1296,11 @@ void kind_observer(const struct kase *k, struct ctx *c, char *got, size_t gotcap
     unsigned nprog = 1u;
     unsigned char *img = NULL;
     struct ob_src src;
+    char pbuf[PK_LIST_MAX];
+    char req[320];
+    const char *frag[OB_POLICIES_MAX];
+    unsigned nfrag = 0u;
+    unsigned qi;
 
     rom[0] = '\0';
     if (!k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until == 0u || until > UINT64_C(0xFFFFFFFF) || !k->has[K_SINKS] || !k->has[K_CHUNKS] || ob_parse_expect(k->val[K_EXPECT], &pending, &nrandom) != 0
@@ -1290,6 +1311,33 @@ void kind_observer(const struct kase *k, struct ctx *c, char *got, size_t gotcap
     memset(&src, 0, sizeof src);
     src.k = k;
     src.rom = rom;
+    if (k->has[K_POLICIES]) { /* plan 04-05: the power-on policies of the case, request fragments separated by || as in a guest case; the whole matrix runs once under each (every comparison is within a policy) */
+        size_t plen = strlen(k->val[K_POLICIES]);
+        char *p2;
+
+        if (plen >= sizeof pbuf) {
+            harness_error(c, "the policies key of an observer case is too long");
+            return;
+        }
+        memcpy(pbuf, k->val[K_POLICIES], plen + 1u);
+        p2 = pbuf;
+        for (;;) {
+            char *sep = strstr(p2, "||");
+
+            if (nfrag >= OB_POLICIES_MAX) {
+                harness_error(c, "the policies key of an observer case lists more than 4 request fragments");
+                return;
+            }
+            frag[nfrag++] = p2;
+            if (sep == NULL) {
+                break;
+            }
+            *sep = '\0';
+            p2 = sep + 2;
+        }
+    } else {
+        frag[nfrag++] = "";
+    }
     if (nrandom != 0u) {
         img = (unsigned char *)malloc(RP_IMAGE_BYTES);
         if (img == NULL) {
@@ -1300,15 +1348,22 @@ void kind_observer(const struct kase *k, struct ctx *c, char *got, size_t gotcap
         src.img = img;
         nprog = nrandom;
     }
-    for (pi = 0u; pi < nprog && !c->harness; pi++) {
-        src.index = pi;
-        if (img != NULL) {
-            rp_build(img, rp_seed(pi));
+    for (qi = 0u; qi < nfrag && !c->harness; qi++) {
+        if (vd_compose_request(k->val[K_REQUEST], frag[qi], req, sizeof req) != 0) {
+            harness_error(c, "the request of the observer case plus a policy fragment does not fit");
+            break;
         }
-        ob_matrix(c, &src, until, want, modes, nmodes, pending, &runs);
+        src.request = req;
+        for (pi = 0u; pi < nprog && !c->harness; pi++) {
+            src.index = pi;
+            if (img != NULL) {
+                rp_build(img, rp_seed(pi));
+            }
+            ob_matrix(c, &src, until, want, modes, nmodes, pending, &runs);
+        }
     }
     free(img);
-    snprintf(got, gotcap, "programs=%u modes=%u runs=%u", nprog, nmodes, runs);
+    snprintf(got, gotcap, "programs=%u modes=%u policies=%u runs=%u", nprog, nmodes, nfrag, runs);
 }
 
 /* ---- kind dev_log: the device-register log (plan 03-19; D-119, CORE-06) ---- */

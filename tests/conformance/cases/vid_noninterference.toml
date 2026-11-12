@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The vid sink never reaches machine state (plan 04-05; D-162, D-164, F-2, T-04-18): the runner kind vid_noninterference runs the authored vce_pal fixture to one deadline under each of the three power-on policies (zero, seeded-prng-v3 seed 1, seeded-prng-v3 seed 2) with no vid sink and with a vid sink
+# only (no insn or dev sink) in four shapes: large (the closed form of the deadline at the longest record), four records (the byte capacity of the first four records of the large run, drop-newest, F-2), capacity 0 behind a non-NULL pointer and capacity 1. Every run must end with the machine time,
+# steps, verdict RAM and digest of the run with no sink; the header must read count = whole records stored, lost = seq - count, bytes = their sum, seq = the closed-form line count floor((M - 1) / 1365) + 1 (ASSUMED LED-VID-0004 and LED-VID-0001, written in the kind), a zero final word, the record
+# memory past the bytes stored and the guard bytes either side untouched (a poisoned header is never read), and the stored records are the first records of the large run. The toy vid-emit-mutates turns this case guest_failure. Evidence tier E0: the core compared with itself (non-interference); no
+# accuracy or hardware claim, and the word pass is not a support claim.
+id = "vid_noninterference"
+kind = "vid_noninterference"
+fixture = "authored:vce-pal"
+request = ""
+expect = "rom=vce-pal;compare=verdict,machine_time,steps,digest"
+meaning = "The vce_pal run with a vid sink in four shapes (large, four records, capacity 0, capacity 1) ends with the machine time, steps, verdict RAM and digest of the run with no sink under zero and two seeded-prng-v3 power-on policies, and the sink header counts whole records stored against the closed-form line count"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000

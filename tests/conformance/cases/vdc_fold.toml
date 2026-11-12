@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The composability of the VDC and VCE fold (plan 04-05; D-137, D-138, F-29, ER-7, ER-10): the runner kind vdc_fold (tests/conformance/vdckinds.c) boots the authored vce_pal image and drives the private fold directly. Part partitions: 64 seeded random partitions of the stamp range [0, 3 * 357630]
+# (three frames of 262 lines of 1365 master clocks) fold through ds_vdc_advance and must equal one jump to the end in every restorable member (the beam bytes among them), the digest and the emitted records, memcmp of the stream bytes (odd partitions cut one clock before, on and one clock after line
+# origins). Part tie: a VCE control register write goes through the bus write path (ds_bus_write at the access stamp of the case, so the order is the production one: fold to the stamp, then write); written one clock before the origin of line 5 the new divider (MAN H6-3: CR 01h gives division ratio 3,
+# 00h gives 4) shows on that line, written at the origin or one clock after it shows from the next line (the tie rule of D-138, ASSUMED LED-VID-0004), with line_dirty bit 0 on exactly that record. Part invariant: the fixture runs under a stop callback that is called before the first step and after
+# every step, in one call and in 64 calls to seeded random deadlines, with and without a vid sink; at every call the pending event time is not older than the machine time (D-137) and the next line index is floor((M - 1) / 1365) + 1 for the machine time M, a closed form written in the kind that shares
+# no code with the core (ASSUMED LED-VID-0004 and LED-VID-0001). The seed and the partitions are fixed in this file. No ds_irq_pending_query is called (F-21). Evidence tier E0: the core compared with itself, plus rows whose literals come from a manual page (the divider values) or from the ledger
+# entries named above; no accuracy, raster, pixel or hardware claim, and the word pass is not a support claim.
+id = "vdc_fold"
+kind = "vdc_fold"
+fixture = "authored:vce-pal"
+request = ""
+expect = "rom=vce-pal;parts=partitions,tie,invariant;partitions=64;frames=3;frame=357630;seed=0x56444346;tie_line=5"
+meaning = "64 seeded random partitions of three frames of fold stamps equal one jump in beam bytes and emitted records, a control register write one clock before a line origin shows on that line and one at the origin shows on the next, and after every step and every stop no event is older than the machine time, E0 repeatability"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000

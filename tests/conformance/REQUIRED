@@ -252,3 +252,7 @@ vce_pal
 mutate_sweep_vce_pal
 video_vce_pal
 chunk_equiv_video_vce_pal
+vdc_fold
+observer_vce_pal
+vid_noninterference
+snapshot_restore_video
