@@ -972,13 +972,39 @@ stage_input_check_negatives() {
 # video-check (VID-06; D-171, D-172, D-173, ER-10, ER-11, ER-12, F-6, F-42; plan 04-07): the video literal files fixtures/src/*.vexp against the grammar (closed keys, limits), the class lint (MAN needs an img cite, GUEST an allowlisted model, ASSUMED a ledger id, sym=asym is ASSUMED only), the role rule (a golden scene needs a literal scene of the same name, INV_VIDEO_HASH_ONLY),
 # the kill rules (INV_VIDEO_GROUP_UNKILLED, VIDEO_GROUP_VACUOUS), the ROWS non-vacuity lint and the toy cross-rules (VIDEO_SCENE_UNTOYED, INV_TOY_NO_LITERAL). Static, so it is registered before the build. F-42 ruling: ONE stage (57 stages), not a pair: the stage function runs the checker on this repository, then the negative mini-roots of tests/video (every
 # tests/video/<case>/ is a mini-root with fixtures/src/t.vexp; ok-<case> must pass and every other case must fail with exactly the codes in its EXPECT) and returns the worse code. A control that passes without its EXPECT met means the checker is broken.
+# vc_gen_limits DIR (review fix H-04 of the gate review): write one mini-root per stage 1 limit of scripts/lib/vexp-lex.awk under DIR, each with its EXPECT: lex-line-too-long (a comment line of 401 characters), lex-non-ascii (a byte $E9), lex-no-spdx (no SPDX pair),
+# lex-too-many-rows (513 rows under 16 KiB) and lex-file-too-large (17,000 bytes of comment lines). They are generated, not committed, because no committed file may hold a line over 400 characters or a byte outside ASCII.
+vc_gen_limits() {
+  vg_d=$1
+  rm -rf "$vg_d"
+  for vg_n in lex-line-too-long lex-non-ascii lex-no-spdx lex-too-many-rows lex-file-too-large; do
+    mkdir -p "$vg_d/$vg_n/fixtures/src" || return 2
+  done
+  vg_h='# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors'
+  { printf '%s\n' "$vg_h"; awk 'BEGIN { s = "#"; while (length(s) < 401) s = s "x"; print s }'; } > "$vg_d/lex-line-too-long/fixtures/src/t.vexp" || return 2
+  echo VEXP_LINE_TOO_LONG > "$vg_d/lex-line-too-long/EXPECT"
+  { printf '%s\n' "$vg_h"; printf '# a byte outside ASCII: \351\n'; } > "$vg_d/lex-non-ascii/fixtures/src/t.vexp" || return 2
+  echo VEXP_NON_ASCII > "$vg_d/lex-non-ascii/EXPECT"
+  printf '# a file without the SPDX pair\n' > "$vg_d/lex-no-spdx/fixtures/src/t.vexp" || return 2
+  echo VEXP_NO_SPDX > "$vg_d/lex-no-spdx/EXPECT"
+  { printf '%s\n' "$vg_h"; awk 'BEGIN { printf "scene\tm\tcase=video_m\trole=literal\ngroup\tm\tg\tform=STRUCT\tclass=ASSUMED:LED-VID-0004\tsym=none\tkills=F4\n"; for (i = 0; i < 511; i++) printf "row\tm\tg\tcheck=count\tgrid=1365\n" }'; } > "$vg_d/lex-too-many-rows/fixtures/src/t.vexp" || return 2
+  echo VEXP_TOO_MANY_ROWS > "$vg_d/lex-too-many-rows/EXPECT"
+  { printf '%s\n' "$vg_h"; awk 'BEGIN { for (i = 0; i < 170; i++) { s = "#"; while (length(s) < 99) s = s "y"; print s } }'; } > "$vg_d/lex-file-too-large/fixtures/src/t.vexp" || return 2
+  echo VEXP_FILE_TOO_LARGE > "$vg_d/lex-file-too-large/EXPECT"
+  return 0
+}
+
 stage_video_check() {
   vc_a=0
   vc_b=0
+  vc_c=0
   checker sh "$here/video-check" || vc_a=$?
   run_controls --ok-prefix --require-negative tests/video tests/video sh "$here/video-check" --root @DIR@ @EXPECT@ || vc_b=$?
-  if [ "$vc_a" -eq 2 ] || [ "$vc_b" -eq 2 ]; then return 2; fi
-  if [ "$vc_a" -ne 0 ] || [ "$vc_b" -ne 0 ]; then return 1; fi
+  vc_gen_limits "$tmp/vc-gen" || return 2
+  run_controls --require-negative "$tmp/vc-gen" "$tmp/vc-gen" sh "$here/video-check" --root @DIR@ @EXPECT@ || vc_c=$?
+  if [ "$vc_a" -eq 2 ] || [ "$vc_b" -eq 2 ] || [ "$vc_c" -eq 2 ]; then return 2; fi
+  if [ "$vc_a" -ne 0 ] || [ "$vc_b" -ne 0 ] || [ "$vc_c" -ne 0 ]; then return 1; fi
   return 0
 }
 
@@ -2674,7 +2700,8 @@ selftest() {
   # (z7c) every other tagged rule of the video checker is removable and detected: one line per control, SELFTEST mutation-video-rules CASE PASS|FAIL. Each entry is CASE:TAG, the mini-root under tests/video and the tag of the statement that reports its code in lib/vexp-rules.awk
   if st_want mutation-video-rules; then
     st_ran=1
-    for vr_e in group-unkilled:rule-video-group-unkilled unknown-key:rule-unknown-key rows-vacuous:rule-video-rows-vacuous scene-untoyed:rule-video-scene-untoyed toy-no-literal:rule-toy-no-literal; do
+    for vr_e in group-unkilled:rule-video-group-unkilled unknown-key:rule-unknown-key rows-vacuous:rule-video-rows-vacuous scene-untoyed:rule-video-scene-untoyed toy-no-literal:rule-toy-no-literal format:rule-format exempt-format:rule-video-exempt-format grid-class:rule-vexp-grid-class \
+      frame-class:rule-vexp-frame-class guest-bind:rule-vexp-guest-bind rel-asym:rule-vexp-rel-asym scene-no-case:rule-video-scene-case scene-no-sweep:rule-video-scene-sweep fixture-no-policy:rule-video-fixture-policy; do
       vr_case=${vr_e%%:*}
       vr_tag=${vr_e#*:}
       rm -rf "$cp_dir"
@@ -2693,6 +2720,37 @@ selftest() {
         echo "SELFTEST mutation-video-rules $vr_case PASS"
       else
         echo "SELFTEST mutation-video-rules $vr_case FAIL (alive $st_alive, tagged lines $before then $after, mutated run exit $r)"; failed=1
+      fi
+    done
+  fi
+
+  # (z7d) review fix H-04 of the gate review: each stage 1 limit of the video checker is removable and detected. The controls are generated by vc_gen_limits (no committed file may hold them); each must be met on an unmutated copy of scripts/, and with the tagged line of its limit deleted from the copy of lib/vexp-lex.awk (rule-lex-NAME), or
+  # with the one line of lib/vexp-rules.awk that turns stage 1 rows into violations deleted (rule-stage1-limits, judged on lex-line-too-long), the same run must exit 1. One line per control: SELFTEST mutation-video-lex CASE PASS|FAIL.
+  if st_want mutation-video-lex; then
+    st_ran=1
+    vc_gen_limits "$tmp/vc-gen-st" || failed=1
+    for vl_e in lex-line-too-long:lex:rule-lex-line-too-long lex-non-ascii:lex:rule-lex-non-ascii lex-no-spdx:lex:rule-lex-no-spdx lex-too-many-rows:lex:rule-lex-too-many-rows lex-file-too-large:lex:rule-lex-file-too-large lex-line-too-long:rules:rule-stage1-limits; do
+      vl_case=${vl_e%%:*}
+      vl_rest=${vl_e#*:}
+      vl_file=${vl_rest%%:*}
+      vl_tag=${vl_rest#*:}
+      if [ "$vl_file" = lex ]; then vl_awk=vexp-lex.awk; else vl_awk=vexp-rules.awk; fi
+      rm -rf "$cp_dir"
+      cp -R "$here" "$cp_dir"
+      fxr="$tmp/vc-gen-st/$vl_case"
+      vl_want=$(cat "$fxr/EXPECT")
+      if sh "$cp_dir/video-check" --root "$fxr" --cites fixtures/lib/cites.txt --ledger ledger/entries --expect "$vl_want" > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+      st_alive=0
+      if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+      before=$(grep -c "$vl_tag" "$cp_dir/lib/$vl_awk" || true)
+      grep -v "$vl_tag" "$cp_dir/lib/$vl_awk" > "$cp_dir/lib/$vl_awk.mutated" || true
+      mv "$cp_dir/lib/$vl_awk.mutated" "$cp_dir/lib/$vl_awk"
+      after=$(grep -c "$vl_tag" "$cp_dir/lib/$vl_awk" || true)
+      if sh "$cp_dir/video-check" --root "$fxr" --cites fixtures/lib/cites.txt --ledger ledger/entries --expect "$vl_want" > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+      if [ "$st_alive" -eq 1 ] && [ "$before" -ge 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+        echo "SELFTEST mutation-video-lex $vl_case $vl_tag PASS"
+      else
+        echo "SELFTEST mutation-video-lex $vl_case $vl_tag FAIL (alive $st_alive, tagged lines $before then $after, mutated run exit $r)"; failed=1
       fi
     done
   fi

@@ -12,20 +12,32 @@
 #        Z<TAB>toy<TAB>file      the file= line of tests/controls/TOY/RULE
 #        X<TAB>case<TAB>reason   a line of VIDEO_TOY_EXEMPT: a scene case that no toy lists, with the reason
 #        XB<TAB>line<TAB>detail  a malformed line of VIDEO_TOY_EXEMPT (VIDEO_EXEMPT_FORMAT)
+#        I<TAB>0|1               the inventory rules are active (the root carries tests/conformance/cases; review fix M-04 of the gate review)
+#        VC<TAB>case<TAB>kind<TAB>scene<TAB>req   a case of kind video or video_fault_sweep, the scene= item of its expect and 1 when tests/conformance/REQUIRED lists it
+#        PR<TAB>rom              a ROM of the roms= list of the vdc_poweron_policy_diff case (each video fixture must be judged there under the three policies)
 #        F<TAB>file              the following rows belong to this .vexp file
 #        R<TAB>line<TAB>kind<TAB>fields...   a row of stage 1 (the text split on TABs); E<TAB>line<TAB>code<TAB>detail  a violation of stage 1; END<TAB>n  the sentinel of one file
 # out: stdout, V<TAB>FILE<TAB>CODE<TAB>LINE<TAB>detail  for each violation, then  S<TAB>files<TAB>scenes<TAB>groups<TAB>rows<TAB>exempt  and the closing  RULES<TAB>n  (the number of input rows): a dead or skipped stage 2 prints no RULES row and the caller says VIDEO_STAGE_DEAD (exit 2).
 # Grammar (four row kinds, TAB separated, keys closed, the order of the keys fixed):
 #   scene   NAME  case=CASE_ID  role=literal|struct|golden          a scene NAME may have one line per case, for example its literal case and its golden case
 #   group   SCENE GID  form=ROWS|REL|STRUCT  class=MAN:<label>|GUEST:<model>|ASSUMED:<LED-id>  sym=order|asym|none  kills=F0,F5,...
-#   row     SCENE GID  SELECTOR  LITERAL                             ROWS selector line=active+K;x=X0..X1 (optionally ;frame=F: the frame numbered F, else the first frame with an active line) with literal index=LIST or value=LIST (LIST items V or COUNT*V: COUNT dots of the value V); or line=NAME N+D;x=X0..X1 (NAME bxr, byr or cr: the line D after the line that holds register write N of the guest, found from the dev log stamps and the record origins, with a 250-clock margin guard); STRUCT selector check=NAME with key=value items; REL selector rel=NAME;runs=A,B (optionally ;at=NAME N and ;fa=prev) with key=value items
+#   row     SCENE GID  SELECTOR  LITERAL                             ROWS selector line=active+K;x=X0..X1 (optionally ;frame=F: the frame numbered F, else the first frame with an active line; or ;held=F, the same selection with the author's mark that the literal does not rest on the frame number: a neighbouring frame either shows the same page values or fails)
+#                                                                    with literal index=LIST or value=LIST (LIST items V or COUNT*V with COUNT at least 1: COUNT dots of the value V); or line=NAME N+D;x=X0..X1 (NAME bxr, byr or cr: the line D after the line that holds register write N of the guest, found from the dev log stamps and the record origins, with a 250-clock margin
+#                                                                    guard); STRUCT selector check=NAME with key=value items; REL selector rel=NAME;runs=A,B (optionally ;at=NAME N and ;fa=prev) with key=value items
 #   golden  SCENE sha256=HEX                                         one pinned stream digest of a golden scene
 # Codes: VEXP_FORMAT (a shape error), VEXP_UNKNOWN_KEY (an unknown row kind, key, check, relation or selector), VEXP_CLASS (a class that is not MAN with an img cite, GUEST with an allowlisted model or ASSUMED with a ledger id, or a grid-dependent check under a class other than ASSUMED), VEXP_ASYM_CLASS (ER-12: a sym=asym group
 #   with a class other than ASSUMED), INV_VIDEO_GROUP_UNKILLED (an empty kills list), VIDEO_GROUP_VACUOUS (a kills list none of whose faults can apply to the form of the group, by the closed form-by-fault table below), VIDEO_ROWS_VACUOUS (a ROWS literal with fewer than 3 distinct values or no transition, D-171), INV_VIDEO_HASH_ONLY (a golden scene
 #   with no literal scene of the same NAME, ER-11), VIDEO_SCENE_UNTOYED (a scene case that no toy EXPECT lists and no VIDEO_TOY_EXEMPT line names), INV_TOY_NO_LITERAL (a toy that mutates src/core/vce.c, vdc.c, beam.c or vid.c and lists no literal-role video case and no guest-kind case), VIDEO_EXEMPT_FORMAT, and the codes of stage 1 (VEXP_NO_SPDX, VEXP_LINE_TOO_LONG,
 #   VEXP_NON_ASCII, VEXP_TOO_MANY_ROWS, VEXP_FILE_TOO_LARGE). The INV_ codes are printed here verbatim (F-6); scripts/inventory-check is not edited.
-# F0 note (plan-check info 7, amendment A7): F0 perturbs the first number of the first row of a group, so it proves only that the comparison is live. A group whose only kill is F0 (the border group of vce_pal) gets its liveness from a toy (vid-palette-mask) or from a null-renderer control, and says so in its .vexp comment.
-# Each statement that reports a code carries a tag  # rule-NAME  on its own line; the selftests of scripts/check delete the tagged lines of a scratch copy to prove that the matching mini-root under tests/video turns red without them (D-172: the rules rule-video-hash-only, rule-video-group-vacuous and rule-vexp-class-lint, and one tag for each other rule).
+#   The review fixes of the gate review add: VEXP_CLASS also for a ROWS row with ;frame=F under a class other than ASSUMED (the frame number rests on the grid and the frame length; ;held=F is the author's mark that the literal does not rest on it), and for a GUEST model on a check or literal kind outside its binding (pal_bijection: border_after_pal and value= ROWS rows on
+#   line=active+K only); VEXP_ASYM_CLASS also for a REL scroll_y_shift, or a scroll_x_shift whose dx is not a multiple of the 8-dot tile, under a class other than ASSUMED; and, where the root carries tests/conformance/cases (I 1), VIDEO_SCENE_NO_CASE (a scene case that is not a REQUIRED case of kind video with the same scene),
+#   VIDEO_SCENE_NO_SWEEP (a literal scene without exactly one REQUIRED video_fault_sweep case of the same scene) and VIDEO_FIXTURE_NO_POLICY (a .vexp file whose ROM is not in the roms= list of vdc_poweron_policy_diff). Scene names are keyed by file, as the runner reads one file per case.
+#   Limits that stay: sym= and ;held= are the author's declarations (only scroll relations and the ;frame= item are checked against them), and wrap selectors are not recognised statically.
+# F0 note (plan-check info 7, amendment A7): F0 perturbs the first number of the first row of a group, so it proves only that the comparison is live. A group whose only kill is F0 (the border groups of vce_pal, vce_dot and bg_basic) gets its liveness from a toy (vid-palette-mask, whose evidence shows the group fail since the video kind judges
+# the groups past a failed guest) or from a null-renderer control, and says so in its .vexp comment; a flag group whose only kill is F0 has no other shown kill (a recorded limit, 04-VALIDATION.md).
+# Each statement that reports a code carries a tag  # rule-NAME  on its own line; the selftests of scripts/check delete the tagged lines of a scratch copy to prove that the matching mini-root (under tests/video, or generated by scripts/check for the stage 1 limits) turns red without them. Every tag has its own control: rule-video-hash-only,
+# rule-video-group-vacuous, rule-vexp-class-lint, rule-vexp-asym-class, rule-vexp-grid-class, rule-vexp-frame-class, rule-vexp-guest-bind, rule-vexp-rel-asym, rule-format, rule-stage1-limits, rule-video-exempt-format, rule-unknown-key, rule-video-group-unkilled, rule-video-rows-vacuous, rule-video-scene-untoyed, rule-toy-no-literal,
+# rule-video-scene-case, rule-video-scene-sweep and rule-video-fixture-policy; rule-stage1-row reports an input row stage 1 never prints and has no file control (the RULES sentinel and VIDEO_STAGE_DEAD guard the stage boundary).
 function violf(file, code, ln, detail) {
   printf "V\t%s\t%s\t%s\t%s\n", file, code, ln, detail
   nviol++
@@ -99,6 +111,8 @@ BEGIN {
   FS = "\t"
   # the closed allowlist of GUEST models (ER-10: GUEST is for pure in-guest arithmetic over values the guest itself wrote). A later plan that needs another in-guest model adds it here with a one-line justification and lists this file.
   guest_ok["pal_bijection"] = 1   # the palette bijection P(i) = (91 * i + 17) & 511: the border the guest left is arithmetic over the 512 values it wrote (04-04, F-25)
+  # the binding of each GUEST model to the checks it may label (review fix M-03): pal_bijection gives palette values, so it labels the STRUCT check border_after_pal and value= ROWS rows on line=active+K, nothing else
+  guest_ck["pal_bijection"] = " border_after_pal "
   # the closed list of faults and the closed form-by-fault table: the faults that can change what a group of that form reads (F0 changes the literal of the group itself; F1 F2 F7 act on pixels and indices; F3 F4 F6 F8 on lines; F5 on the divider; F9 on an origin)
   fa["STRUCT"] = " F0 F3 F4 F5 F6 F8 F9 "
   fa["ROWS"] = " F0 F1 F2 F3 F4 F6 F7 F8 "
@@ -125,7 +139,7 @@ BEGIN {
   ck["flat_frame"] = "index,frame,from,count,burst"
   ck["flat_at"] = "index,reg,wr,d,count"
   # the checks that use the 1365-clock grid, the frame length, the window origin or the join of a write stamp to the grid: their class is ASSUMED (ER-10, the weakest class of the inputs wins)
-  split("count origins frame_lines records_per_frame display_lines div_first line_dirty window display_flags line_dirty_hv cr_change frame_flags", gl, " ")
+  split("count origins frame_lines records_per_frame display_lines div_first line_dirty window display_flags line_dirty_hv cr_change frame_flags flat_frame flat_at", gl, " ")
   for (i = 1; i in gl; i++) {
     gridck[gl[i]] = 1
   }
@@ -150,6 +164,9 @@ BEGIN {
   toy_active = 0
 }
 $1 == "A" { toy_active = ($2 == "1"); next }
+$1 == "I" { inv_active = ($2 == "1"); next }
+$1 == "VC" { vc_kind[$2] = $3; vc_scene[$2] = $4; vc_req[$2] = $5; vc_list[++nvc] = $2; next }
+$1 == "PR" { pol_rom[$2] = 1; next }
 $1 == "C" { cite_img[$2] = 1; next }
 $1 == "L" { ledger_id[$2] = 1; next }
 $1 == "Y" { guest_case[$2] = 1; next }
@@ -161,7 +178,7 @@ $1 == "XB" {
   violf("tests/conformance/VIDEO_TOY_EXEMPT", "VIDEO_EXEMPT_FORMAT", $2, $3)  # rule-video-exempt-format
   next
 }
-$1 == "F" { curfile = $2; nfiles++; next }
+$1 == "F" { curfile = $2; nfiles++; file_list[nfiles] = $2; next }
 $1 == "END" { nsent++; next }
 $1 == "E" {
   violf(curfile, $3, $2, $4)  # rule-stage1-limits
@@ -197,9 +214,9 @@ $1 == "R" {
       sc_file[ns] = curfile
       sc_ln[ns] = ln
       case_seen[substr($5, 6)] = 1
-      scene_known[$4] = 1
-      if (sc_role[ns] == "literal") has_lit[$4] = 1
-      if (sc_role[ns] == "golden") has_gold[$4] = 1
+      scene_known[curfile SUBSEP $4] = 1
+      if (sc_role[ns] == "literal") has_lit[curfile SUBSEP $4] = 1
+      if (sc_role[ns] == "golden") has_gold[curfile SUBSEP $4] = 1
       if (sc_role[ns] == "literal") lit_case[substr($5, 6)] = 1
     }
   } else if (kind == "group") {
@@ -209,7 +226,7 @@ $1 == "R" {
       violf(curfile, "VEXP_UNKNOWN_KEY", ln, "a group row has the keys form= class= sym= kills=, in that order")  # rule-unknown-key
     } else if (($6 != "form=ROWS" && $6 != "form=REL" && $6 != "form=STRUCT") || ($8 != "sym=order" && $8 != "sym=asym" && $8 != "sym=none")) {
       violf(curfile, "VEXP_FORMAT", ln, "a group form is ROWS, REL or STRUCT and a sym is order, asym or none")  # rule-format
-    } else if (($4 SUBSEP $5) in gidx) {
+    } else if ((curfile SUBSEP $4 SUBSEP $5) in gidx) {
       violf(curfile, "VEXP_FORMAT", ln, "two group rows have the same scene and id")  # rule-format
     } else {
       ng++
@@ -221,8 +238,8 @@ $1 == "R" {
       g_kills[ng] = substr($9, 7)
       g_file[ng] = curfile
       g_ln[ng] = ln
-      gidx[$4 SUBSEP $5] = ng
-      grp_n[$4]++
+      gidx[curfile SUBSEP $4 SUBSEP $5] = ng
+      grp_n[curfile SUBSEP $4]++
     }
   } else if (kind == "row") {
     if (na != 4 || !isname($4, 32) || !isname($5, 32)) {
@@ -244,9 +261,10 @@ $1 == "R" {
     } else if (length($5) != 71 || substr($5, 8) !~ /^[0-9a-f]+$/) {
       violf(curfile, "VEXP_FORMAT", ln, "a golden digest is 64 lowercase hexadecimal digits")  # rule-format
     } else {
-      gold_n[$4]++
-      gold_file[$4] = curfile
-      gold_ln[$4] = ln
+      gold_n[curfile SUBSEP $4]++
+      gold_nm[curfile SUBSEP $4] = $4
+      gold_file[curfile SUBSEP $4] = curfile
+      gold_ln[curfile SUBSEP $4] = ln
     }
   } else {
     violf(curfile, "VEXP_UNKNOWN_KEY", ln, "unknown row kind " kind ": a row is scene, group, row or golden")  # rule-unknown-key
@@ -261,7 +279,7 @@ END {
   }
   # the groups: scene, class, symmetry (ER-12), kills (D-172)
   for (i = 1; i <= ng; i++) {
-    if (!(g_scene[i] in scene_known)) {
+    if (!((g_file[i] SUBSEP g_scene[i]) in scene_known)) {
       violf(g_file[i], "VEXP_FORMAT", g_ln[i], "the group " g_gid[i] " names the scene " g_scene[i] ", which no scene row defines")  # rule-format
     }
     class_lint(i)
@@ -287,7 +305,7 @@ END {
   }
   # the rows: group, selector and literal of the form of the group
   for (i = 1; i <= nr; i++) {
-    key = r_scene[i] SUBSEP r_gid[i]
+    key = r_file[i] SUBSEP r_scene[i] SUBSEP r_gid[i]
     if (!(key in gidx)) {
       violf(r_file[i], "VEXP_FORMAT", r_ln[i], "the row names the group " r_gid[i] " of the scene " r_scene[i] ", which no group row defines")  # rule-format
       continue
@@ -306,18 +324,27 @@ END {
         chk = substr(sel, 7)
         litcheck(r_file[i], r_ln[i], lit, ck[chk], "STRUCT " chk)
         if ((chk in gridck) && substr(g_class[gi], 1, 8) != "ASSUMED:") {
-          violf(r_file[i], "VEXP_CLASS", r_ln[i], "the STRUCT check " chk " uses the 1365-clock grid, the frame length, the window origin or the write-to-line join: its group " g_gid[gi] " must be ASSUMED, not " g_class[gi] " (ER-10)")  # rule-vexp-class-lint
+          violf(r_file[i], "VEXP_CLASS", r_ln[i], "the STRUCT check " chk " uses the 1365-clock grid, the frame length, the window origin or the write-to-line join: its group " g_gid[gi] " must be ASSUMED, not " g_class[gi] " (ER-10)")  # rule-vexp-grid-class
+        }
+        if (substr(g_class[gi], 1, 6) == "GUEST:" && (substr(g_class[gi], 7) in guest_ok) && index(guest_ck[substr(g_class[gi], 7)], " " chk " ") == 0) {
+          violf(r_file[i], "VEXP_CLASS", r_ln[i], "the STRUCT check " chk " is not one the model " g_class[gi] " may label (ER-10: a GUEST class is bound to the checks its in-guest arithmetic gives)")  # rule-vexp-guest-bind
         }
       }
     } else if (form == "ROWS") {
-      if (sel !~ /^line=active\+[0-9]+;x=[0-9]+\.\.[0-9]+(;frame=[0-9]+)?$/ && sel !~ /^line=(bxr|byr|cr)[0-9]+\+[0-9]+;x=[0-9]+\.\.[0-9]+$/) {
-        violf(r_file[i], "VEXP_UNKNOWN_KEY", r_ln[i], "a ROWS row has the selector line=active+K;x=X0..X1 with the optional item ;frame=F, or line=NAME N+D;x=X0..X1 with NAME bxr, byr or cr (the line D after the line that holds register write N)")  # rule-unknown-key
-      } else if (lit !~ /^(index|value)=[0-9]+(\*[0-9]+)?(,[0-9]+(\*[0-9]+)?)*$/) {
-        violf(r_file[i], "VEXP_UNKNOWN_KEY", r_ln[i], "a ROWS row has the literal index=LIST or value=LIST, the items of the list V or COUNT*V")  # rule-unknown-key
+      if (sel !~ /^line=active\+[0-9]+;x=[0-9]+\.\.[0-9]+(;(frame|held)=[0-9]+)?$/ && sel !~ /^line=(bxr|byr|cr)[0-9]+\+[0-9]+;x=[0-9]+\.\.[0-9]+$/) {
+        violf(r_file[i], "VEXP_UNKNOWN_KEY", r_ln[i], "a ROWS row has the selector line=active+K;x=X0..X1 with the optional item ;frame=F or ;held=F, or line=NAME N+D;x=X0..X1 with NAME bxr, byr or cr (the line D after the line that holds register write N)")  # rule-unknown-key
+      } else if (lit !~ /^(index|value)=([1-9][0-9]*\*)?[0-9]+(,([1-9][0-9]*\*)?[0-9]+)*$/) {
+        violf(r_file[i], "VEXP_UNKNOWN_KEY", r_ln[i], "a ROWS row has the literal index=LIST or value=LIST, the items of the list V or COUNT*V with COUNT at least 1")  # rule-unknown-key
       } else {
+        if (sel ~ /;frame=[0-9]+$/ && substr(g_class[gi], 1, 8) != "ASSUMED:") {
+          violf(r_file[i], "VEXP_CLASS", r_ln[i], "a ROWS row of the group " g_gid[gi] " selects ;frame=F under " g_class[gi] ": the frame number rests on the grid and the frame length (ER-10), so the group must be ASSUMED or the row must say ;held=F")  # rule-vexp-frame-class
+        }
+        if (substr(g_class[gi], 1, 6) == "GUEST:" && (substr(g_class[gi], 7) in guest_ok) && (substr(lit, 1, 6) != "value=" || sel !~ /^line=active\+/ || substr(g_class[gi], 7) != "pal_bijection")) {
+          violf(r_file[i], "VEXP_CLASS", r_ln[i], "a ROWS row under " g_class[gi] " is a value= literal on line=active+K only (ER-10: the model gives palette values; an index or a write-joined line is not in-guest arithmetic)")  # rule-vexp-guest-bind
+        }
         xs = sel
         sub(/^.*;x=/, "", xs)
-        sub(/;frame=[0-9]+$/, "", xs)
+        sub(/;(frame|held)=[0-9]+$/, "", xs)
         split(xs, xr, "[.][.]")
         want = xr[2] - xr[1] + 1
         lv = lit
@@ -362,6 +389,14 @@ END {
           violf(r_file[i], "VEXP_UNKNOWN_KEY", r_ln[i], "the REL relation " rel " is not in the closed list (scroll_x_shift scroll_y_shift palette_subst blank_is_border dot_width_scale)")  # rule-unknown-key
         } else {
           litcheck(r_file[i], r_ln[i], lit, (rel == "scroll_y_shift" && sel ~ /;at=/) ? "dy,lines" : rk[rel], "REL " rel)
+          dxv = lit
+          sub(/^dx=/, "", dxv)
+          if (substr(g_class[gi], 1, 8) != "ASSUMED:" && (rel == "scroll_y_shift" || (rel == "scroll_x_shift" && (lit !~ /^dx=[0-9]+$/ || (dxv + 0) % 8 != 0)))) {
+            violf(r_file[i], "VEXP_ASYM_CLASS", r_ln[i], "the REL " rel " (" lit ") of the group " g_gid[gi] " shows a scroll direction or a shift inside a tile under " g_class[gi] ": an asymmetric relation is ASSUMED only (ER-12)")  # rule-vexp-rel-asym
+          }
+          if (substr(g_class[gi], 1, 6) == "GUEST:" && (substr(g_class[gi], 7) in guest_ok)) {
+            violf(r_file[i], "VEXP_CLASS", r_ln[i], "a REL row is not one the model " g_class[gi] " may label")  # rule-vexp-guest-bind
+          }
         }
       }
     }
@@ -374,7 +409,7 @@ END {
   # the scene roles (D-172, ER-11)
   for (i = 1; i <= ns; i++) {
     nm = sc_name[i]
-    if (sc_role[i] == "literal" && !(nm in grp_n)) {
+    if (sc_role[i] == "literal" && !((sc_file[i] SUBSEP nm) in grp_n)) {
       violf(sc_file[i], "VEXP_FORMAT", sc_ln[i], "the literal scene " nm " has no group")  # rule-format
     }
     if (sc_role[i] == "struct") {
@@ -385,17 +420,44 @@ END {
       }
     }
     if (sc_role[i] == "golden") {
-      if (!(nm in has_lit)) {
+      if (!((sc_file[i] SUBSEP nm) in has_lit)) {
         violf(sc_file[i], "INV_VIDEO_HASH_ONLY", sc_ln[i], "the golden scene " nm " has no literal scene of the same name: a stream digest is a change detector and never a verdict (ER-11, D-172)")  # rule-video-hash-only
       }
-      if (gold_n[nm] != 1) {
-        violf(sc_file[i], "VEXP_FORMAT", sc_ln[i], "the golden scene " nm " has " gold_n[nm] + 0 " golden rows: it needs exactly one")  # rule-format
+      if (gold_n[sc_file[i] SUBSEP nm] != 1) {
+        violf(sc_file[i], "VEXP_FORMAT", sc_ln[i], "the golden scene " nm " has " gold_n[sc_file[i] SUBSEP nm] + 0 " golden rows: it needs exactly one")  # rule-format
       }
     }
   }
-  for (nm in gold_n) {
-    if (!(nm in has_gold)) {
-      violf(gold_file[nm], "VEXP_FORMAT", gold_ln[nm], "a golden row names the scene " nm ", which has no scene row of the role golden")  # rule-format
+  for (gk in gold_n) {
+    if (!(gk in has_gold)) {
+      violf(gold_file[gk], "VEXP_FORMAT", gold_ln[gk], "a golden row names the scene " gold_nm[gk] ", which has no scene row of the role golden in its file")  # rule-format
+    }
+  }
+  # the inventory rules (review fix M-04 of the gate review): only where the root carries the case inventory
+  if (inv_active) {
+    for (i = 1; i <= ns; i++) {
+      c = sc_case[i]
+      if (!(c in vc_kind) || vc_kind[c] != "video" || vc_scene[c] != sc_name[i] || vc_req[c] != "1") {
+        violf(sc_file[i], "VIDEO_SCENE_NO_CASE", sc_ln[i], "the scene " sc_name[i] " names the case " c ", which is not a REQUIRED case of kind video whose expect names the scene " sc_name[i])  # rule-video-scene-case
+      }
+      if (sc_role[i] == "literal") {
+        nsw = 0
+        for (j = 1; j <= nvc; j++) {
+          if (vc_kind[vc_list[j]] == "video_fault_sweep" && vc_scene[vc_list[j]] == sc_name[i] && vc_req[vc_list[j]] == "1") nsw++
+        }
+        if (nsw != 1) {
+          violf(sc_file[i], "VIDEO_SCENE_NO_SWEEP", sc_ln[i], "the literal scene " sc_name[i] " has " nsw " REQUIRED video_fault_sweep cases: it needs exactly one, so every literal group is shown live by its declared faults (D-172)")  # rule-video-scene-sweep
+        }
+      }
+    }
+    for (i = 1; i <= nfiles; i++) {
+      stem = file_list[i]
+      sub(/^.*\//, "", stem)
+      sub(/\.vexp$/, "", stem)
+      gsub(/_/, "-", stem)
+      if (!(stem in pol_rom)) {
+        violf(file_list[i], "VIDEO_FIXTURE_NO_POLICY", 0, "the ROM " stem " of this file is not in the roms= list of the case vdc_poweron_policy_diff: its records are not judged policy independent (D-167)")  # rule-video-fixture-policy
+      }
     }
   }
   # the toy cross-rules (D-173; amendment A5): only where the root carries a toy registry

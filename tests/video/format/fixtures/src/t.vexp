@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# format: a group row with five fields instead of six (no kills= field): VEXP_FORMAT, and the row that names the group finds no group (VEXP_FORMAT). Review fix H-04 of the gate review: the control of the tag rule-format.
+scene	fm	case=video_fm	role=literal
+group	fm	g1	form=STRUCT	class=MAN:H6-3	sym=none
+row	fm	g1	check=div_table	div=4,3;crw=0,1;gap=5460

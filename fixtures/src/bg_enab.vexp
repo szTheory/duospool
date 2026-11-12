@@ -25,6 +25,8 @@
 # first number of the first row. The flag group declares F0 only (the faults that move or drop lines
 # leave the frame whole or make it a fault of the case; the comparison is live through F0, and the five frames of different flag combinations differ from each other).
 # Classes (ER-10): the structure rows use the 1365-clock grid and the frame length (ASSUMED LED-VID-0004).
+# Review fixes M-02 and M-03 of the gate review: the MAN group bb_on keeps display line 0, which shows BAT row 0 under both readings of the row counter start; the row at display line 7 rests on the ASSUMED start (D-156, LED-VID-0009) and is the group bb_on7, class ASSUMED LED-VID-0009. The bb_on rows select their frame with ;held=F:
+# the guest holds each enable phase for two frames, and every frame that shows BB set shows these page values, while a frame without BB fails (no other frame holds them), so the literal does not rest on the frame number. The flags group declares only F0, which proves the comparison live and no more (a recorded limit, review fix M-06).
 scene	video_bg_enab	case=video_bg_enab	role=literal
 group	video_bg_enab	struct	form=STRUCT	class=ASSUMED:LED-VID-0004	sym=none	kills=F4,F8,F9
 row	video_bg_enab	struct	check=count	grid=1365
@@ -32,11 +34,12 @@ row	video_bg_enab	struct	check=origins	step=1365
 row	video_bg_enab	struct	check=rec_bytes	header=64;version=1;max_w=682
 row	video_bg_enab	struct	check=values_below_512	limit=512
 group	video_bg_enab	bb_on	form=ROWS	class=MAN:H7-6	sym=order	kills=F0,F1,F7
-row	video_bg_enab	bb_on	line=active+0;x=0..31;frame=3	index=8*63,8*12,8*243,8*0
-row	video_bg_enab	bb_on	line=active+0;x=16..39;frame=3	index=8*243,8*0,8*15
-row	video_bg_enab	bb_on	line=active+7;x=0..31;frame=3	index=8*63,8*12,8*243,8*0
-row	video_bg_enab	bb_on	line=active+0;x=0..31;frame=5	index=8*63,8*12,8*243,8*0
-row	video_bg_enab	bb_on	line=active+0;x=0..31;frame=11	index=8*63,8*12,8*243,8*0
+row	video_bg_enab	bb_on	line=active+0;x=0..31;held=3	index=8*63,8*12,8*243,8*0
+row	video_bg_enab	bb_on	line=active+0;x=16..39;held=3	index=8*243,8*0,8*15
+row	video_bg_enab	bb_on	line=active+0;x=0..31;held=5	index=8*63,8*12,8*243,8*0
+row	video_bg_enab	bb_on	line=active+0;x=0..31;held=11	index=8*63,8*12,8*243,8*0
+group	video_bg_enab	bb_on7	form=ROWS	class=ASSUMED:LED-VID-0009	sym=order	kills=F0,F1,F7
+row	video_bg_enab	bb_on7	line=active+7;x=0..31;frame=3	index=8*63,8*12,8*243,8*0
 group	video_bg_enab	burst	form=STRUCT	class=ASSUMED:LED-VID-0010	sym=none	kills=F0,F3
 row	video_bg_enab	burst	check=flat_frame	index=256;frame=9;from=0;count=240;burst=1
 group	video_bg_enab	backdrop	form=STRUCT	class=ASSUMED:LED-VID-0010	sym=none	kills=F0,F3

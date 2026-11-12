@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# frame-class: a ROWS row that selects ;frame=F in a group of the class MAN: the frame number rests on the grid and the frame length, so VEXP_CLASS (the ;held=F row beside it is accepted). Review fix M-03: the control of the tag rule-vexp-frame-class.
+scene	fc	case=video_fc	role=literal
+group	fc	g1	form=ROWS	class=MAN:H7-18	sym=order	kills=F0,F1
+row	fc	g1	line=active+0;x=0..5;frame=3	index=2*5,2*300,2*7
+row	fc	g1	line=active+0;x=0..5;held=3	index=2*5,2*300,2*7

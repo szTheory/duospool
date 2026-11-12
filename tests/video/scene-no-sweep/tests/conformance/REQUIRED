@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# the REQUIRED list of the mini-root
+video_tv
+vdc_poweron_policy_diff

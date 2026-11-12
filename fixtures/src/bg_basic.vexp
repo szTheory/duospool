@@ -17,6 +17,9 @@
 # The border (GUEST pal_bijection): palette entry $100 is P(256) = 23296 + 17 = 23313 = 45 * 512 + 273 = 273, and the header field border carries it on every record, judged a whole line after the last palette data write.
 # Classes (ER-10): the structure rows use the 1365-clock grid and the frame length (ASSUMED LED-VID-0004). The index rows are MAN H7-18 (with the layout of H7-14 and H7-15): every tile is solid, so they hold for every bit order, byte order and flip; sym=order. The value rows rest on the guest's
 # palette (GUEST pal_bijection). The solid group names no pixel order anywhere (ER-12).
+# Review fixes M-02 and M-03 of the gate review: the MAN group solid keeps display line 0 only, which shows BAT row 0 under both readings of the row counter start (D-156 shows virtual row 0 there; a counter that started at BYR + 1 would show row 1 of the same solid tiles); the row at display line 7 rests on the ASSUMED start
+# (virtual row 8 is BAT row 1 under the other reading) and is the group solid7, class ASSUMED LED-VID-0009. The MAN and GUEST rows select their frame with ;held=5: the scene is static from its setup on, so a neighbouring frame holds the same values; the ASSUMED rows keep ;frame=F. The border group's only kill is F0; its liveness against a changed
+# palette store is the toy vid-palette-mask, whose evidence of video_bg_basic_solid shows video_group border GUEST fail and video_group solidval GUEST fail (the video kind judges the groups past a failed guest since the review fix H-01).
 # Kills (D-172): F1 shifts the dots of the focus line one dot to the right (a transition inside the x range turns the row red), F7 zeroes every non-zero index of that line; F2 (two index bits swapped) cannot act on the indices 63, 12, 243 and 0 (their two low bits are equal), so the solid groups do not declare it; F0 perturbs the first number of the first row.
 # The asymmetric scene (ER-12; ASSUMED LED-VID-0010, which names the pixel bit order and the plane byte order, and rests on the row counter of D-156, LED-VID-0009): BAT row 1 (words 32 to 35) is $3040 (the solid reference, index 63), $2044 (code $044, bank 2), $4045 (code $045, bank 4) and $4046 (code $046, bank 4). Display lines 8 to 15 show BAT row 1, tile row K - 8.
 # Code $044 is a one-pixel diagonal of pixel 1 in the low byte of CG0 word r: $0080 >> r, so under the assumed reading (bit 7 leftmost, low byte plane 0) the row r has its set dot at tile column r and the index (2 << 4) | 1 = 33 there and 0 elsewhere; a reversed bit order puts it at column 7 - r. Code
@@ -34,12 +37,13 @@ row	video_bg_basic_solid	struct	check=origins	step=1365
 row	video_bg_basic_solid	struct	check=rec_bytes	header=64;version=1;max_w=682
 row	video_bg_basic_solid	struct	check=values_below_512	limit=512
 group	video_bg_basic_solid	solid	form=ROWS	class=MAN:H7-18	sym=order	kills=F0,F1,F7
-row	video_bg_basic_solid	solid	line=active+0;x=0..31;frame=5	index=8*63,8*12,8*243,8*0
-row	video_bg_basic_solid	solid	line=active+0;x=16..39;frame=5	index=8*243,8*0,8*15
-row	video_bg_basic_solid	solid	line=active+7;x=0..31;frame=5	index=8*63,8*12,8*243,8*0
+row	video_bg_basic_solid	solid	line=active+0;x=0..31;held=5	index=8*63,8*12,8*243,8*0
+row	video_bg_basic_solid	solid	line=active+0;x=16..39;held=5	index=8*243,8*0,8*15
+group	video_bg_basic_solid	solid7	form=ROWS	class=ASSUMED:LED-VID-0009	sym=order	kills=F0,F1,F7
+row	video_bg_basic_solid	solid7	line=active+7;x=0..31;frame=5	index=8*63,8*12,8*243,8*0
 group	video_bg_basic_solid	solidval	form=ROWS	class=GUEST:pal_bijection	sym=order	kills=F0,F1
-row	video_bg_basic_solid	solidval	line=active+0;x=0..31;frame=5	value=8*118,8*85,8*114,8*17
-row	video_bg_basic_solid	solidval	line=active+0;x=16..39;frame=5	value=8*114,8*17,8*358
+row	video_bg_basic_solid	solidval	line=active+0;x=0..31;held=5	value=8*118,8*85,8*114,8*17
+row	video_bg_basic_solid	solidval	line=active+0;x=16..39;held=5	value=8*114,8*17,8*358
 group	video_bg_basic_solid	border	form=STRUCT	class=GUEST:pal_bijection	sym=none	kills=F0
 row	video_bg_basic_solid	border	check=border_after_pal	value=273
 scene	video_bg_basic_asym	case=video_bg_basic_asym	role=literal

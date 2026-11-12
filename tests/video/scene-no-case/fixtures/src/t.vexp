@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# scene-no-case: the literal scene tv names the case video_tv, which the case inventory of the root does not hold (only its fault sweep and the policy case exist): VIDEO_SCENE_NO_CASE. Review fix M-04: the control of the tag rule-video-scene-case.
+scene	tv	case=video_tv	role=literal
+group	tv	g1	form=STRUCT	class=MAN:H6-3	sym=none	kills=F0,F5
+row	tv	g1	check=div_table	div=4,3;crw=0,1;gap=5460

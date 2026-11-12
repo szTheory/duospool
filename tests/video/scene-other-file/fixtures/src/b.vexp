@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# scene-other-file: the file that defines the scene so, with a group of its own (accepted).
+scene	so	case=video_so	role=literal
+group	so	g1	form=STRUCT	class=MAN:H6-3	sym=none	kills=F0,F5
+row	so	g1	check=div_table	div=4,3;crw=0,1;gap=5460

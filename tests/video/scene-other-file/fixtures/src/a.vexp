@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# scene-other-file: a group of a.vexp names the scene so, which only b.vexp defines; the runner reads one file per case, so the group has no scene: VEXP_FORMAT. Review fix L-02 of the gate review (scenes keyed by file).
+group	so	g2	form=STRUCT	class=MAN:H6-3	sym=none	kills=F0,F5
+row	so	g2	check=div_table	div=4,3;crw=0,1;gap=5460

@@ -109,6 +109,16 @@ Filled at checkpoint A (plan 04-13) from the plans 04-01 to 04-12, 04-17 to 04-1
 | A10 | D-174 loop cost and check (4) | 24-bit add and P <= 12 cycles cannot both hold branch-free; the loop is inc a / bra (6 cycles, 18 clocks), the 24-bit clc/adc sum runs in the handlers. The +-1.5-iteration windows for 245, 341, 1,610 clocks are disjoint only if the last-display-line handler returns before VD (under 81 cycles); 04-17 records whether it held | 04-17 |
 | A11 | vce_pal div before the CR $01 write | The fixture writes CR $00, waits at least 5,460 master clocks (speed stated in its comment), then writes CR $01; div 4 rows are judged only between that write and CR $01, never on records resting on the power-on CR (LED-PROF-0003) | 04-04, 04-07 |
 
+**A5 and A7 after the gate review (review fixes H-01 and M-06, 04-REVIEW-FIX.md).** The video kind now judges every group of its scene
+even when the guest DSV1 checks fail (the outcome stays guest_failure), so a toy that breaks the guest and the renderer at once shows the
+groups in its evidence. Under vid-palette-mask the evidence shows `video_group border GUEST fail` for video_vce_pal, video_vce_dot (added to
+the toy EXPECT) and video_bg_basic_solid (with solidval), every other group passing; under vid-emit-mutates video_vce_pal shows the same
+border line, so INV_TOY_NO_LITERAL is met by a literal group that runs and fails. The A7 reading now holds for the three GUEST border
+groups. Recorded limit (M-06): the flag groups of video_unmodelled_mode and video_bg_enab declare only F0, which proves the comparison
+live and no more (on a frame_flags literal F0 makes a value no 1-bit flag can hold), and no toy is named for them; VIDEO_TOY_EXEMPT says so.
+The guest-kind comparisons of vdc_irq_agree, vdc_irq_agree_263 and vdc_irq_agree_hdw still stop at the failed guest under vid-rcr-base
+(their direct kill is the guest case vdc_irq in the same EXPECT); that limit is recorded in 04-REVIEW-FIX.md.
+
 **A10 outcome (plan 04-17, the separation held).** The handler of the last display line (h_last in fixtures/src/vdc_irq.s) is interrupt entry 8 + vector jump 7 + body 44 + RTI 7 = 66 cycles, summed from tests/oracle/huc6280-opcodes.tsv in the source comment and asserted at link time to be at most 72. With a wait of under 5 cycles before the entry it returns under 71 cycles
 after the RCR event, before VD, which comes 81.7 cycles later by default. The gaps measured by the guest in iterations of 18 master clocks are 14, 19 and 90 for the default rows, vd_irq_phase = hdw_start and rcr_origin = line_before: three disjoint windows, each within 1.5 iterations of the hand-derived 245, 341 and 1,610 master clocks. E0/E2 modelling assumption (ASSUMED LED-
 IRQ-0001, LED-IRQ-0010); the handler cost itself rests on ASSUMED LED-CPU-0009 (entry cycles) and LED-CPU-0017 (window penalty). The ratio check assumes no constant (GUEST).

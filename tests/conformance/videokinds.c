@@ -498,7 +498,8 @@ struct vk_log {
     uint64_t m; /* the machine time the run reached */
 };
 
-/* the CR writes, the palette data writes and the HSR and HDR data writes of the dev log, found by the register of the physical address (VCE window: offset & 7, MAN H6-2, mirrors included; VDC window: offset & 3, MAN H8-24, with AR as the guest last set it) and by kind (the stamps are the join points of the rows); 0 when the log is well formed. The physical writes of ST0 to ST2 are logged as DS_DEV_ST, the others as DS_DEV_WRITE */
+/* the CR writes, the palette data writes and the HSR and HDR data writes of the dev log, found by the register of the physical address (VCE window: offset & 7, MAN H6-2, mirrors included; VDC window: offset & 3, MAN H8-24, with AR as the guest last set it) and by kind (the stamps are the join points of the rows); 0 when the log is well formed. The physical writes of ST0 to
+ * ST2 are logged as DS_DEV_ST, the others as DS_DEV_WRITE */
 static int vk_scan_dev(const uint8_t *recs, uint32_t count, struct vk_log *lg)
 {
     uint32_t i;
@@ -979,7 +980,8 @@ static int vk_s_div_window(struct vk_rc *rc)
     return vk_div_windows(rc, full, cw, nc, mask);
 }
 
-/* STRUCT window (ASSUMED LED-VID-0005, D-140, D-161): inside the window of CR write crw every display line (flag ACTIVE) carries the divider div, active_x, active_w, rec_bytes, the CLIPPED flag clipped and a payload of active_w index words equal to index and active_w colour words equal to the border of its own record, and every other line is header-only (active_w 0, active_x 0, rec_bytes 64, no CLIPPED). At least one display line must be judged */
+/* STRUCT window (ASSUMED LED-VID-0005, D-140, D-161): inside the window of CR write crw every display line (flag ACTIVE) carries the divider div, active_x, active_w, rec_bytes, the CLIPPED flag clipped and a payload of active_w index words equal to index and active_w colour words equal to the border of its own record, and every other line is header-only (active_w 0, active_x
+ * 0, rec_bytes 64, no CLIPPED). At least one display line must be judged */
 static int vk_s_window(struct vk_rc *rc)
 {
     static const char *const keys[] = {"crw", "div", "active_x", "active_w", "rec_bytes", "clipped", "index"};
@@ -1022,7 +1024,8 @@ static int vk_s_window(struct vk_rc *rc)
             ok = (uint64_t)vk_dot(r, j, 0) == v[6] && vk_dot(r, j, 1) == vk_u16(r + VK_O_BORDER);
         }
         if (!ok) {
-            snprintf(rc->why, rc->cap, "window (ASSUMED LED-VID-0005): display record %llu, inside the window of CR write %llu, does not carry div %llu, active_x %llu, active_w %llu, rec_bytes %llu, CLIPPED %llu and a blank payload (index %llu, colour = border)", (unsigned long long)k, (unsigned long long)v[0] + 1u, (unsigned long long)v[1], (unsigned long long)v[2], (unsigned long long)v[3], (unsigned long long)v[4], (unsigned long long)v[5], (unsigned long long)v[6]);
+            snprintf(rc->why, rc->cap, "window (ASSUMED LED-VID-0005): display record %llu, inside the window of CR write %llu, does not carry div %llu, active_x %llu, active_w %llu, "
+                "rec_bytes %llu, CLIPPED %llu and a blank payload (index %llu, colour = border)", (unsigned long long)k, (unsigned long long)v[0] + 1u, (unsigned long long)v[1], (unsigned long long)v[2], (unsigned long long)v[3], (unsigned long long)v[4], (unsigned long long)v[5], (unsigned long long)v[6]);
             return VG_FAIL;
         }
     }
@@ -1283,7 +1286,8 @@ static int vk_s_line_dirty_hv(struct vk_rc *rc)
     return VG_PASS;
 }
 
-/* STRUCT cr_change (ASSUMED LED-VID-0004, D-138 tie rule, D-141): a CR write (number crw of the log) and a write of HDR (register write number hvw of the HSR and HDR writes, two data writes each) all fall inside one display line n, at least margin master clocks from both of its boundaries (the 250-clock margin removes the tie-rule dependence: a write nearer to a boundary is a fault of the case, never judged). Then line n keeps the old setting
+/* STRUCT cr_change (ASSUMED LED-VID-0004, D-138 tie rule, D-141): a CR write (number crw of the log) and a write of HDR (register write number hvw of the HSR and HDR writes, two data writes each) all fall inside one display line n, at least margin master clocks from both of its boundaries (the 250-clock margin removes the tie-rule dependence: a write nearer to a boundary is a
+ * fault of the case, never judged). Then line n keeps the old setting
  * (div_a, active_x x_a, active_w w_a), line n + 1, the first record whose origin is after the stamps and exactly one line after n, shows the new one (div_b, x_b, w_b), and carries line_dirty bits 0 (CR) and 1 (HSR and HDR) while line n carries bit 0 clear. The records are found by their own origins, never by index */
 static int vk_s_cr_change(struct vk_rc *rc)
 {
@@ -1403,7 +1407,8 @@ static int vk_flat_rec(struct vk_rc *rc, const uint8_t *rec, uint64_t idx, uint6
     return VG_PASS;
 }
 
-/* STRUCT flat_frame (plan 04-12): the count active lines from the one numbered from of frame number frame all have the index on every dot, and the flag BURST (b1 of the flags byte, set on display lines only) equals burst. The frame is a flat line set (a burst frame, or the backdrop of BB = 0), which a ROWS row cannot state (D-171 non-vacuity); a null renderer that draws index 0 everywhere passes this check alone and fails every other group of its scene */
+/* STRUCT flat_frame (plan 04-12): the count active lines from the one numbered from of frame number frame all have the index on every dot, and the flag BURST (b1 of the flags byte, set on display lines only) equals burst. The frame is a flat line set (a burst frame, or the backdrop of BB = 0), which a ROWS row cannot state (D-171 non-vacuity); a null renderer that draws index
+ * 0 everywhere passes this check alone and fails every other group of its scene */
 static int vk_s_flat_frame(struct vk_rc *rc)
 {
     static const char *const keys[] = {"index", "frame", "from", "count", "burst"};
@@ -1647,7 +1652,8 @@ static int vk_wname(const char *p, unsigned *cls, uint64_t *n, const char **end)
     return vk_scan_u(p, n, end);
 }
 
-/* the position of "line n" of the register write number n of class cls: the number of records whose origin is before the stamp of the low byte write, less one. Both data writes must fall in that one line and every origin must be at least VK_MARGIN clocks from both stamps, or the tie rule of D-138 could decide and the case cannot judge it (VG_HARNESS, with the offsets so the counted delay can be placed). The position counts origins, so a fault that swaps or duplicates records moves the line the row reads. 0 on success, else VG_HARNESS with the text set */
+/* the position of "line n" of the register write number n of class cls: the number of records whose origin is before the stamp of the low byte write, less one. Both data writes must fall in that one line and every origin must be at least VK_MARGIN clocks from both stamps, or the tie rule of D-138 could decide and the case cannot judge it (VG_HARNESS, with the offsets so the
+ * counted delay can be placed). The position counts origins, so a fault that swaps or duplicates records moves the line the row reads. 0 on success, else VG_HARNESS with the text set */
 static int vk_wjoin(struct vk_rc *rc, const struct vk_walk *w, const struct vk_log *lg, unsigned cls, uint64_t n, uint64_t *pos)
 {
     uint64_t tlo;
@@ -1727,9 +1733,11 @@ static int vk_rows_row(struct vk_rc *rc, const struct vx_row *r, int perturb)
     if (strncmp(p, ";x=", 3u) != 0 || vk_scan_u(p + 3, &x0, &p) != 0 || strncmp(p, "..", 2u) != 0 || vk_scan_u(p + 2, &x1, &p) != 0) {
         return vk_bad(rc, "a ROWS row has the selector line=active+K;x=X0..X1");
     }
-    if (!wform && strncmp(p, ";frame=", 7u) == 0) { /* the optional frame number (u32, as the record header holds it) */
+    if (!wform && (strncmp(p, ";frame=", 7u) == 0 || strncmp(p, ";held=", 6u) == 0)) { /* the optional frame number (u32, as the record header holds it); ;held=F selects the same frame and is the author's mark, judged by scripts/lib/vexp-rules.awk only, that no other frame holds the values (review fix M-03 of the gate review) */
+        size_t skip = p[1] == 'f' ? 7u : 6u;
+
         have_frame = 1;
-        if (vk_scan_u(p + 7, &frame_no, &p) != 0 || frame_no > (uint64_t)UINT32_MAX) {
+        if (vk_scan_u(p + skip, &frame_no, &p) != 0 || frame_no > (uint64_t)UINT32_MAX) {
             return vk_bad(rc, "a ROWS row has the selector line=active+K;x=X0..X1 with the optional item ;frame=F");
         }
     }
@@ -1830,7 +1838,8 @@ static int vk_fail_rel(struct vk_rc *rc, const char *rel, const char *what)
     return VG_FAIL;
 }
 
-/* REL at-form (plan 04-12): the relation on the lines around a register write of the dev log, both lines in the one run named by the row (runs=main,main). scroll_x_shift (dx): line n + 1 shows line n moved left by dx dots, B[x] = A[x + dx], where line n holds the write and line n + 1 follows it. scroll_y_shift (dy, lines) with fa=prev: B is the lines n + 1 to n + lines of the frame that holds the write, A the lines of the frame before it, and B line i shows A line i + dy, with i the index of the line among the active lines of its frame. The direction of a scroll is a modelling reading (ASSUMED), which the group class says; the relation itself names none */
+/* REL at-form (plan 04-12): the relation on the lines around a register write of the dev log, both lines in the one run named by the row (runs=main,main). scroll_x_shift (dx): line n + 1 shows line n moved left by dx dots, B[x] = A[x + dx], where line n holds the write and line n + 1 follows it. scroll_y_shift (dy, lines) with fa=prev: B is the lines n + 1 to n + lines of the
+ * frame that holds the write, A the lines of the frame before it, and B line i shows A line i + dy, with i the index of the line among the active lines of its frame. The direction of a scroll is a modelling reading (ASSUMED), which the group class says; the relation itself names none */
 static int vk_rel_at(struct vk_rc *rc, const char *rel, const char *at, const char *fa, const struct vk_run *ra, const struct vk_run *rb)
 {
     unsigned cls = 0u;
@@ -2299,7 +2308,7 @@ static void vk_cap_free(struct vk_cap *cp)
 }
 
 /* the whole capture of a video case; 0 when the stream and the dev log are well formed and the guest verdict passed, else non-zero (the outcome is already set in c, and got holds the verdict text when there is one). cp is cleared first and is always to be freed with vk_cap_free */
-static int vk_capture(const struct kase *k, struct ctx *c, struct vk_cap *cp, char *got, size_t gotcap)
+static int vk_capture(const struct kase *k, struct ctx *c, struct vk_cap *cp, char *got, size_t gotcap, int past_guest_failure)
 {
     struct booted b;
     const struct ds_instance *ci = NULL;
@@ -2363,7 +2372,8 @@ static int vk_capture(const struct kase *k, struct ctx *c, struct vk_cap *cp, ch
     judge_dsv1(c, ci->ram8k + V_OFF, (unsigned)cp->e.id, (unsigned)cp->checks, cp->verdict, sizeof cp->verdict);
     release_boot(&b);
     snprintf(got, gotcap, "%s", cp->verdict);
-    if (c->harness || c->timeout || c->failed) {
+    /* past_guest_failure (the video kind only, review fix H-01 of the gate review): a guest whose DSV1 checks fail still has its records judged, so the evidence shows every video group of the scene, pass or fail, beside the failed guest checks; the outcome stays guest_failure (c->failed is never cleared) */
+    if (c->harness || c->timeout || (c->failed && !past_guest_failure)) {
         return -1;
     }
     cp->vcount = vk_u32(cp->vsk->header);
@@ -2411,12 +2421,15 @@ void kind_video(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
     char gline[256];
     size_t used = 0u;
 
-    if (vk_capture(k, c, &cp, got, gotcap) != 0) {
+    if (vk_capture(k, c, &cp, got, gotcap, 1) != 0) {
         goto done;
     }
     si = vx_case_scene(cp.vx, k->val[K_ID]);
     if (si == cp.vx->ns || strcmp(cp.vx->sc[si].name, cp.e.scene) != 0) {
         harness_error(c, "no scene row of the vexp rows names this case with the scene of its expect");
+        goto done;
+    }
+    if (cp.vx->sc[si].role == VX_ROLE_GOLDEN && c->failed) { /* a golden digest beside failed guest checks says nothing: the case is already red */
         goto done;
     }
     if (cp.vx->sc[si].role == VX_ROLE_GOLDEN) {
@@ -2449,7 +2462,8 @@ void kind_video(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
         (void)vk_golden_judge(&sub, own, cp.e.scene, ghex);
         free(own);
         check(c, sub.harness && !sub.failed && strncmp(sub.why, "video-hash-only", 15u) == 0, "a golden scene with no literal scene was not refused as video-hash-only (ER-11)");
-        snprintf(gdet, sizeof gdet, "video_sha256=%s E0 repeatability (a change detector, never a verdict, ER-11)\nvideo_golden: the digest is compared with the pinned digest of the scene; it is valid only beside a literal case of the same scene (video_vce_pal for vce_pal); a golden scene with no literal scene is refused video-hash-only\nvideo_records=%llu video_bytes=%llu machine_time=%llu\n", ghex,
+        snprintf(gdet, sizeof gdet, "video_sha256=%s E0 repeatability (a change detector, never a verdict, ER-11)\nvideo_golden: the digest is compared with the pinned digest of the scene; it is valid only beside a literal case of the same scene "
+            "(video_vce_pal for vce_pal); a golden scene with no literal scene is refused video-hash-only\nvideo_records=%llu video_bytes=%llu machine_time=%llu\n", ghex,
                  (unsigned long long)cp.w.n, (unsigned long long)cp.vbytes, (unsigned long long)cp.lg.m);
         set_evidence_detail(gdet);
         snprintf(got + strlen(got), gotcap - strlen(got), " records=%llu", (unsigned long long)cp.w.n);
@@ -2865,7 +2879,7 @@ void kind_video_fault_sweep(const struct kase *k, struct ctx *c, char *got, size
     char detail[2048];
     size_t used = 0u;
 
-    if (vk_capture(k, c, &cp, got, gotcap) != 0) {
+    if (vk_capture(k, c, &cp, got, gotcap, 0) != 0) {
         goto done;
     }
     if (!vk_scene_has_literal(cp.vx, cp.e.scene)) {
@@ -2957,7 +2971,7 @@ void kind_video_hash_not_verdict(const struct kase *k, struct ctx *c, char *got,
     char why[240];
     struct ctx sub;
 
-    if (vk_capture(k, c, &cp, got, gotcap) != 0) {
+    if (vk_capture(k, c, &cp, got, gotcap, 0) != 0) {
         goto done;
     }
     for (gi = 0u; gi < cp.vx->ng; gi++) {
@@ -3016,8 +3030,12 @@ void kind_video_hash_not_verdict(const struct kase *k, struct ctx *c, char *got,
     }
     memset(&sub, 0, sizeof sub);
     check(c, vk_golden_judge(&sub, own, cp.e.scene, hex_f) == 1 && !sub.failed && !sub.harness && sub.n == 1u, "the faulted stream does not pass a golden computed for that faulted stream");
-    /* (2) it fails the golden of the unfaulted stream */
-    memcpy(own->gd[0].sha, hex_ok, sizeof own->gd[0].sha);
+    /* (2) it fails the golden of the unfaulted stream: the scene's own golden rows get the unfaulted digest back (review fix L-05: not the first golden row of the file, which may belong to another scene) */
+    for (gi = 0u; gi < own->nd; gi++) {
+        if (strcmp(own->gd[gi].scene, cp.e.scene) == 0) {
+            memcpy(own->gd[gi].sha, hex_ok, sizeof own->gd[gi].sha);
+        }
+    }
     memset(&sub, 0, sizeof sub);
     (void)vk_golden_judge(&sub, own, cp.e.scene, hex_f);
     check(c, sub.failed && !sub.harness, "the faulted stream passes the golden of the unfaulted stream: a golden would not detect the change");

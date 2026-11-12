@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# a case of the mini-root
+id = "video_tv"
+kind = "video"
+expect = "rom=t;id=1;scene=tv"

@@ -121,6 +121,36 @@ if [ -f "$exfile" ] || [ -d "$ctl" ]; then
 else
   printf 'A\t0\n' >> "$facts"
 fi
+# the inventory facts (review fix M-04 of the gate review): where the root carries tests/conformance/cases, every case of kind video or video_fault_sweep with the scene= item of its expect and its REQUIRED membership (VC rows), and the roms= list of vdc_poweron_policy_diff (PR rows)
+if [ -d "$root/tests/conformance/cases" ]; then
+  printf 'I\t1\n' >> "$facts"
+  reqf="$root/tests/conformance/REQUIRED"
+  [ -f "$reqf" ] || reqf=/dev/null
+  set -- "$root"/tests/conformance/cases/*.toml
+  if [ -f "$1" ]; then
+    awk '
+      FNR == NR { if ($0 !~ /^#/ && $0 !~ /^[ \t]*$/) req[$1] = 1; next }
+      FNR == 1 { flush() }
+      /^id = "/ { id = $0; sub(/^id = "/, "", id); sub(/".*$/, "", id) }
+      /^kind = "/ { kind = $0; sub(/^kind = "/, "", kind); sub(/".*$/, "", kind) }
+      /^expect = "/ { ex = $0; sub(/^expect = "/, "", ex); sub(/"[ \t]*$/, "", ex) }
+      END { flush() }
+      function flush(   sc, rl, n, a, i) {
+        if (id != "" && (kind == "video" || kind == "video_fault_sweep")) {
+          sc = ""
+          if (match(ex, /(^|;)scene=[a-z0-9_]+/)) { sc = substr(ex, RSTART, RLENGTH); sub(/^;?scene=/, "", sc) }
+          printf "VC\t%s\t%s\t%s\t%s\n", id, kind, sc, (id in req) ? 1 : 0
+        }
+        if (id == "vdc_poweron_policy_diff" && match(ex, /^roms=[^;]*/)) {
+          rl = substr(ex, 6, RLENGTH - 5)
+          n = split(rl, a, ",")
+          for (i = 1; i <= n; i++) { sub(/@.*$/, "", a[i]); printf "PR\t%s\n", a[i] }
+        }
+        id = ""; kind = ""; ex = ""
+      }
+    ' "$reqf" "$@" >> "$facts" || dead "the inventory reader failed"
+  fi
+fi
 
 # stage 1 for every .vexp file: a file, its status tested, its sentinel required
 nfiles=0
