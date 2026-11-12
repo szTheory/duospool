@@ -181,10 +181,10 @@ Plans:
   3. A fixture writes the scanline and phase of raster-compare and VBlank interrupts into guest RAM. The recorded values agree with the modelled position for the profile's line count. They are labelled a modelling assumption, not a hardware claim, until a primary manual page or an owner-approved capture settles C3.
   4. All 512 9-bit palette entries round-trip through write and readback in guest RAM. A dot-clock change, including one mid-frame, shows up as changed per-line geometry in the raw record and is never normalised to a fixed width.
   5. A raw-video hash counts as a verdict only when paired with a semantic literal assertion, and that assertion is shown to fail when the renderer is deliberately broken.
-**Plans**: 0/17 plans complete in 16 sequential waves, listed in execution order (context waves W1-W8 of 04-CONTEXT; the cut line is checkpoint 04-13, after which W7 would become Phase 4.1; 04-17 is a planned split of 04-08)
+**Plans**: 1/17 plans executed in 16 sequential waves, listed in execution order (context waves W1-W8 of 04-CONTEXT; the cut line is checkpoint 04-13, after which W7 would become Phase 4.1; 04-17 is a planned split of 04-08)
 
 Plans:
-- [ ] 04-01-PLAN.md - W1: evidence data: ER-1 page-image reads, cites, ledger entries and amendments, claim words (data only)
+- [x] 04-01-PLAN.md - W1: evidence data: ER-1 page-image reads, cites, ledger entries and amendments, claim words (data only)
 - [ ] 04-02-PLAN.md - W1: vid sink plumbing and the fold placement in ds_cpu_step_obs, obs_begin callers, ABI-skew control
 - [ ] 04-03-PLAN.md - W2: layout and the single serial 7 to 8 / epoch 4 to 5 bump, seeded-prng-v3, restore bounds, goldens (data only)
 - [ ] 04-04-PLAN.md - W2: TRACER: guest VCE palette write to a blank scanline record to digest, end to end
@@ -259,6 +259,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phases 4 and 5
 | 1. Owner Decisions, Claim Ledger and Toolchain Spike | 12/12 | Complete    | 2026-11-09 |
 | 2. Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate | 22/22 | Complete    | 2026-11-10 |
 | 3. HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad | 38/38 | Complete    | 2026-11-11 |
-| 4. VCE/VDC Raw Video | 0/TBD | Not started | - |
+| 4. VCE/VDC Raw Video | 1/17 | In Progress | - |
 | 5. PSG Raw Audio | 0/TBD | Not started | - |
 | 6. Headless Runner, Installed-Consumer Proof and Staged Verification | 0/TBD | Not started | - |

@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 4
 current_phase_name: VCE/VDC Raw Video
-current_plan: Not started
+current_plan: 2
 status: executing
-stopped_at: Phase 4 context gathered
-last_updated: "2026-11-12T03:25:09.954Z"
+stopped_at: Completed 04-01-PLAN.md
+last_updated: "2026-11-12T03:51:39.992Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 3 complete, transitioned to Phase 4
-state_head: 334b3e35dbfe73c3f46cf0004ed86d9c7507801a
+state_head: 543bbd13d8461467b4435388bfcfae4ad1d66b6f
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 89
-  completed_plans: 72
+  completed_plans: 73
   percent: 50
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 4 (VCE/VDC Raw Video) — READY TO EXECUTE
-Current Plan: Not started
+Current Plan: 2
 Total Plans in Phase: 17
 Status: Ready to execute
 Last activity: 2026-11-11 — Phase 3 complete, transitioned to Phase 4
@@ -132,6 +132,7 @@ Progress: [█████░░░░░] 50%
 | Phase 03 P31 | 75min | 3 tasks | 12 files |
 | Phase 03 P32 | 190min | 3 tasks | 43 files |
 | Phase 03 P33 | 330min | 3 tasks | 30 files |
+| Phase 4 P01 | 90min | 3 tasks | 45 files |
 
 ## Accumulated Context
 
@@ -270,6 +271,8 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-33: README supported-entry list is gated against the ledger (DOCS_SUPPORTED_LIST/MEANING) and the withheld claim words are legal only quoted on one policy line (DOCS_CLAIM_WORD)
 - [Phase 03]: 03-33: gate job timeout-minutes raised from 10 to 20 (estimated Phase 3 job 6 to 10 min, no CI row yet); second awk run stays a whole gate run (52 of 56 stages run awk); sanitizers-under-clang is a note for the owner, review after the first CI row
 - [Phase 03]: 03-33: WLA-DX one-off run gave 233 of 234 rows equal, BRK differs, no cross-assembler claim; tool uninstalled because the optional xasm path turns the gate red while it is on PATH
+- [Phase 4]: 04-01: no E1 candidate promoted; every literal cited by the 17 new entries was seen on its page image (ER-1, ER-2)
+- [Phase 4]: 04-01: LED-VID-0002 pcetech note reworded after re-read; its register and clock figures agree
 
 ### Pending Todos
 
@@ -293,6 +296,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12T00:49:46.836Z
-Stopped at: Phase 4 context gathered
-Resume file: .planning/phases/04-vce-vdc-raw-video/04-CONTEXT.md
+Last session: 2026-11-12T03:51:33.379Z
+Stopped at: Completed 04-01-PLAN.md
+Resume file: None
