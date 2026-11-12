@@ -1,9 +1,9 @@
 ---
 phase: "04"
 slug: "vce-vdc-raw-video"
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: complete
+nyquist_compliant: true
+wave_0_complete: true
 created: "2026-11-11"
 ---
 
@@ -146,13 +146,13 @@ None expected: every behaviour is checked by the gate. Optional hardware capture
 
 ## Validation Sign-Off
 
-- [ ] Every task has an automated verify or a Wave 0 dependency
-- [ ] Sampling continuity: no three consecutive tasks without an automated verify
-- [ ] Every negative control seen red
-- [ ] No watch-mode flags
-- [ ] `nyquist_compliant: true` set only by the closing plan
+- [x] Every task has an automated verify or a Wave 0 dependency
+- [x] Sampling continuity: no three consecutive tasks without an automated verify
+- [x] Every negative control seen red
+- [x] No watch-mode flags
+- [x] `nyquist_compliant: true` set only by the closing plan
 
-**Approval:** pending
+**Approval:** complete for the Phase 4 scope after the D-180 cut (2026-11-12); the sprite share moves to Phase 4.1, which has its own 04.1-VALIDATION.md
 
 ---
 

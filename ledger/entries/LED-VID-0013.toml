@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
-# VRAM to SATB transfer (D-151; VID-03). Supported (E1, documentary) by plan 04-13 under ER-2, scoped to the size and the trigger of the page
+# VRAM to SATB transfer (D-151; VID-03). Was supported (E1, documentary) in plan 04-13 under ER-2 and is demoted to assumed (next comment line), scoped to the size and the trigger of the page
 # Demoted to assumed by the orchestrator after the Phase 4 review fix: the entry disagreement field records that the sources differ on the trigger byte, and no MAN-tagged guest row backs the claim, so ER-2 is not clearly met; promotion needs a MAN row and a page-stated trigger.
 # (the start at the following vertical blanking moved to the assumption text in the review fix H-03 of the gate review: no MAN row or pin joins the copy to the entry line): the equality of the core with page statements, not a hardware measurement. The duration of the copy, the DS flag instant and the repeat are modelling readings outside the E1 part.
 # ER-2 record (plan 04-13, verifier gsd-executor, 2026-11-12). Condition 1: H7-12 (256 words are transferred at the beginning of a vertical blanking period; the transfer is triggered by access to the high byte of DVSSR; if the register is set the transfer starts at the beginning of the following vertical blanking period) was re-read as a page image from a scratch copy of the
@@ -12,7 +12,7 @@ statement = "VL1: DuoSpool models the VRAM-SATB transfer as moving 256 words, tr
 profile = "pce-hucard-2btn"
 status = "assumed"
 sources = ["FACT|H7-11 H7-12|256 words at the beginning of vertical blanking, triggered by the DVSSR high byte, a set register starts at the following period, DCR DSR repeat bit 4 and DSC bit 0", "CODE|Mednafen and Geargrafx|copy at vertical blanking entry with a modelled duration"]
-evidence = ["E1|tests/conformance/cases/vdc_satb_data.toml: 256 SATB words, copied after a DVSSR high byte write, equal the guest pattern; page re-read as an image in plan 04-13", "E0|tests/conformance/cases/vdc_satb.toml: rows 1, 2 and 5 (H7-12 statements) are ASSUMED (ER-10: DS delay)", "E0|tests/conformance/cases/vdc_satb_data.toml: identical under three policies, repeatability only"]
+evidence = ["E0|tests/conformance/cases/vdc_satb_data.toml: 256 SATB words, copied after a DVSSR high byte write, equal the guest pattern; page re-read as an image in plan 04-13", "E0|tests/conformance/cases/vdc_satb.toml: rows 1, 2 and 5 (H7-12 statements) are ASSUMED (ER-10: DS delay)", "E0|tests/conformance/cases/vdc_satb_data.toml: identical under three policies, repeatability only"]
 disagreement = "the duration differs between sources (four lines or 4 hsyncs) and so does the trigger byte; no page held states a duration"
 pinning_test = "TEST:vdc_satb_data"
 updated = "2026-11-12"
