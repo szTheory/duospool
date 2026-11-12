@@ -896,3 +896,36 @@ each delete one tagged rule line and show the control flip. `mutation-workflow-a
 **Not applied here, still open:** pairing the second awk run with clang (changes what a failure says), a skip of `sanitizers` in the second run (needs a skip mechanism), and running the gcc
 and clang steps as their own jobs (each would pay set-up again and the two work jobs are already balanced). The caching verdict (no candidate) and "nothing was weakened" stand: no stage,
 control, selftest or case was removed, and both awk implementations and both compilers still run the same steps as before.
+
+## Phase 4.1 levers (plan 04.1-01; local runs, not CI runs)
+
+CI evidence for this section: **none**. Nothing here has run on a GitHub runner (D-64: the owner authorises pushes), and the parallel second awk
+job of the quick task above is still unverified on CI. The tier of every figure is E0, repeatability on one local machine under load. Phase 4.1
+plans add no case beyond the sprite cases they list (D-180 cut, checkpoint A), so before the first sprite case lands the remaining levers (2) to
+(4) of D-176 are applied in order, each in its own commit and each without weakening evidence (D-176: nothing is weakened to save seconds).
+
+**Before (measured at `f9d9d69`, the commit before this plan, warm tree).** `/usr/bin/time -p sh scripts/check --timing`: 461.6 s wall, 344.3 s
+user CPU, 68.7 s system; all 57 stages passed; load average 10 at the start and 22 at the end (a shared machine, never quiet). Stage seconds that
+matter: `conformance` 86, `sanitizers` 212, `determinism` 71, `named-controls` 19, `fixtures` 10, every other stage 5 or less. The two triggers
+read: `conformance` 86 s against the 60 s trigger of D-176 (fired) and the gate at 344 s user CPU against the 150 s trigger of D-180 (fired,
+load-dependent as at checkpoint A). Wall time and stage seconds swing by a factor of up to 1.4 between runs of the same code, so the per-case
+figures below (user CPU of one `ds_runner --only ID` run in the gate preset, load 20 to 29) are the stable evidence of what a lever removes.
+
+| Lever | Trigger | Status | Where |
+|-------|---------|--------|-------|
+| (1) toys link shared object libraries | fired | applied at checkpoint A (`d831680`) | CMake only; cold build of 25 toys 47.1 s to 3.3 s user CPU |
+| (2) video fixtures under two policies | fired (`conformance` 86 s over 60 s) | **applied** in this plan | see lever (2) below |
+
+### Lever (2): two policies in the video non-interference, restore and observer runs
+
+- **What changed.** `VD_POLICIES_VIDEO` (2) in `tests/conformance/runner.h`: `vid_noninterference`, `snapshot_restore_video` and
+  `snapshot_restore_video_bg` run the policies zero and seeded-prng-v3 seed 1; `observer_vce_pal` lists the same two fragments in its `policies` key.
+- **Per case user CPU, before and after** (the stable measure): `snapshot_restore_video_bg` 5.04 to 3.65 s, `snapshot_restore_video` 1.85 to 1.11 s,
+  `observer_vce_pal` 1.21 to 0.72 s, `vid_noninterference` 0.26 to 0.16 s: 2.7 s in all.
+- **The gate with the lever** (same load class, not the same load): `conformance` 83 s (86 s before), 305.6 s user CPU and 391.9 s wall (344.3 s
+  and 461.6 s before). Only the per-case figures measure the lever; the gate figures moved with the load as much as with the code.
+- **Why no evidence is weakened.** The power-on dimension of the five video fixtures is carried by `vdc_poweron_policy_diff`, which keeps all three
+  policies (zero, seeds 1 and 2) and compares the verdict RAM and every record from the first judged frame, with the never-initialised palette
+  image as the control that must differ. The guest cases of the video fixtures (`vce_pal`, `vce_dot`, `bg_*`, `vdc_*`), `vdc_vram`,
+  `vdc_satb_data` and the CPU fixtures keep three policies. No control, toy, literal case or REQUIRED id was removed. What is given up is the third
+  policy, seed 2, in the video non-interference, restore and observer runs.
