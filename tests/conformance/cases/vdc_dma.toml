@@ -11,11 +11,11 @@ id = "vdc_dma"
 kind = "guest"
 fixture = "authored:vdc-dma"
 request = ""
-expect = "id=20"
-meaning = "The authored vdc_dma fixture starts a VRAM-to-VRAM transfer of 64 words with the LENR high byte in burst: the last destination word is not copied at once, the 64 destination words equal an additive running sum after a counted delay and the word after the block is untouched, 4 passing checks of classes GUEST, MAN and ASSUMED, identical under three power-on policies"
+expect = "id=20;observe=21:policy"
+meaning = "The authored vdc_dma fixture drives the VRAM-to-VRAM transfer: 64 words in burst against an additive running sum, LENR = 0, SI/D and DI/D, DV gating, IW ignored, an overlap, the registers left alone, the trigger byte, an observed poll count and an overrun cut at the display start with no DV; 24 checks of classes GUEST, MAN and ASSUMED, identical under three power-on policies"
 required = true
 control = false
 expect_outcome = "pass"
 pins = []
-until_mclk = 1000000
-checks = 4
+until_mclk = 2500000
+checks = 24

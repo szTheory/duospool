@@ -1837,3 +1837,342 @@ void kind_model_param_vdc(const struct kase *k, struct ctx *c, char *got, size_t
     check(c, mv_abs(d) <= tol, msg);
     snprintf(got, gotcap, "vd_shift=%lld rr_shift=%lld tol=%lld", (long long)mv_diff(run_a.vd, base.vd), (long long)mv_diff(run_b.rr, base.rr), (long long)tol);
 }
+
+/* ---- vdc_advance_pure (plan 04-10; D-151, D-157, D-175; E0) ---- */
+
+#define AP_HORIZON 36000u   /* master clocks of one scenario: the display starts of the model's vertical cycle fall at 6825 and 34125 */
+#define AP_OPS_MAX 5u
+#define AP_SAMPLES_MAX 90u
+#define AP_WORDS 32768u     /* the VRAM words that exist (ASSUMED LED-VID-0007); a word address above reads 0 and a write there is dropped, written here */
+#define AP_REG_SOUR 0x10u
+#define AP_REG_DESR 0x11u
+#define AP_REG_LENR 0x12u
+
+/*
+ * The model of this kind is a naive reference: it steps ONE master clock at a time with counters and shares no formula, table or code with vdc.c or beam.c. The vertical setup is VPR = $0302 (VDS 3: 5 lines, VSW 2: 3 lines), VDW = 9 (10 lines), VCR = 2, a cycle of 20 lines that restarts at frame line 0 (frame 262 lines): line l is a display line when
+ * (l mod 262) mod 20 is in 5..14 and its display start when it is 5 (D-139, written here as arithmetic, ASSUMED LED-VID-0001). The transfer: a LENR high byte write starts it at once when the bus is free (not a display line, or burst) and else leaves it pending until a line event finds the bus free; one word per 4 * divider clocks (the dots per word is 4, ASSUMED
+ * LED-VID-0014, and the divider of the VCE control register 0 to 3 is 4, 3, 2, 2, MAN H6-3 and ASSUMED LED-VID-0002, both written here); at a display start the burst latch is !(CR bits 7 and 6) and a frame that is not burst cancels a pending or running transfer; the counters are those reached, LENR ends at $FFFF and DV is raised then when DCR bit 1 is set.
+ */
+struct ap_model {
+    uint8_t vram[65536];
+    uint32_t sour;
+    uint32_t desr;
+    uint32_t lenr;
+    uint32_t dcr;
+    uint32_t cr;
+    uint32_t state; /* 0 idle, 1 pending, 2 running */
+    uint32_t phase; /* master clocks since the start or the last word */
+    uint32_t word;  /* master clocks per word */
+    uint32_t moved; /* words moved since the start */
+    int burst;
+    int dv;
+    uint64_t line;
+    uint32_t line_clk;
+    uint64_t now;
+    unsigned cancels;
+    unsigned completes;
+    unsigned pendings;
+};
+
+struct ap_stat {
+    unsigned scenarios;
+    unsigned samples;
+    unsigned cancels;
+    unsigned completes;
+    unsigned pendings;
+    unsigned bad;
+    char first[200];
+};
+
+static uint32_t ap_rd(const struct ap_model *m, uint32_t w)
+{
+    return w >= AP_WORDS ? 0u : (uint32_t)m->vram[2u * w] | ((uint32_t)m->vram[2u * w + 1u] << 8u);
+}
+
+static void ap_wr(struct ap_model *m, uint32_t w, uint32_t v)
+{
+    if (w < AP_WORDS) {
+        m->vram[2u * w] = (uint8_t)(v & 0xFFu);
+        m->vram[2u * w + 1u] = (uint8_t)(v >> 8u);
+    }
+}
+
+static int ap_display(uint64_t line)
+{
+    uint32_t p = (uint32_t)((line % 262u) % 20u);
+
+    return p >= 5u && p < 15u;
+}
+
+static int ap_dstart(uint64_t line)
+{
+    return (line % 262u) % 20u == 5u;
+}
+
+/* the line event of m->line at the time m->now */
+static void ap_line(struct ap_model *m)
+{
+    if (ap_dstart(m->line)) {
+        m->burst = (m->cr & 0xC0u) == 0u;
+        if (!m->burst && m->state != 0u) {
+            m->state = 0u;
+            m->cancels++;
+        }
+    }
+    if (m->state == 1u && (!ap_display(m->line) || m->burst)) {
+        m->state = 2u;
+        m->phase = 0u;
+    }
+}
+
+/* one master clock: a word due at this clock first, then the line event of this clock (the words due at an event time complete before it) */
+static void ap_tick(struct ap_model *m)
+{
+    m->now++;
+    if (m->state == 2u) {
+        m->phase++;
+        if (m->phase == m->word) {
+            m->phase = 0u;
+            ap_wr(m, m->desr, ap_rd(m, m->sour));
+            m->sour = (m->sour + ((m->dcr & 4u) != 0u ? 0xFFFFu : 1u)) & 0xFFFFu;
+            m->desr = (m->desr + ((m->dcr & 8u) != 0u ? 0xFFFFu : 1u)) & 0xFFFFu;
+            m->lenr = (m->lenr + 0xFFFFu) & 0xFFFFu;
+            m->moved++;
+            if (m->lenr == 0xFFFFu) {
+                m->state = 0u;
+                m->completes++;
+                if ((m->dcr & 2u) != 0u) {
+                    m->dv = 1;
+                }
+            }
+        }
+    }
+    m->line_clk++;
+    if (m->line_clk == 1365u) {
+        m->line_clk = 0u;
+        m->line++;
+        ap_line(m);
+    }
+}
+
+/* one data word to the register ar through the port at the stamp (the AR, the low byte, the high byte, which triggers) */
+static void ap_port(struct ds_instance *w, uint32_t ar, uint32_t v, uint64_t stamp)
+{
+    ds_vdc_write(w, 0u, (uint8_t)ar, stamp);
+    ds_vdc_write(w, 2u, (uint8_t)(v & 0xFFu), stamp);
+    ds_vdc_write(w, 3u, (uint8_t)(v >> 8u), stamp);
+}
+
+static void ap_note(struct ap_stat *st, const char *what, uint32_t a, uint32_t b, uint64_t t)
+{
+    st->bad++;
+    if (st->first[0] == '\0') {
+        snprintf(st->first, sizeof st->first, "%s: model %u, core %u at stamp %llu", what, (unsigned)a, (unsigned)b, (unsigned long long)t);
+    }
+}
+
+/* the core at stamp t against the model at the same clock: the three counters, the state, DV and every VRAM byte */
+static void ap_compare(struct ap_stat *st, const struct ap_model *m, const struct ds_instance *w, uint64_t t)
+{
+    st->samples++;
+    if ((uint32_t)w->vdc_reg[AP_REG_SOUR] != m->sour) {
+        ap_note(st, "SOUR", m->sour, (uint32_t)w->vdc_reg[AP_REG_SOUR], t);
+    } else if ((uint32_t)w->vdc_reg[AP_REG_DESR] != m->desr) {
+        ap_note(st, "DESR", m->desr, (uint32_t)w->vdc_reg[AP_REG_DESR], t);
+    } else if ((uint32_t)w->vdc_reg[AP_REG_LENR] != m->lenr) {
+        ap_note(st, "LENR", m->lenr, (uint32_t)w->vdc_reg[AP_REG_LENR], t);
+    } else if ((uint32_t)w->dma_state != m->state) {
+        ap_note(st, "state", m->state, (uint32_t)w->dma_state, t);
+    } else if ((((uint32_t)w->vdc_status >> 4u) & 1u) != (m->dv ? 1u : 0u)) {
+        ap_note(st, "DV", m->dv ? 1u : 0u, ((uint32_t)w->vdc_status >> 4u) & 1u, t);
+    } else if (memcmp(m->vram, w->vdc_vram, sizeof m->vram) != 0) {
+        ap_note(st, "VRAM bytes", 0u, 1u, t);
+    }
+}
+
+/* a lookahead sample: the stamps at, one before and one after a word boundary of the first words and the last words, and at, before and after a display start */
+static int ap_wants(const struct ap_model *m)
+{
+    int near_word = m->state == 2u && (m->moved < 3u || m->lenr < 3u) && (m->phase + 1u == m->word || m->phase == 0u || m->phase == 1u);
+    int near_start = (m->line_clk == 0u && ap_dstart(m->line)) || (m->line_clk == 1364u && ap_dstart(m->line + 1u)) || (m->line_clk == 1u && ap_dstart(m->line));
+
+    return near_word || near_start;
+}
+
+static void ap_scenario(struct ctx *c, const struct kase *k, uint64_t *rng, struct ap_stat *st)
+{
+    static const uint32_t cr_values[4] = {0x0000u, 0x0040u, 0x0080u, 0x00C0u};
+    static const uint32_t word_for_cr[4] = {16u, 12u, 8u, 8u}; /* 4 dots of the divider 4, 3, 2, 2 */
+    static struct ap_model m;
+    struct booted b;
+    struct ds_instance *w;
+    uint64_t op_at[AP_OPS_MAX];
+    uint32_t op_kind[AP_OPS_MAX]; /* 0 start, 1 CR write */
+    uint32_t op_val[AP_OPS_MAX][4];
+    unsigned nops = 1u + (unsigned)(vd_mix(rng) % (uint64_t)AP_OPS_MAX);
+    unsigned oi = 0u;
+    unsigned i;
+    unsigned j;
+    uint32_t vce = (uint32_t)(vd_mix(rng) % 4u);
+    uint32_t cr0 = cr_values[vd_mix(rng) % 4u];
+    uint64_t t;
+    unsigned samples_here = 0u;
+    uint64_t stops[12];
+
+    memset(&m, 0, sizeof m);
+    for (i = 0u; i < nops; i++) {
+        uint64_t at = 1u + vd_mix(rng) % (uint64_t)(AP_HORIZON - 2u);
+
+        for (j = 0u; j < i; j++) { /* distinct stamps; the list is sorted below */
+            if (op_at[j] == at) {
+                at++;
+            }
+        }
+        op_at[i] = at;
+    }
+    for (i = 0u; i < nops; i++) { /* sort ascending, with the kinds drawn after the order is fixed */
+        for (j = i + 1u; j < nops; j++) {
+            if (op_at[j] < op_at[i]) {
+                uint64_t x = op_at[i];
+
+                op_at[i] = op_at[j];
+                op_at[j] = x;
+            }
+        }
+    }
+    for (i = 0u; i < nops; i++) {
+        uint64_t r = vd_mix(rng);
+
+        op_kind[i] = (i == 0u || (r & 3u) != 0u) ? 0u : 1u;
+        op_val[i][0] = (uint32_t)((r >> 8u) % 4u) == 0u ? 0x7FF0u + (uint32_t)((r >> 16u) % 32u) : (uint32_t)((r >> 16u) % 6000u); /* SOUR: sometimes at the end of VRAM, so a copy crosses the out-of-range words */
+        op_val[i][1] = (uint32_t)((r >> 24u) % 5u) == 0u ? 0xFFF0u + (uint32_t)((r >> 32u) % 16u) : (uint32_t)((r >> 32u) % 8000u);        /* DESR: sometimes at the top of the address space, so a decrement wraps and an increment wraps */
+        op_val[i][2] = (uint32_t)((r >> 40u) % 3u) == 0u ? (uint32_t)(vd_mix(rng) % 3000u) : (uint32_t)(vd_mix(rng) % 300u);          /* LENR: M - 1 */
+        op_val[i][3] = (uint32_t)(vd_mix(rng) & 0x0Eu);                                                                              /* DCR bits 1 to 3; for a CR write, the CR value index */
+    }
+    for (i = 0u; i < 12u; i++) {
+        stops[i] = 1u + vd_mix(rng) % (uint64_t)AP_HORIZON;
+    }
+    w = vs_boot(c, k, &b);
+    if (w == NULL) {
+        return;
+    }
+    for (i = 0u; i < (uint32_t)sizeof m.vram; i++) { /* the same pseudo-random bytes in the instance and in the model */
+        uint8_t v = (uint8_t)(vd_mix(rng) & 0xFFu);
+
+        m.vram[i] = v;
+        w->vdc_vram[i] = v;
+    }
+    w->vce_cr = (uint8_t)vce;
+    m.cr = cr0;
+    m.word = word_for_cr[vce];
+    ap_port(w, 12u, 0x0302u, 0u); /* VPR */
+    ap_port(w, 13u, 9u, 0u);      /* VDW */
+    ap_port(w, 14u, 2u, 0u);      /* VCR */
+    ap_port(w, 5u, cr0, 0u);      /* CR */
+    ap_line(&m);                  /* the line event of line 0 at time 0: the core folds it at its first advance */
+    for (t = 1u; t <= (uint64_t)AP_HORIZON; t++) {
+        int want;
+        int is_op = oi < nops && op_at[oi] == t;
+
+        ap_tick(&m);
+        want = is_op || ap_wants(&m);
+        for (i = 0u; i < 12u && !want; i++) {
+            want = stops[i] == t;
+        }
+        if ((want && samples_here < AP_SAMPLES_MAX) || t == (uint64_t)AP_HORIZON || is_op) {
+            ds_vdc_advance(w, t, NULL);
+            ap_compare(st, &m, w, t);
+            samples_here++;
+        }
+        if (is_op) { /* the access after the fold of its own stamp, on the core and on the model */
+            if (op_kind[oi] == 0u) {
+                uint32_t sour = op_val[oi][0];
+                uint32_t desr = op_val[oi][1];
+                uint32_t lenr = op_val[oi][2];
+                uint32_t dcr = op_val[oi][3];
+                int free_bus = !ap_display(m.line) || m.burst;
+
+                ap_port(w, 15u, dcr, t);
+                ap_port(w, AP_REG_SOUR, sour, t);
+                ap_port(w, AP_REG_DESR, desr, t);
+                ds_vdc_write(w, 0u, (uint8_t)AP_REG_LENR, t);
+                ds_vdc_write(w, 2u, (uint8_t)(lenr & 0xFFu), t); /* the low byte only stores */
+                ds_vdc_write(w, 3u, (uint8_t)(lenr >> 8u), t);   /* the high byte starts the transfer */
+                m.dcr = dcr;
+                m.sour = sour;
+                m.desr = desr;
+                m.lenr = lenr;
+                m.state = free_bus ? 2u : 1u;
+                m.phase = 0u;
+                m.moved = 0u;
+                if (!free_bus) {
+                    m.pendings++;
+                }
+            } else {
+                uint32_t cr = cr_values[(op_val[oi][3] >> 1u) & 3u];
+
+                ap_port(w, 5u, cr, t);
+                m.cr = cr;
+            }
+            ap_compare(st, &m, w, t);
+            oi++;
+        }
+    }
+    st->cancels += m.cancels;
+    st->completes += m.completes;
+    st->pendings += m.pendings;
+    st->scenarios++;
+    release_boot(&b);
+}
+
+/* the divisor guard: a transfer started before any line event (the divider not latched yet) stays pending with a legal word time, and starts at the first line event with the word time of the divider */
+static void ap_guard(struct ctx *c, const struct kase *k)
+{
+    struct booted b;
+    struct ds_instance *w = vs_boot(c, k, &b);
+
+    if (w == NULL) {
+        return;
+    }
+    ap_port(w, AP_REG_SOUR, 0x0100u, 0u);
+    ap_port(w, AP_REG_DESR, 0x0200u, 0u);
+    ap_port(w, AP_REG_LENR, 0x0003u, 0u);
+    check(c, w->dma_state == 1u && (w->dma_word_mclk == 8u || w->dma_word_mclk == 12u || w->dma_word_mclk == 16u), "a transfer started before the first line event is not pending with a word time of 8, 12 or 16 master clocks (the divisor guard of 04-18)");
+    ds_vdc_advance(w, 0u, NULL);
+    check(c, w->dma_state == 2u && w->dma_start == 0u && w->dma_word_mclk == 16u, "the pending transfer did not start at the first line event with the word time 16 of the divider 4 (MAN H6-3, ASSUMED LED-VID-0014)");
+    release_boot(&b);
+}
+
+/*
+ * vdc_advance_pure (D-151, D-157, D-175; E0): expect = scenarios=N;seed=N. N seeded random scenarios, each a booted synthetic instance whose VRAM holds pseudo-random bytes, with up to five accesses at random stamps (transfer starts through the port with random SOUR, DESR, LENR, DCR bits 1 to 3 and CR writes that make the frame burst or not),
+ * advanced by direct ds_vdc_advance calls to a random partition of the stamps and to the stamps at, before and after the first word boundaries, the last words and every display start. After every call the counters SOUR, DESR and LENR, the state, DV and all 65,536 VRAM bytes of the core equal those of the naive per-clock model above. The case needs a
+ * minimum number of cancels at display start, completions and pending starts so that it cannot pass without crossing the cases it names; and the divisor guard (a start before the first line event). Evidence tier E0: the closed form against a model of the same rule; no accuracy or hardware claim.
+ */
+void kind_vdc_advance_pure(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    struct ap_stat st;
+    unsigned long long scen = 0u;
+    unsigned long long seed = 0u;
+    char msg[320];
+    unsigned i;
+    uint64_t rng;
+    const char *e = k->has[K_EXPECT] ? k->val[K_EXPECT] : "";
+
+    memset(&st, 0, sizeof st);
+    if (sscanf(e, "scenarios=%llu;seed=%llu", &scen, &seed) != 2 || scen < 1u || scen > 4096u) {
+        harness_error(c, "a vdc_advance_pure case needs expect = scenarios=N;seed=N (N from 1 to 4096) and a booting synthetic fixture");
+        return;
+    }
+    rng = (uint64_t)seed;
+    ap_guard(c, k);
+    for (i = 0u; i < (unsigned)scen && !c->harness; i++) {
+        ap_scenario(c, k, &rng, &st);
+    }
+    if (c->harness) {
+        return;
+    }
+    snprintf(msg, sizeof msg, "the closed form differs from the per-clock model in %u comparisons of %u; the first: %s", st.bad, st.samples, st.first);
+    check(c, st.bad == 0u, msg);
+    check(c, st.cancels >= (unsigned)(scen / 16u) && st.completes >= (unsigned)(scen / 4u) && st.pendings >= (unsigned)(scen / 16u), "the scenarios crossed too few cancels, completions or pending starts: the case could pass without the display-start rules");
+    snprintf(got, gotcap, "n=%u smp=%u cancel=%u done=%u pend=%u", st.scenarios, st.samples, st.cancels, st.completes, st.pendings);
+}

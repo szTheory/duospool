@@ -288,3 +288,5 @@ video_fault_sweep_vid_frame_lines
 video_fault_sweep_vid_active_window
 vdc_dma
 vdc_dma_vram
+mutate_sweep_vdc_dma
+vdc_advance_pure

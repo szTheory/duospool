@@ -84,3 +84,20 @@ rloop:  lda a:VDC_LO
         dex
         bne rloop
         .endmacro
+
+VDMA_IRQ_REQ = $1403            ; the interrupt request register with MPR0 = $FF: bit 1 is the IRQ1 level, which follows the VDC status flags (ASSUMED LED-IRQ-0009)
+
+; VDMA_WAIT_VD: poll the request register until the IRQ1 level reads 1 (a VD flag with CR bit 3 set), bounded at about 1.6 frames, so a machine that raises no flag fails a check and does not hang. A poll changes nothing (D-110). Clobbers A, X and Y
+        .macro VDMA_WAIT_VD
+        .local w, done
+        ldx #0
+        ldy #50
+w:      lda a:VDMA_IRQ_REQ
+        and #$02
+        bne done
+        dex
+        bne w
+        dey
+        bne w
+done:
+        .endmacro

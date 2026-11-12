@@ -11,10 +11,10 @@ id = "vdc_dma_vram"
 kind = "vdc_vram"
 fixture = "authored:vdc-dma"
 request = ""
-expect = "rom=vdc-dma;words=0x0800:0x1234,0x083F:0x4EFD,0x0A40:0xC2E1;tia=0x0A00:0x1234:0xF7:64"
-meaning = "The 64 destination words of the vdc_dma transfer at their VRAM word addresses and the untouched sentinel after the block sit in the instance bytes under three power-on policies, source block ends included, E0 repeatability"
+expect = "rom=vdc-dma;words=0x0800:0x1234,0x083F:0x4EFD,0x0A40:0xC2E1,0x0B00:0x1BDA,0x0B01:0x2222,0x0C00:0x1519,0x0C03:0x1234,0x0D00:0x1519,0x0D03:0x1234,0x0E00:0x1234,0x0E11:0x132B,0x0E20:0x7A5B,0x0E24:0x7A5B,0x0F40:0x9C4D,0x0F80:0x1234,0x1000:0x1234,0x103F:0x4EFD,0x2000:0x5CE3,0x2FFF:0xB7A9,0x4000:0x5CE3;tia=0x0A00:0x1234:0xF7:64"
+meaning = "The 64 destination words of the vdc_dma transfer and the words of its later sections (reversals, overlap, retrigger, the overrun first word moved and last word untouched) sit at their VRAM word addresses in the instance bytes under three power-on policies, E0 repeatability"
 required = true
 control = false
 expect_outcome = "pass"
 pins = []
-until_mclk = 1000000
+until_mclk = 2500000
