@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 4
 current_phase_name: VCE/VDC Raw Video
-current_plan: 16
+current_plan: 17
 status: executing
-stopped_at: Completed 04-12-PLAN.md
-last_updated: "2026-11-12T13:49:44.733Z"
+stopped_at: Completed 04-13-PLAN.md
+last_updated: "2026-11-12T16:12:04.129Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 3 complete, transitioned to Phase 4
-state_head: f92f1625fd5a941113a474cabbac0ed2e0fd238c
+state_head: 676e4a41e4b87c17265a10492563d41d57b6c6e8
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 91
-  completed_plans: 87
+  completed_plans: 88
   percent: 50
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 4 (VCE/VDC Raw Video) — READY TO EXECUTE
-Current Plan: 16
+Current Plan: 17
 Total Plans in Phase: 19
 Status: Ready to execute
 Last activity: 2026-11-11 — Phase 3 complete, transitioned to Phase 4
@@ -145,6 +145,7 @@ Progress: [█████░░░░░] 50%
 | Phase 04 P10 | about 2h | 3 tasks | 37 files |
 | Phase 04 P11 | about 50 min | 3 tasks | 30 files |
 | Phase 4 P12 | 1h | 3 tasks | 30 files |
+| Phase 04 P13 | 4h | 3 tasks | 22 files |
 
 ## Accumulated Context
 
@@ -320,6 +321,8 @@ Recent decisions affecting current work:
 - [Phase 4]: 04-12: BXR latch rows use a 16-dot shift over a 32-dot period row, so the next-line rows are MAN H7-7 and direction-independent; direction and the 64x64 wrap are a separate ASSUMED LED-VID-0010 scene
 - [Phase 4]: 04-12: a latch row finds its line by counting record origins before the dev-log write stamp, with a 250-clock margin guard as a harness failure; toy vid-scroll-latch removes the BYR counter reload (D-173 wording unobservable under R1)
 - [Phase 4]: 04-12: the burst frame and the backdrop index are classed ASSUMED LED-VID-0010, not MAN H7-6 (burst timing and backdrop colour are withheld words)
+- [Phase 04]: 04-13: the quiet-gate cut-line trigger fired (262 to 374 s user CPU against 150 s, load-dependent) and the cut is recommended; D-176 lever 1 applied (toy object libraries), levers 2 to 4 recorded
+- [Phase 04]: 04-13: seven page-scoped entries (LED-VID-0006, 0008, 0009, 0013, 0014, 0016, 0017) promoted to supported under ER-2; LED-VID-0011 stays assumed
 
 ### Pending Todos
 
@@ -343,6 +346,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12T13:49:42.375Z
-Stopped at: Completed 04-12-PLAN.md
+Last session: 2026-11-12T16:12:03.728Z
+Stopped at: Completed 04-13-PLAN.md
 Resume file: None
