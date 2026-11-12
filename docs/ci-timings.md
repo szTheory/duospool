@@ -916,6 +916,7 @@ figures below (user CPU of one `ds_runner --only ID` run in the gate preset, loa
 | (1) toys link shared object libraries | fired | applied at checkpoint A (`d831680`) | CMake only; cold build of 25 toys 47.1 s to 3.3 s user CPU |
 | (2) video fixtures under two policies | fired (`conformance` 86 s over 60 s) | **applied** in this plan | see lever (2) below |
 | (3) drop one chunk schedule from the video chunk cases | fired (`conformance` 86 s after lever (2)) | **applied** in this plan | see lever (3) below |
+| (4) move `vdc_random_regs` and the Linux container run to a scheduled job | fired (`conformance` still 86 s after lever (3)) | **recorded, not applied** | see lever (4) below |
 
 ### Lever (2): two policies in the video non-interference, restore and observer runs
 
@@ -946,3 +947,33 @@ figures below (user CPU of one `ds_runner --only ID` run in the gate preset, loa
   period that is neither a divisor nor a neighbour of the 1365-clock line and added no phase that 7, 1364 and 1366 do not reach. A record stream compared across
   schedules, the restore cases and `chunk_equiv_random32` (which keeps all its CPU schedules) are unchanged. This is recorded as an applied lever whose measured value is
   about 0.1 s, so that the efficiency review after the first Phase 4.1 CI run can restore the schedule at no real cost.
+
+### Lever (4): `vdc_random_regs` and the Linux container run to a scheduled job (recorded, not applied)
+
+The plan applies this lever only if the PR gate keeps an equivalent check through the existing excluded-mode machinery and the move needs no file outside the
+task list; and it never drops `vdc_random_regs` from the evidence. Neither condition can be met, so the lever is not applied.
+
+- **`vdc_random_regs` is a REQUIRED case and costs 0.35 s** in the gate preset (about 1 s under the sanitizers): 0.4 percent of the 86 s stage. The excluded-mode machinery
+  (`tests/conformance/EXCLUDED_IN_MODE`, D-78) knows the mode `sanitize` only, and its rule is that a listed case must be REQUIRED, must pass in the gate mode and must not
+  run in the excluded mode. A scheduled job would need a new mode, a new `schedule:` trigger in `.github/workflows/gate.yml` (the workflow has none, and
+  `workflow-check` has rules for the jobs it has) and a case that the PR gate no longer runs. That drops a REQUIRED case from the PR evidence for 0.35 s, which D-176 and the plan forbid.
+- **The Linux container run is not in the CI job.** `scripts/linux-repro` is a local one-off (about 80 s for the `gate-gcc` part under emulation); nothing in the workflow runs a
+  container, so moving it saves no CI time. It stays a local step of every plan that edits C.
+- **Where the stage time goes** (warm tree, gate preset, per case user CPU from the runs above): `ds_runner` over all 315 cases is about 50 s; the toy controls and the host steps are the rest. The
+  largest single cases are `observer_random` 4.1 s and `chunk_equiv_random32` 3.0 s (checkpoint A figures), `snapshot_restore_video_bg` 3.7 s and `snapshot_restore_video` 1.1 s (this plan);
+  no other video case is above 1.4 s. No lever of D-176 that
+  weakens nothing reaches a 60 s stage: levers (2) and (3) together remove about 2.8 s, lever (4) 0.35 s.
+
+### Result and recommendation
+
+| Measure | Before (`f9d9d69`) | After lever (3) | Note |
+|---------|--------------------|-----------------|------|
+| `conformance` stage | 86 s | 86 s | load 10 to 22 and 12; the trigger is 60 s |
+| `sh scripts/check --timing`, user CPU | 344.3 s | 309.1 s | load-dependent; the per-case figures are the measure of the levers |
+| `sh scripts/check --timing`, wall | 461.6 s | 393.3 s | load-dependent |
+| sum of the per-case user CPU removed | | about 2.8 s | levers (2) and (3) |
+
+The levers of D-176 that weaken no evidence are exhausted: the stage stays over its 60 s trigger and the gate over the 150 s trigger of D-180, both on a loaded development
+machine. The sprite cases of Phase 4.1 therefore land on a gate that is only 2.8 s cheaper than before; the cost of the cases themselves is recorded in the plan summaries. The
+remaining candidates are decisions for the efficiency review after the first CI run of Phase 4 and 4.1, with the CI job time in hand: the second awk run's share (the parallel job of the quick task
+already cuts the critical path), a skip of the `sanitizers` stage in the second awk run (needs a skip mechanism, which the fail-closed rule discourages) and the cost of the toy controls. None is applied here.
