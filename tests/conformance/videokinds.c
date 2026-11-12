@@ -2024,7 +2024,7 @@ struct vk_sweep {
     unsigned vacuous;  /* of them, left the group green or could not act (VIDEO_GROUP_VACUOUS) */
     unsigned harness;  /* of them, gave a fault of the case instead of a verdict */
     int baseline;      /* the verdict of the group on the unfaulted run (it must pass for a sweep to mean anything) */
-    char first[200];   /* the text of the first vacuous or harness fault, or of the failed baseline */
+    char first[400];   /* the text of the first vacuous or harness fault, or of the failed baseline */
     char line[96]; /* one line for the evidence text: the faults that flipped it */
 };
 
@@ -2224,7 +2224,7 @@ void kind_video_fault_sweep(const struct kase *k, struct ctx *c, char *got, size
     for (gi = 0u; gi < cp.vx->ng; gi++) {
         struct vk_run run;
         struct vk_sweep sw;
-        char msg[320];
+        char msg[440];
         char gline[320];
 
         if (strcmp(cp.vx->gr[gi].scene, cp.e.scene) != 0) {
