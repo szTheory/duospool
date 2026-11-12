@@ -8,9 +8,9 @@ status = "assumed"
 sources = ["REPORT|pcetech.txt|VRAM size and out-of-range reads, a community reading", "UNKNOWN|VRAM size|H7-12 allows a block length of 64K words; no page held states the installed size"]
 evidence = []
 disagreement = "an out-of-range read is a mirror or corrupt data (pcetech), 0 (MAME) or an unwritten array (Mednafen); writes ignored is agreed by four sources"
-pinning_test = "PENDING:4"
+pinning_test = "TEST:vdc_vram_sweep"
 updated = "2026-11-11"
-assumption = "The size is the community figure; the out-of-range read value vdc_oob_read = 0 is a named constant. VRAM is stored as bytes, little endian, so the live span is the stream payload on every host."
+assumption = "The size is the community figure; the out-of-range read value vdc_oob_read = 0 is a named constant. VRAM is stored as bytes, little endian, so the live span is the stream payload on every host. Pinned by the case vdc_vram_sweep (plan 04-06); E0, status stays assumed."
 revisit_phase = 4
 withheld = ["VRAM size", "VRAM mirroring", "power-on VRAM contents"]
 origin = "04-CONTEXT D-147"

@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The VRAM accessor pair and the port path over every word address (plan 04-06; D-147, T-04-20, ER-10): the runner kind vdc_vram_sweep (tests/conformance/vdckinds.c) boots a synthetic image and drives the VDC without a guest. Part accessor: every word below $8000 is written and read back (a pattern of its address, written in the kind), every word address from $8000
+# to $FFFF and three larger ones ($10000, $7FFFFFFF, $FFFFFFFF) reads 0 and a write there leaves every byte of the instance unchanged
+# (compared with a copy taken before, outside the 65,536 VRAM bytes, so a store past the array is seen). Part port: for each of the 65,536 word addresses MAWR is set and one word written through VWR (MAWR is then the address plus 1 modulo 65,536, also for a dropped word), then MARR is set and the word read back through VRR
+# by the low byte and high byte reads (MARR is then the address plus 2: one read started by the MARR write, one by the high byte read). The rule is D-147 (ASSUMED LED-VID-0007: 32,768 words, an out-of-range read is 0, a write there is dropped) with the steps of MAN H7-5 and H7-7; no expected value comes from a run. The gate runs the case under the sanitize preset
+# (ASan and UBSan) too, so an access past the 65,536 bytes would be a finding. Evidence tier E0 (the core against a rule written in the kind): no accuracy, compatibility or hardware claim, and the word pass is not a support claim.
+id = "vdc_vram_sweep"
+kind = "vdc_vram_sweep"
+fixture = "plain-256k"
+request = ""
+expect = "parts=accessor,port"
+meaning = "All 65,536 word addresses pass through the one bounds-checked accessor pair and the port path: words below $8000 round-trip, words at and above read 0 and leave the 65,536 VRAM bytes unchanged, clean under the sanitizers, E0 repeatability"
+required = true
+control = false
+expect_outcome = "pass"
+pins = ["LED-VID-0007"]

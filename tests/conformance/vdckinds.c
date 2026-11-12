@@ -18,6 +18,7 @@
  *                             stream bytes, the digest, the machine time, the steps and the verdict RAM of every schedule equal those of the uninterrupted run (D-137). A case that restored at no stop at a multiple of 1365 is a guest_failure: the tie would be untested.
  * The policy list of this file (zero, seeded-prng-v3 seed 1, seeded-prng-v3 seed 2) is the default list of a guest case (D-167); vd_policy_request appends a fragment to the request of a case as kind_guest does.
  */
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1299,4 +1300,340 @@ void kind_vdc_vram(const struct kase *k, struct ctx *c, char *got, size_t gotcap
         release_boot(&b);
     }
     snprintf(got, gotcap, "words=%u policies=%u", words, (unsigned)VD_POLICIES);
+}
+
+/* ---- vdc_vram_sweep and vdc_regmask (plan 04-06; D-146, D-147, D-148, D-161, D-175, T-04-20, T-04-21) ---- */
+
+#define VS_WORDS 65536u         /* every 16-bit word address (the address registers are 16 bits wide) */
+#define VS_STORED 32768u        /* the words that exist (ASSUMED LED-VID-0007, written here; the core's constant is DS_CONST_vdc_vram_words) */
+#define VS_PART_ACCESSOR 1u
+#define VS_PART_PORT 2u
+#define VS_PART_MASKS 1u
+#define VS_PART_AR 2u
+#define VS_PART_STATUS 4u
+
+/* the word the sweeps store at address w: a function of w written here, so a word stored at the wrong address or with swapped bytes cannot match */
+static uint32_t vs_pattern(uint32_t w, uint32_t salt)
+{
+    return ((w * 0x9E37u) ^ (w >> 3u) ^ salt) & 0xFFFFu;
+}
+
+/* the parts list of a case, expect = parts=NAME,NAME,...: a comma list of the names in names[], each once, as bits; 0 on a bad list */
+static unsigned vs_parts(const char *text, const char *const *names, unsigned n)
+{
+    char list[PK_LIST_MAX];
+    char *rest = list;
+    char *w;
+    unsigned out = 0u;
+
+    if (strncmp(text, "parts=", 6u) != 0 || pk_copy_text(text + 6, list, sizeof list) != 0) {
+        return 0u;
+    }
+    while ((w = pk_next_item(&rest, ',')) != NULL) {
+        unsigned q;
+
+        for (q = 0u; q < n && strcmp(w, names[q]) != 0; q++) {
+        }
+        if (q == n || (out & (1u << q)) != 0u) {
+            return 0u;
+        }
+        out |= 1u << q;
+    }
+    return out;
+}
+
+/* a booted synthetic instance of the case's fixture (plain-256k) with no content judged: the VDC is the subject, the cartridge is not touched */
+static struct ds_instance *vs_boot(struct ctx *c, const struct kase *k, struct booted *b)
+{
+    struct spec s;
+    const struct ds_instance *inst = NULL;
+    const char *err = boot_accepted(k->val[K_FIXTURE], k->has[K_REQUEST] ? k->val[K_REQUEST] : "", b, &s, &inst);
+
+    if (err != NULL) {
+        harness_error(c, err);
+        return NULL;
+    }
+    return (struct ds_instance *)(void *)b->mem;
+}
+
+/* one port write of a data word: AR = reg, then the low byte, then the high byte */
+static void vs_port_word(struct ds_instance *w, uint32_t reg, uint32_t value)
+{
+    ds_vdc_write(w, 0u, (uint8_t)reg, 0u);
+    ds_vdc_write(w, 2u, (uint8_t)(value & 0xFFu), 0u);
+    ds_vdc_write(w, 3u, (uint8_t)(value >> 8u), 0u);
+}
+
+/* the 65,536 bytes of VRAM against the words the sweep stored (a pattern below $8000, nothing above: the array ends there); 0 when equal */
+static int vs_bytes_equal(const struct ds_instance *w, uint32_t salt)
+{
+    uint32_t i;
+
+    for (i = 0u; i < VS_STORED; i++) {
+        uint32_t v = vs_pattern(i, salt);
+
+        if (w->vdc_vram[2u * i] != (uint8_t)(v & 0xFFu) || w->vdc_vram[2u * i + 1u] != (uint8_t)(v >> 8u)) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
+/*
+ * vdc_vram_sweep (D-147, T-04-20; E0): expect = parts=accessor,port (each once). Every one of the 65,536 word addresses goes through the one accessor pair (accessor part) and through the port path (port part: MAWR and MARR written, VWR written, VRR read) on a booted instance, under the sanitizers of the sanitize preset (the gate runs the case there too).
+ * accessor  every word below $8000 is written and read back (a pattern of the address, written in this file); every word address from $8000 to $FFFF and three larger ones ($10000, $7FFFFFFF, $FFFFFFFF) reads 0, and a write there leaves every byte of the instance unchanged (a copy taken before, compared outside the VRAM bytes,
+ *           so a store past the array is seen); the bytes then equal the pattern word by word.
+ * port      for each word address w: MAWR = w, VWR gets the word of w; the instance MAWR is w + 1 mod 65,536 (the step is applied also when the store is dropped); then for each w: MARR = w, the buffer is loaded, the high byte read of VRR returns the word of w (low byte read first) and steps MARR to w + 1 mod 65,536;
+ *           the words below $8000 equal the pattern and above read 0, and the bytes equal the pattern in the end.
+ * The literals are the rule of D-147 (ASSUMED LED-VID-0007: size, out-of-range read 0, writes dropped) and the steps of MAN H7-5 and H7-7 (IW 00 = +1, CR is 0); none comes from a run. No accuracy or hardware claim.
+ */
+void kind_vdc_vram_sweep(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    static const char *const names[2] = {"accessor", "port"};
+    struct booted b;
+    struct ds_instance *w;
+    unsigned parts = k->has[K_EXPECT] ? vs_parts(k->val[K_EXPECT], names, 2u) : 0u;
+    uint32_t i;
+    uint32_t bad = 0u;
+    uint32_t calls = 0u;
+    unsigned char *before;
+    int outside_bad;
+
+    if (parts == 0u) {
+        harness_error(c, "a vdc_vram_sweep case needs expect = parts=accessor,port (a list of the parts, each once) and a booting synthetic fixture");
+        return;
+    }
+    w = vs_boot(c, k, &b);
+    if (w == NULL) {
+        return;
+    }
+    if ((parts & VS_PART_ACCESSOR) != 0u) {
+        static const uint32_t big[3] = {0x10000u, 0x7FFFFFFFu, 0xFFFFFFFFu};
+
+        for (i = 0u; i < VS_STORED; i++) {
+            ds_vdc_vram_write(w, i, (uint16_t)vs_pattern(i, 0x1111u));
+            calls++;
+        }
+        for (i = 0u; i < VS_WORDS; i++) {
+            uint32_t want = i < VS_STORED ? vs_pattern(i, 0x1111u) : 0u;
+
+            bad += (uint32_t)ds_vdc_vram_read(w, i) != want;
+            calls++;
+        }
+        before = (unsigned char *)malloc(sizeof *w);
+        if (before == NULL) {
+            release_boot(&b);
+            harness_error(c, "out of memory for the instance copy of the vdc_vram_sweep kind");
+            return;
+        }
+        memcpy(before, w, sizeof *w);
+        for (i = VS_STORED; i < VS_WORDS; i++) {
+            ds_vdc_vram_write(w, i, 0xFFFFu);
+            calls++;
+        }
+        for (i = 0u; i < 3u; i++) {
+            ds_vdc_vram_write(w, big[i], 0xFFFFu);
+            bad += (uint32_t)ds_vdc_vram_read(w, big[i]) != 0u;
+            calls += 2u;
+        }
+        {
+            const unsigned char *now = (const unsigned char *)(const void *)w;
+            size_t v0 = offsetof(struct ds_instance, vdc_vram);
+            size_t v1 = v0 + (size_t)DS_VRAM_BYTES;
+
+            outside_bad = memcmp(before, now, v0) != 0 || memcmp(before + v1, now + v1, sizeof *w - v1) != 0;
+        }
+        free(before);
+        check(c, !outside_bad, "accessor: a write at a word address at or above $8000 changed a byte of the instance outside the 65,536 VRAM bytes (the satb, the beam, the registers)");
+        check(c, bad == 0u, "accessor: a read of a word address returned another word than the pattern written (below $8000) or a nonzero word (at and above $8000, ASSUMED LED-VID-0007)");
+        check(c, vs_bytes_equal(w, 0x1111u) == 0, "accessor: a write at a word address at or above $8000 changed a VRAM byte, or a stored word moved");
+    }
+    if ((parts & VS_PART_PORT) != 0u) {
+        uint32_t step_bad = 0u;
+        uint32_t read_bad = 0u;
+
+        bad = 0u;
+        ds_vdc_write(w, 0u, 5u, 0u); /* CR = 0: IW +1 */
+        ds_vdc_write(w, 2u, 0u, 0u);
+        ds_vdc_write(w, 3u, 0u, 0u);
+        for (i = 0u; i < VS_WORDS; i++) {
+            vs_port_word(w, 0u, i); /* MAWR = i */
+            ds_vdc_write(w, 0u, 2u, 0u);
+            ds_vdc_write(w, 2u, (uint8_t)(vs_pattern(i, 0x2222u) & 0xFFu), 0u);
+            ds_vdc_write(w, 3u, (uint8_t)(vs_pattern(i, 0x2222u) >> 8u), 0u);
+            step_bad += (uint32_t)w->vdc_reg[0] != ((i + 1u) & 0xFFFFu);
+            calls += 7u;
+        }
+        for (i = 0u; i < VS_WORDS; i++) {
+            uint32_t want = i < VS_STORED ? vs_pattern(i, 0x2222u) : 0u;
+            uint32_t lo;
+            uint32_t hi;
+
+            vs_port_word(w, 1u, i); /* MARR = i: the high byte write loads the buffer */
+            ds_vdc_write(w, 0u, 2u, 0u);
+            lo = (uint32_t)ds_vdc_read(w, 2u, 0u);
+            hi = (uint32_t)ds_vdc_read(w, 3u, 0u);
+            read_bad += (lo | (hi << 8u)) != want;
+            step_bad += (uint32_t)w->vdc_reg[1] != ((i + 2u) & 0xFFFFu); /* the write started one read (MARR = i + 1) and the high byte read of VRR another (i + 2) */
+            calls += 9u;
+        }
+        check(c, step_bad == 0u, "port: MAWR or MARR is not the address plus the step (1) modulo 65,536 after an operation, also for the dropped words (MAN H7-5, H7-7)");
+        check(c, read_bad == 0u, "port: a word read through VRR is not the word written through VWR (below $8000) or not 0 (at and above $8000, ASSUMED LED-VID-0007)");
+        check(c, vs_bytes_equal(w, 0x2222u) == 0, "port: the VRAM bytes do not equal the words written through VWR (word address, byte order or a dropped write that was stored)");
+    }
+    release_boot(&b);
+    snprintf(got, gotcap, "addresses=%u accesses=%u", (unsigned)VS_WORDS, (unsigned)calls);
+}
+
+/* the field widths of the registers R00 to R13 (MAN H7-2, H7-5 to H7-11; H7-2 prints VDW in the R0E row, the text and H7-11 say VCR), written here: the masks of D-146; R03 and R04 are reserved */
+static const uint16_t vm_mask[20] = {
+    0xFFFFu, 0xFFFFu, 0xFFFFu, 0x0000u, 0x0000u, 0x1FFFu, 0x03FFu, 0x03FFu, 0x01FFu, 0x00FFu, 0x7F1Fu, 0x7F7Fu, 0xFF1Fu, 0x01FFu, 0x00FFu, 0x001Fu, 0xFFFFu, 0xFFFFu, 0xFFFFu, 0xFFFFu,
+};
+
+/* the line_dirty bit a write of each register sets (D-161: b1 HSR and HDR, b2 VPR VDW VCR, b3 BXR and BYR, b5 CR and MWR), written here */
+static uint32_t vm_dirty(uint32_t reg)
+{
+    switch (reg) {
+    case 0x0Au:
+    case 0x0Bu:
+        return 0x02u;
+    case 0x0Cu:
+    case 0x0Du:
+    case 0x0Eu:
+        return 0x04u;
+    case 0x07u:
+    case 0x08u:
+        return 0x08u;
+    case 0x05u:
+    case 0x09u:
+        return 0x20u;
+    default:
+        return 0u;
+    }
+}
+
+/* the status through the port, and a flag raised by the single setter */
+static uint32_t vm_status(struct ds_instance *w)
+{
+    return (uint32_t)ds_vdc_read(w, 0u, 0u);
+}
+
+/*
+ * vdc_regmask (D-146, D-144, D-161, T-04-21; E0): expect = parts=masks,ar,status (each once) on a booted synthetic instance.
+ * masks   for each of R00 to R13: a write of $FF to the low byte reads back (instance bytes) the low byte of its mask, then a write of $FF to the high byte the whole mask (the field widths of MAN H7-2 and H7-5 to H7-11, written here); R03 and R04 stay 0; the line_dirty bit of the write is the one of D-161. MARR is judged after its read operation: written $FFFF it
+ *         is stepped to $0000 by the IW step of MAN H7-5 (the mask of MARR is $FFFF); a register with side effects keeps its value, nothing else changes.
+ * ar      AR keeps its low five bits ($E2 acts as $02, $24 as $04); at each AR from $14 to $1F a data write changes no register, the buffer, the latch, the line_dirty bits and no VRAM byte (a reserved register ignores a write, ASSUMED LED-VID-0006).
+ * status  a flag raised with its enable clear leaves the status 0; with the enable set (CR bits 0 to 3 for CR, OR, RR and VD, DCR bits 0 and 1 for DS and DV, MAN H7-4) the read returns the bit pattern and the next read 0 (a read clears bits 0 to 5); bit 6 (BSY) is the constant level 0 (ASSUMED LED-VID-0015) and bit 7 is 0;
+ *         disabling later does not clear a raised flag; a flag number above 5 changes nothing.
+ * The literals are the manual field widths, the bit layout of H7-4 and the rules of D-144 and D-146; none comes from a run. A mask is a field-width fact, not a read-back claim. No accuracy or hardware claim.
+ */
+void kind_vdc_regmask(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    static const char *const names[3] = {"masks", "ar", "status"};
+    struct booted b;
+    struct ds_instance *w;
+    unsigned parts = k->has[K_EXPECT] ? vs_parts(k->val[K_EXPECT], names, 3u) : 0u;
+    unsigned checks = 0u;
+    uint32_t n;
+    char msg[200];
+
+    if (parts == 0u) {
+        harness_error(c, "a vdc_regmask case needs expect = parts=masks,ar,status (a list of the parts, each once) and a booting synthetic fixture");
+        return;
+    }
+    w = vs_boot(c, k, &b);
+    if (w == NULL) {
+        return;
+    }
+    if ((parts & VS_PART_MASKS) != 0u) {
+        for (n = 0u; n < 20u; n++) {
+            uint32_t m = (uint32_t)vm_mask[n];
+            uint32_t want_low = 0x00FFu & m;
+            uint32_t want_full = n == 1u ? 0x0000u : m; /* MARR: the MSB write starts a read operation that steps it (+1: $FFFF becomes $0000) */
+
+            w->line_dirty = 0u;
+            ds_vdc_write(w, 0u, (uint8_t)n, 0u);
+            ds_vdc_write(w, 2u, 0xFFu, 0u);
+            snprintf(msg, sizeof msg, "R%02X: a low byte write of $FF reads back $%04X, not $%04X (the low byte of the field mask of D-146)", (unsigned)n, (unsigned)w->vdc_reg[n], (unsigned)want_low);
+            check(c, (uint32_t)w->vdc_reg[n] == want_low, msg);
+            snprintf(msg, sizeof msg, "R%02X: line_dirty is $%02X after a write, not $%02X (D-161)", (unsigned)n, (unsigned)w->line_dirty, (unsigned)vm_dirty(n));
+            check(c, (uint32_t)w->line_dirty == vm_dirty(n), msg);
+            ds_vdc_write(w, 3u, 0xFFu, 0u);
+            snprintf(msg, sizeof msg, "R%02X: a write of $FFFF reads back $%04X, not $%04X (the field mask of D-146, MAN H7-2 and H7-5 to H7-11)", (unsigned)n, (unsigned)w->vdc_reg[n], (unsigned)want_full);
+            check(c, (uint32_t)w->vdc_reg[n] == want_full, msg);
+            checks += 3u;
+        }
+        check(c, w->vdc_reg[3] == 0u && w->vdc_reg[4] == 0u, "R03 and R04 are not 0 after writes of $FFFF");
+        ds_vdc_write(w, 0u, 5u, 0u); /* CR = 0 again so that no later part sees an IW step or an enable */
+        ds_vdc_write(w, 2u, 0u, 0u);
+        ds_vdc_write(w, 3u, 0u, 0u);
+    }
+    if ((parts & VS_PART_AR) != 0u) {
+        uint32_t ar;
+        uint16_t regs[20];
+        uint32_t sum_before = 0u;
+        uint32_t sum_after = 0u;
+        uint32_t i;
+
+        ds_vdc_write(w, 0u, 0xE2u, 0u);
+        check(c, w->vdc_ar == 0x02u, "AR written $E2 does not keep its low five bits ($02, MAN H7-3: AR is bits 4-0)");
+        ds_vdc_write(w, 0u, 0x24u, 0u);
+        check(c, w->vdc_ar == 0x04u, "AR written $24 does not read $04 (five bits)");
+        for (ar = 0x14u; ar <= 0x1Fu; ar++) {
+            memcpy(regs, w->vdc_reg, sizeof regs);
+            sum_before = 0u;
+            sum_after = 0u;
+            for (i = 0u; i < (uint32_t)DS_VRAM_BYTES; i++) {
+                sum_before += (uint32_t)w->vdc_vram[i] * (i + 1u);
+            }
+            w->line_dirty = 0u;
+            ds_vdc_write(w, 0u, (uint8_t)ar, 0u);
+            ds_vdc_write(w, 2u, 0xFFu, 0u);
+            ds_vdc_write(w, 3u, 0xFFu, 0u);
+            for (i = 0u; i < (uint32_t)DS_VRAM_BYTES; i++) {
+                sum_after += (uint32_t)w->vdc_vram[i] * (i + 1u);
+            }
+            snprintf(msg, sizeof msg, "AR $%02X: a data write changed a register, the line_dirty bits or the VRAM bytes (a reserved register ignores a write, ASSUMED LED-VID-0006)", (unsigned)ar);
+            check(c, memcmp(regs, w->vdc_reg, sizeof regs) == 0 && w->line_dirty == 0u && sum_before == sum_after && w->vdc_ar == (uint8_t)ar, msg);
+            checks++;
+        }
+        ds_vdc_write(w, 0u, 0u, 0u);
+    }
+    if ((parts & VS_PART_STATUS) != 0u) {
+        uint32_t bit;
+
+        w->vdc_status = 0u;
+        vs_port_word(w, 5u, 0x0000u); /* CR and DCR clear: the enables of the first step (the masks part leaves DCR at its mask) */
+        vs_port_word(w, 0x0Fu, 0x0000u);
+        for (bit = 0u; bit < 8u; bit++) { /* the enables are clear (CR and DCR are 0): no flag is raised */
+            ds_vdc_flag(w, bit);
+        }
+        ds_vdc_flag(w, 31u);
+        check(c, vm_status(w) == 0u, "status: a flag raised with its enable clear left a bit in the status (MAN H7-4: a bit is set when an interrupt enabled by CR or DCR occurs)");
+        vs_port_word(w, 5u, 0x000Fu); /* CR: IE = all four */
+        vs_port_word(w, 0x0Fu, 0x0003u); /* DCR: DSC and DVC */
+        for (bit = 0u; bit < 6u; bit++) {
+            ds_vdc_flag(w, bit);
+        }
+        ds_vdc_flag(w, 6u);
+        ds_vdc_flag(w, 7u);
+        ds_vdc_flag(w, 31u);
+        n = vm_status(w);
+        snprintf(msg, sizeof msg, "status: the six flags raised with their enables set read $%02X, not $3F (CR 0, OR 1, RR 2, DS 3, DV 4, VD 5, MAN H7-4; BSY 6 and bit 7 read 0, ASSUMED LED-VID-0015)", (unsigned)n);
+        check(c, n == 0x3Fu, msg);
+        check(c, vm_status(w) == 0u, "status: a second read is not 0 (a read clears bits 0 to 5, MAN H7-4)");
+        ds_vdc_flag(w, 5u);
+        ds_vdc_flag(w, 2u);
+        vs_port_word(w, 5u, 0x0000u); /* disabling later does not clear a raised flag */
+        vs_port_word(w, 0x0Fu, 0x0000u);
+        n = vm_status(w);
+        check(c, n == 0x24u, "status: disabling the enables after the flags were raised did not leave the raised flags (VD and RR, $24) for the read");
+        ds_vdc_flag(w, 0u); /* enabling later never creates a flag */
+        vs_port_word(w, 5u, 0x000Fu);
+        check(c, vm_status(w) == 0u, "status: a flag raised with its enable clear appeared when the enable was set later (D-144)");
+        vs_port_word(w, 5u, 0x0000u);
+        checks += 5u;
+    }
+    release_boot(&b);
+    snprintf(got, gotcap, "assertions=%u", checks);
 }

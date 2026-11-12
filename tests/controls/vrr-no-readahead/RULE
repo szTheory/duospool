@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Toy control (D-85, D-173, F-39; a toy of the Phase 4 set): a read operation that never loads the read buffer, made from the live src/core/vdc.c by scripts/control-mutate. The anchor is the one statement of the read operation that loads the buffer from the word MARR names (the operation that the high byte write of MARR and the high byte read of VRR both start);
+# the replacement is an empty statement, the plausible mistake of a VRR that returns the buffer it already has (MARR still steps). The case in EXPECT must come out guest_failure on the toy: vdc_reg writes words through ST0, ST1 and ST2 and reads them back through VRR, so the first low byte read (check 1) returns the buffer of a machine that never loaded it, not the low byte $34 of the word the guest wrote.
+# vdc_vram is not listed: it reads the VRAM words from the instance bytes and the toy does not change what is stored, so it stays green by design. The real core passes both (REQUIRED cases).
+tag=rule-vrr-no-readahead
+file=src/core/vdc.c
+anchor=inst->vdc_rdbuf = ds_vdc_vram_read(inst, (uint32_t)inst->vdc_reg[VDC_MARR]);
+replace=;

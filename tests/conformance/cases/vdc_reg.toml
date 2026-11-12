@@ -19,6 +19,6 @@ meaning = "The authored vdc_reg fixture drives the VDC register interface throug
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-VID-0006"]
 until_mclk = 2000000
 checks = 37

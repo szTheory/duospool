@@ -260,3 +260,5 @@ video_out_rights
 vdc_reg
 vdc_vram
 mutate_sweep_vdc_reg
+vdc_vram_sweep
+vdc_regmask

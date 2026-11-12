@@ -1047,6 +1047,8 @@ static const struct {
     {"vid_noninterference", kind_vid_noninterference, 0},
     {"snapshot_restore_video", kind_snapshot_restore_video, 0},
     {"vdc_vram", kind_vdc_vram, 0},
+    {"vdc_vram_sweep", kind_vdc_vram_sweep, 0},
+    {"vdc_regmask", kind_vdc_regmask, 0},
     {"model_refuse", kind_model_refuse, 0},
     {"mutate_sweep", kind_mutate_sweep, 0},
     {"insn_sink_shapes", kind_insn_sink_shapes, 0},
