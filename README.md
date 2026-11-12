@@ -24,7 +24,9 @@ LED-IRQ-0002, LED-IRQ-0004 (part a only), LED-VID-0006, LED-VID-0008, LED-VID-00
 LED-VID-0017. Supported here means the model equals the cited manual page: a documentary comparison, not a hardware measurement.
 Each Phase 4 entry is scoped by its statement to the page-stated part only: LED-VID-0008 covers the RR, DV and VD flags, their
 enables and the clear on read (the OR and CR flags are raised by no event yet), LED-VID-0009 the next-line statements for BXR and
-BYR, and LED-VID-0017 exactly the control register contents 00h and 01h.
+BYR, LED-VID-0013 the size and the trigger of the SATB copy (its start at the following vertical blanking is a modelling reading),
+LED-VID-0014 the trigger, the length and the DCR bits of the VRAM copy (the cancel at a display start is a modelling reading), and
+LED-VID-0017 exactly the control register contents 00h and 01h.
 
 Guest-recorded interrupt positions agree with the model's position for the profile's line count (E2 self-consistency); the position
 is a labelled modelling assumption.

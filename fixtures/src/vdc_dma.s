@@ -3,8 +3,10 @@
 ;
 ; vdc_dma.s - the VDC VRAM-to-VRAM transfer fixture (plan 04-10; D-151, D-157, D-169, D-170, D-175, ER-10, F-26, F-27, H7-4, H7-11, H7-12). It is assembled by ca65 in the gate and never committed as a binary. The helpers are the macros of fixtures/lib/vdc.inc and fixtures/lib/vdma.inc.
 ; The guest maps the hardware page at logical $0000 (MPR0 = $FF), selects the high speed and writes the VDC through ST0, ST1 and ST2. CR stays 0 (burst: SB = BB = 0, so every frame lets a transfer run, D-151) in sections A to J. Section K is the one overrun case: it sets SB and a vertical setup and covers the cancel at the start of a display period.
-; Every destination word the guest reads is a word the transfer moved or a sentinel the guest wrote, so the check bytes are equal under every power-on policy (D-167). The source is a table of 64 words formed by the assembler, word i = ($1234 + $F7 * i) & $FFFF (a multiplication), uploaded to VRAM word $0800 by a TIA block transfer: W0 = $1234, W1 = $132B, W2 = $1422, W3 = $1519, W10 = $1BDA, W63 = $4EFD.
-; A: LENR = 63 in burst: 64 words from $0800 to $0A00. At once the last destination word is read back (check 1: it still holds its sentinel, so an instant transfer, which copies it, fails); after a counted delay the 64 words equal an additive running sum (GUEST, checks 2 and 3, a different computation from the multiplication) and the word after the block still holds its sentinel (check 4, LENR + 1 words, H7-12).
+; Every destination word the guest reads is a word the transfer moved or a sentinel the guest wrote, so the check bytes are equal under every power-on policy (D-167). The source is a table of 64 words formed by the assembler, word i = ($1234 + $F7 * i) & $FFFF (a multiplication), uploaded to VRAM word $0800 by a TIA block transfer: W0 = $1234, W1 = $132B, W2 = $1422, W3 =
+; $1519, W10 = $1BDA, W63 = $4EFD.
+; A: LENR = 63 in burst: 64 words from $0800 to $0A00. At once the last destination word is read back (check 1: it still holds its sentinel, so an instant transfer, which copies it, fails); after a counted delay the 64 words equal an additive running sum (GUEST, checks 2 and 3, a different computation from the multiplication) and the word after the block still holds its
+; sentinel (check 4, LENR + 1 words, H7-12).
 ; B: LENR = 0 moves exactly one word (M - 1, H7-12, checks 5 and 6). C and D: DCR bit 2 (SI/D) steps the source down and bit 3 (DI/D) the destination (H7-11, checks 7 to 10). E: DV is set at the end only when DCR bit 1 is set, and a status read clears it (H7-4, checks 11 to 13). F: IW does not apply (CR IW = 11, check 14). G: a forward overlapping copy propagates (check 15).
 ; H: MAWR, MARR and the read buffer are untouched (checks 16 to 18). I: a LENR low byte write alone starts nothing and a lone high byte write retriggers with the stored low byte (checks 19 and 20). J: the poll count until the last word arrives is recorded as an observe row (check 21, ASSUMED LED-VID-0014, VL1: no speed is claimed).
 ; K: the overrun. A vertical setup (VPR = $0F02, VDW = 239, VCR = 4, HSR = $0200, HDR = $001F) and CR = $0048 (SB set: not burst; VD enabled) are written, two VBlank flags pass so that the display line 0 of a whole frame has seen CR, and a transfer of 4096 words is started right after the third; the display period that follows starts long before the 4096 words are done, so
@@ -33,7 +35,7 @@ DSV_CHECKS = 24
         LIT 8, $34                ; MAN:H7-11 SI/D set: the fourth destination word is W0 = $1234 (low byte $34)
         LIT 9, $34                ; MAN:H7-11 DI/D set steps the destination down: W0 lands at the highest address, $0D03, low byte $34
         LIT 10, $19               ; MAN:H7-11 DI/D set: W3 lands at the lowest address $0D00, low byte $19
-        LIT 11, $00               ; MAN:H7-4 with DCR bit 1 clear the end of the transfer sets no flag: the status read is $00
+        LIT 11, $00               ; ASSUMED:LED-VID-0008 (the converse of H7-4, the reading of three emulators) with DCR bit 1 clear the end of the transfer sets no flag: the status read is $00
         LIT 12, $10               ; MAN:H7-4 with DCR bit 1 set the end of the transfer sets DV, bit 4 of the status: $10
         LIT 13, $00               ; MAN:H7-4 the status read cleared DV: the next read is $00
         LIT 14, $2B               ; ASSUMED:LED-VID-0014 IW does not apply to the transfer: with CR IW = 11 the destination is still consecutive and the second word is W1 = $132B (low byte $2B)
@@ -46,7 +48,7 @@ DSV_CHECKS = 24
         LIT 21, $00               ; ASSUMED:LED-VID-0014 the polls until the last destination word arrives (an observe row: recorded, never judged by a literal; VL1 has no speed claim)
         LIT 22, $E3               ; ASSUMED:LED-VID-0014 a transfer of 4096 words started at the VBlank entry with SB set is cut at the display start: its first word has moved, the destination holds $5CE3 (low byte $E3)
         LIT 23, $A9               ; ASSUMED:LED-VID-0014 the cut transfer never reached its last word: the destination still holds its sentinel $B7A9 (low byte $A9)
-        LIT 24, $00               ; MAN:H7-4 a transfer cancelled by the start of a display period sets no end status: bit 4 of the status read after the next VBlank is 0 although DV is enabled (the class of the row is that of the cut, ASSUMED LED-VID-0014)
+        LIT 24, $00               ; ASSUMED:LED-VID-0014 (H7-4 states it; the transfer is still running at the display start only under the modelled speed) a transfer cancelled by the start of a display period sets no end status: bit 4 of the status read after the next VBlank is 0 although DV is enabled (the class of the row is that of the cut, ASSUMED LED-VID-0014)
 
 SRC = $0800                     ; the source block: 64 words of the table
 DST = $0A00                     ; the destination block of section A: 64 words
@@ -118,7 +120,7 @@ fixture_main:
         VDMA_GO SRC, $0E00, 3
         VDMA_DELAY 20
         lda a:VDC_AR
-        CHECK_LIT 11                    ; check 11 MAN:H7-4 no flag with the enable clear
+        CHECK_LIT 11                    ; check 11 ASSUMED:LED-VID-0008 no flag with the enable clear
         VDC_REG VR_DCR, DCR_DV
         VDMA_GO SRC, $0E00, 3
         VDMA_DELAY 20
@@ -212,7 +214,7 @@ pollje: txa
         VDMA_WAIT_VD                    ; the next VBlank, a whole frame later: the display start in between cut the transfer
         lda a:VDC_AR
         and #$10                        ; bit 4: DV
-        CHECK_LIT 24                    ; check 24 MAN:H7-4 no end status for a cancelled transfer
+        CHECK_LIT 24                    ; check 24 ASSUMED:LED-VID-0014 no end status for a cancelled transfer
         VDMA_PEEK OVR_DST
         CHECK_LIT 22                    ; check 22 ASSUMED:LED-VID-0014 the first word moved
         VDMA_PEEK OVR_DST + 4095

@@ -23,9 +23,9 @@ DSV_CHECKS = 21
         .include "vdma.inc"
 
         CHECK_TABLE DSV_CHECKS
-        LIT 1, $00                ; MAN:H7-4 with every enable clear an RCR match and a VBlank leave the status at 0: more than two frames pass with the I flag set and the status read gives $00
+        LIT 1, $00                ; ASSUMED:LED-VID-0008 (the converse of H7-4) with every enable clear an RCR match and a VBlank leave the status at 0: more than two frames pass with the I flag set and the status read gives $00
         LIT 2, $02                ; ASSUMED:LED-IRQ-0009 with VD set and not yet read, bit 1 of $1403 (the IRQ1 level) reads 1 and bit 0 reads 0 (the VDC drives no IRQ2)
-        LIT 3, $20                ; MAN:H7-4 the VBlank flag is bit 5 of the status and no other bit: CR bit 2 is clear, so the RCR matches that pass leave bit 2 clear
+        LIT 3, $20                ; ASSUMED:LED-VID-0008 (the converse of H7-4 for RR) the VBlank flag is bit 5 of the status and no other bit: CR bit 2 is clear, so the RCR matches that pass leave bit 2 clear
         LIT 4, $00                ; ASSUMED:LED-IRQ-0009 after the status read the IRQ1 level reads 0 again: bits 1 and 0 of $1403 are 0
         LIT 5, $00                ; MAN:H7-4 a read of the status clears bits 0 to 5: the second read gives $00
         LIT 6, $20                ; MAN:H7-4 the next VBlank is taken as IRQ1 and the first status read in the handler gives $20
@@ -38,7 +38,7 @@ DSV_CHECKS = 21
         LIT 13, $02               ; ASSUMED:LED-IRQ-0009 the handler has run twice in all: once for the VBlank and once for the RCR match, and was not entered again
         LIT 14, $04               ; ASSUMED:LED-VID-0001 after the acknowledge the next RCR match raises RR again, and a VBlank that passes with CR bit 3 clear leaves bit 5 clear: 1.2 frames later the status reads $04
         LIT 15, $00               ; ASSUMED:LED-VID-0015 bits 6 and 7 of every status byte read are 0: the OR of the foreground reads and of the four handler reads, masked with $C0
-        LIT 16, $00               ; MAN:H7-4 with DCR bit 1 clear the end of a VRAM-to-VRAM transfer sets no DV: with every CR enable clear and the flags cleared the status read after the transfer is $00
+        LIT 16, $00               ; ASSUMED:LED-VID-0008 (the converse of H7-4) with DCR bit 1 clear the end of a VRAM-to-VRAM transfer sets no DV: with every CR enable clear and the flags cleared the status read after the transfer is $00
         LIT 17, $10               ; MAN:H7-4 with DCR bit 1 set the end of a transfer sets DV, bit 4 of the status, alone: $10
         LIT 18, $00               ; MAN:H7-4 the status read cleared DV: the next read is $00
         LIT 19, $20               ; ASSUMED:LED-VID-0013 a VRAM-to-SATB copy carried out at a VBlank with DCR bit 0 clear sets no DS: after the VBlank and a wait the status is $20, VD alone (bit 5)

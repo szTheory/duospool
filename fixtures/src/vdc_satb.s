@@ -23,11 +23,11 @@ DSV_CHECKS = 9
         .include "vdma.inc"
 
         CHECK_TABLE DSV_CHECKS
-        LIT 1, $20                ; MAN:H7-12 a DVSSR low byte write alone starts nothing: after a VBlank and the wait the status is $20 (VD alone, bit 5), no DS
-        LIT 2, $00                ; MAN:H7-12 a DVSSR high byte write is carried out at the beginning of the FOLLOWING vertical blanking: mid-frame the status is $00
+        LIT 1, $20                ; ASSUMED:LED-VID-0013 (H7-12 states it; DS shows a copy within the wait only under the modelled DS delay) a DVSSR low byte write alone starts nothing: after a VBlank and the wait the status is $20 (VD alone, bit 5), no DS
+        LIT 2, $00                ; ASSUMED:LED-VID-0013 (H7-12 states it; same DS delay) a DVSSR high byte write is carried out at the beginning of the FOLLOWING vertical blanking: mid-frame the status is $00
         LIT 3, $28                ; ASSUMED:LED-VID-0013 after that VBlank and the wait the status is $28: VD (bit 5) and DS (bit 3), DCR bit 0 set
         LIT 4, $00                ; MAN:H7-4 a status read clears bits 0 to 5: the second read is $00
-        LIT 5, $20                ; MAN:H7-12 nothing re-armed: the next VBlank copies nothing, the status is $20 (VD alone)
+        LIT 5, $20                ; ASSUMED:LED-VID-0013 (H7-12 states it; same DS delay) nothing re-armed: the next VBlank copies nothing, the status is $20 (VD alone)
         LIT 6, $20                ; ASSUMED:LED-VID-0013 with DCR bit 0 clear a re-armed copy raises no DS: the status is $20 (VD alone)
         LIT 7, $28                ; ASSUMED:LED-VID-0013 with DCR bit 4 (DSR) and bit 0 set the copy repeats at the next VBlank without a new write: VD and DS, $28
         LIT 8, $00                ; ASSUMED:LED-VID-0013 the polls from a VBlank until DS appears (an observe row: recorded, never judged by a literal; VL1 claims no duration)
@@ -80,12 +80,12 @@ fixture_main:
         VDMA_WAIT_VD
         WAITDS
         lda a:VDC_AR
-        CHECK_LIT 1                     ; check 1 MAN:H7-12 no DS, VD alone
+        CHECK_LIT 1                     ; check 1 ASSUMED:LED-VID-0013 no DS, VD alone
 ; ---- 2: the high byte write waits for the following VBlank ----
         VDC_REG VR_DVSSR, SRCA          ; the high byte write arms the copy of the next VBlank
         WAITDS
         lda a:VDC_AR
-        CHECK_LIT 2                     ; check 2 MAN:H7-12 mid-frame the status is clear
+        CHECK_LIT 2                     ; check 2 ASSUMED:LED-VID-0013 mid-frame the status is clear
 ; ---- 3: the copy at that VBlank, DS after it, cleared by the read ----
         VDMA_WAIT_VD
         WAITDS
@@ -97,7 +97,7 @@ fixture_main:
         VDMA_WAIT_VD
         WAITDS
         lda a:VDC_AR
-        CHECK_LIT 5                     ; check 5 MAN:H7-12 VD alone
+        CHECK_LIT 5                     ; check 5 ASSUMED:LED-VID-0013 VD alone
 ; ---- 5: DCR bit 0 clear: the copy raises no DS ----
         VDC_REG VR_DCR, $0000
         VDC_REG VR_DVSSR, SRCA          ; re-armed

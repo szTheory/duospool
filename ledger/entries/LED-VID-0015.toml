@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 # The VDC and VCE behaviour Phase 4 does not model (D-135; VID-03, VID-04). Deferred, not an assumption about hardware.
 id = "LED-VID-0015"
-statement = "deferred: VL2 slot-accurate VRAM access, BSY, CPU wait states, the VM and SM access width modes (R3), burst timing, DRAM refresh, CM, DR, TE and palette-access artefacts are not modelled in Phase 4; only VM = 0 and SM = 0 are rendered. Deferred, not an assumption about hardware."
+statement = "deferred: VL2 slot-level VRAM access, BSY, CPU wait states, the VM and SM access width modes (R3), burst timing, DRAM refresh, CM, DR, TE and palette-access artefacts are not modelled in Phase 4; only VM = 0 and SM = 0 are rendered. Deferred, not an assumption about hardware."
 profile = "pce-hucard-2btn"
 status = "deferred"
 sources = ["FACT|H7-8|VM and SM tables with the CPU slot positions in the character cycle (VM 0 gives CPU slots 1, 3, 5, 7)", "REPORT|PCEdev wiki|the /BUSY to RDY pinout, community"]
