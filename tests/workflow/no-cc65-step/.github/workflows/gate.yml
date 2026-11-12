@@ -5,17 +5,24 @@
 # this file only runs it on a clean Linux machine, which is a different machine from the owner's macOS one.
 # Block-style YAML only: scripts/workflow-check is a restricted line checker that refuses anything it cannot parse.
 #
-# The job earns its place by catching four failure classes the owner's machine cannot:
+# The workflow earns its place by catching four failure classes the owner's machine cannot:
 #   1. sh, awk, userland and nm differences from macOS (the Linux image: dash, mawk or gawk, GNU tools, ELF symbols)
 #   2. fresh-clone history dependence (a full clone with no local branches or leftover build files; protocol-order and the range audit read history)
-#   3. gcc versus clang diagnostics and undefined behaviour (the gate runs one compiler; the two steps after it run each compiler on its own build directory)
+#   3. gcc versus clang diagnostics and undefined behaviour (the gate runs one compiler; a build step in each job runs a compiler on its own build directory)
 #   4. awk dialect drift (the gate runs again under the other awk implementation)
-# One job on one runner image, no paths filter and no cache: measure first, and revisit when docs/ci-timings.md shows a step over 30 seconds.
-# Timeout: 20 minutes (plan 03-33 review, docs/ci-timings.md). The one real run (Phase 2, 47 stages) took 100 s, but the gate now has 56 stages and
-# runs twice (gawk then mawk) plus a gcc and a clang build, and the estimated critical path is 6 to 10 minutes with a wide uncertainty and no CI row
-# yet. The limit only bounds a hung job, so it is set to twice the high estimate; tighten it after three recorded Phase 3 rows.
-# First-run review items: the apt cc65 step cost, the critical path against this limit, and whether the second awk needs the apt install fallback
-# (the Tool versions step prints which awk is the default).
+# Three jobs, no paths filter and no cache: measure first, and revisit when docs/ci-timings.md shows a step over 30 seconds.
+#   gate-gawk  checkout, tool versions, cc65, the gate under the image's default awk (gawk on the 2026-11 image), the range audit, gcc build
+#   gate-mawk  checkout, tool versions, cc65, the gate under the other awk (mawk on that image), clang build
+#   gate       the required check name (the ruleset asks for gate): a tiny job that needs both and fails unless both concluded success
+# The two work jobs run in parallel on separate runners, so the critical path is the slower of them (docs/ci-timings.md, quick task 261112-ci-parallel-awk:
+# the measured single-job path was 856 s and 1048 s; the expected parallel path is about 520 s, unverified on CI until the owner authorises a push).
+# The gate job uses if: always() and the result of each needed job, because a skipped or cancelled needed job makes a plain needs-only job skip,
+# and a skipped required check reads as passing. Only the result success passes (scripts/workflow-check enforces this shape, WF_AGGREGATOR).
+# Timeouts: 25 minutes per work job and 5 for the aggregator. The estimated work-job path is about 7 to 9 minutes (from the single-job step times in
+# docs/ci-timings.md), so 25 minutes is about three times the slower estimate; a limit only bounds a hung job. Every job needs a timeout (WF_NO_TIMEOUT)
+# and its own permissions: contents: read block (WF_NO_PERMISSIONS), though the top-level block already applies to every job.
+# First-run review items for this shape: the two critical paths against the estimate, the repeated cc65 install and checkout cost, and whether the
+# second awk needs the apt install fallback (the Tool versions step prints which awk is the default).
 name: gate
 on:
   pull_request:
@@ -32,10 +39,12 @@ defaults:
   run:
     shell: sh -eu {0}
 jobs:
-  gate:
-    name: gate
+  gate-gawk:
+    name: gate-gawk
+    permissions:
+      contents: read
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -66,11 +75,37 @@ jobs:
         run: sh scripts/audit-history --range "${BASE_SHA}..HEAD"
       - name: gcc build and conformance
         run: sh scripts/conformance-run run --preset gate-gcc
-      - name: clang build and conformance
-        run: sh scripts/conformance-run run --preset gate-clang
-      # The other awk implementation goes first on PATH through a symlink in a temporary directory; nothing system-wide is switched.
-      # If it is not installed, apt installs it as a fallback (a choice recorded for review after the first run, D-74).
-      - name: Second awk gate run
+  gate-mawk:
+    name: gate-mawk
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Tool versions
+        run: |
+          {
+            echo "image: ${ImageVersion:-unknown}"
+            cmake --version | sed -n 1p
+            ninja --version
+            gcc --version | sed -n 1p
+            clang --version | sed -n 1p
+            for t in gawk mawk awk; do command -v "$t" || echo "$t: absent"; done
+            readlink -f "$(command -v awk)"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Install cc65
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq cc65
+      # The other awk implementation (the one that is not the image default) goes first on PATH through a symlink in a temporary directory;
+      # nothing system-wide is switched. If it is not installed, apt installs it as a fallback (a choice recorded for review, D-74).
+      # The clang step below runs under the default awk, as it did when it was a step of the single job.
+      - name: Gate under the other awk
         run: |
           default_awk=$(readlink -f "$(command -v awk)")
           case $default_awk in
@@ -86,6 +121,28 @@ jobs:
           ln -sf "$(command -v "$other")" "$shim/awk"
           PATH="$shim:$PATH"
           export PATH
-          echo "first run awk: $default_awk"
-          echo "second run awk: $(readlink -f "$(command -v awk)")"
+          echo "image default awk: $default_awk"
+          echo "awk for this gate run: $(readlink -f "$(command -v awk)")"
           sh scripts/check
+      - name: clang build and conformance
+        run: sh scripts/conformance-run run --preset gate-clang
+  gate:
+    name: gate
+    permissions:
+      contents: read
+    needs:
+      - gate-gawk
+      - gate-mawk
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require both gate jobs
+        env:
+          GAWK_RESULT: ${{ needs.gate-gawk.result }}
+          MAWK_RESULT: ${{ needs.gate-mawk.result }}
+        run: |
+          echo "gate-gawk: $GAWK_RESULT"
+          echo "gate-mawk: $MAWK_RESULT"
+          test "$GAWK_RESULT" = success
+          test "$MAWK_RESULT" = success

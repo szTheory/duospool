@@ -8,21 +8,25 @@
 # usage: workflow-check [--expect CODE[,CODE...]] [--root DIR]      (--root defaults to the repository root; it reads ROOT/.github)
 #   Every ROOT/.github/workflows/*.yml and *.yaml goes through the restricted line checker scripts/lib/workflow-rules.awk (its header lists
 #   the accepted YAML subset and the rules). The file gate.yml must exist and carry the gate step. Codes (one rule each):
-#     WF_NO_PERMISSIONS        no top-level permissions block
+#     WF_NO_PERMISSIONS        no top-level permissions block, or (gate.yml) a job without its own permissions block holding contents: read
 #     WF_EXCESS_PERMISSION     any permission other than contents: read, at any level, or permissions given as a scalar
 #     WF_UNPINNED_ACTION       a uses value whose ref is not a full 40-character lowercase hex commit
 #     WF_UNEXPECTED_ACTION     a uses value that is not actions/checkout
 #     WF_FORBIDDEN_TRIGGER     a pull_request_target or workflow_run trigger
-#     WF_MISSING_FETCH_DEPTH   the checkout step lacks fetch-depth: 0 (or there is no checkout step)
+#     WF_MISSING_FETCH_DEPTH   a checkout step lacks fetch-depth: 0, or (gate.yml) a job other than gate has no checkout step
 #     WF_PERSIST_CREDENTIALS   the checkout step lacks persist-credentials: false
 #     WF_SHELL                 defaults.run.shell is not sh -eu {0}, or a shell key says otherwise
-#     WF_RUNNER                runs-on is not ubuntu-24.04
-#     WF_NO_GATE_STEP          gate.yml is missing, or has no step named Gate whose run is exactly: sh scripts/check
-#     WF_NO_CC65_STEP          no step before the Gate step runs an apt-get install command that names cc65 (the fixture assembler, D-60)
+#     WF_RUNNER                runs-on is not ubuntu-24.04, or a job has no runs-on
+#     WF_NO_GATE_STEP          gate.yml is missing, has no step named Gate whose run is exactly: sh scripts/check, or has a job other than gate that
+#                              runs no step with the gate command (a run that is, or a run block holding a line, exactly sh scripts/check)
+#     WF_NO_CC65_STEP          in a job that runs the gate command, no step before it runs an apt-get install command that names cc65 (D-60)
+#     WF_NO_TIMEOUT            a job without timeout-minutes, or one that is not a whole number from 1 to 30 (any workflow file)
+#     WF_AGGREGATOR            the job gate (the required check, quick task 261112-ci-parallel-awk) is missing, is not named gate, does not need
+#                              exactly the other jobs, lacks if: always(), does not test every needed result with test "$VAR" = success, or can end early
 #     WF_TEMPLATE              ROOT/.github/pull_request_template.md lacks the record 0007 line (grep -qxF, a whole line)
 #     WF_EXPR_IN_RUN           an expression opener inside a run value or run block (pass it through env, D-62)
 #     WF_UNTRUSTED_EXPR        an expression outside the allowlist: github.event.pull_request.base.sha, github.event_name, github.workflow,
-#                              github.ref, github.sha (and one of those compared with == to a quoted word)
+#                              github.ref, github.sha (and one of those compared with == to a quoted word), and needs.JOB.result in the job gate only
 #     WF_FORBIDDEN_KEY         a secrets reference, self-hosted, a continue-on-error key, or || true / || : in a run block
 #     WF_CONCURRENCY           the top-level concurrency block lacks the exact group or the exact cancel-in-progress expression (D-62)
 #     WF_DEPENDABOT            ROOT/.github/dependabot.yml is missing or lacks version 2, the github-actions ecosystem, monthly, or the group
