@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# unknown-key: a STRUCT literal with a key that the check does not know (colour): keys are closed and fail closed.
+scene	uk	case=video_uk	role=literal
+group	uk	g1	form=STRUCT	class=ASSUMED:LED-VID-0004	sym=none	kills=F4
+row	uk	g1	check=count	grid=1365;colour=2

@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# rows-vacuous: a ROWS literal of one distinct value and no transition: an all-one-colour expectation would pass a null renderer (D-171).
+scene	rv	case=video_rv	role=literal
+group	rv	g1	form=ROWS	class=ASSUMED:LED-VID-0010	sym=asym	kills=F1,F2
+row	rv	g1	line=active+0;x=0..5	index=6*5

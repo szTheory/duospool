@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# A toy of the mini-root: the file it mutates is a video source of src/core.
+tag=rule-toy
+file=src/core/vid.c
+anchor=x
+replace=y

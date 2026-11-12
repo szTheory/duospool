@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The scene cases of this mini-root that no toy lists, each with the reason: CASE_ID, a TAB and the reason.
+video_ok_literal	mini-root case, no toy
+video_ok_golden	golden change detector beside the literal case video_ok_literal
+video_ok_struct	mini-root case, no toy

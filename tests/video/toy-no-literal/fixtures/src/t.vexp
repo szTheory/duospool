@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# toy-no-literal: a toy of src/core/vid.c whose EXPECT lists only a struct-role case, so no literal-role video case and no guest-kind case.
+scene	nl	case=video_nl_struct	role=struct
+group	nl	g1	form=STRUCT	class=ASSUMED:LED-VID-0004	sym=none	kills=F4
+row	nl	g1	check=count	grid=1365
