@@ -1413,7 +1413,7 @@ static void dl_windows(struct ctx *c, const char *rom, const char *request, char
     memset(&dsk, 0, sizeof dsk);
     dsk.records = big.b;
     dsk.capacity = DL_WIN_CAP * 4u;
-    ds_obs_begin(&log, NULL, &dsk);
+    ds_obs_begin(&log, NULL, &dsk, NULL);
     memset(&bus, 0, sizeof bus);
     memset(&bus_off, 0, sizeof bus_off);
     bus.obs = &log;
@@ -1505,7 +1505,7 @@ static void dl_windows(struct ctx *c, const char *rom, const char *request, char
         memset(&ssk, 0xA5, sizeof ssk);
         ssk.records = small.b;
         ssk.capacity = 4u;
-        ds_obs_begin(&slog, NULL, &ssk);
+        ds_obs_begin(&slog, NULL, &ssk, NULL);
         memset(&sbus, 0, sizeof sbus);
         sbus.obs = &slog;
         for (n = 0u; n < 10u; n++) {
@@ -1863,4 +1863,83 @@ void kind_trace_out_rights(const struct kase *k, struct ctx *c, char *got, size_
         return;
     }
     snprintf(got, gotcap, "items=%u", n);
+}
+
+/* ---- kind vid_chan_append: the video sink channel (plan 04-02; D-162, F-2, T-04-05, T-04-07) ----
+ * expect = parts=attached (more parts are listed here as they are added). Evidence class E0: the channel mechanism and the non-interference of an attached sink; no video exists yet, so no hardware claim.
+ *   attached  fixture = authored:NAME and until_mclk: the ROM is run once with no sink (the reference) and once with a vid sink of 4096 bytes whose header and buffer are poisoned with $A5 and which has guard bytes around it. There is no producer yet,
+ *             so after the run the header must read count 0, lost 0, seq 0, bytes 0 and the zero word (decoded by hand, little-endian: the poisoned header was overwritten and never read), the buffer must still hold its poison, and the
+ *             run must give the reference machine time, steps and digest. */
+
+#define VC_BYTES 4096u
+#define VC_GUARD 64u
+
+static void vc_attached(struct ctx *c, const char *rom, const char *request, uint64_t until, char *got, size_t gotcap)
+{
+    struct booted b0;
+    struct booted b1;
+    const struct ds_instance *ci0 = NULL;
+    const struct ds_instance *ci1 = NULL;
+    struct ds_run_request rq;
+    struct ds_run_result r0;
+    struct ds_run_result r1;
+    struct ds_vid_sink vsk;
+    union {
+        uint64_t align;
+        unsigned char b[VC_GUARD + VC_BYTES + VC_GUARD];
+    } mem;
+    uint8_t d0[DS_DIGEST_BYTES];
+    uint8_t d1[DS_DIGEST_BYTES];
+    const char *err = boot_built_rom(rom, request, &b0, &ci0);
+    size_t j;
+    int untouched = 1;
+
+    if (err != NULL) {
+        harness_error(c, err);
+        return;
+    }
+    err = boot_built_rom(rom, request, &b1, &ci1);
+    if (err != NULL) {
+        release_boot(&b0);
+        harness_error(c, err);
+        return;
+    }
+    memset(&mem, OBS_POISON, sizeof mem);
+    memset(&vsk, OBS_POISON, sizeof vsk);
+    vsk.bytes = mem.b + VC_GUARD;
+    vsk.capacity = VC_BYTES;
+    memset(&r0, 0, sizeof r0);
+    memset(&r1, 0, sizeof r1);
+    memset(&rq, 0, sizeof rq);
+    rq.struct_size = (uint32_t)sizeof rq;
+    rq.until_mclk = until;
+    (void)ds_run((struct ds_instance *)(void *)b0.mem, &rq, &r0);
+    rq.vid = &vsk;
+    (void)ds_run((struct ds_instance *)(void *)b1.mem, &rq, &r1);
+    note_run(c, r1.machine_time, r1.reason);
+    check(c, r0.reason == (uint32_t)DS_RUN_REASON_UNTIL && r1.reason == (uint32_t)DS_RUN_REASON_UNTIL && r1.refusal == (uint32_t)DS_RUNREF_NONE, "a run with a vid sink was refused or did not reach its deadline");
+    check(c, get_u32(vsk.header) == 0u && get_u32(vsk.header + 4) == 0u && get_u64(vsk.header + 8) == 0u && get_u64(vsk.header + 16) == 0u && get_u64(vsk.header + 24) == 0u,
+          "the vid header after a run with no producer does not read count 0, lost 0, seq 0, bytes 0 and a zero word (a poisoned header must be overwritten)");
+    for (j = 0u; j < sizeof mem.b; j++) {
+        untouched = untouched && mem.b[j] == (unsigned char)OBS_POISON;
+    }
+    check(c, untouched, "the core wrote into the vid buffer or its guard bytes although no record was offered");
+    check(c, r0.machine_time == r1.machine_time && r0.steps == r1.steps && ds_digest(ci0, d0) == 0u && ds_digest(ci1, d1) == 0u && memcmp(d0, d1, DS_DIGEST_BYTES) == 0,
+          "attaching a vid sink changed the machine time, the steps or the digest of the run");
+    release_boot(&b0);
+    release_boot(&b1);
+    snprintf(got, gotcap, "count=%u lost=%u seq=%llu bytes=%llu", (unsigned)get_u32(vsk.header), (unsigned)get_u32(vsk.header + 4), (unsigned long long)get_u64(vsk.header + 8), (unsigned long long)get_u64(vsk.header + 16));
+}
+
+void kind_vid_chan_append(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    char rom[48];
+    uint64_t until = 0u;
+
+    rom[0] = '\0';
+    if (strcmp(k->val[K_EXPECT], "parts=attached") != 0 || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until == 0u || authored_name(k->val[K_FIXTURE], rom, sizeof rom) != 0) {
+        harness_error(c, "a vid_chan_append case needs fixture = authored:NAME, until_mclk and expect = parts=attached");
+        return;
+    }
+    vc_attached(c, rom, k->val[K_REQUEST], until, got, gotcap);
 }

@@ -2,7 +2,7 @@
 /* SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors */
 /*
  * ds_obs.h - the observer sinks of the core (plans 03-10 and 03-19; D-119, D-131, WR-02 extended). Private to the core and its tests, like ds_core.h; no public header exists (D-05).
- * A sink is caller memory: the instance holds machine state only and nothing here is part of it. Two sinks exist, both output only, both with the same header and the same overflow policy.
+ * A sink is caller memory: the instance holds machine state only and nothing here is part of it. Three sinks exist, all output only; insn and dev share one header and one overflow policy, vid (plan 04-02) has its own, below.
  * The instruction sink (insn) receives one fixed-size record per executed instruction:
  *   record (DS_INSN_RECORD_BYTES = 24, little-endian, written byte by byte from widened unsigned values, the state BEFORE the instruction runs):
  *     +00 u64 start stamp (machine time in master clocks)  +08 u16 pc  +10 u8 opcode  +11 u8 A  +12 u8 X  +13 u8 Y  +14 u8 S  +15 u8 P  +16 u8 speed  +17..+23 zero
@@ -15,9 +15,13 @@
  * header (DS_INSN_HEADER_BYTES = DS_DEV_HEADER_BYTES = 16, little-endian, in the sink struct): +00 u32 count (records stored)  +04 u32 lost (records dropped, saturating)  +08 u64 seq (records offered in this call = count + lost
  * unless lost saturated). The core overwrites the header at the start of every accepted ds_run call and again at its end, and never reads it back, so a garbage-poisoned header cannot steer a write. The only overflow policy is
  * drop-newest: when count reaches the capacity of the request, later records are dropped and lost counts them. There is no SINK_FULL stop reason (D-95, D-119).
- * The count of the running call lives in a local of ds_run (struct ds_obs_log), never in the instance and never in caller memory. A sink whose memory overlaps the instance, the request, the result, itself or the other sink, a misaligned
+ * The video sink (vid, plan 04-02; D-161, D-162) is a byte buffer for whole raw-video records of 64 to DS_VID_MAX_REC_BYTES bytes (the DSVR v1 layout is written by a later plan; the channel here only stores them). Its capacity is in bytes, at most
+ * DS_VID_SINK_MAX_BYTES (a larger one is run.sink_unsupported), and its buffer is DS_VID_ALIGN-aligned. header (DS_VID_HEADER_BYTES = 32, little-endian, in the sink struct): +00 u32 count (whole records stored)  +04 u32 lost (records not stored, saturating)
+ * +08 u64 seq (records offered in this call)  +16 u64 bytes (bytes stored: the sum of the stored records)  +24 u64 zero. Written at the start and at the end of every accepted call and never read. The policy is drop-newest in whole records with a sticky full
+ * flag (F-2): the first record that does not fit sets full, and that record and every later one of the call count as lost, even a later one that is smaller; lost = seq - count and no record is ever cut or gapped. A record pointer is never used for a zero-length copy.
+ * The count of the running call lives in a local of ds_run (struct ds_obs_log), never in the instance and never in caller memory. A sink whose memory overlaps the instance, the request, the result, itself or another sink, a misaligned
  * sink or record pointer, a NULL record pointer with a nonzero capacity, or a record range that wraps the address space is refused as run.memory_invalid and nothing is written (the instance is byte-identical). A capacity above
- * DS_SINK_MAX_RECORDS is refused as run.sink_unsupported. The order of the checks is: the sink structs (memory_invalid), then the capacities (sink_unsupported), then the record ranges (memory_invalid). Hooks are void and take a const
+ * DS_SINK_MAX_RECORDS (insn, dev) or DS_VID_SINK_MAX_BYTES (vid) is refused as run.sink_unsupported. The order of the checks is: the sink structs (memory_invalid), then the capacities (sink_unsupported), then the record ranges (memory_invalid). Hooks are void and take a const
  * instance: they cannot change machine state. The type name ds_sink_fn belongs to the digest stream (ds_serial.h).
  */
 #ifndef DS_OBS_H
@@ -38,6 +42,17 @@
 _Static_assert((uint64_t)DS_SINK_MAX_RECORDS * (uint64_t)DS_INSN_RECORD_BYTES <= (uint64_t)SIZE_MAX, "the largest sink must fit the address space");
 _Static_assert((uint64_t)DS_SINK_MAX_RECORDS * (uint64_t)DS_DEV_RECORD_BYTES <= (uint64_t)SIZE_MAX, "the largest sink must fit the address space");
 
+/* the video sink (plan 04-02; D-161, D-162): the header and the byte capacity are in the struct, the record limits are fixed by the DSVR v1 layout (rec_bytes = 64 + ((4 * active_w + 7) & ~7), active_w at most DS_VID_MAX_DOTS) */
+#define DS_VID_HEADER_BYTES 32u
+#define DS_VID_ALIGN 8u
+#define DS_VID_SINK_MAX_BYTES 67108864u /* 64 MiB: a larger capacity is run.sink_unsupported; it fits the address space on every supported host */
+#define DS_VID_MAX_DOTS 682u            /* floor(1365 / 2): the dots of the longest line at the shortest dot clock; the _Static_assert against DS_CONST_line_mclk lands with that constant (plan 04-03) */
+#define DS_VID_REC_HEADER_BYTES 64u
+#define DS_VID_MAX_REC_BYTES (DS_VID_REC_HEADER_BYTES + ((4u * DS_VID_MAX_DOTS + 7u) & ~7u))
+#define DS_VIDREC_VERSION 1u
+_Static_assert(DS_VID_MAX_REC_BYTES == 2792u, "the longest DSVR v1 record is 64 + 2728 = 2792 bytes (D-161)");
+_Static_assert((uint64_t)DS_VID_SINK_MAX_BYTES <= (uint64_t)SIZE_MAX, "the largest sink must fit the address space");
+
 /* the kind and flag bytes of a dev record */
 enum { DS_DEV_WRITE = 1, DS_DEV_READ = 2, DS_DEV_ST = 3 };
 enum { DS_DEV_FLAG_PENALTY = 1, DS_DEV_FLAG_PHYS = 2 };
@@ -54,6 +69,12 @@ struct ds_dev_sink {
     uint32_t capacity;                   /* records, from the request */
 };
 
+struct ds_vid_sink {
+    uint8_t header[DS_VID_HEADER_BYTES]; /* output only: written by ds_run, never read */
+    uint8_t *bytes;                      /* capacity bytes of caller memory, DS_VID_ALIGN-aligned when capacity is nonzero */
+    uint32_t capacity;                   /* BYTES, from the request: nothing in caller memory but this field steers how much is written */
+};
+
 /* the running state of one sink in one ds_run call: a local of ds_run, written back to the header at the end; on is 0 for a sink the request did not carry */
 struct ds_obs_chan {
     int on;
@@ -65,14 +86,28 @@ struct ds_obs_chan {
     uint64_t seq;
 };
 
+/* the running state of the vid sink in one ds_run call (whole records in a byte buffer): on is 0 for a sink the request did not carry; full is the sticky flag of the drop-newest rule */
+struct ds_obs_vchan {
+    int on;
+    int full;
+    uint8_t *header;
+    uint8_t *bytes;
+    uint32_t capacity;
+    uint32_t count;
+    uint32_t lost;
+    uint64_t seq;
+    uint64_t stored;
+};
+
 struct ds_obs_log {
     struct ds_obs_chan insn;
     struct ds_obs_chan dev;
+    struct ds_obs_vchan vid;
 };
 
 /* DS_RUNREF_NONE when the sinks of the request may be used by this call, else the refusal (memory_invalid or sink_unsupported) in the order above; a NULL sink is not carried and is always acceptable */
 uint32_t ds_obs_sinks_check(const struct ds_run_request *request, const struct ds_instance *inst, const struct ds_run_result *result);
-void ds_obs_begin(struct ds_obs_log *log, struct ds_insn_sink *insn, struct ds_dev_sink *dev); /* zero the running counts and overwrite the headers of the sinks that are carried */
+void ds_obs_begin(struct ds_obs_log *log, struct ds_insn_sink *insn, struct ds_dev_sink *dev, struct ds_vid_sink *vid); /* zero the running counts and overwrite the headers of the sinks that are carried */
 void ds_obs_insn(struct ds_obs_log *log, const struct ds_instance *inst, uint32_t opcode);     /* one record, or lost++; log NULL or no insn sink does nothing */
 /* one dev record for an access at the stamp the bus computed for it, carrying the pc the bus was given (struct ds_bus pc: never read from the instance); the bus calls it after the access, so aux is the latch it left; log NULL or no dev sink does nothing */
 void ds_obs_dev(struct ds_obs_log *log, const struct ds_instance *inst, uint64_t stamp, uint32_t pc, uint32_t phys, uint32_t value, uint32_t kind, uint32_t flags);

@@ -239,3 +239,4 @@ snapshot_restore_timer
 snapshot_hostile
 brk_irq_sample
 dev_record_pc
+vid_chan_append

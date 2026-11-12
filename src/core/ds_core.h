@@ -308,12 +308,13 @@ enum ds_run_refusal {
 /* "run.NAME" for a run refusal number, "ok" for DS_RUNREF_NONE, NULL for a number that is not a member */
 const char *ds_run_refusal_name(uint32_t number);
 
-/* the instruction sink and the device-register sink of ds_obs.h (plans 03-10 and 03-19) and the running log of one ds_run call, whose layouts live there */
+/* the instruction sink, the device-register sink and the video sink of ds_obs.h (plans 03-10, 03-19 and 04-02) and the running log of one ds_run call, whose layouts live there */
 struct ds_insn_sink;
 struct ds_dev_sink;
+struct ds_vid_sink;
 struct ds_obs_log;
 
-/* the run request: an absolute deadline in master clocks, never a budget (D-93); insn is the caller-owned instruction sink and dev the caller-owned device-register sink (NULL = none, ds_obs.h) */
+/* the run request: an absolute deadline in master clocks, never a budget (D-93); insn is the caller-owned instruction sink, dev the caller-owned device-register sink and vid the caller-owned video sink, appended last in plan 04-02 (NULL = none, ds_obs.h) */
 struct ds_run_request {
     uint32_t struct_size; /* sizeof(struct ds_run_request) */
     uint32_t reserved;    /* must be 0 */
@@ -322,6 +323,7 @@ struct ds_run_request {
     void *stop_ctx;
     struct ds_insn_sink *insn;
     struct ds_dev_sink *dev;
+    struct ds_vid_sink *vid;
 };
 
 struct ds_run_result {
@@ -338,7 +340,7 @@ struct ds_run_result {
  * Run the machine in whole instructions until machine time reaches until_mclk (UNTIL) or the stop callback holds (CALLBACK). A deadline at or
  * below the current machine time returns UNTIL with zero steps. Stops only fall between steps, so the end time can pass the deadline by less
  * than ds_max_step_mclk(). No state lives outside the instance between steps: run(N) then run(M) equals run(M) from the start (D-92).
- * A NULL instance or request, a wrong struct_size, a nonzero reserved, a sink with a capacity above DS_SINK_MAX_RECORDS (sink_unsupported), a sink that overlaps the call's own memory, the other sink or itself or is misaligned (memory_invalid) and a deadline that would wrap machine time are
+ * A NULL instance or request, a wrong struct_size, a nonzero reserved, a sink with a capacity above DS_SINK_MAX_RECORDS or DS_VID_SINK_MAX_BYTES (sink_unsupported), a sink that overlaps the call's own memory, another sink or itself or is misaligned (memory_invalid) and a deadline that would wrap machine time are
  * refused with REFUSED and a refusal code; the instance is then unchanged. Returns the reason, also written to result when it is not NULL.
  */
 uint32_t ds_run(struct ds_instance *inst, const struct ds_run_request *request, struct ds_run_result *result);

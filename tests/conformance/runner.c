@@ -1045,6 +1045,7 @@ static const struct {
     {"observer", kind_observer, 0},
     {"chunk_equiv", kind_chunk_equiv, 0},
     {"dev_log", kind_dev_log, 0},
+    {"vid_chan_append", kind_vid_chan_append, 0},
     {"trace_out_rights", kind_trace_out_rights, 0},
     {"opcode_table", kind_opcode_table, 0},
     {"cycle_probe", kind_cycle_probe, 0},

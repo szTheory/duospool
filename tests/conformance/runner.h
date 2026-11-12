@@ -344,6 +344,7 @@ int obskinds_arg(int argc, char **argv, int *a);
 int trace_out_main(void);
 void kind_observer(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_dev_log(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_vid_chan_append(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_trace_out_rights(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 /* the stop callback that holds once the guest has set the DSV1 done state with its complement (a speed aid only, D-95: the deadline stays the hard bound) */
 int dsv1_done(const struct ds_instance *inst, void *ctx);
