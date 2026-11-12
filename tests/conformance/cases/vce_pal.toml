@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The VCE colour table seen from the guest (plan 04-04, first slice; D-152, D-153, D-169, D-170, ER-4, ER-5): the authored fixture fixtures/src/vce_pal.s is assembled by ca65 in the gate (never committed), boots on the core, writes the VCE control register and all 512 colour table entries P(i) = (91 * i + 17) & 511 through the bus, reads two of them back and writes
+# a DSV1 verdict block that the runner judges from raw RAM. The case has no policies key, so the guest kind runs the ROM under its default policy list (zero, seeded-prng-v3 seed 1, seeded-prng-v3 seed 2), and the check bytes must be equal in all three: every entry the guest reads, it wrote first (D-167). The four checks are class MAN (the table is readable and writable, H6-5) and carry
+# literals that come from the guest's own formula; none comes from DuoSpool output. Evidence tier E0: no accuracy, compatibility or hardware claim, and the word pass is not a support claim. The guest seals its block at about 505,000 master clocks; until_mclk is a deadline above that.
+id = "vce_pal"
+kind = "guest"
+fixture = "authored:vce-pal"
+request = ""
+expect = "id=15"
+meaning = "The authored vce_pal fixture writes the VCE control register and all 512 colour table entries through the bus and reads entries 0 and $100 back (low byte, then bit 8), 4 passing MAN checks, identical under three power-on policies"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 700000
+checks = 4

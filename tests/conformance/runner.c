@@ -1039,6 +1039,7 @@ static const struct {
     {"budget_spin", kind_spin, 0},
     {"spin_forever", kind_spin, 0},
     {"guest", kind_guest, 0},
+    {"video", kind_video, 0},
     {"model_refuse", kind_model_refuse, 0},
     {"mutate_sweep", kind_mutate_sweep, 0},
     {"insn_sink_shapes", kind_insn_sink_shapes, 0},

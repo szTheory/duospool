@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# vce_pal.checks - one row per CHECK of fixtures/src/vce_pal.s (D-125, plan 04-04). Columns separated by one TAB: check index (1-based), slug, class tag, meaning.
+# Class tags: MAN:<page> (a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model>, ASSUMED:<LED-id>. The table is 512 entries of 9 bits, written low byte then high byte with the address incremented after the high byte (H6-3, H6-5); the values read back are the P(i) = (91 * i + 17) & 511 the guest wrote.
+# This is the first slice of the fixture (plan 04-04): the checks that the line record joins to; the rest of the register and palette checks land in the second task of the plan. A pass is not a support claim (ER-4).
+id=15
+checks=4
+1	pal-entry0-low-roundtrip	MAN:H6-5	Entry 0 of the colour table reads back the low byte the guest wrote: P(0) = 17 = $11
+2	pal-entry0-bit8	MAN:H6-5	Entry 0 reads back bit 8 clear: P(0) = 17 is below 256
+3	pal-entry100-low-roundtrip	MAN:H6-5	Entry $100 reads back the low byte the guest wrote: P(256) = 273, low byte $11
+4	pal-entry100-bit8	MAN:H6-5	Entry $100 reads back bit 8 set: P(256) = 273 is at least 256

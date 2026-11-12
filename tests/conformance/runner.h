@@ -229,6 +229,7 @@ void kind_spin(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 
 /* the guest kind (guestkinds.c since plan 03-04): boots a built authored ROM, runs it with ds_run and judges its DSV1 verdict block from raw RAM */
 void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_video(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* videokinds.c (plan 04-04): a guest ROM run with a vid and a dev sink, its DSV1 verdict and the raw video records judged by literal rows, the stream digest beside them (E0) */
 /* the model parameter kinds (guestkinds.c, plan 03-17): ds_model_set refusals with the instance unchanged, and the deferred coverage of model_refusals.def and the rows of model_params.def */
 void kind_model_refuse(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_model_refusal_coverage(const struct kase *k, struct ctx *c, char *got, size_t gotcap);

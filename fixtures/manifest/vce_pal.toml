@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Fixture manifest entry (FIX-02, FIX-01, D-59 amended, D-123): one authored HuCard image of fixtures/src/vce_pal.s. The bytes are assembled in the gate by ca65 and ld65 and are
+# never committed. scripts/fixture-check compares size and sha256 below with the bytes scripts/fixture-build wrote, as hashed by the host sha tool, so a changed source, library or
+# toolchain output turns the gate red. The pin was measured on the Homebrew cc65 2.19 bottle (see fixtures/lib/TOOLS.md); it proves the build is repeatable, nothing more.
+id = "vce_pal"
+kind = "authored"
+source = "fixtures/src/vce_pal.s"
+recipe = "vce-pal: ca65 --cpu huc6280 -D ROMBANKS=32 -I fixtures/lib -o build/gate/fx/vce-pal.o fixtures/src/vce_pal.s; ld65 -C fixtures/lib/hucard.cfg -D ROMBANKS=32 -o build/gate/fixtures/vce-pal.pce build/gate/fx/vce-pal.o"
+toolchain = "cc65 V2.19 (ca65 prints V2.18; identity by encoding-matrix bytes, plan 03-08), Homebrew bottle 2.19 locally, hashed by sha256sum or shasum -a 256"
+size = 262144
+sha256 = "63ab67e36647934e3a94c4355feca5e8179c128771ac59c625692d4edb4262ab"
+licence = "0BSD"
+notices = "none: assembled at gate time from the project-owned sources fixtures/src/vce_pal.s and fixtures/lib/*.inc and hucard.cfg (0BSD); no HuC, PCEAS or cc65 library or startup code, no emulator code, no game content"
+redistribution = "generated-not-committed"
+meaning = "Authored diagnostic HuCard of 256 KiB that writes the VCE control register (division ratio 4, a counted delay of 9,216 master clocks, then division ratio 3), writes all 512 colour table entries by the H6-5 procedure and reads two of them back, 4 DSV1 checks (first slice). A pass is not a support claim."
+verdict_source = "manual-cite:H6-3+manual-cite:H6-5+guest-computed+spec-literal:LED-VID-0001+spec-literal:LED-VID-0004"

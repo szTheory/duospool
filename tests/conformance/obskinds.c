@@ -2020,10 +2020,11 @@ void kind_trace_out_rights(const struct kase *k, struct ctx *c, char *got, size_
 }
 
 /* ---- kind vid_chan_append: the video sink channel (plan 04-02; D-162, F-2, T-04-05, T-04-07) ----
- * expect = parts=attached,append. Evidence class E0: the channel mechanism and the non-interference of an attached sink; no video exists yet, so no hardware claim.
- *   attached  fixture = authored:NAME and until_mclk: the ROM is run once with no sink (the reference) and once with a vid sink of 4096 bytes whose header and buffer are poisoned with $A5 and which has guard bytes around it. There is no producer yet,
- *             so after the run the header must read count 0, lost 0, seq 0, bytes 0 and the zero word (decoded by hand, little-endian: the poisoned header was overwritten and never read), the buffer must still hold its poison, and the
- *             run must give the reference machine time, steps and digest.
+ * expect = parts=attached,append. Evidence class E0: the channel mechanism and the non-interference of an attached sink; the line length and the grid are ASSUMED (LED-VID-0001, LED-VID-0004), no hardware claim.
+ *   attached  fixture = authored:NAME and until_mclk: the ROM is run once with no sink (the reference) and once with a vid sink of 4096 bytes whose header and buffer are poisoned with $A5 and which has guard bytes around it. Since plan 04-04 the fold is the producer: one
+ *             header-only record of 64 bytes per line, so after the run the header must read count = floor((M - 1) / 1365) + 1 for the machine time M the run reached (the closed form of D-137, written here from the rule), lost 0, seq = count, bytes = 64 * count and the zero word
+ *             (decoded by hand, little-endian: the poisoned header was overwritten and never read), the records must be back to back with origin i * 1365 and rec_bytes 64, the buffer past them and the guards must still hold their poison, and the run must give the reference
+ *             machine time, steps and digest.
  *   append    direct channel calls, no ds_run (F-2, D-162): synthetic records of 64 to 2792 bytes are offered to ds_obs_vid and the header must read the counts of the table below, written here by hand from the rule (whole records only, count = records
  *             stored, bytes = their sum, lost = seq - count, and after the first record that does not fit every later one is lost, even a smaller one that would fit: the sticky full flag). Capacities 0 and 1 store nothing and count every offer as
  *             lost; a NULL record or an empty one is counted lost and never copied; an absent sink and a NULL log do nothing. The stored bytes must equal the records offered and the bytes past them and the guards must still hold their poison. */
@@ -2050,6 +2051,8 @@ static void vc_attached(struct ctx *c, const char *rom, const char *request, uin
     const char *err = boot_built_rom(rom, request, &b0, &ci0);
     size_t j;
     int untouched = 1;
+    int shapes_ok = 1;
+    uint64_t want;
 
     if (err != NULL) {
         harness_error(c, err);
@@ -2075,12 +2078,24 @@ static void vc_attached(struct ctx *c, const char *rom, const char *request, uin
     (void)ds_run((struct ds_instance *)(void *)b1.mem, &rq, &r1);
     note_run(c, r1.machine_time, r1.reason);
     check(c, r0.reason == (uint32_t)DS_RUN_REASON_UNTIL && r1.reason == (uint32_t)DS_RUN_REASON_UNTIL && r1.refusal == (uint32_t)DS_RUNREF_NONE, "a run with a vid sink was refused or did not reach its deadline");
-    check(c, get_u32(vsk.header) == 0u && get_u32(vsk.header + 4) == 0u && get_u64(vsk.header + 8) == 0u && get_u64(vsk.header + 16) == 0u && get_u64(vsk.header + 24) == 0u,
-          "the vid header after a run with no producer does not read count 0, lost 0, seq 0, bytes 0 and a zero word (a poisoned header must be overwritten)");
+    /* since plan 04-04 the fold produces one header-only record of 64 bytes per line (D-137, D-161): the count is the closed form floor((M - 1) / 1365) + 1 of the machine time M the run reached, written here from the rule and the line length of D-136 (a layout figure, ASSUMED LED-VID-0001), never read from the core; the records are back to back at the front of the buffer, record i starts at the origin i * 1365 (+00 u64) and says rec_bytes 64 (+16 u16), and nothing else was written */
+    want = (r1.machine_time - UINT64_C(1)) / UINT64_C(1365) + UINT64_C(1);
+    check(c, r1.machine_time > 0u && want * 64u <= (uint64_t)VC_BYTES, "the run is too long for the vid buffer of this case, or reached no time");
+    check(c, (uint64_t)get_u32(vsk.header) == want && get_u32(vsk.header + 4) == 0u && get_u64(vsk.header + 8) == want && get_u64(vsk.header + 16) == want * UINT64_C(64) && get_u64(vsk.header + 24) == 0u,
+          "the vid header after the run does not read count = floor((M - 1) / 1365) + 1, lost 0, seq = count, bytes = 64 * count and a zero word (a poisoned header must be overwritten)");
     for (j = 0u; j < sizeof mem.b; j++) {
+        if (j >= VC_GUARD && j < VC_GUARD + want * 64u) {
+            continue;
+        }
         untouched = untouched && mem.b[j] == (unsigned char)OBS_POISON;
     }
-    check(c, untouched, "the core wrote into the vid buffer or its guard bytes although no record was offered");
+    check(c, untouched, "the core wrote into the guard bytes or into the vid buffer past the records it stored");
+    for (j = 0u; j < want && j * 64u + 64u <= VC_BYTES; j++) {
+        const unsigned char *rec = mem.b + VC_GUARD + (size_t)j * 64u;
+
+        shapes_ok = shapes_ok && get_u64(rec) == (uint64_t)j * UINT64_C(1365) && (unsigned)rec[16] + ((unsigned)rec[17] << 8) == 64u;
+    }
+    check(c, shapes_ok, "a stored vid record does not carry the origin k * 1365 and rec_bytes 64");
     check(c, r0.machine_time == r1.machine_time && r0.steps == r1.steps && ds_digest(ci0, d0) == 0u && ds_digest(ci1, d1) == 0u && memcmp(d0, d1, DS_DIGEST_BYTES) == 0,
           "attaching a vid sink changed the machine time, the steps or the digest of the run");
     release_boot(&b0);

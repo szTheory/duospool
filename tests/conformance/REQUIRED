@@ -247,3 +247,5 @@ snapshot_refusal_vdc
 snapshot_refusal_beam
 snapshot_refusal_timeline
 snapshot_refusal_vdma
+vce_pal
+video_vce_pal

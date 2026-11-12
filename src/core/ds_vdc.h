@@ -34,4 +34,15 @@ void ds_vce_write(struct ds_instance *inst, uint32_t reg, uint8_t value, uint64_
 /* the power-on state of the VDC and the VCE (D-167) */
 void ds_vdc_poweron(struct ds_instance *inst);
 
+/* the dot clock divider of a VCE control register value (D-141): the one table, vce.c */
+uint32_t ds_vce_divider(uint32_t cr);
+
+/* the time of the next pending event of the timeline from its stored members (plan 04-04; D-166): stage 0 is the EV_LINE of line line_idx, stage 1 the EV_VD and stage 2 the EV_RCR of the line before it (line_idx - 1, advanced at its EV_LINE) at the offset vd_off or rcr_off. 1 and *time set when the members name an
+ * event; 0 when they do not (stage 1 or 2 with line_idx 0, a stage 1 without vd_pending or with vd_off none, a stage 2 with rcr_off none, a stage above 2, a time beyond 2^64). A pure function, the one place the restore rule and the fold read the time from. */
+int ds_vdc_pending_time(uint64_t *time, uint64_t line_idx, uint32_t stage, uint32_t vd_pending, uint32_t vd_off, uint32_t rcr_off);
+
+/* the DSVR v1 line record (plan 04-04; D-155, D-161): render the header of the line whose grid origin is origin into rec (DS_VID_MAX_REC_BYTES bytes) from the machine state at its EV_LINE, which it cannot change (const), and return the record length; ds_vid_emit offers it to the sink (vid.c) */
+uint32_t ds_vid_render(const struct ds_instance *inst, uint64_t origin, uint8_t *rec);
+void ds_vid_emit(struct ds_obs_log *obs, const uint8_t *rec, uint32_t rec_bytes);
+
 #endif
