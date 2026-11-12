@@ -2435,6 +2435,122 @@ static void hs_data(struct hs_env *e)
     }
 }
 
+/*
+ * vdc-tia (plan 04-06; D-166, D-175): sampled restore stops INSIDE a block transfer that targets the VDC data port. The authored vdc_reg image (the TIA upload of 32 words to the data pair and the TAI readback of them) is run under a seeded-prng-v3 request to four stops chosen by the block transfer state of the instance, never by a time
+ * taken from a run: the TIA with 63, 32 and 1 bytes left (opcode $E3, the destination $0002 or $0003; an odd and an even byte, the first and the last) and the TAI with 33 bytes left (opcode $F3, the source $0002 or $0003). At each stop the machine is snapshotted and restored into a fresh boot with another seed whose every restorable member is poisoned, the restored instance equals the source
+ * in every member (VRAM, the VDC registers, the read buffer and write latch, the block transfer bytes among them), and the target is run on to the deadline of the case: its machine time, step count, verdict RAM, digest and every restorable member equal those of one uninterrupted run. Evidence tier E0 (the core compared with itself); no hardware claim.
+ */
+struct hv_spec {
+    uint32_t opcode;
+    uint32_t remaining;
+};
+
+static int hv_stop(const struct ds_instance *inst, void *ctx)
+{
+    const struct hv_spec *sp = (const struct hv_spec *)ctx;
+    uint32_t port = sp->opcode == 0xE3u ? (uint32_t)inst->blk_dst : (uint32_t)inst->blk_src;
+
+    return inst->blk_active == 1u && (uint32_t)inst->blk_opcode == sp->opcode && inst->blk_remaining == sp->remaining && (port & 0xFFFEu) == 2u;
+}
+
+static void hs_vdc_block(struct ctx *c, const char *rom, uint64_t until, unsigned *stops)
+{
+    static const struct hv_spec spec[4] = {{0xE3u, 63u}, {0xE3u, 32u}, {0xE3u, 1u}, {0xF3u, 33u}};
+    static const char *const req_src = "bind.powerup_policy=seeded-prng-v3;seed=5";
+    static const char *const req_twin = "bind.powerup_policy=seeded-prng-v3;seed=6";
+    struct booted br;
+    const struct ds_instance *ref = NULL;
+    struct ds_run_request rq;
+    struct ds_run_result res;
+    uint64_t ref_steps = 0u;
+    uint8_t ref_digest[DS_DIGEST_BYTES];
+    uint8_t *snap = (uint8_t *)malloc(ds_snapshot_size());
+    unsigned i;
+    const char *err;
+
+    if (snap == NULL) {
+        harness_error(c, "out of memory for the snapshot of the vdc-tia stops");
+        return;
+    }
+    err = boot_built_rom(rom, req_src, &br, &ref);
+    if (err != NULL) {
+        free(snap);
+        harness_error(c, err);
+        return;
+    }
+    memset(&rq, 0, sizeof rq);
+    memset(&res, 0, sizeof res);
+    rq.struct_size = (uint32_t)sizeof rq;
+    rq.until_mclk = until;
+    check(c, ds_run((struct ds_instance *)(void *)br.mem, &rq, &res) == (uint32_t)DS_RUN_REASON_UNTIL, "the uninterrupted run of the vdc-tia part did not end on its deadline");
+    ref_steps = res.steps;
+    check(c, ds_digest(ref, ref_digest) == 0u, "the digest of the uninterrupted run of the vdc-tia part was refused");
+    for (i = 0u; i < 4u && !c->harness; i++) {
+        struct booted bs;
+        struct booted bt;
+        const struct ds_instance *cs = NULL;
+        const struct ds_instance *ct = NULL;
+        struct ds_instance *ws;
+        struct ds_instance *wt;
+        struct hv_spec sp = spec[i];
+        uint64_t steps1;
+        uint8_t dig[DS_DIGEST_BYTES];
+        const char *diff;
+        char msg[200];
+
+        err = boot_built_rom(rom, req_src, &bs, &cs);
+        if (err != NULL) {
+            harness_error(c, err);
+            break;
+        }
+        err = boot_built_rom(rom, req_twin, &bt, &ct);
+        if (err != NULL) {
+            release_boot(&bs);
+            harness_error(c, err);
+            break;
+        }
+        ws = (struct ds_instance *)(void *)bs.mem;
+        wt = (struct ds_instance *)(void *)bt.mem;
+        memset(&rq, 0, sizeof rq);
+        memset(&res, 0, sizeof res);
+        rq.struct_size = (uint32_t)sizeof rq;
+        rq.until_mclk = until;
+        rq.stop = hv_stop;
+        rq.stop_ctx = &sp;
+        snprintf(msg, sizeof msg, "vdc-tia stop %u (opcode $%02X, %u bytes left): the run did not stop inside the block transfer of the VDC data port", i, (unsigned)sp.opcode, (unsigned)sp.remaining);
+        check(c, ds_run(ws, &rq, &res) == (uint32_t)DS_RUN_REASON_CALLBACK, msg);
+        steps1 = res.steps;
+        if (!c->failed) {
+            snprintf(msg, sizeof msg, "vdc-tia stop %u: ds_snapshot of the source was refused", i);
+            check(c, ds_snapshot(ws, snap, ds_snapshot_size(), NULL) == (uint32_t)DS_SNAPREF_NONE, msg);
+            snap_poison(wt, 0xA5u);
+            snprintf(msg, sizeof msg, "vdc-tia stop %u: ds_restore refused the snapshot of a machine inside a block transfer of the VDC data port", i);
+            check(c, ds_restore(wt, snap, ds_snapshot_size()) == (uint32_t)DS_SNAPREF_NONE, msg);
+            diff = snap_first_diff(ct, cs);
+            snprintf(msg, sizeof msg, "vdc-tia stop %u: the restored instance differs from the source in the member %s", i, diff != NULL ? diff : "-");
+            check(c, diff == NULL, msg);
+            memset(&rq, 0, sizeof rq);
+            memset(&res, 0, sizeof res);
+            rq.struct_size = (uint32_t)sizeof rq;
+            rq.until_mclk = until;
+            snprintf(msg, sizeof msg, "vdc-tia stop %u: the restored target did not run on to the deadline", i);
+            check(c, ds_run(wt, &rq, &res) == (uint32_t)DS_RUN_REASON_UNTIL, msg);
+            snprintf(msg, sizeof msg, "vdc-tia stop %u: the machine time or the step count of the restored chain differs from the uninterrupted run", i);
+            check(c, ct->machine_time == ref->machine_time && steps1 + res.steps == ref_steps, msg);
+            snprintf(msg, sizeof msg, "vdc-tia stop %u: the verdict RAM or the digest of the restored chain differs from the uninterrupted run", i);
+            check(c, memcmp(ct->ram8k + V_OFF, ref->ram8k + V_OFF, V_SIZE) == 0 && ds_digest(ct, dig) == 0u && memcmp(dig, ref_digest, DS_DIGEST_BYTES) == 0, msg);
+            diff = snap_first_diff(ct, ref);
+            snprintf(msg, sizeof msg, "vdc-tia stop %u: the member %s of the restored chain differs from the uninterrupted run (VRAM and the VDC state included)", i, diff != NULL ? diff : "-");
+            check(c, diff == NULL, msg);
+            (*stops)++;
+        }
+        release_boot(&bs);
+        release_boot(&bt);
+    }
+    release_boot(&br);
+    free(snap);
+}
+
 void kind_snapshot_hostile(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
 {
     struct hs_env e;
@@ -2452,6 +2568,9 @@ void kind_snapshot_hostile(const struct kase *k, struct ctx *c, char *got, size_
     uint64_t until = 0u;
     unsigned want_cls = 0u;
     int want_block = 0;
+    int want_vdc = 0;
+    char vdc_rom[48];
+    unsigned vdc_stops = 0u;
     int first = 1;
     unsigned q;
     unsigned total = 0u;
@@ -2460,7 +2579,7 @@ void kind_snapshot_hostile(const struct kase *k, struct ctx *c, char *got, size_
     int ok = 1;
     uint32_t rc;
     int off = 0;
-    char detail[512];
+    char detail[1024];
 
     memset(&bs, 0, sizeof bs);
     memset(&bt, 0, sizeof bt);
@@ -2487,12 +2606,15 @@ void kind_snapshot_hostile(const struct kase *k, struct ctx *c, char *got, size_
             }
         } else if (strcmp(item, "mid-block") == 0 && !want_block) {
             want_block = 1;
+        } else if (strncmp(item, "vdc-tia=", 8u) == 0 && !want_vdc && strspn(item + 8, "abcdefghijklmnopqrstuvwxyz0123456789-") == strlen(item + 8) && strlen(item + 8) > 0u && strlen(item + 8) < sizeof vdc_rom) {
+            want_vdc = 1;
+            memcpy(vdc_rom, item + 8, strlen(item + 8) + 1u);
         } else {
             ok = 0;
         }
     }
     if (!ok || want_cls == 0u) {
-        harness_error(c, "a snapshot_hostile case needs fixture = authored:NAME, until_mclk, a seeded request and expect = a list of boundary, length, frame, sample, flip, data (each once)[;mid-block]");
+        harness_error(c, "a snapshot_hostile case needs fixture = authored:NAME, until_mclk, a seeded request and expect = a list of boundary, length, frame, sample, flip, data (each once)[;mid-block][;vdc-tia=NAME]");
         return;
     }
     s = sk_boot(c, k, rom, k->val[K_REQUEST], 1, &bs);
@@ -2555,11 +2677,18 @@ void kind_snapshot_hostile(const struct kase *k, struct ctx *c, char *got, size_
     }
     check(c, refused > 0u && accepted > 0u, "the corpus did not take both paths: it has no refused or no accepted input");
     check(c, e.ran == accepted, "an accepted input was not run");
+    if (want_vdc) {
+        hs_vdc_block(c, vdc_rom, until, &vdc_stops);
+        check(c, vdc_stops == 4u || c->harness, "the vdc-tia part did not restore at its four stops");
+    }
     snprintf(got, gotcap, "cases=%u refused=%u accepted=%u", total, refused, accepted);
     for (q = 0u; q < HC_N; q++) { /* the counts by class go to the evidence text */
         if ((want_cls & (1u << q)) != 0u && off >= 0 && (size_t)off < sizeof detail) {
             off += snprintf(detail + off, sizeof detail - (size_t)off, "class=%s cases=%u refused=%u accepted=%u\n", hc_names[q], e.n[q], e.refused[q], e.accepted[q]);
         }
+    }
+    if (want_vdc && off >= 0 && (size_t)off < sizeof detail) {
+        off += snprintf(detail + off, sizeof detail - (size_t)off, "class=vdc-tia stops=%u (restore inside a block transfer of the VDC data port, continued to the end, E0)\n", vdc_stops);
     }
     set_evidence_detail(detail);
 done:

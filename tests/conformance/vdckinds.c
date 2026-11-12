@@ -1117,6 +1117,7 @@ void kind_snapshot_restore_video(const struct kase *k, struct ctx *c, char *got,
 #define VV_WORDS_MAX 128u
 #define VV_ITEM_ROM 1u
 #define VV_ITEM_WORDS 2u
+#define VV_ITEM_TIA 4u
 
 struct vv_expect {
     char rom[48];
@@ -1157,6 +1158,39 @@ static int vv_parse_words(char *list, struct vv_expect *e)
     return e->n > 0u ? 0 : -1;
 }
 
+/* tia=ADDR:W0:STEP:COUNT: COUNT more words at ADDR, ADDR + 1, ...; word i is (W0 + STEP * i) & $FFFF, the multiplication the assembler of the fixture forms its upload table with (a different arithmetic from the additive running sum of the guest); the addresses must be new */
+static int vv_parse_tia(char *list, struct vv_expect *e)
+{
+    uint64_t f[4];
+    unsigned i;
+    unsigned j;
+    char *rest = list;
+    char *part;
+
+    for (i = 0u; i < 4u; i++) {
+        part = pk_next_item(&rest, ':');
+        if (part == NULL || parse_u64(part, &f[i]) != 0) {
+            return -1;
+        }
+    }
+    if (rest != NULL || f[0] + f[3] > (uint64_t)DS_CONST_vdc_vram_words || f[1] > 0xFFFFu || f[2] > 0xFFFFu || f[3] < 1u || f[3] + (uint64_t)e->n > (uint64_t)VV_WORDS_MAX) {
+        return -1;
+    }
+    for (i = 0u; i < (unsigned)f[3]; i++) {
+        uint32_t a = (uint32_t)f[0] + i;
+
+        for (j = 0u; j < e->n; j++) {
+            if (e->addr[j] == a) {
+                return -1;
+            }
+        }
+        e->addr[e->n] = a;
+        e->value[e->n] = (uint32_t)(((uint32_t)f[1] + (uint32_t)f[2] * i) & 0xFFFFu);
+        e->n++;
+    }
+    return 0;
+}
+
 static int vv_parse(const char *text, struct vv_expect *e)
 {
     char list[PK_LIST_MAX];
@@ -1187,6 +1221,11 @@ static int vv_parse(const char *text, struct vv_expect *e)
             if (vv_parse_words(eq + 1, e) != 0) {
                 return -1;
             }
+        } else if (strcmp(item, "tia") == 0) {
+            bit = VV_ITEM_TIA;
+            if ((seen & VV_ITEM_WORDS) == 0u || vv_parse_tia(eq + 1, e) != 0) { /* the explicit words come first, the pattern adds to them */
+                return -1;
+            }
         } else {
             return -1;
         }
@@ -1195,7 +1234,7 @@ static int vv_parse(const char *text, struct vv_expect *e)
         }
         seen |= bit;
     }
-    return seen == (VV_ITEM_ROM | VV_ITEM_WORDS) ? 0 : -1;
+    return (seen & (VV_ITEM_ROM | VV_ITEM_WORDS)) == (VV_ITEM_ROM | VV_ITEM_WORDS) ? 0 : -1;
 }
 
 /*
@@ -1211,7 +1250,7 @@ void kind_vdc_vram(const struct kase *k, struct ctx *c, char *got, size_t gotcap
     unsigned words = 0u;
 
     if (!k->has[K_EXPECT] || vv_parse(k->val[K_EXPECT], &e) != 0 || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until < 1000u) {
-        harness_error(c, "a vdc_vram case needs until_mclk and expect = rom=NAME;words=ADDR:VALUE,ADDR:VALUE,... (word addresses below $8000, every address once, at most 128 words)");
+        harness_error(c, "a vdc_vram case needs until_mclk and expect = rom=NAME;words=ADDR:VALUE,ADDR:VALUE,...[;tia=ADDR:W0:STEP:COUNT] (word addresses below $8000, every address once, at most 128 words)");
         return;
     }
     for (p = 0u; p < (unsigned)VD_POLICIES && !c->harness; p++) {

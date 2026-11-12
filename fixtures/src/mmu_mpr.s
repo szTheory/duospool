@@ -237,10 +237,10 @@ fixture_main:
         lda a:$6800                     ; check 22 ASSUMED:LED-CPU-0013: io_buffer is constant 0 at power-on: the PSG window reads $00 before any access in $0800-$17FF
         CHECK_LIT 22
         SETIO $A5
-        lda a:$6000                     ; check 23 ASSUMED:LED-CPU-0012: the VDC window is a stub that reads $00 (and not io_buffer, which holds $A5)
+        lda a:$6000                     ; check 23 ASSUMED:LED-PROF-0003: the live VDC status read is $00 at reset (no flag is set; MAN H7-4: the read clears the flags) and not io_buffer, which holds $A5
         CHECK_LIT 23
         SETIO $A5
-        lda a:$63FF                     ; check 24 ASSUMED:LED-CPU-0012: the last byte of the 1 KiB VDC window reads the stub too (H8-24: the VDC register is A1-A0, the window repeats)
+        lda a:$63FF                     ; check 24 ASSUMED:LED-PROF-0003: the last byte of the 1 KiB VDC window is register 3, the data MSB: it reads the read buffer, $00 at reset (H8-24: the VDC register is A1-A0, the window repeats)
         CHECK_LIT 24
         SETIO $00
         lda a:$7800                     ; check 25 ASSUMED:LED-CPU-0012: window 6 ($1FF800) has no device: it reads the unmapped constant $FF whatever io_buffer holds ($00 here)

@@ -28,8 +28,8 @@ checks=65
 20	rom-write-ignored	ASSUMED:LED-CPU-0012	A byte stored through HuCard bank $01 is not kept: the tag byte $01 is still there
 21	tma-returns-stored	MAN:S8-101	TMA reads the mapping register that TAM wrote (S8-90, S8-101): $80, a bank number that maps nothing, is stored and read back unchanged
 22	psg-power-on-zero	ASSUMED:LED-CPU-0013	io_buffer is constant 0 at power-on under every policy: before any read or write in $0800-$17FF the PSG window, which reads io_buffer, returns $00
-23	vdc-window-stub	ASSUMED:LED-CPU-0012	The VDC window (physical $1FE000, H8-24) has no device yet: it reads the stub $00 whatever io_buffer holds ($A5 here)
-24	vdc-window-last-byte	ASSUMED:LED-CPU-0012	The last byte of the 1 KiB VDC window reads the stub $00: the register is selected by A1-A0 and the window repeats
+23	vdc-status-reset	ASSUMED:LED-PROF-0003	The VDC window (physical $1FE000, H8-24) is the live VDC: a read of register 0 is the status, $00 at reset under every policy (no flag is set, all VDC state is 0 at power-on; MAN H7-4: a read clears the flags), whatever io_buffer holds ($A5 here)
+24	vdc-msb-read-buffer	ASSUMED:LED-PROF-0003	The last byte of the 1 KiB VDC window is register 3 (A1-A0, the window repeats): the data MSB read returns the high byte of the read buffer, $00 at reset, and starts no read because AR is 0 at reset
 25	empty-window-reads-ff	ASSUMED:LED-CPU-0012	Window 6 of the hardware page (physical $1FF800, H8-9: no chip enable) has no device: it reads the unmapped constant $FF whatever io_buffer holds ($00 here)
 26	vce-readback	MAN:H6-5	The VCE colour table entry 0 reads back the low byte the fixture wrote first through CTA and CTW (H6-5: address low and high, then the data low byte first): $5A, whatever io_buffer holds ($00 here)
 27	vdc-read-keeps-iobuf	ASSUMED:LED-CPU-0013	A read in the VDC window does not change io_buffer, which is the byte of the last access in $0800-$17FF only: the PSG window still reads $A5

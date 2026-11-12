@@ -5,12 +5,14 @@
 # (kind snapshot_hostile, tests/conformance/snapkinds.c) makes about 770 hostile inputs from that one snapshot in memory: nothing is read from or written to a file, the generator is a fixed splitmix64 stream and the corpus is bounded. Classes: boundary (the buffer length at every region boundary and one byte either side), length (every frame length word set to 0, -1, +1 and 2^32 - 1), frame (every
 # byte of the prefix, version and tags with its low bit flipped), sample (64 truncations drawn from the stream), flip (the low bit of every byte of the control fields: refused or accepted as the field domain says) and data (bytes of which every value is a legal state: work RAM, mapping registers, A, X, Y, S, pc, the bus latches: accepted). A refused input leaves the target byte-identical;
 # an accepted input re-serialises to identical bytes, its SHA-256 is the digest of the restored instance, a bounded run from it is defined, and a snapshot taken after that run restores again. The counts by class are in the evidence text. The sanitizers stage runs the case. Evidence tier E0: the core compared with its own layout; a pass is not a claim about the format or about any hardware.
+# Plan 04-06 (D-166, D-175) adds the token vdc-tia=NAME: the authored image NAME (vdc_reg) is run under a seeded-prng-v3 request to four stops chosen by the block transfer state (the TIA upload to the VDC data pair with 63, 32 and 1 bytes left, the TAI readback with 33 left),
+# snapshotted and restored into a fresh poisoned boot with another seed, and the restored chain is run to the deadline: machine time, steps, verdict RAM, digest and every restorable member equal one uninterrupted run (E0).
 # Plan 04-18 (D-166, F-22) extends the flip class to every control byte of the VCE0, VDC0, BEAM and VDMA regions (106 bytes), adds four refused palette inputs (bit 1 of an odd byte) and, in the data class, sampled bit flips of the palette, VRAM (never all 65,536 bytes) and SATB.
 id = "snapshot_hostile"
 kind = "snapshot_hostile"
 fixture = "authored:cpu-blk-len0"
 request = "bind.powerup_policy=seeded-prng-v2;seed=3"
-expect = "boundary,length,frame,sample,flip,data;mid-block"
+expect = "boundary,length,frame,sample,flip,data;mid-block;vdc-tia=vdc-reg"
 meaning = "About 770 hostile snapshot inputs generated in memory from the snapshot of a machine inside a block transfer (region boundaries plus or minus one, frame lengths, tags, sampled truncations, control field bit flips) are refused with the instance unchanged or accepted and re-serialised identically, and the sanitizers stage runs them clean"
 required = true
 control = false
