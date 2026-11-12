@@ -41,7 +41,7 @@ IV = 87                         ; the VD event
 NCYC = 4                        ; cycles judged; the fifth cycle start ends the run
 LOGBASE = $2800                 ; sample log: one 256-byte page per cycle (five pages)
 STBASE = $2D00                  ; status log
-RATIO_TOL = 9                   ; iterations (D-174: 8 from scaling a single quantised interval by 8, 1 from the long one); the worst case of the interrupt wait is larger, 1.33 + 8 * 1.33 = 12, and the run measures within 3
+RATIO_TOL = 12                  ; iterations, the derived bound (review fix L-01 of the gate review): a sample lies within 1.33 iterations of its event, so the long interval carries at most 1.33 and eight times the one-line interval at most 8 * 1.33; 1.33 + 10.67 = 12 (D-174 counted only quantisation: 8 + 1 = 9)
 
 LP_EXP = (100 * 1365 + 9) / 18  ; iterations in 100 lines (ASSUMED LED-VID-0001), rounded to the nearest
 FP_EXP = (4 * LINES * 1365 + 9) / 18 ; iterations in 4 frames (ASSUMED LED-VID-0001), rounded
@@ -76,7 +76,7 @@ D1 = $1F
 D2 = $20
 
         CHECK_TABLE DSV_CHECKS
-        LIT 1, $00                ; GUEST:ratio-8-lines (frame 0) the iterations from RCR = 100 to RCR = 108 equal 8 times those from RCR = 100 to 101 within 9 iterations; the guest sets the expected byte 0 itself
+        LIT 1, $00                ; GUEST:ratio-8-lines (frame 0) the iterations from RCR = 100 to RCR = 108 equal 8 times those from RCR = 100 to 101 within 12 iterations; the guest sets the expected byte 0 itself
         LIT 2, $00                ; GUEST:ratio-8-lines (frame 1) the same in the second cycle
         LIT 3, $00                ; ASSUMED:LED-VID-0001 the iterations from RCR = 100 to RCR = 200 (100 lines) are 100 * 1365 / 18 within 2 (frame 0)
         LIT 4, $00                ; ASSUMED:LED-VID-0001 the same in frame 1

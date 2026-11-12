@@ -2150,7 +2150,8 @@ static void vc_attached(struct ctx *c, const char *rom, const char *request, uin
     note_run(c, r1.machine_time, r1.reason);
     check(c, r0.reason == (uint32_t)DS_RUN_REASON_UNTIL && r1.reason == (uint32_t)DS_RUN_REASON_UNTIL && r1.refusal == (uint32_t)DS_RUNREF_NONE, "a run with a vid sink was refused or did not reach its deadline");
     /* the fold produces one record per line (D-137, D-161): the count is the closed form floor((M - 1) / 1365) + 1 of the machine time M the run reached, written here from the rule and the line length of D-136 (a layout figure, ASSUMED LED-VID-0001), never read from the core. The authored ds-proto programs no vertical or horizontal register,
-     * so the cycle is 4 lines (VDS 0 gives 2 lines, VDW 0 one display line, VCR 0 none, VSW 0 one line, D-139) and line k is a display line when k % 4 == 2; a display line has the window HDS 0, HDW 0 of 8 dots (D-140, ASSUMED LED-VID-0005) and so 8 index words and 8 colour words, 32 payload bytes (D-161): rec_bytes 96, and 64 on every other line. Plan 04-09 gave display lines that window (before it every record was 64 bytes). */
+     * so the cycle is 4 lines (VDS 0 gives 2 lines, VDW 0 one display line, VCR 0 none, VSW 0 one line, D-139) and line k is a display line when k % 4 == 2; a display line has the window HDS 0, HDW 0 of 8 dots (D-140, ASSUMED LED-VID-0005) and so 8 index words and 8 colour words, 32 payload bytes (D-161): rec_bytes 96, and 64 on every other line. Plan 04-09 gave display lines
+     * that window (before it every record was 64 bytes). */
     want = (r1.machine_time - UINT64_C(1)) / UINT64_C(1365) + UINT64_C(1);
     for (j = 0u; j < want; j++) {
         want_bytes += (j % 4u == 2u) ? UINT64_C(96) : UINT64_C(64);

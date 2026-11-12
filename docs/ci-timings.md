@@ -553,7 +553,8 @@ The machine is shared with unrelated jobs and was not quiet: load average 11.2 9
 | `sanitizers` stage | 88 s | 52 s | not estimated |
 | `determinism` stage | 36 s | 30 s | not estimated |
 
-Verdicts, recorded and never failed (D-60, D-63): the warm target of 120 s (D-132) is missed again (it was missed at Phase 3 close, and even the user CPU of run A was above it). By the F-8 measure the cut-line trigger, user CPU over 150 s, is **over** at 178.6 s: +49.6 s of user CPU and +31 s of wall time since the Phase 3 baseline, with six of the 19 plans of Phase 4 done and the seventh in progress, so the D-176 central
+Verdicts, recorded and never failed (D-60, D-63): the warm target of 120 s (D-132) is missed again (it was missed at Phase 3 close, and even the user CPU of run A was above it). By the F-8 measure the cut-line trigger, user CPU over 150 s, is **over** at 178.6 s: +49.6 s of user CPU and +31 s of wall time since the Phase 3 baseline, with six of the 19 plans of Phase 4 done and
+the seventh in progress, so the D-176 central
 estimate of +35 s wall for the whole phase is already used up in user CPU terms. The growth is mostly two stages: `sanitizers` (+36 s: the conformance cases run again under ASan and UBSan) and `conformance` (+14 s), then `determinism` (+6 s); every other stage is 5 s or less in both runs. The machine was loaded, so a quieter run would read lower in wall time, but the user CPU, which the loaded
 machine inflates much less, is the number the trigger uses, and one run is all this spike makes. The conformance stage, 45 s, is under the 60 s staging trigger of D-176. The decision on the cut line is plan 04-11's (the check point), not this plan's.
 
@@ -728,9 +729,7 @@ The `conformance` trigger fired: the stage read about 67 s after plan 04-12 (orc
 | Lever | Trigger | Status | Before and after |
 |-------|---------|--------|------------------|
 | (1) link the toys against shared object libraries (CMake only) | fired (`conformance` over 60 s) | **applied** in `d831680` | cold build of the 25 `ds_toy_*` targets in a fresh directory (1,200 compile steps before, 73 after): 8.4 s wall and 47.1 s user CPU before, 0.8 s and 3.3 s after; all 25 controls stay RED_OK with the identical listing in `build/gate/controls.txt` |
-with the identical listing in `build/gate/controls.txt` |
 | (2) video fixtures under two policies instead of three | fired, not applied | recorded | drops the third policy from the restore, non-interference and observer runs of video fixtures: about 4 to 5 s of the stage by the timings above, not enough alone for a 67 to 84 s stage to reach 60 s, and it removes seed 2 runs from evidence; `vdc_poweron_policy_diff` would cover the power-on dimension |
-the power-on dimension |
 | (3) drop one chunk schedule from the video cases | fired, not applied | recorded | each video chunk case costs under 1 s except the restore cases; the saving is smaller than (2). |
 | (4) move the Linux container run and `vdc_random_regs` to a scheduled job | not reached | recorded | `vdc_random_regs` costs 0.3 s plain and about 1 s sanitized; the container run is already a local one-off outside the CI job. |
 

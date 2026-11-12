@@ -230,7 +230,8 @@ void kind_spin(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 /* the guest kind (guestkinds.c since plan 03-04): boots a built authored ROM, runs it with ds_run and judges its DSV1 verdict block from raw RAM */
 void kind_guest(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_video(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* videokinds.c (plan 04-04): a guest ROM run with a vid and a dev sink, its DSV1 verdict and the raw video records judged by literal rows, the stream digest beside them (E0) */
-/* plan 04-07 (D-171, D-172, ER-11, T-04-25, T-04-26; videokinds.c): video_fault_sweep (the faults F0 to F9 applied to the captured records, every group flips under the faults it declares, a group that no declared fault flips is VIDEO_GROUP_VACUOUS), video_hash_not_verdict (an F5-faulted stream passes a golden computed for it and fails the literal div group) and video_judge_forms (the ROWS, REL and STRUCT forms, the null renderers and the sweep on hand-built records); the video kind also judges the role golden, refused video-hash-only without a literal scene */
+/* plan 04-07 (D-171, D-172, ER-11, T-04-25, T-04-26; videokinds.c): video_fault_sweep (the faults F0 to F9 applied to the captured records, every group flips under the faults it declares, a group that no declared fault flips is VIDEO_GROUP_VACUOUS), video_hash_not_verdict (an F5-faulted stream passes a golden computed for it and fails the literal div group) and
+ * video_judge_forms (the ROWS, REL and STRUCT forms, the null renderers and the sweep on hand-built records); the video kind also judges the role golden, refused video-hash-only without a literal scene */
 void kind_video_fault_sweep(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_video_hash_not_verdict(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_video_judge_forms(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
@@ -403,7 +404,8 @@ const char *snap_first_diff(const struct ds_instance *a, const struct ds_instanc
 int list_fixtures(const size_t *sweep, size_t nsweep);
 
 /* the kinds added after the Phase 3 code review (reviewkinds.c): brk_irq_sample (WR-01, BRK with an interrupt pending, both values of irq_i_sample) and dev_record_pc (WR-02, the pc field of the dev records of a block transfer) */
-/* the VDC and VCE C-level kinds (vdckinds.c, plan 04-05): vdc_fold (random partitions of the fold against one jump, the tie rule through the bus write path, the next-event invariant), vid_noninterference (a vid-only sink in four shapes against no sink under three policies) and snapshot_restore_video (restores at the stops of the video schedules, the concatenated stream compared); vd_policy_request appends policy fragment i (0 zero, 1 and 2 seeded-prng-v3 seeds 1 and 2) to a case's request, as kind_guest does for its default list */
+/* the VDC and VCE C-level kinds (vdckinds.c, plan 04-05): vdc_fold (random partitions of the fold against one jump, the tie rule through the bus write path, the next-event invariant), vid_noninterference (a vid-only sink in four shapes against no sink under three policies) and snapshot_restore_video (restores at the stops of the video schedules, the concatenated stream
+ * compared); vd_policy_request appends policy fragment i (0 zero, 1 and 2 seeded-prng-v3 seeds 1 and 2) to a case's request, as kind_guest does for its default list */
 #define VD_POLICIES 3u
 void kind_vdc_fold(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_vid_noninterference(const struct kase *k, struct ctx *c, char *got, size_t gotcap);

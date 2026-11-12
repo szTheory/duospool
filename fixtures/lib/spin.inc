@@ -20,7 +20,7 @@
 ; With such handlers, the 8-bit samples s(n) taken at consecutive handler entries give the elapsed foreground-equivalent iterations as (s(n) - s(n-1)) mod 256, provided two samples are less than 256 iterations (4,608 master clocks, 3.37 lines) apart; a 24-bit sum of those deltas is the elapsed time, and a sum of 6 * g cycles is within 4 cycles of the true boundary-to-boundary time (a boundary
 ; after inc a is at 2 cycles into an iteration and one after bra at 0, so the difference of two boundaries is 6 * g + {0, +4, -4}). The interrupt is taken at the first instruction end whose last cycle is at or after the event (D-111), so the event-to-boundary wait is at least 1 and under 5 cycles.
 ;
-; The status read sits 7 cycles after the first instruction of every handler that the guest measures, so the read stamps of the dev log of two handlers differ by exactly the difference of their boundaries (the agreement kind of 04-17).
+; The status read sits 9 cycles after the first instruction of every handler that the guest measures (sta (zp),y 7 + tax 2, or sta zp 4 + tax 2 + sxy 3; the count of fixtures/src/vdc_irq.s, corrected from 7 by the info item I-01 of the gate review), so the read stamps of the dev log of two handlers differ by exactly the difference of their boundaries (the agreement kind of 04-17).
 
 SPIN_ENTRY = 8                  ; cycles of the interrupt entry (ASSUMED LED-CPU-0009)
 SPIN_JMPIND = 7                 ; cycles of jmp (VEC_IRQ1)

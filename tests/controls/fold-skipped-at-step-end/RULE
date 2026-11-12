@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
-# Toy control (D-137, D-173, F-9, F-28; a toy of the Phase 4 set): a step that does not fold the VDC and VCE at its end, made from the live src/core/cpu.c by scripts/control-mutate. The anchor is the one statement of ds_cpu_step_obs that folds the timeline to the end of the step (machine time after the step minus one); the replacement is a statement with no effect that only keeps the local start used (so the toy compiles under -Werror), so lines are processed only when
+# Toy control (D-137, D-173, F-9, F-28; a toy of the Phase 4 set): a step that does not fold the VDC and VCE at its end, made from the live src/core/cpu.c by scripts/control-mutate. The anchor is the one statement of ds_cpu_step_obs that folds the timeline to the end of the step (machine time after the step minus one); the replacement is a statement with no effect that only
+# keeps the local start used (so the toy compiles under -Werror), so lines are processed only when
 # a guest access or an interrupt sample folds, and the number and the content of the records then depend on where the calls stop (the stop of a chunk is a step boundary and the closing fold of a run is the one that was skipped). The cases in EXPECT must come out guest_failure on the toy: chunk_equiv_video_vce_pal (the line count of the uninterrupted run is no longer the closed
 # form, and the streams of the schedules differ from it) and vdc_fold (the next-event invariant: after a step the pending event is older than the machine time). The real core passes both (REQUIRED cases).
 tag=rule-fold-skipped-at-step-end

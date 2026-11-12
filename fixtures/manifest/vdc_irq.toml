@@ -4,13 +4,14 @@
 # Fixture manifest entry (FIX-02, FIX-01, D-59 amended, D-123): one authored HuCard image of fixtures/src/vdc_irq.s. The bytes are assembled in the gate by ca65 and ld65 and are
 # never committed. scripts/fixture-check compares size and sha256 below with the bytes scripts/fixture-build wrote, as hashed by the host sha tool, so a changed source, library or
 # toolchain output turns the gate red. The pin was measured on the Homebrew cc65 2.19 bottle (see fixtures/lib/TOOLS.md); it proves the build is repeatable, nothing more.
+# Repin of the review fix L-01 of the gate review (RATIO_TOL 9 to 12 in fixtures/src/vdc_irq.s, one immediate operand): old sha256 f5da44ce71d60014346b20a23ebffd8f0b387932103220efaac6434973c84601, new 56e9be21c83259a4df9aac2fd41048325ac395357fa2c139baf4d536991ce38d, measured with shasum -a 256 over the built image; the size is unchanged.
 id = "vdc_irq"
 kind = "authored"
 source = "fixtures/src/vdc_irq.s"
 recipe = "vdc-irq: ca65 --cpu huc6280 -D ROMBANKS=32 -I fixtures/lib -o build/gate/fx/vdc-irq.o fixtures/src/vdc_irq.s; ld65 -C fixtures/lib/hucard.cfg -D ROMBANKS=32 -o build/gate/fixtures/vdc-irq.pce build/gate/fx/vdc-irq.o"
 toolchain = "cc65 V2.19 (ca65 prints V2.18; identity by encoding-matrix bytes, plan 03-08), Homebrew bottle 2.19 locally, hashed by sha256sum or shasum -a 256"
 size = 262144
-sha256 = "f5da44ce71d60014346b20a23ebffd8f0b387932103220efaac6434973c84601"
+sha256 = "56e9be21c83259a4df9aac2fd41048325ac395357fa2c139baf4d536991ce38d"
 licence = "0BSD"
 notices = "none: assembled at gate time from the project-owned sources fixtures/src/vdc_irq.s and fixtures/lib/*.inc and hucard.cfg (0BSD); no HuC, PCEAS or cc65 library or startup code, no emulator code, no game content"
 redistribution = "generated-not-committed"

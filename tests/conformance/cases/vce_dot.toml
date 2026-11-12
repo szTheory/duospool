@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
-# The dot clock and geometry fixture seen from the guest (plan 04-09; D-139, D-140, D-141, D-169, D-170, ER-4, ER-5): the authored fixture fixtures/src/vce_dot.s is assembled by ca65 in the gate (never committed), boots on the core, sets the vertical sum of 264 lines, HSR and HDR, the border palette
+# The dot clock and geometry fixture seen from the guest (plan 04-09; D-139, D-140, D-141, D-169, D-170, ER-4, ER-5): the authored fixture fixtures/src/vce_dot.s is assembled by ca65 in the gate (never committed), is booted on the core, sets the vertical sum of 264 lines, HSR and HDR, the border palette
 # entry $100 by an additive running sum, writes the VCE control register and holds each setup for about a frame,
 # and writes a DSV1 verdict block that the runner judges from raw RAM. The case has no policies key, so the guest kind runs the ROM under its default policy list (zero, seeded-prng-v3 seed 1, seed 2) and the check bytes must be equal in all three: every value the guest reads, it wrote first (D-167).
 # The checks are readbacks of what the guest programmed where the interface allows one: the unused read of CR (ASSUMED LED-VID-0016), the border entry by the procedure of H6-5 (MAN) and the high byte of the VDC status word (MAN H7-25). The raster itself is judged from the line records by the video

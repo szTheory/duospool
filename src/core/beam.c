@@ -156,7 +156,8 @@ static void rcr_step(struct ds_instance *inst)
     }
 }
 
-/* the background row counter bg_y (D-156), stepped at the EV_LINE of every display line after the vertical machine: the first display line (VDW, display_k 0) takes BYR as it stands, every later display line the previous value plus one modulo 512; a line that is not a display line leaves it alone. A write of either BYR byte sets it to the written value at its stamp (vdc.c), so a write during line n shows BYR + 1 on line n + 1 (MAN H7-7, ASSUMED LED-VID-0009) */
+/* the background row counter bg_y (D-156), stepped at the EV_LINE of every display line after the vertical machine: the first display line (VDW, display_k 0) takes BYR as it stands, every later display line the previous value plus one modulo 512; a line that is not a display line leaves it alone. A write of either BYR byte sets it to the written value at its stamp (vdc.c), so
+ * a write during line n shows BYR + 1 on line n + 1 (MAN H7-7, ASSUMED LED-VID-0009) */
 static void bg_step(struct ds_instance *inst)
 {
     if ((uint32_t)inst->v_state != (uint32_t)VS_VDW) {

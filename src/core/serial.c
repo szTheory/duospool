@@ -184,7 +184,8 @@ _Static_assert(offsetof(struct ds_input_event, at) == 0u && offsetof(struct ds_i
 
 /*
  * The VCE and VDC regions (plan 04-03; D-165): each is one live span of the instance in the order of the declarations of ds_core.h, and the instance has no padding (the tiling assert), so a span is its first member to the end of its last. VCE0 is vce_cr (u8) and vce_cta (u16): 3 bytes; PALT the 1,024 bytes of vce_pal; VDC0 is the 20 register slots (u16),
- * the read buffer (u16), the address register, the status and the write latch: 45 bytes; BEAM is 33 bytes (stage, v_state, burst, line_idx, v_togo ... rcr_origin: the stream order of D-165 is written field by field by emit_payload and differs from the order of the members); VDMA is 25 bytes (satb_pending, satb_done_valid, satb_done_at, dma_start, dma_done, dma_word_mclk, dma_state); VRAM the 65,536 bytes of vdc_vram; SATB the 512 bytes of vdc_satb.
+ * the read buffer (u16), the address register, the status and the write latch: 45 bytes; BEAM is 33 bytes (stage, v_state, burst, line_idx, v_togo ... rcr_origin: the stream order of D-165 is written field by field by emit_payload and differs from the order of the members); VDMA is 25 bytes (satb_pending, satb_done_valid, satb_done_at, dma_start, dma_done, dma_word_mclk,
+ * dma_state); VRAM the 65,536 bytes of vdc_vram; SATB the 512 bytes of vdc_satb.
  */
 _Static_assert(offsetof(struct ds_instance, vce_cta) + sizeof(uint16_t) - offsetof(struct ds_instance, vce_cr) == 3u, "the VCE fields are not the 3 bytes of the VCE0 payload");
 _Static_assert(offsetof(struct ds_instance, vdc_wlatch) + 1u - offsetof(struct ds_instance, vdc_reg) == 45u, "the VDC fields are not the 45 bytes of the VDC0 payload");

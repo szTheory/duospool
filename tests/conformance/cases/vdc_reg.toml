@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
-# The VDC register and VRAM interface seen from the guest (plan 04-06; D-146, D-148, D-149, D-169, D-170, D-175 (b), ER-4, ER-5, ER-10): the authored fixture fixtures/src/vdc_reg.s is assembled by ca65 in the gate (never committed), boots on the core, writes VRAM words through ST0, ST1 and ST2 (H8-8), through the window mirrors and through a TIA upload,
+# The VDC register and VRAM interface seen from the guest (plan 04-06; D-146, D-148, D-149, D-169, D-170, D-175 (b), ER-4, ER-5, ER-10): the authored fixture fixtures/src/vdc_reg.s is assembled by ca65 in the gate (never committed), is booted on the core, writes VRAM words through ST0, ST1 and ST2 (H8-8), through the window mirrors and through a TIA upload,
 # starts reads with the high byte write of MARR and reads the words back through VRR by LDA (H7-5, H7-25), and writes a DSV1 verdict block that the runner judges from raw RAM. The 37 checks cover the buffer (the CPU receives the old
 # word), the mirrors, the AR width (H7-3), $0001, the idle status, the IW steps of VWR and VRR (H7-7), the lone low byte writes and reads, the write latch,
 # the out-of-range word addresses and the wrap of MAWR, a reserved register, the ST triple with MPR0 mapped to work RAM against the sta triple (H8-8), a 32-word TIA upload checked against an additive running sum (GUEST vram-sum) and a TAI readback (ASSUMED

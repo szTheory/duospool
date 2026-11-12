@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
-# The interrupt controller seen from the guest (plan 03-22; D-110, D-111, D-112, D-124, D-125, D-127, ER-4, ER-5): the authored fixture fixtures/src/irq_ctl.s is assembled by ca65 in the gate (never committed), boots on the core, runs to the absolute deadline until_mclk (master clocks) and writes a
+# The interrupt controller seen from the guest (plan 03-22; D-110, D-111, D-112, D-124, D-125, D-127, ER-4, ER-5): the authored fixture fixtures/src/irq_ctl.s is assembled by ca65 in the gate (never committed), is booted on the core, runs to the absolute deadline until_mclk (master clocks) and writes a
 # DSV1 verdict block that the runner judges from raw RAM. IRQ1 and IRQ2 have no hardware source in the machine yet: the key irq_stim below DECLARES a test stimulus (events AT,LINE,LEVEL in master clocks, line 1 or 2, level 1 requested or 0 not, a pure function of time) that the runner gives to the core with
 # ds_irq_stim_set before the first step. It is a test hook for the controller logic, E0 and E2 self-consistency, and says nothing about the VDC or any other hardware source (ER-5, D-112, ASSUMED LED-IRQ-0008). The checks of the fixture are classed in fixtures/src/irq_ctl.checks: a manual page (MAN) or an
 # assumed ledger entry (ASSUMED: LED-IRQ-0008, written in plan 03-34); none comes from DuoSpool output. The case has no policies key, so the guest kind runs the ROM under its default policy list (D-127). This case runs the model value irq_i_sample = post (the run-request key model.irq_i_sample): the

@@ -2,7 +2,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
 # Toy control (D-85, D-173, F-39; a toy of the Phase 4 set): the divider table with its first two entries swapped (division ratios 3, 4, 2, 2 for the CR contents 00h to 03h), made from the live src/core/vce.c by scripts/control-mutate. The anchor is the one line that holds the first two entries of the static const divider table (the entries for the contents 00h and 01h); the replacement
-# swaps them, the plausible mistake of a table written in the order of the manual page. The cases in EXPECT must come out guest_failure on the toy: video_vce_dot judges the divider of the records inside the windows of the CR writes (MAN H6-3: content 00h gives 4, 01h gives 3) and the widths of the windows in master clocks, and vid_active_window judges the window rows at divider 4 and 3. The real core passes both (REQUIRED cases).
+# swaps them, the plausible mistake of a table written in the order of the manual page. The cases in EXPECT must come out guest_failure on the toy: video_vce_dot judges the divider of the records inside the windows of the CR writes (MAN H6-3: content 00h gives 4, 01h gives 3) and the widths of the windows in master clocks, and vid_active_window judges the window rows at
+# divider 4 and 3. The real core passes both (REQUIRED cases).
 tag=rule-vid-dot-div
 file=src/core/vce.c
 anchor=(uint8_t)DS_CONST_vce_div_cr0, (uint8_t)DS_CONST_vce_div_cr1,

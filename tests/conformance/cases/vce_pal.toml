@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
-# The VCE colour table and registers seen from the guest (plans 04-04 and 04-19; D-152, D-153, D-169, D-170, ER-4, ER-5): the authored fixture fixtures/src/vce_pal.s is assembled by ca65 in the gate (never committed), boots on the core, writes the VCE control register and all 512 colour table entries
+# The VCE colour table and registers seen from the guest (plans 04-04 and 04-19; D-152, D-153, D-169, D-170, ER-4, ER-5): the authored fixture fixtures/src/vce_pal.s is assembled by ca65 in the gate (never committed), is booted on the core, writes the VCE control register and all 512 colour table entries
 # P(i) = (91 * i + 17) & 511 through the bus (the product by shift and add), reads all of them back against the additive running sum, runs the register tests (unlisted reads, the increment after the high byte, the unused data bits, independent halves, the wrap, the window mirrors, a TIA block write)
 # and writes
 # a DSV1 verdict block that the runner judges from raw RAM. The case has no policies key, so the guest kind runs the ROM under its default policy list (zero, seeded-prng-v3 seed 1, seeded-prng-v3 seed 2), and the check bytes must be equal in all three: every entry the guest reads, it wrote first

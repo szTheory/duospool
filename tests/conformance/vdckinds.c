@@ -1647,7 +1647,8 @@ void kind_vdc_regmask(const struct kase *k, struct ctx *c, char *got, size_t got
 
 /* ---- model_param_vdc (plan 04-08; D-142, D-143, D-168, ER-10, ASSUMED LED-IRQ-0001 and LED-IRQ-0010) ----
  *   model_param_vdc   expect = rom=NAME;vd_shift=N;rr_shift=N;tol=N, request = "A||B" (until_mclk needed). The ROM (the vdc_stat guest) is run three times with the dev sink: with the default request, with A (model.vd_irq_phase=hdw_start) and with B (model.rcr_origin=line_before).
- *   In each run the status reads of the VDC window ($1FE000, kind R, with the stamp of the access) are taken from the dev log: the VD stamp is the stamp of the LAST read whose value has bit 5 set (the read in the IRQ1 handler of the VBlank interrupt; the foreground read before it also has bit 5), the RR stamp that of the FIRST read whose value has bit 2 set (the read in the handler of the RCR interrupt).
+ *   In each run the status reads of the VDC window ($1FE000, kind R, with the stamp of the access) are taken from the dev log: the VD stamp is the stamp of the LAST read whose value has bit 5 set (the read in the IRQ1 handler of the VBlank interrupt; the foreground read before it also has bit 5), the RR stamp that of the FIRST read whose value has bit 2 set (the read in the
+ *   handler of the RCR interrupt).
  *   The stamps are judged from the dev log and the literals of the case, never from a literal copied out of the core: the VD stamp of run A minus that of the default run is vd_shift (+96: the window start of HDS = 2 at divider 4 is (2 + 1) * 8 * 4 master clocks after the line start, ASSUMED LED-IRQ-0001) and the RR stamp of run B minus that of the default run is rr_shift (-1365: the
  *   origin line is one line earlier, so the same RCR value matches one line sooner, ASSUMED LED-IRQ-0010), each within plus or minus tol master clocks. tol is the longest instruction of the foreground wait loop of the fixture, lda abs of 5 cycles at 3 master clocks (15): an interrupt is taken at the first instruction boundary after the event, so the stamp of the handler read moves by the shift
  *   less than one instruction. The two cross rows hold the other parameter fixed: the VD stamp of run B and the RR stamp of run A equal those of the default run within tol (each parameter moves its own event only). Evidence E0: the model compared with the case's own literals; no hardware or accuracy claim.
@@ -2869,7 +2870,8 @@ static int vp_one(struct ctx *c, const struct vp_item *it, int control, uint64_t
     if (rc == 0 && control == 0) {
         char msg[300];
 
-        snprintf(msg, sizeof msg, "%s: the first judged frame %llu is not the first frame after the last record that differs between policies (%s): a later one would hide records from the guard, an earlier one is a record that differs", it->rom, (unsigned long long)it->from, anyall > 0u ? "a record differs up to a frame that the window must follow" : "no record differs, so the window starts at frame 0");
+        snprintf(msg, sizeof msg, "%s: the first judged frame %llu is not the first frame after the last record that differs between policies (%s): a later one would hide "
+            "records from the guard, an earlier one is a record that differs", it->rom, (unsigned long long)it->from, anyall > 0u ? "a record differs up to a frame that the window must follow" : "no record differs, so the window starts at frame 0");
         check(c, it->from == (anyall > 0u ? maxlast + 1u : 0u), msg);
     }
     for (p = 0u; p < VD_POLICIES; p++) {
