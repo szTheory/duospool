@@ -247,6 +247,7 @@ snapshot_refusal_vdc
 snapshot_refusal_beam
 snapshot_refusal_timeline
 snapshot_refusal_window
+snapshot_refusal_reach
 snapshot_refusal_vdma
 vce_pal
 mutate_sweep_vce_pal
@@ -294,6 +295,8 @@ vdc_satb
 mutate_sweep_vdc_satb
 vdc_satb_data
 vdc_snapshot_mid_dma
+vdc_dma_lenr_live
+vdc_vblank_wrap
 bg_basic
 video_bg_basic_solid
 video_bg_basic_asym

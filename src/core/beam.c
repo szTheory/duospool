@@ -104,7 +104,9 @@ static void enter_state(struct ds_instance *inst, uint32_t st, uint32_t len)
     inst->display_k = st == (uint32_t)VS_VDW ? (uint16_t)0u : (uint16_t)0xFFFFu;
 }
 
-/* item 2 of D-138, the vertical machine (D-139): the cycle restarts in VDS at frame line 0 (an unfinished state is cut, and no VD is raised for a VDW the wrap cut, LED-IRQ-0001) and otherwise runs VDS, VDW, VCR and VSW round again. A state whose length is 0 (only VCR can be) is skipped. Returns 1 when this line is the VBlank state entry, the first line after VDW */
+/* item 2 of D-138, the vertical machine (D-139): the cycle restarts in VDS at frame line 0 (an unfinished state is cut, and no VD is raised for a VDW the wrap cut, LED-IRQ-0001) and otherwise runs VDS, VDW, VCR and VSW round again. A state whose length is 0 (only VCR can be) is skipped. Returns 1 when this line is the VBlank state entry, the first line after VDW.
+ * When VDW completes on the last line of the frame (VDW with no line to come, so (VDS+2) + (VDW+1) lines fill the frame exactly), the first line after it is frame line 0: that wrap line is the VBlank state entry (review fix M-02, ASSUMED LED-IRQ-0001 and LED-VID-0005), so VD, the SATB copy and the MWR latch happen at the wrap instant and then
+ * the vertical cycle restarts in VDS on the same line. A VDW that still has lines to come at the wrap is cut, with no VD */
 static int vertical_step(struct ds_instance *inst, uint64_t k)
 {
     uint32_t prev = (uint32_t)inst->v_state;
@@ -113,8 +115,10 @@ static int vertical_step(struct ds_instance *inst, uint64_t k)
     uint32_t tries;
 
     if (inst->frame_lines != 0u && k % (uint64_t)inst->frame_lines == UINT64_C(0)) {
+        int vdw_done = prev == (uint32_t)VS_VDW && inst->v_togo == 0u && k != UINT64_C(0);
+
         enter_state(inst, (uint32_t)VS_VDS, state_len(inst, (uint32_t)VS_VDS));
-        return 0;
+        return vdw_done;
     }
     if (inst->v_togo != 0u) { /* a later line of the same state */
         inst->v_togo = (uint16_t)((uint32_t)inst->v_togo - 1u);
@@ -277,9 +281,14 @@ void ds_vdc_advance(struct ds_instance *inst, uint64_t stamp, struct ds_obs_log 
 
 /* power-on state of the VCE, the VDC and the beam (plan 04-03; D-165, D-167, F-11, F-48): ds_boot has zeroed the instance, so every register, latch, status, DMA and beam byte is already 0 under every policy; this sets the three non-zero bytes. The RCR counter is a constant (it is not a draw), the frame length is the bound
  * lines_per_frame of the profile (an open field every run binds: ds_resolve refuses an unbound one, so the value is 262 or 263 and 262 is the only other case) and display_k is 0xFFFF outside the display state (v_state 0, VDS, at boot). The VRAM, SATB and palette bytes are the business of the power-on policy (poweron.c). */
+uint32_t ds_vdc_frame_lines(const struct ds_instance *inst)
+{
+    return ds_streq(inst->profile.field[DS_FIELD_lines_per_frame].value, "263") ? 263u : 262u;
+}
+
 void ds_vdc_poweron(struct ds_instance *inst)
 {
     inst->rcr_counter = (uint16_t)DS_CONST_rcr_counter_poweron;
-    inst->frame_lines = ds_streq(inst->profile.field[DS_FIELD_lines_per_frame].value, "263") ? (uint16_t)263u : (uint16_t)262u;
+    inst->frame_lines = (uint16_t)ds_vdc_frame_lines(inst);
     inst->display_k = (uint16_t)0xFFFFu;
 }

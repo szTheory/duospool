@@ -43,6 +43,12 @@ void ds_vce_write(struct ds_instance *inst, uint32_t reg, uint8_t value, uint64_
 /* the power-on state of the VDC and the VCE (D-167) */
 void ds_vdc_poweron(struct ds_instance *inst);
 
+/* the frame length in lines the instance's profile binds (lines_per_frame, 262 or 263; D-136): the one derivation, read by the power-on and by the restore rule (review fix M-01) */
+uint32_t ds_vdc_frame_lines(const struct ds_instance *inst);
+
+/* the value mask of VDC register slot (R00 to R13, D-146): the one mask table of vdc.c, read by the write handler and by the restore rule (review fix L-02); 0 for a slot that is not a register */
+uint16_t ds_vdc_reg_mask(uint32_t slot);
+
 /* the dot clock divider of a VCE control register value (D-141): the one table, vce.c */
 uint32_t ds_vce_divider(uint32_t cr);
 

@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The VBlank state entry at the edge where the display state ends on the last line of the frame (review fix M-02; D-139, D-143, D-150): the runner kind vdc_vblank_wrap (tests/conformance/vdckinds.c) boots a synthetic image (262 lines per frame) under both VD phases and drives the VDC without a guest: VPR = VDS << 8 | 2, VDW = 239, VCR = 3,
+# CR = $08, DCR = $01, MWR = $10 and the DVSSR high byte written once; the timeline is folded frame by frame and the status read at the last clock of each frame. VDS 19: VDS and VDW end one line before the wrap, VD every frame. VDS 20: 22 + 240 = 262 lines, VDW ends on the last line of the frame and the frame-wrap line is the VBlank state entry
+# (VD every frame, one SATB copy, one DS, MWR latched): the decision of the review fix M-02, class ASSUMED LED-IRQ-0001 and LED-VID-0005. VDS 21: the wrap cuts VDW, so no VD, no copy, no DS and no latch (D-139). Bit positions of VD and DS: MAN H7-4. Evidence tier E0: no accuracy, compatibility or hardware claim, and the word pass is not a support claim.
+id = "vdc_vblank_wrap"
+kind = "vdc_vblank_wrap"
+fixture = "plain-256k"
+request = ""
+expect = "rows=19:each,20:each,21:none;frames=5"
+meaning = "When the display state ends one line before the wrap or on the last line of the frame, VD is raised in every frame and the SATB copy, DS and the MWR latch happen once; when the wrap cuts the display state, none of them happens; the edge case is an ASSUMED decision, E0"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

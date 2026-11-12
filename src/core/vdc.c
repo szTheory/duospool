@@ -13,7 +13,7 @@
  * A write operation stores (msb << 8) | latch at word MAWR through the accessor and then adds the IW increment (1, $20, $40, $80 for CR bits 12 and 11, MAN H7-7) to MAWR, even when the store is dropped. A read operation loads the buffer from VRAM[MARR] and then adds the same increment to MARR; the CPU receives the buffer as it was BEFORE
  * the new operation (MAN H7-5 and H7-25: the high byte write of MARR starts the read, the high byte read of VRR triggers the next word). All address arithmetic is unsigned and wraps modulo 65,536 (D-147).
  * VRAM is 65,536 bytes, word w = byte 2w | byte 2w+1 << 8, and every access goes through the ONE accessor pair below: a read at a word address at or above DS_CONST_vdc_vram_words returns DS_CONST_vdc_oob_read and a write there is dropped (ASSUMED LED-VID-0007). The status read returns the flag bits 0 to 5 with bit 6 (BSY) the named constant
- * and bit 7 zero, and clears bits 0 to 5 (MAN H7-4); ds_vdc_flag is the single status setter, with the enable gate of D-144 (its callers are the events of the ladder in beam.c since plan 04-08: VD and RR, and DS and DV since plan 04-10; OR and CR follow in plan 04-15). A register write sets the line_dirty bits of D-161.
+ * and bit 7 zero, and clears bits 0 to 5 (MAN H7-4); ds_vdc_flag is the single status setter, with the enable gate of D-144 (its callers are the events of the ladder in beam.c since plan 04-08: VD and RR, and DS and DV since plan 04-10; OR and CR follow in plan 04.1-02 of Phase 4.1). A register write sets the line_dirty bits of D-161.
  */
 #include <stddef.h>
 #include <stdint.h>
@@ -36,6 +36,11 @@ static const uint16_t vdc_mask[VDC_SLOTS] = {
     0x7F1Fu, 0x7F7Fu, 0xFF1Fu, 0x01FFu, 0x00FFu, /* HSR HDR VPR VDW VCR */
     0x001Fu, 0xFFFFu, 0xFFFFu, 0xFFFFu, 0xFFFFu, /* DCR SOUR DESR LENR DVSSR */
 };
+
+uint16_t ds_vdc_reg_mask(uint32_t slot)
+{
+    return slot < (uint32_t)VDC_SLOTS ? vdc_mask[slot] : (uint16_t)0u;
+}
 
 /* the line_dirty bit a write of each register sets (D-161): b1 HSR and HDR, b2 VPR, VDW and VCR, b3 BXR and BYR, b5 CR and MWR; the rest set none */
 static const uint8_t vdc_dirty[VDC_SLOTS] = {
@@ -107,7 +112,9 @@ static void dma_word(struct ds_instance *inst, uint32_t sour_step, uint32_t desr
 }
 
 /* the closed form of the transfer progress (D-151, P3): the words due at time t are (t - dma_start) / dma_word_mclk, less the words done, at most the words that remain (LENR + 1 while running, so at most 65,536); never a loop over clocks, one loop over the due words. The fold calls it before every event and at its target stamp, so a word is
- * applied before every access that follows it (events and words with time <= stamp first). Completion ends the transfer and raises DV through ds_vdc_flag, whose gate reads DCR bit 1 at this instant: no access lies between the completion time and the fold that applies it, so the gate value is the one of the completion instant */
+ * applied before every access that follows it (events and words with time <= stamp first). Completion ends the transfer and raises DV through ds_vdc_flag, whose gate reads DCR bit 1 at this instant: no access lies between the completion time and the fold that applies it, so the gate value is the one of the completion instant.
+ * The closed form is re-based after every apply (review fix H-01): dma_start moves on by the n words applied and dma_done goes back to 0, so the progress is the distance from dma_start and never accumulates. A LENR low-byte write while the transfer runs only stores (LENR is the live counter), so a guest can keep a transfer alive past 65,536 words;
+ * without the re-base the words since the start grew past the restore rule and could wrap at 2^32. Re-basing keeps chunk invariance: the words due at any later time are the same function of time (floor((t - start - n * w) / w) = floor((t - start) / w) - n) */
 void ds_vdc_dma_apply(struct ds_instance *inst, uint64_t t)
 {
     uint64_t due;
@@ -134,10 +141,10 @@ void ds_vdc_dma_apply(struct ds_instance *inst, uint64_t t)
     for (i = 0u; i < (uint32_t)n; i++) {
         dma_word(inst, sour_step, desr_step);
     }
-    inst->dma_done = (uint32_t)((uint64_t)inst->dma_done + n);
+    inst->dma_start = inst->dma_start + (uint64_t)inst->dma_done * (uint64_t)inst->dma_word_mclk + n * (uint64_t)inst->dma_word_mclk; /* at most t: (dma_done + n) words are due by t */
+    inst->dma_done = 0u;
     if (n == (uint64_t)remaining) { /* the last word moved: the transfer is over */
         inst->dma_state = 0u;
-        inst->dma_done = 0u;
         ds_vdc_flag(inst, 4u);
     }
 }

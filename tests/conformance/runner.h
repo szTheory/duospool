@@ -418,6 +418,8 @@ void kind_vdc_irq_agree(const struct kase *k, struct ctx *c, char *got, size_t g
 void kind_vdc_advance_pure(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-10: the DMA closed form against a naive per-clock model over seeded random stamp partitions that cross display starts (D-151, D-175) */
 void kind_vdc_satb_data(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-10: the 256 SATB words of the instance bytes against the source pattern (D-150, D-175 (c)) */
 void kind_vdc_snapshot_mid_dma(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-10: restores in the middle of a VRAM transfer, a SATB wait and the arming window continue to the same end (D-151, D-166) */
+void kind_vdc_dma_lenr_live(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* review fix H-01: a transfer whose LENR low byte is rewritten while it runs restores at every stop past 65,536 words (D-151, D-166) */
+void kind_vdc_vblank_wrap(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* review fix M-02: the VBlank state entry when VDS and VDW fill the frame exactly (D-139, D-143, ASSUMED LED-IRQ-0001) */
 const char *vd_policy_name(unsigned i);
 int vd_policy_request(unsigned i, const char *base, char *out, size_t cap);
 int vd_compose_request(const char *base, const char *fragment, char *out, size_t cap); /* the request with one policy fragment appended: the observer kind uses it for its policies key */

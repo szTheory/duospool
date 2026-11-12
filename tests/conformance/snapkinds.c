@@ -1550,6 +1550,7 @@ ED_U16(ed_rcr_7fff, RG_BEAM, 14u, 0x7FFFu)
 ED_U16(ed_fl_261, RG_BEAM, 16u, 261u)
 ED_U16(ed_fl_264, RG_BEAM, 16u, 264u)
 ED_U16(ed_fl_263, RG_BEAM, 16u, 263u)
+ED_U16(ed_fl_262, RG_BEAM, 16u, 262u)
 ED_U16(ed_bgy_512, RG_BEAM, 18u, 512u)
 ED_U16(ed_bgy_511, RG_BEAM, 18u, 511u)
 ED_U16(ed_mwr_100, RG_BEAM, 20u, 0x100u)
@@ -1573,6 +1574,8 @@ ED_U8(ed_satbv_2, RG_VDMA, 1u, 2u)
 ED_U8(ed_dst_3, RG_VDMA, 10u, 3u)
 ED_U32(ed_dd_10001, RG_VDMA, 21u, 65537u)
 ED_U32(ed_dd_10000, RG_VDMA, 21u, 65536u)
+ED_U32(ed_dd_1, RG_VDMA, 21u, 1u)
+ED_U32(ed_dd_0, RG_VDMA, 21u, 0u)
 ED_U16(ed_dw_9_idle, RG_VDMA, 19u, 9u)
 
 /* the display line is judged against the vertical state: inside VDW (v_state 1) below 512, anywhere else exactly 0xFFFF (F-1) */
@@ -1649,17 +1652,50 @@ static void ed_ev_none(uint8_t *b)
     win_set(b, sk_get64(b + sk_payload_off(RG_TIME)), UINT64_C(5), 1u); /* stage 1 with no VD flag outstanding names no event */
     b[sk_payload_off(RG_BEAM) + 30u] = 0u;
 }
+/* an outstanding VD event as a run leaves it (review fix L-01): the phase hdw_start (vd_irq_phase 1) and no RCR event of the line still to come (rcr_off none), so that only the window rule is what judges the row */
+static void vd_set(uint8_t *b, uint64_t line_idx)
+{
+    win_set(b, sk_get64(b + sk_payload_off(RG_TIME)), line_idx, 1u);
+    b[sk_payload_off(RG_BEAM) + 30u] = 1u;
+    b[sk_payload_off(RG_BEAM) + 31u] = 1u;
+    sk_put16(BM_AT(b, 25u), 100u);
+    sk_put16(BM_AT(b, 27u), 0xFFFFu);
+}
 static void ed_ev_vd_before(uint8_t *b)
 {
-    win_set(b, sk_get64(b + sk_payload_off(RG_TIME)), UINT64_C(1), 1u); /* the EV_VD of line 0 at 100, behind the machine time */
-    b[sk_payload_off(RG_BEAM) + 30u] = 1u;
-    sk_put16(BM_AT(b, 25u), 100u);
+    vd_set(b, UINT64_C(1)); /* the EV_VD of line 0 at 100, behind the machine time */
 }
 static void ed_ev_vd_ahead(uint8_t *b)
 {
-    win_set(b, sk_get64(b + sk_payload_off(RG_TIME)), sk_get64(b + sk_payload_off(RG_TIME)) / UINT64_C(1365) + UINT64_C(2), 1u); /* the EV_VD of the line before the last allowed index: its origin plus 100 is less than one line ahead */
-    b[sk_payload_off(RG_BEAM) + 30u] = 1u;
-    sk_put16(BM_AT(b, 25u), 100u);
+    vd_set(b, sk_get64(b + sk_payload_off(RG_TIME)) / UINT64_C(1365) + UINT64_C(2)); /* the EV_VD of the line before the last allowed index: its origin plus 100 is less than one line ahead */
+}
+/* the event order rules (review fix L-01), each from the accepted edge event-vd-ahead with one member changed: VD outstanding under the phase line_start (which raises VD at EV_LINE and never leaves it outstanding), VD outstanding at the stage RCR (EV_VD always comes first), and an RCR event of the same line at or before the VD event (the window
+ * end is after the window start, so a run never has it); an RCR event after the VD event is accepted */
+static void ed_vd_line_start(uint8_t *b)
+{
+    ed_ev_vd_ahead(b);
+    b[sk_payload_off(RG_BEAM) + 31u] = 0u;
+}
+static void ed_vd_stage_rcr(uint8_t *b)
+{
+    ed_ev_vd_ahead(b);
+    b[sk_payload_off(RG_BEAM) + 8u] = 2u;
+    sk_put16(BM_AT(b, 27u), 200u);
+}
+static void ed_vd_after_rcr(uint8_t *b)
+{
+    ed_ev_vd_ahead(b);
+    sk_put16(BM_AT(b, 27u), 50u);
+}
+static void ed_vd_rcr_equal(uint8_t *b)
+{
+    ed_ev_vd_ahead(b);
+    sk_put16(BM_AT(b, 27u), 100u);
+}
+static void ed_vd_before_rcr(uint8_t *b)
+{
+    ed_ev_vd_ahead(b);
+    sk_put16(BM_AT(b, 27u), 101u);
 }
 /* satb_done_at is judged only when valid, in [machine_time, machine_time + 4096]; dma_start only while a transfer runs, at or before the machine time */
 static void sat_set(uint8_t *b, uint8_t valid, uint64_t at)
@@ -1829,6 +1865,7 @@ static const struct {
     {"frame-261", M_EDIT, ed_fl_261},
     {"frame-264", M_EDIT, ed_fl_264},
     {"frame-263", M_EDIT, ed_fl_263},
+    {"frame-262", M_EDIT, ed_fl_262},
     {"bg-y-512", M_EDIT, ed_bgy_512},
     {"bg-y-511", M_EDIT, ed_bgy_511},
     {"mwr-100", M_EDIT, ed_mwr_100},
@@ -1857,6 +1894,8 @@ static const struct {
     {"dma-state-3", M_EDIT, ed_dst_3},
     {"dma-done-65537", M_EDIT, ed_dd_10001},
     {"dma-done-65536", M_EDIT, ed_dd_10000},
+    {"dma-done-1", M_EDIT, ed_dd_1},
+    {"dma-done-0", M_EDIT, ed_dd_0},
     {"dma-word-0", M_EDIT, ed_dma_word_0},
     {"dma-word-9", M_EDIT, ed_dw_9_run},
     {"dma-word-8", M_EDIT, ed_dw_8_run},
@@ -1870,6 +1909,11 @@ static const struct {
     {"event-none", M_EDIT, ed_ev_none},
     {"event-vd-before", M_EDIT, ed_ev_vd_before},
     {"event-vd-ahead", M_EDIT, ed_ev_vd_ahead},
+    {"vd-pend-line-start", M_EDIT, ed_vd_line_start},
+    {"vd-pend-stage-rcr", M_EDIT, ed_vd_stage_rcr},
+    {"vd-after-rcr", M_EDIT, ed_vd_after_rcr},
+    {"vd-rcr-equal", M_EDIT, ed_vd_rcr_equal},
+    {"vd-before-rcr", M_EDIT, ed_vd_before_rcr},
     {"satb-done-before", M_EDIT, ed_sat_before},
     {"satb-done-now", M_EDIT, ed_sat_now},
     {"satb-done-4096", M_EDIT, ed_sat_4096},

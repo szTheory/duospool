@@ -1059,6 +1059,8 @@ static const struct {
     {"vdc_advance_pure", kind_vdc_advance_pure, 0},
     {"vdc_satb_data", kind_vdc_satb_data, 0},
     {"vdc_snapshot_mid_dma", kind_vdc_snapshot_mid_dma, 0},
+    {"vdc_dma_lenr_live", kind_vdc_dma_lenr_live, 0},
+    {"vdc_vblank_wrap", kind_vdc_vblank_wrap, 0},
     {"model_refuse", kind_model_refuse, 0},
     {"mutate_sweep", kind_mutate_sweep, 0},
     {"insn_sink_shapes", kind_insn_sink_shapes, 0},

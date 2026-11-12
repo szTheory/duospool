@@ -2264,18 +2264,32 @@ void kind_vdc_satb_data(const struct kase *k, struct ctx *c, char *got, size_t g
 struct sm_stop {
     char rom[48];
     char kind[8];
+    int seen;       /* a transfer of the stop's direction was running at the previous call */
+    uint32_t lenr0; /* LENR at the first call that saw it running: the words done since are LENR0 - LENR (LENR steps down by one per word, D-151) */
 };
 
+/* the words done are counted from LENR, not from the core's progress member: since the review fix H-01 the closed form is re-based at every apply, so dma_done is 0 between folds and says nothing about the progress */
 static int sm_stop_cb(const struct ds_instance *inst, void *ctx)
 {
-    const struct sm_stop *sp = (const struct sm_stop *)ctx;
+    struct sm_stop *sp = (struct sm_stop *)ctx;
     uint32_t dcr = (uint32_t)inst->vdc_reg[15];
 
-    if (strcmp(sp->kind, "fwd") == 0) {
-        return inst->dma_state == 2u && (dcr & 0x0Cu) == 0u && inst->dma_done >= 8u && inst->dma_done <= 40u;
-    }
-    if (strcmp(sp->kind, "rev") == 0) {
-        return inst->dma_state == 2u && (dcr & 0x0Cu) != 0u && inst->dma_done >= 1u && inst->dma_done <= 3u;
+    if (strcmp(sp->kind, "fwd") == 0 || strcmp(sp->kind, "rev") == 0) {
+        int want_rev = sp->kind[0] == 'r';
+        int is_rev = (dcr & 0x0Cu) != 0u;
+        uint32_t done;
+
+        if (inst->dma_state != 2u || is_rev != want_rev) {
+            sp->seen = 0;
+            return 0;
+        }
+        if (!sp->seen) {
+            sp->seen = 1;
+            sp->lenr0 = (uint32_t)inst->vdc_reg[18];
+            return 0;
+        }
+        done = (sp->lenr0 - (uint32_t)inst->vdc_reg[18]) & 0xFFFFu;
+        return want_rev ? done >= 1u && done <= 3u : done >= 8u && done <= 40u;
     }
     if (strcmp(sp->kind, "ds") == 0) {
         return inst->satb_done_valid == 1u;
@@ -2303,6 +2317,8 @@ static int sm_parse(const char *text, struct sm_stop *out, unsigned cap, unsigne
         *colon = '\0';
         memcpy(out[*n].rom, item, strlen(item) + 1u);
         memcpy(out[*n].kind, colon + 1, strlen(colon + 1) + 1u);
+        out[*n].seen = 0;
+        out[*n].lenr0 = 0u;
         if (strcmp(out[*n].kind, "fwd") != 0 && strcmp(out[*n].kind, "rev") != 0 && strcmp(out[*n].kind, "ds") != 0 && strcmp(out[*n].kind, "arm") != 0) {
             return -1;
         }
@@ -2412,6 +2428,308 @@ void kind_vdc_snapshot_mid_dma(const struct kase *k, struct ctx *c, char *got, s
     }
     free(snap);
     snprintf(got, gotcap, "stops=%u restored=%u", n, restored);
+}
+
+/* ---- vdc_dma_lenr_live (review fix H-01; D-151, D-137, D-166; E0) ---- */
+
+/*
+ * vdc_dma_lenr_live: a VRAM-to-VRAM transfer whose LENR low byte is rewritten while it runs (LENR is a live counter, D-151, and the low byte only stores) restores at every stop and continues to the same end. expect = first=N;lsb=V;then=N;keep=N;every=N (decimal). A booted image whose guest never touches the VDC (cpu-alu) is run with ds_run;
+ * between runs the VDC is driven directly at the machine time (the fold to that time first, then the port writes, the production order of D-137): SOUR = DESR = 0 and LENR = $FFFF start the transfer (CR is 0, so every frame is burst and nothing cancels it, D-157); after `first` words (word time 16 master clocks: 4 dots, ASSUMED
+ * LED-VID-0014, times the divider 4 of CR 0, MAN H6-3, written here) the low byte is written V; after `then` more words (the review's repro 60,000 / $FF / 5,600: the transfer is then past 65,536 words since its start) the machine stops; then the low byte is written V every 2,048 master clocks (128 words) `keep` times, which keeps the transfer alive
+ * past three times 65,536 words, and the machine stops after every `every`-th write; then it runs to until_mclk with no write and the transfer ends (LENR $FFFF, idle). At every stop: while a transfer runs the progress member dma_done is 0 and dma_start is at most one word time behind the machine time (the progress is bounded by construction,
+ * so no member counts the words since the start and nothing can wrap at 2^32 words however long a guest keeps the transfer alive; a 2^32-word run itself is about 4.3e9 word moves and is not run), and the machine is snapshotted, restored into a twin booted under another power-on seed and poisoned first (member by member equal to the source), and the
+ * run goes on with the twin. The chain must equal the uninterrupted run of the same script in machine time, steps, digest and every restorable member. Before the fix the restore past 65,536 words was refused (the review's H-01). E0: the core against itself, no accuracy or hardware claim.
+ */
+#define LL_WORD_MCLK 16u   /* master clocks per word: DS_CONST_vdc_dma_dots_per_word 4 (ASSUMED LED-VID-0014) times the divider 4 of CR 0 (MAN H6-3), written here */
+#define LL_KEEP_MCLK 2048u /* 128 words between two low-byte writes of the keep phase: LENR stays between $xx7F and $xxFF */
+#define LL_START_MCLK 1000u
+
+struct ll_param {
+    unsigned first;
+    unsigned lsb;
+    unsigned then;
+    unsigned keep;
+    unsigned every;
+};
+
+struct ll_run {
+    struct ds_instance *cur;
+    struct ds_instance *spare; /* NULL: the uninterrupted run, no restore */
+    uint8_t *snap;
+    uint64_t steps;
+    uint64_t t0;
+    unsigned stops;
+    unsigned restores;
+};
+
+/* the fold to the machine time, then AR = ar and the low byte, and the high byte when msb is set, all at the machine time (the order of a bus access, D-137) */
+static void ll_port(struct ds_instance *w, uint32_t ar, uint32_t value, int msb)
+{
+    uint64_t t = w->machine_time;
+
+    ds_vdc_advance(w, t, NULL);
+    ds_vdc_write(w, 0u, (uint8_t)ar, t);
+    ds_vdc_write(w, 2u, (uint8_t)(value & 0xFFu), t);
+    if (msb) {
+        ds_vdc_write(w, 3u, (uint8_t)((value >> 8u) & 0xFFu), t);
+    }
+}
+
+static void ll_to(struct ctx *c, struct ll_run *r, uint64_t until)
+{
+    struct ds_run_request rq;
+    struct ds_run_result res;
+
+    memset(&rq, 0, sizeof rq);
+    memset(&res, 0, sizeof res);
+    rq.struct_size = (uint32_t)sizeof rq;
+    rq.until_mclk = until;
+    check(c, ds_run(r->cur, &rq, &res) == (uint32_t)DS_RUN_REASON_UNTIL, "a run of the vdc_dma_lenr_live script did not end on its deadline");
+    r->steps += res.steps;
+}
+
+static void ll_stop(struct ctx *c, struct ll_run *r, const char *where)
+{
+    const struct ds_instance *s = r->cur;
+    const char *diff;
+    char msg[240];
+
+    r->stops++;
+    if (s->dma_state == 2u) {
+        snprintf(msg, sizeof msg, "%s: a running transfer has dma_done %u or a start more than one word time behind the machine time (the progress must stay bounded, H-01)", where, (unsigned)s->dma_done);
+        check(c, s->dma_done == 0u && s->dma_start <= s->machine_time && s->machine_time - s->dma_start <= (uint64_t)s->dma_word_mclk, msg);
+    }
+    if (r->spare == NULL || c->failed) {
+        return;
+    }
+    snprintf(msg, sizeof msg, "%s: ds_snapshot of the source was refused", where);
+    check(c, ds_snapshot(r->cur, r->snap, ds_snapshot_size(), NULL) == (uint32_t)DS_SNAPREF_NONE, msg);
+    snap_poison(r->spare, 0xA5u);
+    snprintf(msg, sizeof msg, "%s: ds_restore refused the snapshot of a running transfer whose LENR low byte was rewritten (H-01)", where);
+    check(c, ds_restore(r->spare, r->snap, ds_snapshot_size()) == (uint32_t)DS_SNAPREF_NONE, msg);
+    diff = snap_first_diff(r->spare, r->cur);
+    snprintf(msg, sizeof msg, "%s: the restored instance differs from the source in the member %s", where, diff != NULL ? diff : "-");
+    check(c, diff == NULL, msg);
+    if (!c->failed) {
+        struct ds_instance *t = r->cur;
+
+        r->cur = r->spare;
+        r->spare = t;
+        r->restores++;
+    }
+}
+
+/* the script of the case on r->cur; the words since the start are (machine time - t0) / 16 while the transfer runs */
+static void ll_script(struct ctx *c, const struct ll_param *p, struct ll_run *r, uint64_t until)
+{
+    unsigned j;
+
+    ll_to(c, r, LL_START_MCLK);
+    ll_port(r->cur, 0x10u, 0u, 1);
+    ll_port(r->cur, 0x11u, 0u, 1);
+    ll_port(r->cur, 0x12u, 0xFFFFu, 1);
+    r->t0 = r->cur->machine_time;
+    check(c, r->cur->dma_state == 2u, "the LENR high byte write did not start the transfer at once (CR 0: the frame is burst, the bus is free, D-151, D-157)");
+    ll_to(c, r, r->t0 + (uint64_t)p->first * LL_WORD_MCLK);
+    ll_stop(c, r, "after the first words");
+    check(c, r->cur->dma_state == 2u, "the transfer was not running after the first words");
+    ll_port(r->cur, 0x12u, p->lsb, 0);
+    ll_to(c, r, r->cur->machine_time + (uint64_t)p->then * LL_WORD_MCLK);
+    check(c, r->cur->dma_state == 2u && (r->cur->machine_time - r->t0) / LL_WORD_MCLK > UINT64_C(65536), "the transfer was not running past 65,536 words since its start (the repro of H-01)");
+    ll_stop(c, r, "past 65,536 words");
+    for (j = 1u; j <= p->keep && !c->failed; j++) {
+        ll_port(r->cur, 0x12u, p->lsb, 0);
+        ll_to(c, r, r->cur->machine_time + LL_KEEP_MCLK);
+        if (j % p->every == 0u) {
+            ll_stop(c, r, "keep-alive");
+        }
+    }
+    check(c, r->cur->dma_state == 2u && (r->cur->machine_time - r->t0) / LL_WORD_MCLK > UINT64_C(3) * UINT64_C(65536), "the keep phase did not keep the transfer running past three times 65,536 words");
+    ll_to(c, r, until);
+    ll_stop(c, r, "after the end");
+    check(c, r->cur->dma_state == 0u && r->cur->vdc_reg[0x12] == 0xFFFFu, "the transfer did not end with LENR $FFFF once the low byte was no longer rewritten");
+}
+
+void kind_vdc_dma_lenr_live(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    static const char *const req_src = "bind.powerup_policy=seeded-prng-v3;seed=5";
+    static const char *const req_twin = "bind.powerup_policy=seeded-prng-v3;seed=6";
+    struct ll_param p;
+    struct ll_run ref;
+    struct ll_run chain;
+    struct booted br;
+    struct booted bs;
+    struct booted bt;
+    const struct ds_instance *ci = NULL;
+    char rom[48];
+    char tail = '\0';
+    uint64_t until = 0u;
+    uint8_t dig_ref[DS_DIGEST_BYTES];
+    uint8_t dig[DS_DIGEST_BYTES];
+    const char *err;
+    const char *diff;
+    char msg[240];
+
+    memset(&p, 0, sizeof p);
+    if (!k->has[K_EXPECT] || sscanf(k->val[K_EXPECT], "first=%u;lsb=%u;then=%u;keep=%u;every=%u%c", &p.first, &p.lsb, &p.then, &p.keep, &p.every, &tail) != 5 || p.first == 0u || p.first > 65000u || p.lsb > 0xFFu || p.then == 0u || p.keep == 0u || p.every == 0u
+        || authored_name(k->val[K_FIXTURE], rom, sizeof rom) != 0 || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until < 1000u) {
+        harness_error(c, "a vdc_dma_lenr_live case needs fixture = authored:NAME, until_mclk and expect = first=N;lsb=V;then=N;keep=N;every=N (decimal; first at most 65,000, V at most 255)");
+        return;
+    }
+    err = boot_built_rom(rom, req_src, &br, &ci);
+    if (err != NULL) {
+        harness_error(c, err);
+        return;
+    }
+    memset(&ref, 0, sizeof ref);
+    ref.cur = (struct ds_instance *)(void *)br.mem;
+    ll_script(c, &p, &ref, until);
+    check(c, ds_digest(ref.cur, dig_ref) == 0u, "the digest of the uninterrupted run was refused");
+    err = boot_built_rom(rom, req_src, &bs, &ci);
+    if (err == NULL) {
+        err = boot_built_rom(rom, req_twin, &bt, &ci);
+        if (err != NULL) {
+            release_boot(&bs);
+        }
+    }
+    if (err != NULL) {
+        release_boot(&br);
+        harness_error(c, err);
+        return;
+    }
+    memset(&chain, 0, sizeof chain);
+    chain.cur = (struct ds_instance *)(void *)bs.mem;
+    chain.spare = (struct ds_instance *)(void *)bt.mem;
+    chain.snap = (uint8_t *)malloc(ds_snapshot_size());
+    if (chain.snap == NULL) {
+        harness_error(c, "out of memory for the snapshot of the vdc_dma_lenr_live stops");
+    } else if (!c->failed) {
+        ll_script(c, &p, &chain, until);
+        snprintf(msg, sizeof msg, "the restored chain (%u restores) differs from the uninterrupted run in machine time or steps", chain.restores);
+        check(c, chain.cur->machine_time == ref.cur->machine_time && chain.steps == ref.steps, msg);
+        check(c, ds_digest(chain.cur, dig) == 0u && memcmp(dig, dig_ref, DS_DIGEST_BYTES) == 0, "the digest of the restored chain differs from the uninterrupted run");
+        diff = snap_first_diff(chain.cur, ref.cur);
+        snprintf(msg, sizeof msg, "the member %s of the restored chain differs from the uninterrupted run (VRAM and the DMA state included)", diff != NULL ? diff : "-");
+        check(c, diff == NULL, msg);
+        check(c, chain.restores == chain.stops && chain.restores >= 3u, "the chain did not restore at every stop");
+    }
+    free(chain.snap);
+    release_boot(&bs);
+    release_boot(&bt);
+    release_boot(&br);
+    snprintf(got, gotcap, "stops=%u restored=%u", chain.stops, chain.restores);
+}
+
+/* ---- vdc_vblank_wrap (review fix M-02; D-139, D-143, D-150; ASSUMED LED-IRQ-0001, LED-VID-0005; E0) ---- */
+
+/*
+ * vdc_vblank_wrap: the VBlank state entry when the display state ends on the last line of the frame. expect = rows=VDS:WANT,...;frames=N with WANT each (VD in every frame from frame 1 on, the SATB copy made once, DS raised once, MWR latched) or none (no VD, no copy, no DS, no latch) (decimal VDS, 0 to 255).
+ * For each row and for each of the two VD phases (the default line_start and model.vd_irq_phase=hdw_start) a synthetic image of the case's fixture is booted (262 lines per frame, the fixture's binding) and the VDC is driven without a guest: VPR = VDS << 8 | 2, VDW = 239 (240 display lines), VCR = 3, CR = $08 (VD enabled), DCR = $01 (DS enabled),
+ * MWR = $10 and the DVSSR high byte written once (the copy armed). The timeline is folded frame by frame with ds_vdc_advance to the last clock of the frame (262 * 1365 master clocks, ASSUMED LED-VID-0001) and the status is read there (the read clears the flags, MAN H7-4).
+ * With VDS 19 the states VDS (21 lines) and VDW (240) end one line before the frame wraps; with VDS 20 they fill the frame exactly (22 + 240 = 262) and VDW ends on its last line; with VDS 21 the wrap cuts VDW (D-139: no VD). The literal for VDS 20 is the decision of the review fix M-02 (the VBlank state entry is the frame-wrap line when VDW
+ * completes on the last line of the frame: VD, the SATB copy and the MWR latch happen there, then the vertical cycle restarts), class ASSUMED LED-IRQ-0001 and LED-VID-0005; the bit positions of VD and DS are MAN H7-4. E0: no accuracy or hardware claim.
+ */
+#define VW_ROWS_MAX 4u
+#define VW_FRAME_MCLK (262u * 1365u) /* lines per frame (the bound field) times the line length (ASSUMED LED-VID-0001), written here */
+#define VW_MWR 0x10u
+
+struct vw_row {
+    unsigned vds;
+    int each;
+};
+
+static int vw_parse(const char *text, struct vw_row *rows, unsigned *n, unsigned *frames)
+{
+    char list[PK_LIST_MAX];
+    char *rest;
+    char *item;
+    char *semi;
+
+    *n = 0u;
+    if (pk_copy_text(text, list, sizeof list) != 0 || strncmp(list, "rows=", 5u) != 0 || (semi = strchr(list, ';')) == NULL || sscanf(semi + 1, "frames=%u", frames) != 1 || *frames < 3u || *frames > 16u) {
+        return -1;
+    }
+    *semi = '\0';
+    rest = list + 5;
+    while ((item = pk_next_item(&rest, ',')) != NULL) {
+        char want[8];
+
+        if (*n >= VW_ROWS_MAX || sscanf(item, "%u:%7[a-z]", &rows[*n].vds, want) != 2 || rows[*n].vds > 255u || (strcmp(want, "each") != 0 && strcmp(want, "none") != 0)) {
+            return -1;
+        }
+        rows[*n].each = strcmp(want, "each") == 0;
+        (*n)++;
+    }
+    return *n > 0u ? 0 : -1;
+}
+
+void kind_vdc_vblank_wrap(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    static const char *const phases[2] = {"", "model.vd_irq_phase=hdw_start"};
+    struct vw_row rows[VW_ROWS_MAX];
+    unsigned n = 0u;
+    unsigned frames = 0u;
+    unsigned i;
+    unsigned runs = 0u;
+
+    if (!k->has[K_EXPECT] || vw_parse(k->val[K_EXPECT], rows, &n, &frames) != 0) {
+        harness_error(c, "a vdc_vblank_wrap case needs expect = rows=VDS:each|none,...;frames=N (at most 4 rows, 3 to 16 frames)");
+        return;
+    }
+    for (i = 0u; i < n && !c->harness; i++) {
+        unsigned ph;
+
+        for (ph = 0u; ph < 2u && !c->harness; ph++) {
+            struct spec s;
+            struct booted b;
+            const struct ds_instance *ci = NULL;
+            struct ds_instance *w;
+            const char *err = boot_accepted(k->val[K_FIXTURE], phases[ph], &b, &s, &ci);
+            unsigned f;
+            unsigned vd_frames = 0u;
+            unsigned ds_count = 0u;
+            char msg[240];
+
+            if (err != NULL) {
+                harness_error(c, err);
+                return;
+            }
+            w = (struct ds_instance *)(void *)b.mem;
+            snprintf(msg, sizeof msg, "the fixture of the case does not bind 262 lines per frame (frame_lines %u)", (unsigned)w->frame_lines);
+            check(c, w->frame_lines == 262u, msg);
+            vs_port_word(w, 0x0Cu, (rows[i].vds << 8u) | 2u);
+            vs_port_word(w, 0x0Du, 239u);
+            vs_port_word(w, 0x0Eu, 3u);
+            vs_port_word(w, 0x05u, 0x08u);
+            vs_port_word(w, 0x0Fu, 0x01u);
+            vs_port_word(w, 0x09u, VW_MWR);
+            vs_port_word(w, 0x13u, 0x0100u);
+            for (f = 0u; f < frames; f++) {
+                uint64_t end = (uint64_t)(f + 1u) * (uint64_t)VW_FRAME_MCLK - UINT64_C(1);
+                uint32_t st;
+
+                ds_vdc_advance(w, end, NULL);
+                st = (uint32_t)ds_vdc_read(w, 0u, end);
+                if (f > 0u && (st & 0x20u) != 0u) {
+                    vd_frames++;
+                }
+                if ((st & 0x08u) != 0u) {
+                    ds_count++;
+                }
+            }
+            if (rows[i].each) {
+                snprintf(msg, sizeof msg, "VDS %u (%s): VD in %u of frames 1 to %u, the SATB copy pending %u, DS %u times, MWR latch $%02X (each frame wanted, one copy, one DS, latch $%02X)", rows[i].vds, ph == 0u ? "line_start" : "hdw_start", vd_frames, frames - 1u, (unsigned)w->satb_pending, ds_count,
+                         (unsigned)w->mwr_active, VW_MWR);
+                check(c, vd_frames == frames - 1u && w->satb_pending == 0u && ds_count == 1u && w->mwr_active == (uint16_t)VW_MWR, msg);
+            } else {
+                snprintf(msg, sizeof msg, "VDS %u (%s): VD in %u frames, the SATB copy pending %u, DS %u times, MWR latch $%02X (none wanted: the wrap cuts VDW)", rows[i].vds, ph == 0u ? "line_start" : "hdw_start", vd_frames, (unsigned)w->satb_pending, ds_count, (unsigned)w->mwr_active);
+                check(c, vd_frames == 0u && w->satb_pending == 1u && ds_count == 0u && w->mwr_active == 0u, msg);
+            }
+            runs++;
+            release_boot(&b);
+        }
+    }
+    snprintf(got, gotcap, "rows=%u runs=%u", n, runs);
 }
 
 /* ---- kind vdc_poweron_policy_diff (plan 04-13; D-167, Pitfall 13, T-04-45) ---- */

@@ -172,7 +172,6 @@ static uint64_t r_u64(struct rd *r)
 #define SNAP_V_TOGO_MAX 512u                 /* VDW is a 9-bit register, so a state can have 512 lines left; no clamp (F-1) */
 #define SNAP_BEAM_NONE 0xFFFFu               /* display_k outside the display state, and vd_off or rcr_off for "no event" */
 #define SNAP_BEAM_LINE_MAX 0x7FFFu           /* the RCR counter saturates here (D-142) */
-#define SNAP_DMA_WORDS_MAX 65536u            /* LENR + 1 words at most (D-151) */
 
 /* the number of values of model parameter index: its allowed list is values separated by a vertical bar */
 static uint32_t model_values(uint32_t index)
@@ -554,8 +553,32 @@ static uint32_t dec_schd(struct ds_instance *inst, struct vctx *v, struct rd *r,
     return (uint32_t)DS_SNAPREF_NONE;
 }
 
-/* the register masks of the VDC (D-146, in the order of R00 to R13): a stored register has every bit outside its mask 0; R03 and R04 are not registers and stay 0 */
-static const uint16_t vdc_reg_mask[20] = {0xFFFFu, 0xFFFFu, 0xFFFFu, 0x0000u, 0x0000u, 0x1FFFu, 0x03FFu, 0x03FFu, 0x01FFu, 0x00FFu, 0x7F1Fu, 0x7F7Fu, 0xFF1Fu, 0x01FFu, 0x00FFu, 0x001Fu, 0xFFFFu, 0xFFFFu, 0xFFFFu, 0xFFFFu};
+/* the dot clock dividers the VCE can latch (review fix L-02): the one table of vce.c, read through ds_vce_divider, so a changed constants.def row changes the core and the restore rule together. 1 when div is one of the four entries */
+static int snap_divider_ok(uint32_t div)
+{
+    uint32_t cr;
+
+    for (cr = 0u; cr < 4u; cr++) {
+        if (ds_vce_divider(cr) == div) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* the largest divider of the table (the SATB transfer window is 256 words of it) */
+static uint32_t snap_divider_max(void)
+{
+    uint32_t cr;
+    uint32_t m = 0u;
+
+    for (cr = 0u; cr < 4u; cr++) {
+        if (ds_vce_divider(cr) > m) {
+            m = ds_vce_divider(cr);
+        }
+    }
+    return m;
+}
 
 static uint32_t dec_vce0(struct ds_instance *inst, struct vctx *v, struct rd *r, int commit)
 {
@@ -617,7 +640,7 @@ static uint32_t dec_vdc0(struct ds_instance *inst, struct vctx *v, struct rd *r,
         return (uint32_t)DS_SNAPREF_field;
     }
     for (i = 0u; i < 20u; i++) {
-        if (((uint32_t)reg[i] & ~(uint32_t)vdc_reg_mask[i]) != 0u) {
+        if (((uint32_t)reg[i] & ~(uint32_t)ds_vdc_reg_mask(i)) != 0u) { /* the one mask table of vdc.c (D-146, review fix L-02): a stored register has every bit outside its mask 0; R03 and R04 stay 0 */
             return (uint32_t)DS_SNAPREF_field;
         }
     }
@@ -679,6 +702,10 @@ static uint32_t dec_beam(struct ds_instance *inst, struct vctx *v, struct rd *r,
     if ((uint32_t)rcr_counter > SNAP_BEAM_LINE_MAX || (frame_lines != 262u && frame_lines != 263u) || (uint32_t)bg_y > 511u || (uint32_t)mwr_active > 0xFFu) {
         return (uint32_t)DS_SNAPREF_field;
     }
+    /* the frame length is the bound lines_per_frame of the profile, constant for the run (D-136, review fix M-01): a value of the domain that is not the one the instance's profile binds is the snapshot of another profile (the profile hash does not cover it), refused like a policy of another profile in dec_powr */
+    if ((uint32_t)frame_lines != ds_vdc_frame_lines(inst)) {
+        return (uint32_t)DS_SNAPREF_profile;
+    }
     if (burst > 1u || (uint32_t)line_dirty > 0x3Fu || (uint32_t)sprite_pend > 3u || vd_pending > 1u) {
         return (uint32_t)DS_SNAPREF_field;
     }
@@ -686,7 +713,12 @@ static uint32_t dec_beam(struct ds_instance *inst, struct vctx *v, struct rd *r,
         return (uint32_t)DS_SNAPREF_field;
     }
     /* the divider latched at EV_LINE multiplies vd_off, rcr_off and dma_word_mclk: 2, 3 or 4, or 0 before the first line event (line_idx 0), so no restored state reaches a zero divisor */
-    if (lat_div == 0u ? line_idx != UINT64_C(0) : (lat_div < 2u || lat_div > 4u)) {
+    if (lat_div == 0u ? line_idx != UINT64_C(0) : !snap_divider_ok((uint32_t)lat_div)) {
+        return (uint32_t)DS_SNAPREF_field;
+    }
+    /* the event order a run produces (review fix L-01): VD is outstanding only under the phase hdw_start (line_start raises it at EV_LINE), only as the next stage (EV_LINE makes EV_VD the next stage when it leaves one outstanding, and EV_VD clears it), and when the RCR event of the same line is still to come it is later than the VD event
+     * (the window end (HDS+HDW+2)*8*div is after the window start (HDS+1)*8*div, beam.c), so the stage order VD then RCR is the time order. The offsets are not recomputed from HSR and HDR: a register write after the EV_LINE legally changes the registers and not the offsets of that line */
+    if (vd_pending != 0u && (vd_irq_phase == 0u || stage != 1u || ((uint32_t)rcr_off != SNAP_BEAM_NONE && (uint32_t)rcr_off <= (uint32_t)vd_off))) {
         return (uint32_t)DS_SNAPREF_field;
     }
     /* the fold window (D-166, T-04-14), judged after the divider rule so that a divider of 0 after line 0 is refused for its own reason: the next event the members name is not before machine_time and is less than two lines after it, because a live run folds every step to its last clock (F-9),
@@ -724,15 +756,16 @@ static uint32_t dec_vdma(struct ds_instance *inst, struct vctx *v, struct rd *r,
         inst->dma_done = dma_done;
         return (uint32_t)DS_SNAPREF_NONE;
     }
-    if (satb_pending > 1u || satb_done_valid > 1u || dma_state > 2u || dma_done > SNAP_DMA_WORDS_MAX) {
+    /* the progress member is 0 between folds: the closed form is re-based at every apply (review fix H-01), so any other value is a state no run reaches */
+    if (satb_pending > 1u || satb_done_valid > 1u || dma_state > 2u || dma_done != 0u) {
         return (uint32_t)DS_SNAPREF_field;
     }
-    /* the master clocks per word are 4 dots of the divider latched at the start (2, 3 or 4): the divisor of the closed form of the transfer, so a transfer in progress never has any other (D-151) */
-    if (dma_state != 0u && dma_word_mclk != 8u && dma_word_mclk != 12u && dma_word_mclk != 16u) {
+    /* the master clocks per word are DS_CONST_vdc_dma_dots_per_word dots of the divider latched at the start (8, 12 or 16 with the rows of today): the divisor of the closed form of the transfer, so a transfer in progress never has any other (D-151); derived from the core's constant and divider table (review fix L-02) */
+    if (dma_state != 0u && ((uint32_t)dma_word_mclk % (uint32_t)DS_CONST_vdc_dma_dots_per_word != 0u || !snap_divider_ok((uint32_t)dma_word_mclk / (uint32_t)DS_CONST_vdc_dma_dots_per_word))) {
         return (uint32_t)DS_SNAPREF_field;
     }
-    /* the time windows (D-166, T-04-14): a SATB transfer that is valid ends from machine_time to 4096 clocks after it, and a transfer in progress started at or before machine_time; both are judged by comparison first, so no sum can overflow */
-    if (satb_done_valid != 0u && (satb_done_at < v->time || satb_done_at - v->time > UINT64_C(4096))) {
+    /* the time windows (D-166, T-04-14): a SATB transfer that is valid ends from machine_time to 256 words of the largest divider after it (4096 clocks with the rows of today, ds_vdc_satb_copy), and a transfer in progress started at or before machine_time; both are judged by comparison first, so no sum can overflow */
+    if (satb_done_valid != 0u && (satb_done_at < v->time || satb_done_at - v->time > UINT64_C(256) * (uint64_t)DS_CONST_vdc_dma_dots_per_word * (uint64_t)snap_divider_max())) {
         return (uint32_t)DS_SNAPREF_field;
     }
     if (dma_state != 0u && dma_start > v->time) {
