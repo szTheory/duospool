@@ -46,7 +46,8 @@ _Static_assert((uint64_t)DS_SINK_MAX_RECORDS * (uint64_t)DS_DEV_RECORD_BYTES <= 
 #define DS_VID_HEADER_BYTES 32u
 #define DS_VID_ALIGN 8u
 #define DS_VID_SINK_MAX_BYTES 67108864u /* 64 MiB: a larger capacity is run.sink_unsupported; it fits the address space on every supported host */
-#define DS_VID_MAX_DOTS 682u            /* floor(1365 / 2): the dots of the longest line at the shortest dot clock; the _Static_assert against DS_CONST_line_mclk lands with that constant (plan 04-03) */
+#define DS_VID_MAX_DOTS 682u            /* floor(1365 / 2): the dots of the longest line at the shortest dot clock; asserted against DS_CONST_line_mclk below (plan 04-03) */
+_Static_assert(DS_VID_MAX_DOTS == (uint32_t)DS_CONST_line_mclk / 2u, "DS_VID_MAX_DOTS is not half of the line length of constants.def (D-136)");
 #define DS_VID_REC_HEADER_BYTES 64u
 #define DS_VID_MAX_REC_BYTES (DS_VID_REC_HEADER_BYTES + ((4u * DS_VID_MAX_DOTS + 7u) & ~7u))
 #define DS_VIDREC_VERSION 1u

@@ -19,6 +19,7 @@
 #include "ds_mapper.h"
 #include "ds_poweron.h"
 #include "ds_sha256.h"
+#include "ds_vdc.h"
 
 #define DS_MIN_SIZE 8192u
 #define DS_BYTE_ORDER_PCE 1u
@@ -356,6 +357,7 @@ uint32_t ds_boot(void *mem, size_t cap, const struct ds_boot_request *request, s
     inst->powerup_seed = inst->has_seed != 0u ? request->powerup_seed : UINT64_C(0);
     ds_poweron_apply(inst);
     ds_io_poweron(inst); /* the I/O port latch is $FF and port 1 holds the profile's pad under every policy (plan 03-27; D-114, R-5): constants, never drawn */
+    ds_vdc_poweron(inst); /* the RCR counter, the frame length and display_k are the only non-zero VDC, VCE and beam bytes, under every policy (plan 04-03; D-167, F-11, F-48) */
     __builtin_memcpy(inst->rom, request->content, request->len);
     /* reset (D-92, D-114): the CPU takes its vector through the normal bus path at machine time 0, so the ROM must already be in place */
     ds_cpu_reset(inst);

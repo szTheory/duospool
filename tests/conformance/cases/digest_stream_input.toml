@@ -6,11 +6,16 @@
 # ds_digest and the literal below. The literal comes from a throwaway python script outside the repo that took the 8607-byte version 6 stream of the digest_stream_prefix boot (written by the core's stream writer from a throwaway C program, which hashes to the committed version 6 literal 518d1ebf... under shasum -a 256), set the version to
 # 7, appended IOPT (FF 01 00 00 00 00) and a SCHD frame whose first four slots are the little-endian encoding of the four events, the other 1020 slots zero, then the count 4 and the reserved word 0; the 25021-byte stream it wrote hashes to the literal under shasum -a 256. Evidence tier E0: it pins the encoding and shows repeatability, never
 # that the schedule or any pad behaviour is right.
+# Plan 04-03 (the one Phase 4 bump: serial version 8, seven regions VCE0, PALT, VDC0, BEAM, VDMA, VRAM, SATB appended after SCHD) changed the literal. Method (D-165, Pitfall 1): the 25021-byte version 7 stream of this case was
+# dumped by a scratch copy of the version 7 tree, and shasum -a 256 of it equalled the committed version 7 literal 3dbe2cac... before anything else was done; a throwaway python script outside the repo, which never called the new
+# core, then set the version to 8 and appended the seven frames written by hand from the D-165 layout (VCE0 3, PALT 1024, VDC0 45, BEAM 33, VDMA 25, VRAM 65536 and SATB 512 bytes, all zero except BEAM, whose rcr_counter 16384 (bytes
+# 00 40 at payload offset 14), frame_lines 262 (06 01 at 16) and display_k 0xFFFF (FF FF at 12) are the boot values of the rules, F-11); the 92255-byte stream it wrote hashes to the new literal under shasum -a 256. Evidence tier E0:
+# it pins the encoding and shows repeatability, never that the state is right.
 id = "digest_stream_input"
 kind = "digest_stream"
 fixture = "plain-256k"
 request = "bind.powerup_policy=seeded-prng-v1;seed=42"
-expect = "version=7;frames=PROF:32,CONT:40,POWR:16,TIME:8,RAM8:8192,MPRS:8,CPU0:8,BUS0:3,TIMR:11,IRQC:3,IRQS:160,BLKT:11,IOPT:6,SCHD:16392;size=262144;enum=1;digest=3dbe2cac9174bc1a352b76d9570030b75202fcc8e38454ea7c006f0679d076d9"
+expect = "version=8;frames=PROF:32,CONT:40,POWR:16,TIME:8,RAM8:8192,MPRS:8,CPU0:8,BUS0:3,TIMR:11,IRQC:3,IRQS:160,BLKT:11,IOPT:6,SCHD:16392,VCE0:3,PALT:1024,VDC0:45,BEAM:33,VDMA:25,VRAM:65536,SATB:512;size=262144;enum=1;digest=36eacc436430ceaeb5f569aa045873b7afba55e70eea103b68bae472b8d55a67"
 meaning = "The digest stream carries the declared input schedule as the region SCHD (1024 slots of time, port and mask, then the count and a reserved word) and the port bytes as IOPT, its payloads match the instance, and ds_digest is the SHA-256 of exactly that stream and of the independently derived literal"
 required = true
 control = false

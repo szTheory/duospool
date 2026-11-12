@@ -26,12 +26,12 @@
 #include "ds_snapshot.h"
 #include "runner.h"
 
-/* ---- the hand-kept stream layout (independent of serial.c): the prefix and its NUL, the version, then 14 frames of tag, u32 length and payload ---- */
+/* ---- the hand-kept stream layout (independent of serial.c): the prefix and its NUL, the version, then 21 frames of tag, u32 length and payload ---- */
 
 #define SK_PREFIX_BYTES 15u
-#define SK_VERSION 7u
-#define SK_FRAMES 14u
-#define SK_EXPECTED_SIZE 25021u /* 15 + 4 + 14 * 8 + 24890 payload bytes */
+#define SK_VERSION 8u
+#define SK_FRAMES 21u
+#define SK_EXPECTED_SIZE 92255u /* 15 + 4 + 21 * 8 + 92068 payload bytes: the 24890 of serial version 7 and the 67178 of the seven Phase 4 regions (3 + 1024 + 45 + 33 + 25 + 65536 + 512), derived by hand (plan 04-03) */
 
 static const struct {
     const char *tag;
@@ -39,8 +39,9 @@ static const struct {
 } sk_frames[SK_FRAMES] = {
     {"PROF", 32u}, {"CONT", 40u}, {"POWR", 16u}, {"TIME", 8u}, {"RAM8", 8192u}, {"MPRS", 8u}, {"CPU0", 8u},
     {"BUS0", 3u},  {"TIMR", 11u}, {"IRQC", 3u},  {"IRQS", 160u}, {"BLKT", 11u}, {"IOPT", 6u}, {"SCHD", 16392u},
+    {"VCE0", 3u},  {"PALT", 1024u}, {"VDC0", 45u}, {"BEAM", 33u},  {"VDMA", 25u}, {"VRAM", 65536u}, {"SATB", 512u},
 };
-enum { RG_PROF, RG_CONT, RG_POWR, RG_TIME, RG_RAM8, RG_MPRS, RG_CPU0, RG_BUS0, RG_TIMR, RG_IRQC, RG_IRQS, RG_BLKT, RG_IOPT, RG_SCHD };
+enum { RG_PROF, RG_CONT, RG_POWR, RG_TIME, RG_RAM8, RG_MPRS, RG_CPU0, RG_BUS0, RG_TIMR, RG_IRQC, RG_IRQS, RG_BLKT, RG_IOPT, RG_SCHD, RG_VCE0, RG_PALT, RG_VDC0, RG_BEAM, RG_VDMA, RG_VRAM, RG_SATB };
 
 /* the offset of the frame (the tag) of region r, and of its payload */
 static size_t sk_frame_off(unsigned r)
@@ -78,7 +79,7 @@ static const struct sk_tile sk_tiles[] = {DS_INSTANCE_TILING(SK_TILE)};
 /* the members that a restore does not write because they are not machine state of the stream: the identity of the instance (profile, content id, size class) is checked by pass 1, mapper, byte order and header are derived at boot, the ROM is excluded and the tail is padding */
 static int sk_is_identity(const char *name)
 {
-    static const char *const ids[] = {"profile", "content_id", "mapper", "size_class", "byte_order", "header", "rom", "tail_pad"};
+    static const char *const ids[] = {"profile", "content_id", "mapper", "size_class", "byte_order", "header", "rom", "tail_pad", "vid_pad"};
     size_t i;
 
     for (i = 0u; i < sizeof ids / sizeof ids[0]; i++) {
@@ -243,7 +244,7 @@ static uint64_t sk_get64(const uint8_t *p)
 /* ---- snapshot_hash ---- */
 
 /*
- * snapshot_hash: the snapshot of a mid-run stop of the fixture. Checked here: the size is the hand-kept 25021 bytes and equals ds_snapshot_size(); the call writes exactly that many bytes and not one more (a canary after the buffer); the prefix, the version, every tag and every length are the hand-kept ones;
+ * snapshot_hash: the snapshot of a mid-run stop of the fixture. Checked here: the size is the hand-kept 92255 bytes and equals ds_snapshot_size(); the call writes exactly that many bytes and not one more (a canary after the buffer); the prefix, the version, every tag and every length are the hand-kept ones;
  * the TIME, CPU0 and RAM8 payloads equal the instance's own members read raw; the SHA-256 of the snapshot equals ds_digest of the instance; the snapshot has the same bytes after a byte of the ROM is flipped (the ROM is not in it); and the guest has not finished at the stop (it is mid-run).
  * host-file: the snapshot bytes are written to ID.snapshot beside the evidence text, and the evidence text gets the lines digest=HEX (the core's digest), snapshot_bytes=N and snapshot_file=ID.snapshot. scripts/conformance-run then hashes the file with sha256sum or shasum -a 256 and fails the stage with SNAPSHOT_HOST_HASH_MISMATCH when that differs from the digest line:
  * the host tool shares no code, language or author with the core (D-121). The snapshot of an authored fixture only is written (D-120: the state of a commercial image is not for the evidence directory).
@@ -292,7 +293,7 @@ void kind_snapshot_hash(const struct kase *k, struct ctx *c, char *got, size_t g
         return;
     }
     check(c, sk_tiling_ok(), "the tiling list of ds_core.h does not tile struct ds_instance member by member");
-    check(c, sk_stream_size() == (size_t)SK_EXPECTED_SIZE, "the hand-kept frames of this file do not add up to the 25021 bytes of the stream");
+    check(c, sk_stream_size() == (size_t)SK_EXPECTED_SIZE, "the hand-kept frames of this file do not add up to the 92255 bytes of the stream");
     w = sk_boot(c, k, rom, k->val[K_REQUEST], 1, &b);
     if (w == NULL) {
         return;
@@ -324,7 +325,7 @@ void kind_snapshot_hash(const struct kase *k, struct ctx *c, char *got, size_t g
     }
     /* the hand-kept frames */
     check(c, memcmp(buf, "duospool-state", 15u) == 0, "the snapshot does not start with the prefix and its NUL");
-    check(c, buf[15] == (uint8_t)SK_VERSION && buf[16] == 0u && buf[17] == 0u && buf[18] == 0u, "the serializer version of the snapshot is not the hand-kept version 7 (a layout change needs this file's table and version updated)");
+    check(c, buf[15] == (uint8_t)SK_VERSION && buf[16] == 0u && buf[17] == 0u && buf[18] == 0u, "the serializer version of the snapshot is not the hand-kept version 8 (a layout change needs this file's table and version updated)");
     for (r = 0u; r < SK_FRAMES; r++) {
         const uint8_t *f = buf + sk_frame_off((unsigned)r);
         uint32_t len = (uint32_t)f[4] | ((uint32_t)f[5] << 8) | ((uint32_t)f[6] << 16) | ((uint32_t)f[7] << 24);

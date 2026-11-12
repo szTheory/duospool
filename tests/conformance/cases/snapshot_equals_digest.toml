@@ -12,7 +12,7 @@ kind = "snapshot_hash"
 fixture = "authored:ds-proto"
 request = "bind.powerup_policy=seeded-prng-v2;seed=3"
 expect = "equals-digest;host-file"
-meaning = "The snapshot of a mid-run stop of ds_proto is the 25021-byte canonical digest stream, its SHA-256 is the digest, the ROM is not in it, and its bytes are written for the host hash tool of the conformance stage"
+meaning = "The snapshot of a mid-run stop of ds_proto is the 92255-byte canonical digest stream, its SHA-256 is the digest, the ROM is not in it, and its bytes are written for the host hash tool of the conformance stage"
 required = true
 control = false
 expect_outcome = "pass"

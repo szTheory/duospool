@@ -37,7 +37,7 @@
 #include "runner.h"
 #include "synth.h"
 
-#define DK_CAP 32768u
+#define DK_CAP 131072u
 #define DK_LIST 400u
 
 /* the captured stream */
@@ -144,7 +144,7 @@ static const char *block_boot(const char *fixture, const char *request, unsigned
 
 /* ---- kind digest_stream ---- */
 
-#define DS_REGIONS_MAX 16u
+#define DS_REGIONS_MAX 24u
 
 struct frame_want {
     char tag[5];
@@ -366,6 +366,38 @@ void kind_digest_stream(const struct kase *k, struct ctx *c, char *got, size_t g
                 same = rd64(pl + 16u * slot) == inst->input_ev[slot].at && rd32(pl + 16u * slot + 8u) == inst->input_ev[slot].port && rd32(pl + 16u * slot + 12u) == inst->input_ev[slot].mask;
             }
             check(c, same && rd32(pl + 16384u) == inst->input_count && rd32(pl + 16388u) == inst->input_reserved, msg);
+        } else if (strcmp(fw[i].tag, "VCE0") == 0) {
+            /* the control register, then the colour table address as a u16 little-endian (plan 04-03): 3 bytes */
+            check(c, fw[i].len == 3u && pl[0] == inst->vce_cr && (unsigned)(pl[1] | ((unsigned)pl[2] << 8)) == (unsigned)inst->vce_cta, msg);
+        } else if (strcmp(fw[i].tag, "PALT") == 0) {
+            check(c, fw[i].len == DS_PAL_BYTES && memcmp(pl, inst->vce_pal, DS_PAL_BYTES) == 0, msg);
+        } else if (strcmp(fw[i].tag, "VDC0") == 0) {
+            /* the address register, the status, 20 register slots as u16, the read buffer as u16 and the write latch (plan 04-03): 45 bytes */
+            unsigned reg;
+            int same = fw[i].len == 45u && pl[0] == inst->vdc_ar && pl[1] == inst->vdc_status && pl[44] == inst->vdc_wlatch && (unsigned)(pl[42] | ((unsigned)pl[43] << 8)) == (unsigned)inst->vdc_rdbuf;
+
+            for (reg = 0u; same && reg < 20u; reg++) {
+                same = (unsigned)(pl[2u + 2u * reg] | ((unsigned)pl[3u + 2u * reg] << 8)) == (unsigned)inst->vdc_reg[reg];
+            }
+            check(c, same, msg);
+        } else if (strcmp(fw[i].tag, "BEAM") == 0) {
+            /* the stream order of D-165 at hand-written offsets (plan 04-03): line_idx u64 at 0, stage 8, v_state 9, v_togo 10, display_k 12, rcr_counter 14, frame_lines 16, bg_y 18, mwr_active 20 (u16 each), burst 22, line_dirty 23, sprite_pend 24, vd_off 25 and rcr_off 27 (u16), lat_div 29, vd_pending 30, vd_irq_phase 31, rcr_origin 32: 33 bytes */
+            check(c, fw[i].len == 33u && rd64(pl) == inst->line_idx && pl[8] == inst->stage && pl[9] == inst->v_state && (unsigned)(pl[10] | ((unsigned)pl[11] << 8)) == (unsigned)inst->v_togo &&
+                         (unsigned)(pl[12] | ((unsigned)pl[13] << 8)) == (unsigned)inst->display_k && (unsigned)(pl[14] | ((unsigned)pl[15] << 8)) == (unsigned)inst->rcr_counter &&
+                         (unsigned)(pl[16] | ((unsigned)pl[17] << 8)) == (unsigned)inst->frame_lines && (unsigned)(pl[18] | ((unsigned)pl[19] << 8)) == (unsigned)inst->bg_y &&
+                         (unsigned)(pl[20] | ((unsigned)pl[21] << 8)) == (unsigned)inst->mwr_active && pl[22] == inst->burst && pl[23] == inst->line_dirty && pl[24] == inst->sprite_pend &&
+                         (unsigned)(pl[25] | ((unsigned)pl[26] << 8)) == (unsigned)inst->vd_off && (unsigned)(pl[27] | ((unsigned)pl[28] << 8)) == (unsigned)inst->rcr_off && pl[29] == inst->lat_div &&
+                         pl[30] == inst->vd_pending && pl[31] == inst->vd_irq_phase && pl[32] == inst->rcr_origin,
+                  msg);
+        } else if (strcmp(fw[i].tag, "VDMA") == 0) {
+            /* satb_pending 0, satb_done_valid 1, satb_done_at u64 at 2, dma_state 10, dma_start u64 at 11, dma_word_mclk u16 at 19, dma_done u32 at 21 (plan 04-03): 25 bytes */
+            check(c, fw[i].len == 25u && pl[0] == inst->satb_pending && pl[1] == inst->satb_done_valid && rd64(pl + 2) == inst->satb_done_at && pl[10] == inst->dma_state && rd64(pl + 11) == inst->dma_start &&
+                         (unsigned)(pl[19] | ((unsigned)pl[20] << 8)) == (unsigned)inst->dma_word_mclk && rd32(pl + 21) == inst->dma_done,
+                  msg);
+        } else if (strcmp(fw[i].tag, "VRAM") == 0) {
+            check(c, fw[i].len == DS_VRAM_BYTES && memcmp(pl, inst->vdc_vram, DS_VRAM_BYTES) == 0, msg);
+        } else if (strcmp(fw[i].tag, "SATB") == 0) {
+            check(c, fw[i].len == DS_SATB_BYTES && memcmp(pl, inst->vdc_satb, DS_SATB_BYTES) == 0, msg);
         } else {
             harness_error(c, "a digest_stream frame names a tag that the case does not know");
             break;

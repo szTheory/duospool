@@ -19,13 +19,17 @@
 #define DS_MAPPER_NAME_MAX 16u
 #define DS_CONTENT_ID_BYTES 32u
 /* behaviour epoch (D-53): bumped by any change that can alter what a run observes; goldens compare it, never a build id */
-#define DS_BEHAVIOUR_EPOCH 4u
-/* the version of the power-on policy table that the record prints next to the policy name is ds_policy_version() of ds_poweron.h (D-50, D-134): 1 for zero and seeded-prng-v1, 2 for seeded-prng-v2 */
+#define DS_BEHAVIOUR_EPOCH 5u
+/* the version of the power-on policy table that the record prints next to the policy name is ds_policy_version() of ds_poweron.h (D-50, D-134): 1 for zero and seeded-prng-v1, 2 for seeded-prng-v2, 3 for seeded-prng-v3 */
 /* field_index of a result that names no profile field */
 #define DS_NO_FIELD 0xffffffffu
 /* power-on state (D-50): the 8 KiB work RAM and the 8 mapping registers */
 #define DS_RAM8K_BYTES 8192u
 #define DS_MPR_COUNT 8u
+/* the byte arrays of the VCE and VDC state (plan 04-03; D-147, D-153): the 512 palette entries of 9 bits stored as 1,024 bytes, the 32,768 words of VRAM and the 256 words of the SATB */
+#define DS_PAL_BYTES 1024u
+#define DS_VRAM_BYTES 65536u
+#define DS_SATB_BYTES 512u
 
 /* ---- refusals (refusals.def) ---- */
 
@@ -185,6 +189,56 @@ struct ds_instance {
     uint8_t rom[DS_ROM_CAP];
     /* explicit tail padding (plan 03-30; D-122): the struct is 8-byte aligned and the ROM array ends 6 bytes short of the next multiple of 8, so the padding is a member of its own and the tiling list below can name every byte of the instance. Zero from the zeroing of ds_boot, in no region of the stream */
     uint8_t tail_pad[6];
+    /*
+     * The VCE and VDC state of Phase 4 (plan 04-03; D-165, D-166, D-167, F-10), appended after tail_pad so that the line above stays byte for byte. The block starts at an 8-aligned offset and is declared region by region (VDC0, BEAM, VDMA, VCE0, then the three byte arrays), each region one contiguous live span carried whole by its payload.
+     * The members of a region are ordered so that none needs padding: the one-byte members stand where they restore the alignment of the next member (the stream order of serial.c is another order, written field by field). Every byte is 0 at boot under every policy except rcr_counter (a constant), frame_lines (the bound lines_per_frame) and display_k (0xFFFF), and, under seeded-prng-v3 only, the palette, VRAM and SATB bytes (poweron.c).
+     * This plan stores the state and carries it through the digest and the snapshot; the behaviour that reads and writes it lands in the plans that follow.
+     */
+    /* VDC0, 45 bytes: the 20 register slots R00 to R13 (R03 and R04 stay 0; the masks of D-146 are judged on restore), the read buffer, the address register, the status flags and the write latch */
+    uint16_t vdc_reg[20];
+    uint16_t vdc_rdbuf;
+    uint8_t vdc_ar;
+    uint8_t vdc_status;
+    uint8_t vdc_wlatch;
+    /*
+     * BEAM, 33 bytes (D-138 to D-143): stage 0 EV_LINE next, 1 EV_VD next, 2 EV_RCR next; v_state 0 VDS, 1 VDW, 2 VCR, 3 VSW with v_togo lines left in it (at most 512, F-1); burst the burst latch; line_idx the next line whose EV_LINE is pending; display_k the display line (0xFFFF outside VDW); rcr_counter the RCR counter (16384 at power-on); frame_lines the bound lines_per_frame; bg_y the BYR counter; mwr_active the MWR value
+     * latched at VBlank entry; vd_off and rcr_off the event offsets in master clocks (0xFFFF none); line_dirty and sprite_pend the record flags; lat_div the divider latched at EV_LINE (0 only before line 0); vd_pending the VD event is outstanding; vd_irq_phase and rcr_origin the selections of the two model rows of model_params.def (flat members named as the rows: model.c writes inst->name, F-10)
+     */
+    uint8_t stage;
+    uint8_t v_state;
+    uint8_t burst;
+    uint64_t line_idx;
+    uint16_t v_togo;
+    uint16_t display_k;
+    uint16_t rcr_counter;
+    uint16_t frame_lines;
+    uint16_t bg_y;
+    uint16_t mwr_active;
+    uint16_t vd_off;
+    uint16_t rcr_off;
+    uint8_t line_dirty;
+    uint8_t sprite_pend;
+    uint8_t lat_div;
+    uint8_t vd_pending;
+    uint8_t vd_irq_phase;
+    uint8_t rcr_origin;
+    /* VDMA, 25 bytes: the SATB copy (pending flag; the DS completion time and its validity) and the VRAM-to-VRAM transfer (dma_state 0 idle, 1 pending, 2 running; the start time, the master clocks per word and the words done) */
+    uint8_t satb_pending;
+    uint8_t satb_done_valid;
+    uint64_t satb_done_at;
+    uint64_t dma_start;
+    uint32_t dma_done;
+    uint16_t dma_word_mclk;
+    uint8_t dma_state;
+    /* VCE0, 3 bytes: the control register and the colour table address (9 bits) */
+    uint8_t vce_cr;
+    uint16_t vce_cta;
+    /* PALT 1,024 bytes (entry i is byte 2i | byte 2i+1 << 8), VRAM 65,536 bytes (word w is byte 2w | byte 2w+1 << 8) and SATB 512 bytes: byte arrays so that the live span equals the stream payload on every host (D-147) */
+    uint8_t vce_pal[DS_PAL_BYTES];
+    uint8_t vdc_vram[DS_VRAM_BYTES];
+    uint8_t vdc_satb[DS_SATB_BYTES];
+    /* explicit trailing padding of the Phase 4 block (the block is 67,178 bytes, which is 2 modulo 8): in no region of the stream, zero from the zeroing of ds_boot, an identity member of the restore evidence like tail_pad */
+    uint8_t vid_pad[6];
 };
 
 /* the stimulus arrays, the timer block, the controller bytes, the CPU block, the bus block and the block transfer state have no padding and sit in the order of the declarations (the digest regions IRQS, TIMR, IRQC, CPU0, BUS0 and BLKT are each one live span, serial.c): the stimulus times follow the power-up seed, and the ROM array follows the block transfer state */
@@ -226,10 +280,17 @@ _Static_assert(offsetof(struct ds_instance, rom) == offsetof(struct ds_instance,
     X(input_ev) X(input_count) X(input_reserved) X(timer_origin) X(timer_counter) X(timer_reload) X(timer_enabled) \
     X(irq_disable) X(tiq_latch) X(irq_i_sample) X(pc) X(a) X(x) X(y) X(s) X(p) X(speed) \
     X(io_buffer) X(mpr_latch) X(tma_zero) X(blk_active) X(blk_opcode) X(blk_toggle) X(blk_remaining) X(blk_src) X(blk_dst) \
-    X(o_latch) X(slot_type) X(rom) X(tail_pad)
+    X(o_latch) X(slot_type) X(rom) X(tail_pad) \
+    X(vdc_reg) X(vdc_rdbuf) X(vdc_ar) X(vdc_status) X(vdc_wlatch) \
+    X(stage) X(v_state) X(burst) X(line_idx) X(v_togo) X(display_k) X(rcr_counter) X(frame_lines) X(bg_y) X(mwr_active) X(vd_off) X(rcr_off) \
+    X(line_dirty) X(sprite_pend) X(lat_div) X(vd_pending) X(vd_irq_phase) X(rcr_origin) \
+    X(satb_pending) X(satb_done_valid) X(satb_done_at) X(dma_start) X(dma_done) X(dma_word_mclk) X(dma_state) \
+    X(vce_cr) X(vce_cta) X(vce_pal) X(vdc_vram) X(vdc_satb) X(vid_pad)
 #define DS_TILING_SIZE(m) +sizeof(((struct ds_instance *)0)->m)
 _Static_assert(0u DS_INSTANCE_TILING(DS_TILING_SIZE) == sizeof(struct ds_instance), "the tiling list does not account for every byte of struct ds_instance: a member without an entry, an entry without a member, or implicit padding");
 _Static_assert(offsetof(struct ds_instance, tail_pad) == offsetof(struct ds_instance, rom) + DS_ROM_CAP, "padding between the ROM and the tail padding");
+_Static_assert(offsetof(struct ds_instance, vdc_reg) == offsetof(struct ds_instance, tail_pad) + 6u && offsetof(struct ds_instance, vdc_reg) % 8u == 0u, "the Phase 4 block does not follow tail_pad at an 8-aligned offset");
+_Static_assert(offsetof(struct ds_instance, vid_pad) + sizeof(((struct ds_instance *)0)->vid_pad) == sizeof(struct ds_instance), "vid_pad is not the last member of the instance");
 
 struct ds_boot_request {
     uint32_t struct_size; /* sizeof(struct ds_boot_request) */

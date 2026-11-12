@@ -243,8 +243,8 @@ void kind_record_refusal(const struct kase *k, struct ctx *c, char *got, size_t 
     if (st != DS_TEXT_OK || reason == NULL) {
         return;
     }
-    check(c, strncmp(text, "[record]\nformat_version = 6\n\n[core]\nbuild_id = \"", 47u) == 0, "the refusal record does not start with the record and core tables");
-    check(c, strstr(text, "\nbehaviour_epoch = 4\n") != NULL, "the refusal record has no behaviour_epoch line");
+    check(c, strncmp(text, "[record]\nformat_version = 7\n\n[core]\nbuild_id = \"", 47u) == 0, "the refusal record does not start with the record and core tables");
+    check(c, strstr(text, "\nbehaviour_epoch = 5\n") != NULL, "the refusal record has no behaviour_epoch line");
     refusal_tail(tail, sizeof tail, reason, s.profile, s.rev);
     tlen = strlen(tail);
     check(c, len > tlen && strcmp(text + len - tlen, tail) == 0, "the record does not end in the refusal table with reason, requested id and rev");

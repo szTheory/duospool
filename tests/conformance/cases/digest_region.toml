@@ -12,8 +12,8 @@ id = "digest_region"
 kind = "digest_region"
 fixture = "plain-256k"
 request = "bind.powerup_policy=seeded-prng-v1;seed=42"
-expect = "tags=PROF:first,CONT,POWR,TIME,RAM8,MPRS,CPU0,BUS0,TIMR,IRQC,IRQS,BLKT:all,IOPT:all,SCHD"
-meaning = "Flipping the first and the last byte of the live state of each of the 14 regions (the first only for PROF, every byte for BLKT and IOPT) changes the digest and restoring it restores the digest, in the table order PROF CONT POWR TIME RAM8 MPRS CPU0 BUS0 TIMR IRQC IRQS BLKT IOPT SCHD; each region is one live span of the instance"
+expect = "tags=PROF:first,CONT,POWR,TIME,RAM8,MPRS,CPU0,BUS0,TIMR,IRQC,IRQS,BLKT:all,IOPT:all,SCHD,VCE0,PALT,VDC0,BEAM,VDMA,VRAM,SATB"
+meaning = "Flipping the first and the last byte of the live state of each of the 21 regions (the first only for PROF, every byte for BLKT and IOPT, never every byte of PALT, VRAM or SATB: F-22) changes the digest and restoring it restores the digest, in the table order of the stream (PROF to SCHD, then VCE0 PALT VDC0 BEAM VDMA VRAM SATB); each region is one live span"
 required = true
 control = false
 expect_outcome = "pass"

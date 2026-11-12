@@ -23,6 +23,8 @@
  * block_irq_after_epilogue            1: the interrupt inputs are sampled once, at the end of the block epilogue, and never inside a transfer (D-111, LED-IRQ-0007); 0: the epilogue takes no sample and the instruction after the transfer samples first
  * pad_clr_high_nibble                the nibble a read of the $1000 window returns while the latch has CLR set, whatever is held (plan 03-29; D-115, LED-IO-0003): 0
  * io_poweron_latch                    the latch of port O at power-on under every power-on policy (plan 03-29; D-115, R-5, LED-IO-0003): 255 (port O is high after reset, H8-18 and H8-19; which latch bits are SEL and CLR is the project choice of LED-IO-0002)
+ * line_mclk                          master clocks of one line of the VCE grid, whatever the dot clock (plan 04-03; D-136, ASSUMED LED-VID-0001): 1365 = 6 x 227.5, a community figure; fclock = 6 fsc is MAN:H6-3, the 227.5 is not from a page held
+ * rcr_counter_poweron                 the RCR counter at power-on (plan 04-03; D-142, ASSUMED LED-IRQ-0010): 16384, out of the 10-bit compare range so that nothing matches before the origin line sets it
  * pad_settle_mclk                     master clocks of settling after a write of the latch (plan 03-29; D-115, LED-IO-0004): 0, so a read sees the level of the input schedule at its own access stamp; the read looks up the schedule this many master clocks earlier
  */
 DS_CONST(cycle_mclk_low, 12, "LED-CPU-0003")
@@ -43,3 +45,5 @@ DS_CONST(block_irq_after_epilogue, 1, "LED-IRQ-0007")
 DS_CONST(pad_clr_high_nibble, 0, "LED-IO-0003")
 DS_CONST(io_poweron_latch, 255, "LED-IO-0003")
 DS_CONST(pad_settle_mclk, 0, "LED-IO-0004")
+DS_CONST(line_mclk, 1365, "LED-VID-0001")
+DS_CONST(rcr_counter_poweron, 16384, "LED-IRQ-0010")
