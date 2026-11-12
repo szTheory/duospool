@@ -2,7 +2,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
 # Chunk invariance of the raw video stream of the authored bg_scroll fixture (plan 04-12; D-137, D-163, D-176, F-20, F-44, ER-7): the guest writes BXR and BYR at counted instants inside display lines of a 32 x 32 background and then builds a 64 x 64 map, while the folded 1365-clock grid emits one DSVR v1 line record per line into the caller's vid sink.
-# The kind runs the fixture once in a single call (the uninterrupted run) and then, on fresh boots, in calls to the deadlines of five schedules (chunks key: 7 master clocks, 1364 and 1366 (one clock either side of the line grid, so a stop falls next to the counted write), 3072, and vframe = 357630 = 262 * 1365, one frame of 262 lines; schedule 1 is dropped for video, D-176).
+# The kind runs the fixture once in a single call (the uninterrupted run) and then, on fresh boots, in calls to the deadlines of four schedules (lever (3) of D-176, plan 04.1-01: the schedule 3072 is dropped from the video chunk cases; 1364 and 1366 straddle a line event and stay) (chunks key: 7 master clocks, 1364 and 1366 (one clock either side of the line grid, so a stop
+# falls next to the counted write), and vframe = 357630 = 262 * 1365, one frame of 262 lines; schedule 1 is dropped for video, D-176).
 # A vid sink is attached to every call of every run; the records of the calls are concatenated into one stream per run and the streams are compared with memcmp, never with hashes (D-163), beside the verdict RAM, the machine time, the step count, the stop sequence and the digest. The uninterrupted run is also checked against the closed form floor((M - 1) /
 # 1365) + 1 of the line count (ASSUMED LED-VID-0004 and LED-VID-0001), so an empty stream compared with an empty stream cannot pass.
 # Evidence tier E0: the core compared with itself (repeatability and consistency, ER-7); no literal comes from a DuoSpool run, a pass is not a support claim, and the case makes no accuracy, raster, pixel, hardware or compatibility claim.
@@ -11,10 +12,10 @@ kind = "chunk_equiv"
 fixture = "authored:bg-scroll"
 request = ""
 expect = "compare=verdict,machine_time,stops,digest,video"
-meaning = "The bg_scroll fixture run with a vid sink in calls to the deadlines of five chunk schedules (7, 1364, 1366, 3072 and one frame of 262 lines) ends with the machine time, step count, verdict RAM, stop sequence, digest and concatenated raw video stream bytes of the uninterrupted run, with the scroll writes at counted instants inside display lines, E0 repeatability"
+meaning = "The bg_scroll fixture run with a vid sink in calls to the deadlines of four chunk schedules (7, 1364, 1366 and one frame of 262 lines) ends with the machine time, step count, verdict RAM, stop sequence, digest and concatenated raw video stream bytes of the uninterrupted run, with the scroll writes at counted instants inside display lines, E0 repeatability"
 required = true
 control = false
 expect_outcome = "pass"
 pins = []
 until_mclk = 4000000
-chunks = "7,1364,1366,3072,vframe"
+chunks = "7,1364,1366,vframe"

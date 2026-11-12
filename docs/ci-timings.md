@@ -915,6 +915,7 @@ figures below (user CPU of one `ds_runner --only ID` run in the gate preset, loa
 |-------|---------|--------|-------|
 | (1) toys link shared object libraries | fired | applied at checkpoint A (`d831680`) | CMake only; cold build of 25 toys 47.1 s to 3.3 s user CPU |
 | (2) video fixtures under two policies | fired (`conformance` 86 s over 60 s) | **applied** in this plan | see lever (2) below |
+| (3) drop one chunk schedule from the video chunk cases | fired (`conformance` 86 s after lever (2)) | **applied** in this plan | see lever (3) below |
 
 ### Lever (2): two policies in the video non-interference, restore and observer runs
 
@@ -929,3 +930,19 @@ figures below (user CPU of one `ds_runner --only ID` run in the gate preset, loa
   image as the control that must differ. The guest cases of the video fixtures (`vce_pal`, `vce_dot`, `bg_*`, `vdc_*`), `vdc_vram`,
   `vdc_satb_data` and the CPU fixtures keep three policies. No control, toy, literal case or REQUIRED id was removed. What is given up is the third
   policy, seed 2, in the video non-interference, restore and observer runs.
+
+### Lever (3): the schedule 3072 dropped from the video chunk cases
+
+- **Trigger.** `conformance` still read 83 s after lever (2) (the 60 s trigger of D-176), so the next lever applies.
+- **What changed.** `chunk_equiv_video_vce_pal` and `chunk_equiv_video_bg_scroll` run the schedules 7, 1364, 1366 and one frame (`vframe`) instead of
+  those and 3072; `chunk_equiv_random32_video` runs 1364, 1366 and `vframe`. The two schedules that straddle a line event (1364 and 1366) stay, as the
+  plan requires; the CPU chunk cases keep 3072 (it is also the timer prescaler step there).
+- **Per case user CPU, before and after** (same session, load 12 to 20): `chunk_equiv_video_vce_pal` 0.11 to 0.12 s, `chunk_equiv_video_bg_scroll` 0.53 to
+  0.52 s, `chunk_equiv_random32_video` 1.41 to 1.32 s: about 0.1 s in all, which is inside the run-to-run noise. A schedule run is cheap next to the
+  boot, the fixture run and the stream copy of a case; the saving is real but not worth a second of the stage.
+- **The gate with the lever:** `conformance` 86 s, 309.1 s user CPU, 393.3 s wall, load 12 (the lever (2) run read 83 s, 305.6 s and 391.9 s at load 18 to 20).
+  The stage did not move beyond noise: it does not reach 60 s by any of the levers of D-176 that weaken nothing.
+- **Why only a little evidence is given up.** Three of the four schedules of the three cases (1364, 1366 and the frame, plus 7 where it ran) are unchanged; 3072 was a
+  period that is neither a divisor nor a neighbour of the 1365-clock line and added no phase that 7, 1364 and 1366 do not reach. A record stream compared across
+  schedules, the restore cases and `chunk_equiv_random32` (which keeps all its CPU schedules) are unchanged. This is recorded as an applied lever whose measured value is
+  about 0.1 s, so that the efficiency review after the first Phase 4.1 CI run can restore the schedule at no real cost.

@@ -2,18 +2,19 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
 # Chunk invariance of the raw video stream of 32 random programs that write the VDC and the VCE (plan 04-13; D-175, D-163, CORE-04, ER-7, T-04-44): the programs of chunk_equiv_random32 (tests/conformance/randprog.c) map the hardware page at logical $0000 first (MPR0 = $FF) and, one instruction slot in sixteen, carry a VDC register write, a VCE window write
-# or a read of the VDC status or data port, so the machine they run has its geometry, enables, DMA registers and colour table written at random. Here each program is run to one deadline (600000 master clocks) in a single call and in calls to the deadlines of four video schedules (1364 and 1366 master clocks, which fall on both sides of every
-# phase of a 1365-clock line, 3072 and the 357630-clock frame), each call with a vid sink; the vid stream bytes (memcmp, never hashes), the machine time, step count, verdict RAM, stop sequence and digest must equal those of the uninterrupted run, and the line count must be the closed form floor((M - 1) / 1365) + 1 (ASSUMED LED-VID-0004
+# or a read of the VDC status or data port, so the machine they run has its geometry, enables, DMA registers and colour table written at random. Here each program is run to one deadline (600000 master clocks) in a single call and in calls to the deadlines of three video schedules (lever (3) of D-176, plan 04.1-01: the schedule 3072 is dropped from the video chunk cases; 1364
+# and 1366 straddle a line event and stay) (1364 and 1366 master clocks, which fall on both sides of every
+# phase of a 1365-clock line, and the 357630-clock frame), each call with a vid sink; the vid stream bytes (memcmp, never hashes), the machine time, step count, verdict RAM, stop sequence and digest must equal those of the uninterrupted run, and the line count must be the closed form floor((M - 1) / 1365) + 1 (ASSUMED LED-VID-0004
 # and LED-VID-0001, written in the kind). The case runs in the sanitizers stage too. Evidence tier E0: the core compared with itself (repeatability and consistency, ER-7); the programs have no meaning, no literal comes from a DuoSpool run, no accuracy or hardware claim, and the word pass is not a support claim.
 id = "chunk_equiv_random32_video"
 kind = "chunk_equiv"
 fixture = "none"
 request = ""
 expect = "compare=verdict,machine_time,stops,digest,video;random=32"
-meaning = "32 in-process random programs that write the VDC and the VCE through the hardware page, each run to one deadline in a single call and in calls to the deadlines of four video schedules with a vid sink, end with the machine time, step count, verdict RAM, stop sequence, digest and raw video stream bytes of the uninterrupted run"
+meaning = "32 in-process random programs that write the VDC and the VCE through the hardware page, each run to one deadline in a single call and in calls to the deadlines of three video schedules with a vid sink, end with the machine time, step count, verdict RAM, stop sequence, digest and raw video stream bytes of the uninterrupted run"
 required = true
 control = false
 expect_outcome = "pass"
 pins = []
 until_mclk = 600000
-chunks = "1364,1366,3072,vframe"
+chunks = "1364,1366,vframe"
