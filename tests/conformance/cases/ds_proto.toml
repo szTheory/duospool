@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Guest tracer (plan 03-01, D-95, D-123, D-124; keys of plan 03-04): the authored fixture fixtures/src/ds_proto.s is assembled by ca65 in the gate (never committed), named by
+# fixture = authored:ds-proto, boots on the core, runs through ds_run to the absolute deadline until_mclk (master clocks, 4000000 is about 333,000 low-speed CPU cycles)
+# with checks = 8 as the count the case demands (plan 03-05), and writes a DSV1 verdict block into work RAM that the runner judges from raw RAM.
+# The expected values live in the literal table of fixtures/lib/check.inc and are classed in fixtures/src/ds_proto.checks: a manual page (S8-17 ADC example, H8-5),
+# an in-guest computation or an assumed ledger entry; none comes from DuoSpool output. Evidence tier E0, a mechanism check: no accuracy or compatibility claim, and the word pass is not a support claim.
+id = "ds_proto"
+kind = "guest"
+fixture = "authored:ds-proto"
+request = ""
+expect = "id=1"
+meaning = "The authored ds_proto fixture boots from its reset vector, runs to the deadline in master clocks and leaves a consistent DSV1 block whose eight check results are all pass"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+checks = 8

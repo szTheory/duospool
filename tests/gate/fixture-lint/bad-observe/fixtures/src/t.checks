@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# fixture-lint control mini-root: bad-observe
+id=1
+checks=3
+1	one	MAN:H8-5	one
+2	two	MAN:H8-5	two	observe
+3	three	MAN:H8-5	three	observed

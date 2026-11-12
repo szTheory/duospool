@@ -1,0 +1,81 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# cpu_flow.checks - one row per CHECK of fixtures/src/cpu_flow.s (D-125, plan 03-13). Columns separated by one TAB: check index (1-based, the entry number of the DCK1 table), slug, class tag, meaning.
+# Class tags: MAN:<page> (the literal is a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model> (the expected byte is computed in the guest from an assembler label or a saved register, the table entry is an XOR mask of $00),
+# ASSUMED:<LED-id> (the literal is DuoSpool's own model, an assumption: the T bit pushed by BRK and the T load of RTI; the ledger entry LED-CPU-0009 is written in a later plan and carries both readings).
+# A branch row reads a marker: the path that is reached writes $01 (fall through) or $02 (target). P read through PHP then PLA is masked ($C3 for N V Z C, $CF to include D and I): B and T are not part of the literal.
+# No row asserts a cycle count or the page-cross penalty of a taken branch (LED-CPU-0010 assumption). A pass is not a support claim (ER-4).
+id=5
+checks=71
+1	beq-taken	MAN:S8-24	BEQ branches when Z is 1: P = Z only (N, V, C clear), the target path is reached (marker $02)
+2	beq-not-taken	MAN:S8-24	BEQ does not branch when Z is 0: P = N V C set, Z clear, the fall-through path runs (marker $01)
+3	bne-taken	MAN:S8-27	BNE branches when Z is 0: P = N V C set, Z clear, the target path is reached (marker $02)
+4	bne-not-taken	MAN:S8-27	BNE does not branch when Z is 1: P = Z only, the fall-through path runs (marker $01)
+5	jsr-pushed-pcl	GUEST:jsr-site-plus-2	JSR pushes the address of its last byte (the JSR address plus 2), PCH first then PCL (S8-52): the subroutine reads the pushed low byte from the stack page, the expected byte is computed from the assembler label of the JSR
+6	jsr-pushed-pch	GUEST:jsr-site-plus-2	JSR pushes PCH first (at the higher stack address) then PCL (S8-52): the pushed high byte read from the stack page is the high byte of the JSR address plus 2
+7	rts-next-instruction	MAN:S8-71	RTS pulls PCL then PCH and adds 1 (S8-71), so the instruction after the JSR runs exactly once: Y is $00 before the JSR and one INY follows it
+8	rts-s-balance	GUEST:s-before-equals-s-after	JSR and RTS leave S as it was (two pushes, two pulls, S8-52, S8-71): S after the return equals the S saved before the JSR
+9	bpl-taken	MAN:S8-28	BPL branches when N is 0: P byte $43 (the other flags in the opposite state), the target path is reached (marker $02)
+10	bpl-not-taken	MAN:S8-28	BPL does not branch when N is 1: P byte $80, the fall-through path runs (marker $01)
+11	bmi-taken	MAN:S8-26	BMI branches when N is 1: P byte $80 (the other flags in the opposite state), the target path is reached (marker $02)
+12	bmi-not-taken	MAN:S8-26	BMI does not branch when N is 0: P byte $43, the fall-through path runs (marker $01)
+13	bvc-taken	MAN:S8-32	BVC branches when V is 0: P byte $83 (the other flags in the opposite state), the target path is reached (marker $02)
+14	bvc-not-taken	MAN:S8-32	BVC does not branch when V is 1: P byte $40, the fall-through path runs (marker $01)
+15	bvs-taken	MAN:S8-33	BVS branches when V is 1: P byte $40 (the other flags in the opposite state), the target path is reached (marker $02)
+16	bvs-not-taken	MAN:S8-33	BVS does not branch when V is 0: P byte $83, the fall-through path runs (marker $01)
+17	bcc-taken	MAN:S8-22	BCC branches when C is 0: P byte $C2 (the other flags in the opposite state), the target path is reached (marker $02)
+18	bcc-not-taken	MAN:S8-22	BCC does not branch when C is 1: P byte $01, the fall-through path runs (marker $01)
+19	bcs-taken	MAN:S8-23	BCS branches when C is 1: P byte $01 (the other flags in the opposite state), the target path is reached (marker $02)
+20	bcs-not-taken	MAN:S8-23	BCS does not branch when C is 0: P byte $C2, the fall-through path runs (marker $01)
+21	bra-taken	MAN:S8-29	BRA always branches: PC <- PC+2+rr skips the following two-byte LDA (A stays $01)
+22	branch-fwd-127	MAN:S8-29	The offset rr is signed, -128 to 127, and the target is PC+2+rr (S8-29): BRA with rr = 127 skips 127 INX bytes and lands on the INY after them (X = 0, Y = 1 gives $10)
+23	branch-back-128	MAN:S8-27	BNE with rr = -128 (sign extension of $80) branches back 126 bytes to the INY: reached once (Y = 1) and no INX filler executed (X = 0) gives $10
+24	branch-back-loop	MAN:S8-27	A short backward BNE loop: INX, CPX #5, BNE back runs the body five times (X = 5)
+25	taken-branch-keeps-flags	MAN:S8-23	A taken branch changes no flag (the flag row of S8-23 is T = 0 and dashes): P = N V Z C set, BCS taken over a CLC, the masked P byte stays $C3
+26	not-taken-keeps-flags	MAN:S8-22	A branch that is not taken changes no flag (S8-22): P = N V Z C set, BCC not taken (C is 1), the masked P byte stays $C3
+27	bb-bit0	MAN:S8-20	Bit 0: with the cell $01 (only bit 0 set) BBR0 is not taken and BBS0 is taken, with the cell $FE (only bit 0 clear) BBR0 is taken and BBS0 is not (S8-20, S8-21): outcome bits $02 and $04 set, $06
+28	bb-bit1	MAN:S8-20	Bit 1: with the cell $02 (only bit 1 set) BBR1 is not taken and BBS1 is taken, with the cell $FD (only bit 1 clear) BBR1 is taken and BBS1 is not (S8-20, S8-21): outcome bits $02 and $04 set, $06
+29	bb-bit2	MAN:S8-20	Bit 2: with the cell $04 (only bit 2 set) BBR2 is not taken and BBS2 is taken, with the cell $FB (only bit 2 clear) BBR2 is taken and BBS2 is not (S8-20, S8-21): outcome bits $02 and $04 set, $06
+30	bb-bit3	MAN:S8-20	Bit 3: with the cell $08 (only bit 3 set) BBR3 is not taken and BBS3 is taken, with the cell $F7 (only bit 3 clear) BBR3 is taken and BBS3 is not (S8-20, S8-21): outcome bits $02 and $04 set, $06
+31	bb-bit4	MAN:S8-20	Bit 4: with the cell $10 (only bit 4 set) BBR4 is not taken and BBS4 is taken, with the cell $EF (only bit 4 clear) BBR4 is taken and BBS4 is not (S8-20, S8-21): outcome bits $02 and $04 set, $06
+32	bb-bit5	MAN:S8-20	Bit 5: with the cell $20 (only bit 5 set) BBR5 is not taken and BBS5 is taken, with the cell $DF (only bit 5 clear) BBR5 is taken and BBS5 is not (S8-20, S8-21): outcome bits $02 and $04 set, $06
+33	bb-bit6	MAN:S8-20	Bit 6: with the cell $40 (only bit 6 set) BBR6 is not taken and BBS6 is taken, with the cell $BF (only bit 6 clear) BBR6 is taken and BBS6 is not (S8-20, S8-21): outcome bits $02 and $04 set, $06
+34	bb-bit7	MAN:S8-20	Bit 7: with the cell $80 (only bit 7 set) BBR7 is not taken and BBS7 is taken, with the cell $7F (only bit 7 clear) BBR7 is taken and BBS7 is not (S8-20, S8-21): outcome bits $02 and $04 set, $06
+35	bbr-taken-skips	MAN:S8-20	BBR0 on a cell with bit 0 clear branches, PC <- PC+3+rr skipping the one-byte INX (X stays 0, S8-20)
+36	bbs-taken-skips	MAN:S8-21	BBS0 on a cell with bit 0 set branches, PC <- PC+3+rr skipping the one-byte INX (X stays 0, S8-21)
+37	bbr-not-taken	MAN:S8-20	BBR0 on a cell with bit 0 set does not branch: the program counter is increased by 3 (S8-20) and the INX runs (X = 1)
+38	bbs-not-taken	MAN:S8-21	BBS0 on a cell with bit 0 clear does not branch: the program counter is increased by 3 (S8-21) and the INX runs (X = 1)
+39	bb-keeps-flags	MAN:S8-21	BBR and BBS change no flag (the flag row is T = 0 and dashes): P = N V Z C set, BBR0 taken over a CLC, the masked P byte stays $C3
+40	bb-back-loop	MAN:S8-20	A backward BBR (rr negative, target PC+3+rr, S8-20): INC of a zero-page cell with BBR2 back to the INC runs until bit 2 of the cell is set, the cell ends at $04
+41	bsr-pushed-pcl	GUEST:bsr-site-plus-1	BSR pushes the address of the last byte of the BSR instruction (the BSR address plus 1), PCH first (S8-31): the pushed low byte read in the subroutine
+42	bsr-pushed-pch	GUEST:bsr-site-plus-1	BSR pushes PCH first (S8-31): the pushed high byte is the high byte of the BSR address plus 1
+43	bsr-returns-next	MAN:S8-31	RTS after BSR returns to the instruction after the BSR (S8-31, S8-71): the one INY after it ran once, Y = 1
+44	jmp-abs	MAN:S8-51	JMP absolute: PCL <- ll, PCH <- hh (S8-51): the jump skips the INX (X = 0)
+45	jmp-ind	MAN:S8-51	JMP (abs): PCL <- (hhll), PCH <- (hhll+1) (S8-51): the pointer in work RAM names the target, the INX is skipped (X = 0)
+46	jmp-ind-xxff	MAN:S8-51	JMP (abs) with the pointer at $25FF: PCL comes from $25FF and PCH from (hhll+1) = $2600 (S8-51 prints hhll+1; there is no 6502 page wrap), the INX is skipped (X = 0)
+47	jmp-absx	MAN:S8-51	JMP (abs,X) with X = 2: PCL <- (hhll+X), PCH <- (hhll+X+1) (S8-51): the entry at +2 is taken and the decoy entry at +0 is not (Y = 0, a decoy landing gives 1, no jump gives 2)
+48	rti-restores-p	MAN:S8-70	RTI pulls P first (the flag row of S8-70 reads RESTORED): P = N V D Z C set and I clear before a BRK, SET just before it, so after the RTI the masked P byte is $CB
+49	rti-returns-brk-plus-2	MAN:S8-30	BRK pushes the address BRK+2 and RTI returns there (S8-30, S8-70): the one-byte INY at BRK+1 is skipped (Y = 0)
+50	rti-s-balance	GUEST:s-before-equals-s-after	BRK pushes three bytes and RTI pulls three (S8-30, S8-70): S after the RTI equals S before the BRK
+51	brk-vector-reached	MAN:S8-30	BRK reads the vector at logical $FFF6 and $FFF7 (S8-30), which the startup code routes through the IRQ2 and BRK RAM slot: the installed handler ran once
+52	brk-pushed-pcl	GUEST:brk-site-plus-2	BRK pushes PC+2, the address of the BRK plus 2, as PCH then PCL (S8-30): the pushed low byte read in the handler, the expected byte computed from the assembler label of the BRK
+53	brk-pushed-pch	GUEST:brk-site-plus-2	BRK pushes PCH first (S8-30): the pushed high byte is the high byte of the BRK address plus 2
+54	brk-pushed-b	MAN:S8-30	BRK pushes P with the B flag set to 1 (S8-30): bit 4 of the pushed byte
+55	brk-pushed-flags	MAN:S8-30	BRK pushes the status register (Ms <- P, S8-30): N V Z C of the byte pushed with P = $CB are $C3
+56	brk-pushed-t0	ASSUMED:LED-CPU-0009	BRK pushes the T flag as 0 (D-99 and the flag row of S8-30 read T = 0), also right after a SET: bit 5 of the pushed byte. Open conflict, not decided here: the pushed T at a hardware interrupt entry, H8-4 and H8-5 against pcetech, is a ledger disagreement (LED-CPU-0009)
+57	brk-handler-flags	MAN:S8-30	BRK sets I and clears D (the flag row of S8-30, H8-17): D was 1 and I was 0 before the BRK, inside the handler the masked P byte is $04
+58	brk-handler-s	GUEST:s-minus-3	BRK pushes three bytes (S8-30): S inside the handler is S before the BRK minus 3
+59	rti-loads-t	ASSUMED:LED-CPU-0009	RTI loads T from bit 5 of the pulled byte (D-99; the flag row of S8-70 reads RESTORED): the handler sets bit 5 of the pushed byte, so the ORA #$80 at the return address works in T mode on the cell $2007 (X = 7) and the cell $01 becomes $81. LED-CPU-0009 carries the open T question
+60	clc	MAN:S8-35	CLC clears C and no other flag: P = N V D I Z C set, the P byte masked with $CF reads $CE
+61	cld	MAN:S8-36	CLD clears D and no other flag: P = N V D I Z C set, the masked P byte reads $C7
+62	cli	MAN:S8-37	CLI clears I and no other flag: P = N V D I Z C set, the masked P byte reads $CB
+63	clv	MAN:S8-38	CLV clears V and no other flag: P = N V D I Z C set, the masked P byte reads $8F
+64	sec	MAN:S8-75	SEC sets C and no other flag: P = 0, the masked P byte reads $01
+65	sed	MAN:S8-76	SED sets D and no other flag: P = 0, the masked P byte reads $08
+66	sei	MAN:S8-77	SEI sets I and no other flag: P = 0, the masked P byte reads $04
+67	nop-keeps-a	MAN:S8-57	NOP changes no register (PC <- PC+1, S8-57): A = $5A before, $5A after
+68	nop-keeps-x	MAN:S8-57	NOP changes no register (S8-57): X = $A5 before, $A5 after
+69	nop-keeps-y	MAN:S8-57	NOP changes no register (S8-57): Y = $3C before, $3C after
+70	nop-keeps-flags	MAN:S8-57	NOP changes no flag (the flag row of S8-57 is T = 0 and dashes): P = N V I C ($C5) before, the masked P byte after is $C5
+71	nop-one-byte	MAN:S8-57	NOP is one byte (S8-57): the INY right after it runs, Y = 1

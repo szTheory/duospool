@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The default of a model parameter is the first allowed value (plan 03-17; D-113): a boot with model.tma_zero=bus_latch gives the same digest as a boot without the key, so naming the default changes nothing and an instance that never set the parameter holds the default. Repeatability only (E0).
+id = "digest_model_default_same"
+kind = "digest_pair"
+fixture = "plain-256k"
+request = "bind.powerup_policy=seeded-prng-v1;seed=42||bind.powerup_policy=seeded-prng-v1;seed=42;model.tma_zero=bus_latch"
+expect = "same"
+meaning = "Naming the default value of tma_zero in the request gives the digest of the boot that does not name it"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

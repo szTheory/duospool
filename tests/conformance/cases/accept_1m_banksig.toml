@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Bank signature row, 1 MiB: every bank 0 to 127 of the window is read through the mapper boundary, first and last byte,
+# against the rows of the independent awk oracle (tests/conformance/mirror-oracle.awk). Evidence tier E0: the mirror
+# rule is an assumption (LED-LOAD-0003), so this shows agreement with the documented rule, not a match with hardware.
+id = "accept_1m_banksig"
+kind = "banksig"
+fixture = "plain-1m"
+request = ""
+expect = "banks=128"
+meaning = "A fully declared 1 MiB synthetic image reads the expected first and last byte of the file bank given by the rule (the file bank is b itself, 128 file banks) for every bank 0 to 127 of the window through the mapper boundary, as given by the independent oracle"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

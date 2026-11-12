@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# Machine time unit and clock ratios (D-90; CORE-04, CPU-04). A modelling assumption of this project, not a hardware measurement; the 21.477 MHz figure is a host label only.
+id = "LED-CPU-0003"
+statement = "DuoSpool models machine time as u64 master clocks (OSC1): one CPU cycle is 3 master clocks at high speed and 12 at low speed, one timer step is 3072 master clocks, and no frequency is used in core arithmetic. This is a modelling choice."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|H8-20|prescaler OSC1 / 3 then / 1024, so 3072; image read by gsd-phase-researcher 2026-11-10, taken from 03-RESEARCH, not re-read here", "FACT|H8-1|138 ns bus cycle rating, a hint for 3 master clocks (139.7 ns at 21.48 MHz); gsd-phase-researcher 2026-11-10", "REPORT|community reports (03-CONTEXT D-90)|12 master clocks per low-speed cycle; no manual page read states it"]
+evidence = ["E0|tests/conformance/cases/run_until_abs.toml: instruction ends in master clocks follow from 12 master clocks per low-speed cycle, a repeatable literal from the manual cycle counts"]
+disagreement = "none: the manual gives the OSC1 / 3 prescaler and no low-speed ratio, so the 12 master clock figure has only community reports and nothing to disagree with"
+pinning_test = "TEST:run_until_abs"
+updated = "2026-11-11"
+assumption = "The /3 and /12 cycle lengths and the 3072 timer step are one timeline chosen so that speed switching and timer, VDC and PSG independence need no rescaling. The pinned case exercises the low-speed 12 only; the high-speed 3 and the timer step get their cases in later plans of this phase."
+revisit_phase = 3
+withheld = ["any claim of hardware cycle accuracy", "any claim of interrupt latency in cycles", "any claim of game compatibility", "any TG-16 or region claim", "any claim that the /12 low-speed ratio comes from a Hudson document"]
+origin = "03-CONTEXT D-90"

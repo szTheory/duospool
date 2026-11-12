@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Resolve row: profile resolution is typed and names the offending field; an open field has no default (D-49). Evidence tier E0, no hardware claim.
+id = "resolve_rev_mismatch"
+kind = "resolve"
+fixture = "none"
+request = "rev=2"
+expect = "load.rev_mismatch"
+meaning = "A known profile id with a revision other than the registered one is refused as load.rev_mismatch; r1 is frozen and there is no r2"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

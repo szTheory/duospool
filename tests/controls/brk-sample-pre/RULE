@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Toy control (D-85, D-111; code review WR-01, erratum R-9): the first rule of the interrupt sample, in which BRK was judged by the I flag from before the instruction like every other instruction, made from the live src/core/cpu.c by scripts/control-mutate. The anchor is the
+# one statement that chooses the I of the sample; the replacement drops the BRK exception, so BRK, which sets I as part of its own entry, is sampled with the old I and a pending IRQ1 pre-empts the BRK handler before its first instruction. The case in EXPECT must come out guest_failure on
+# the toy, or no case can see that a pending interrupt runs before the BRK handler. The real core passes it (a REQUIRED case).
+tag=rule-brk-sample-pre
+file=src/core/cpu.c
+anchor=i_sample = (inst->irq_i_sample == (uint8_t)DS_IRQ_I_SAMPLE_POST || mn == (uint32_t)MN_BRK) ? ((uint32_t)inst->p & P_I) : i_before;
+replace=i_sample = inst->irq_i_sample == (uint8_t)DS_IRQ_I_SAMPLE_POST ? ((uint32_t)inst->p & P_I) : i_before;

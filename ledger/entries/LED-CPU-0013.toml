@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# The bus latch io_buffer (D-104; CPU-02). A modelling choice: the manual says which bits a timer read and a read of the interrupt registers drive and says nothing about the others; the latch and its update rule are reports and this project's own design. Not a hardware measurement.
+# Checks 22, 27 to 42 and 45 to 48 of the mmu_mpr fixture name this entry. The latch is one byte of the instance and of the BUS0 region of the digest; it is 0 in a zeroed instance under every power-on policy.
+id = "LED-CPU-0013"
+statement = "DuoSpool models a one-byte latch io_buffer, 0 at power-on, set to the byte moved by any read or write in 0x1FE800-0x1FF7FF and supplying the bits a read there does not drive (all eight for the PSG, I/O and 0x1400-0x1401 reads, bit 7 for a timer read, the upper five for 0x1402-0x1403); the VDC, VCE and empty windows leave it unchanged. Modelling assumption."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|H8-24|timer downcounter read has 7 bits (bit 7 reserved), interrupt registers 3 bits (7 to 3 reserved); image read by the plan 03-20 executor 2026-11-11", "REPORT|research/PITFALLS.md|the I/O page has an internal last-value buffer (pcetech), not re-read", "UNKNOWN|the manual|no page gives the value of a bit a read does not drive, or says which accesses set a latch"]
+evidence = ["E0|tests/conformance/cases/mmu_mpr_1m.toml: the guest sets the latch with a write to the I/O window and reads it back through each window (checks 22 and 27 to 48); rows are ASSUMED class, repeatability only", "E0|tests/conformance/cases/mmu_mpr_256k.toml: the same checks on the 256 KiB image"]
+disagreement = "None recorded: one report (pcetech through the research notes) says a last-value buffer exists; no source gives its scope or its power-on value. The scope here (0x1FE800-0x1FF7FF) and the power-on value 0 are this project's own choices; a source that reads the latch differently would be a disagreement not yet written down."
+pinning_test = "TEST:mmu_mpr_1m"
+updated = "2026-11-11"
+assumption = "The latch and every rule of the statement are named constants of src/core/bus.c, chosen so that the authored fixtures can run; the power-on value 0 is a constant under every policy (D-104). The pin shows the core does what the rules say, not that the hardware has such a latch."
+revisit_phase = 3
+withheld = ["any claim of hardware cycle accuracy", "any claim of interrupt latency in cycles", "any claim of game compatibility", "any TG-16 or region claim", "any claim about the bits a hardware read does not drive"]
+origin = "03-CONTEXT D-104"

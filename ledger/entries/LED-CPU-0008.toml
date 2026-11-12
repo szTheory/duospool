@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# The block transfer model (D-100; CPU-05, CPU-01, CORE-04). Modelling choices where no page speaks: not a hardware measurement. The count and the length rule are LED-CPU-0007, the interrupt rule is LED-IRQ-0007.
+# The model is a 14-cycle prologue, one 6-cycle step per byte and a 3-cycle epilogue, on state in the instance (the BLKT region of the digest); the prologue length is the constant row block_prologue_cycles (14) in src/core/constants.def, read by cpu.c and printed with this id in the run record.
+# The pin is cpu_blk (the plain image of fixtures/src/cpu_blk.s). cpu_blk_stop_resume is a second evidence case (one entry names one pinning case, so it carries no pins back-link); the chunk and observer cases of plan 03-26 are further E0 evidence. The pages were read as images on 2026-11-10 and
+# 2026-11-11 (see LED-CPU-0007).
+# The in-guest timer rows 51 to 54 hold the two accesses of a byte step to one cycle and are E2 self-consistency (ER-3, they use the access stamp rule LED-CPU-0004); the other rows are the assumed model itself. A block access to the VDC or VCE window pays the LED-CPU-0017 penalty in the bus, but no
+# committed case aims a block at those windows.
+id = "LED-CPU-0008"
+statement = "DuoSpool models a block transfer byte at a time: a 14-cycle prologue (operands read, Y, A, X pushed), one 6-cycle step per byte (source read in cycle 4, destination write in cycle 6; overlap aliases; 16-bit wrap; TIA and TAI alternation in state) and a 3-cycle epilogue popping X, A, Y from memory. Modelling assumption."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|H8-6 S8-88|page images 2026-11-10, 2026-11-11: Table 2-1-1 modes, Y A X saved and popped", "REPORT|03-CONTEXT D-100|aliasing, 14 and 3 split, access offsets are project choices; pcetech: a block read of the I/O page returns 0 (not modelled)", "UNKNOWN|the manual|no page states the split, access cycles, aliasing, wrap or the I/O page read"]
+evidence = ["E0|tests/conformance/cases/cpu_blk.toml: checks 13, 27, 28, 32 to 34, the assumed model", "E2|tests/conformance/cases/cpu_blk.toml: checks 51 to 54, split 14 and 3, read at 4, write at 6", "E0|tests/conformance/cases/cpu_blk_stop_resume.toml: stops at every step equal the one-call run", "E0|tests/conformance/cases/chunk_equiv_cpu_blk.toml: chunked runs equal the whole run"]
+disagreement = "S8-88 draws S decremented twice before the X push; DuoSpool pushes Y, A, X one level each and pops them in the epilogue: same cells and net S; only a stop inside a transfer could see S differ. 03-CONTEXT D-100: pcetech returns 0 for a block read of the I/O page, not modelled (open). D-107 advisor observation, not re-read: Mesen2 orders read and write differently."
+pinning_test = "TEST:cpu_blk"
+updated = "2026-11-11"
+assumption = "One byte-at-a-time model with a 14 and 3 split and fixed access offsets, chosen so that an overlapping block and a stop at a byte boundary are defined; the pin asserts the modelled behaviour and the one-cycle placement of the accesses, not that hardware moves a byte this way."
+revisit_phase = 3
+withheld = ["any claim of hardware cycle accuracy", "any claim of interrupt latency in cycles", "any claim of game compatibility", "any TG-16 or region claim"]
+origin = "03-CONTEXT D-100"

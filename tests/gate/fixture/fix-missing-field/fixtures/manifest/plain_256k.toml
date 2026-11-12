@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Fixture manifest entry (FIX-02, D-59): one synthetic recipe of tests/conformance/synth.c. The bytes are generated at test time and are
+# never committed. scripts/fixture-check compares size and sha256 below with the bytes that ds_runner --emit plain-256k wrote, as hashed by
+# the host sha tool, so a changed generator or an undocumented image turns the gate red.
+id = "plain_256k"
+kind = "synthetic"
+source = "tests/conformance/synth.c"
+recipe = "plain-256k: 262144 bytes (32 file banks); lcg32 seed=12345 x=x*1664525+1013904223 mod 2^32 byte=(x>>16)&255; then bank tags: the first byte of file bank k (k = 0 to natural size / 8192 - 1, 8192 bytes each) is (k*37+11) mod 256 and the last byte is (k*91+5) mod 256"
+toolchain = "ds_runner --emit plain-256k (tests/conformance/synth.c, ISO C11, integer arithmetic only), hashed by sha256sum or shasum -a 256"
+size = 262144
+sha256 = "cb038cda079ab0edec440521c4dc250a8a8c2af6e068470dbda7f05ff07b0287"
+licence = "0BSD"
+redistribution = "generated-not-committed"
+meaning = "Base synthetic HuCard-shaped image of 256 KiB (32 file banks), the natural size of the recipe; fixture of 46 cases, for example accept_256k_banksig, accept_tracer_256k, accept_unmapped_banks and 43 more. Expected bank signatures come from the awk mirror oracle (LED-LOAD-0003), not from core output."
+verdict_source = "spec-literal:LED-LOAD-0003"

@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Toy control (D-85, D-55, D-118, T-03-81): a pad whose level lives partly in a hidden static shared by every instance, made from the live src/core/io.c by scripts/control-mutate (plan 03-29). The anchor is the one live line that returns the level of a port at a stamp (level_at); the replacement routes it through a function-local static that remembers
+# the last nonzero level any instance computed and returns it when the instance's own level is empty: a port with nothing held reads what some other instance last held. A deliberately aliased toy lives in build/ only, never in src/core (the boundary check bans exactly this in the real core, and no copy of io.c is committed).
+# Why the case in EXPECT must turn red on it, for every phase of the process counter (the standing note after the shared-state toy went NOT_RED twice): the wrong script of B holds nothing in its last phase (the event at 510000 has held = []), the correct script of A holds a nonzero set in every phase, and interleave_pad steps A before B in every round,
+# so by the round that carries the last-phase reads of B (about 601000 master clocks) A has already read its own nonzero last-phase set (the static holds it), and B's two reads return it instead of nothing: B then passes checks 11 and 12, which its solo copy fails, so the verdict block of B differs from that of its solo copy whatever any other case ran before.
+# A is unaffected (its level is never empty).
+# The real core passes interleave_pad (a REQUIRED case). The toy runs only the case of EXPECT (quick task 261111-e8l): the case reads no other case.
+tag=rule-shared-input
+file=src/core/io.c
+anchor=return held;
+replace={ static uint32_t shared_level = 0u; if (held != 0u) { shared_level = held; } return shared_level; }

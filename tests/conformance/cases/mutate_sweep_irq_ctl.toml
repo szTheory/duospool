@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Mutation sweep of the irq_ctl fixture (plan 03-22; D-126, ER-4, ER-5, ER-7, FIX-03): the built image of fixtures/src/irq_ctl.s is loaded once, its DCK1 literal table is found at file offset $1000, and for each check that is not excluded the value byte of its entry (the expected literal) is XORed with $FF in a fresh
+# in-memory copy that is booted and run in this same process, with the same declared irq_stim as the case irq_ctl_pre (the sweep applies the case's stimulus before every run, plan 03-22). The unmutated image must pass first. Each mutation must flip exactly its own check to $46 and leave the others $50: a check whose literal can be changed
+# without flipping it is vacuous and the case is guest_failure. Check 30 is the observe-only latency row (ASSUMED LED-IRQ-0005): it compares nothing, so the sweep skips it (exclude=30, which must equal the observe rows of the fixture). The sweep runs under the default power-on policy and the default irq_i_sample = pre.
+# Evidence tier E0 (a mechanism check of the checks themselves): the declared stimulus is a test hook and no accuracy or hardware claim follows; the word pass is not a support claim.
+id = "mutate_sweep_irq_ctl"
+kind = "mutate_sweep"
+fixture = "authored:irq-ctl"
+request = ""
+expect = "id=11;exclude=30"
+meaning = "Changing the expected literal of any one of the 32 compared irq_ctl checks flips exactly that check to fail and no other (check 30 is the observe-only latency row and is skipped), so none of them is vacuous"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 6000000
+checks = 33
+irq_stim = ["1200000,1,1", "1500000,1,0", "2200000,2,1", "2500000,2,0", "3200000,1,1", "3200000,2,1", "3500000,1,0", "3500000,2,0", "4200000,1,1", "4500000,1,0"]

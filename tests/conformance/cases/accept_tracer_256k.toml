@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Accept row: a synthetic 256 KiB image declared plain, pce, none with every open field bound. Evidence tier E0: it shows the boot path and the recorded size, not a hardware fact.
+id = "accept_tracer_256k"
+kind = "accept"
+fixture = "plain-256k"
+request = ""
+expect = "accept;size=262144"
+meaning = "A fully declared 256 KiB synthetic image boots into caller memory, the instance records the resolved profile and the content size 262144, and the supplied bytes are copied in"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

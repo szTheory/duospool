@@ -1,0 +1,73 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# mmu_mpr.checks - one row per CHECK of fixtures/src/mmu_mpr.s (D-125, plan 03-16). Columns separated by one TAB: check index (1-based, the entry number of the DCK1 table), slug, class tag, meaning.
+# Class tags: MAN:<page> (the literal is a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model> (the expected byte is computed in the guest, the table entry is an XOR mask of $00), ASSUMED:<LED-id>.
+# The HuCard bytes the checks read are written by the fixture itself (segment BANKS: byte 0 of file bank k is k, the last byte is k xor $A5); the work RAM cells are written by the checks. A pass is not a support claim (ER-4).
+id=8
+checks=65
+1	bank80-reads-ff	ASSUMED:LED-CPU-0012	Bank $80 is not mapped (the run $80-$F7): a read through it returns the constant $FF
+2	bankf7-reads-ff	ASSUMED:LED-CPU-0012	Bank $F7, the last of the unmapped run, reads $FF
+3	bankfc-reads-ff	ASSUMED:LED-CPU-0012	Bank $FC, the first bank after the four work RAM banks, is not mapped and reads $FF
+4	bankfe-reads-ff	ASSUMED:LED-CPU-0012	Bank $FE, the last bank before the hardware page, is not mapped and reads $FF
+5	unmapped-write-ignored	ASSUMED:LED-CPU-0012	A byte stored through unmapped bank $80 is not kept: the next read is still $FF
+6	ram-mirror-f9	ASSUMED:LED-CPU-0011	The 8 KiB work RAM is mirrored in banks $F8 to $FB (H8-24 gives $1F0000-$1F7FFF behind one chip enable): a byte written through $F8 reads back through $F9
+7	ram-mirror-fa	ASSUMED:LED-CPU-0011	The same byte read through bank $FA
+8	ram-mirror-fb	ASSUMED:LED-CPU-0011	The same byte read through bank $FB
+9	ram-write-fb-read-f8	ASSUMED:LED-CPU-0011	A byte written through bank $FB reads back through bank $F8, so the mirrors share one storage
+10	ram-byte-not-aliased	ASSUMED:LED-CPU-0011	The cell after the written one is a different byte: it still holds the $00 written before
+11	ram-offset-bit12	ASSUMED:LED-CPU-0011	RAM offset $1234 (bit 12 set) written through bank $FB reads back through bank $F8
+12	hucard-bank1-first	MAN:H8-7	The MPR byte supplies physical address bits A13 to A20 (H8-7): bank $01 holds its tag byte $01 at offset 0
+13	hucard-bank1-last	MAN:H8-7	The 13 low logical address bits are the offset in the bank: the last byte of bank $01 is $01 xor $A5 = $A4
+14	hucard-bank31-first	MAN:H8-7	Bank $1F, the last bank of the 256 KiB image, holds $1F at offset 0
+15	mpr-change-immediate	MAN:H8-7	A TAM takes effect for the next access: after MPR3 changes from $01 to $02 the same logical address shows bank $02
+16	two-slots-at-once	MAN:H8-7	MPR4 = $03 maps bank $03 at logical $8000 while MPR3 maps another bank at $6000
+17	bank0-two-views	GUEST:bank0-two-views	Bank 0 read through MPR3 at offset 0 is the byte that MPR7 (mapped to bank 0 by the reset) shows at $E000; the model is the byte read through MPR7 and kept in GEXP
+18	mirror-rule-a	ASSUMED:LED-LOAD-0003	The first byte of one bank above bank $1F under the mirror rule of the image size: 256 KiB bank $20 mirrors bank 0 ($78, the SEI of the reset code), 384 KiB bank $40 is file bank 32 ($20), 1 MiB bank $20 is file bank $20 ($20)
+19	mirror-rule-b	ASSUMED:LED-LOAD-0003	The first byte of the last bank of the window or its mirror: 256 KiB bank $3F mirrors bank $1F ($1F), 384 KiB bank $7F is file bank 47 ($2F), 1 MiB bank $7F is file bank $7F ($7F)
+20	rom-write-ignored	ASSUMED:LED-CPU-0012	A byte stored through HuCard bank $01 is not kept: the tag byte $01 is still there
+21	tma-returns-stored	MAN:S8-101	TMA reads the mapping register that TAM wrote (S8-90, S8-101): $80, a bank number that maps nothing, is stored and read back unchanged
+22	psg-power-on-zero	ASSUMED:LED-CPU-0013	io_buffer is constant 0 at power-on under every policy: before any read or write in $0800-$17FF the PSG window, which reads io_buffer, returns $00
+23	vdc-window-stub	ASSUMED:LED-CPU-0012	The VDC window (physical $1FE000, H8-24) has no device yet: it reads the stub $00 whatever io_buffer holds ($A5 here)
+24	vdc-window-last-byte	ASSUMED:LED-CPU-0012	The last byte of the 1 KiB VDC window reads the stub $00: the register is selected by A1-A0 and the window repeats
+25	vce-window-stub	ASSUMED:LED-CPU-0012	The VCE window (physical $1FE400) has no device yet: it reads the stub $FF whatever io_buffer holds ($00 here)
+26	vce-window-last-byte	ASSUMED:LED-CPU-0012	The last byte of the 1 KiB VCE window reads the stub $FF: the register is selected by A2-A0 and the window repeats
+27	vdc-read-keeps-iobuf	ASSUMED:LED-CPU-0013	A read in the VDC window does not change io_buffer, which is the byte of the last access in $0800-$17FF only: the PSG window still reads $A5
+28	vce-read-keeps-iobuf	ASSUMED:LED-CPU-0013	A read in the VCE window does not change io_buffer: the PSG window still reads $A5
+29	psg-reads-iobuf	ASSUMED:LED-CPU-0013	The PSG window (physical $1FE800) has no device yet and reads io_buffer: $C3 after a write of $C3 to the I/O window
+30	psg-window-last-byte	ASSUMED:LED-CPU-0013	The last byte of the 1 KiB PSG window reads io_buffer too (the register is selected by A3-A0)
+31	psg-write-sets-iobuf	ASSUMED:LED-CPU-0013	A write in $0800-$17FF stores its byte in io_buffer: after a write of $3A to the PSG window a PSG read returns $3A
+32	timer-read-bit7-set	ASSUMED:LED-CPU-0013	The timer downcounter read has 7 bits (H8-24): bit 7 comes from io_buffer ($A5) over the counter of the timer, which the fixture started at reload 0 and stopped at once (held 0): the read is $80 (re-judged in plan 03-21)
+33	timer-read-bit7-clear	ASSUMED:LED-CPU-0013	With bit 7 of io_buffer clear ($25) the same read is $00
+34	timer-read-updates-iobuf	ASSUMED:LED-CPU-0013	A read in $0800-$17FF makes the byte read the new io_buffer: after a timer read of $80 the PSG window reads $80
+35	timer-window-second-address	ASSUMED:LED-CPU-0013	Both addresses of the timer window read the counter (D-109): bit 7 from io_buffer ($FF) and the held counter 0, so $80
+36	timer-write-sets-iobuf	ASSUMED:LED-CPU-0013	A write of $7F to the timer reload address stores its byte in io_buffer: the PSG window reads $7F
+37	irq-1402-upper-bits	ASSUMED:LED-CPU-0013	The interrupt disable register $1402 (H8-24) has three bits (0 at reset, held in the instance since plan 03-21): the upper five come from io_buffer, $A5 and $F8 = $A0
+38	irq-1403-upper-bits	ASSUMED:LED-CPU-0013	The interrupt request register $1403 reads the same way, its three bits 0 (no timer interrupt is requested and the case declares no irq_stim, so IRQ1 and IRQ2 read 0, re-judged in plan 03-22): $A0
+39	irq-window-repeats	ASSUMED:LED-CPU-0013	The interrupt window repeats: offset $3FE has A1 = 1 and A0 = 0 and reads like $1402: $FF and $F8 = $F8
+40	irq-1400-open-bus	ASSUMED:LED-CPU-0013	The interrupt window addresses with A1 = 0 name no register: the read is io_buffer, $A5
+41	irq-write-sets-iobuf	ASSUMED:LED-CPU-0013	A write of $0F to $1402 stores its byte in io_buffer: the PSG window reads $0F
+42	io-write-sets-iobuf	ASSUMED:LED-CPU-0013	A write at the last byte of the I/O window ($1FF3FF) stores its byte in io_buffer: the PSG window reads $96
+43	io-read-pad-idle	ASSUMED:LED-IO-0002	The I/O window is the pad port (plan 03-27, E2 self-consistency): with the latch at $5C (SEL 0, CLR 0) and no input declared nothing is pressed, so the read is $30 | d6 << 6 | d7 << 7 | $0F, $FF with the default bindings d6 = d7 = 1 (LED-IO-0001); it is no longer open bus
+44	empty-window-reads-ff	ASSUMED:LED-CPU-0012	The window $1800-$1FFF has no device (H8-9: reserved for extension): a read returns the unmapped constant $FF
+45	empty-read-keeps-iobuf	ASSUMED:LED-CPU-0013	A read in the empty window does not change io_buffer: the PSG window still reads $A5
+46	empty-write-keeps-iobuf	ASSUMED:LED-CPU-0013	A write in the empty window does not change io_buffer: the PSG window still reads $A5
+47	vdc-write-keeps-iobuf	ASSUMED:LED-CPU-0013	A write in the VDC window does not change io_buffer: the PSG window still reads $A5
+48	st0-keeps-iobuf	ASSUMED:LED-CPU-0013	ST0 writes physical $1FE000 through the physical path (H8-8 Table 2-2-3) and does not change io_buffer either: the PSG window still reads $A5
+49	tma-zero-observe	ASSUMED:LED-CPU-0015	TMA with the operand $00 (the manual defines only 2^i): after a TAM that put $F8 in the latch and with A = $5A, the byte left in A is the model parameter tma_zero made visible: the latch ($F8) under bus_latch, A unchanged ($5A) under a_unchanged; each case supplies it (observe=49:VALUE)	observe
+50	tam-multi-writes-mpr1	ASSUMED:LED-CPU-0015	TAM with a two-bit operand (the manual defines 2^i only) writes every selected register: after TAM $06 with A = $FA, MPR1 reads $FA (it held $F8)
+51	tam-multi-writes-mpr2	ASSUMED:LED-CPU-0015	The same TAM $06 also wrote MPR2: it reads $FA (it held $F9); a TAM that wrote only one selected register fails one of checks 50 and 51
+52	tam-multi-spares-mpr3	ASSUMED:LED-CPU-0015	A register that the operand does not select keeps its value: MPR3 still reads $FF after the TAM $06
+53	tam-zero-keeps-mpr0	ASSUMED:LED-CPU-0015	TAM with the operand $00 is a no-op: MPR0 (set to $F8 first) still reads $F8 after a TAM #0 with A = $FB
+54	tam-zero-keeps-mpr1	ASSUMED:LED-CPU-0015	The same TAM #0 left MPR1 at $F8
+55	tam-zero-keeps-mpr7	ASSUMED:LED-CPU-0015	The same TAM #0 left MPR7 at its reset value $00 (H8-8), so no register was selected by the zero operand
+56	tma-multi-highest	ASSUMED:LED-CPU-0015	TMA with a two-bit operand (the manual defines 2^i only) returns the highest selected index: operand $06 selects MPR1 ($F8) and MPR2 ($F9) and A = $F9, not the $77 it held and not the lowest
+57	tma-multi-highest-mpr3	ASSUMED:LED-CPU-0015	Operand $0A selects MPR1 ($F8) and MPR3 ($FF): the highest is MPR3, so A = $FF
+58	tma-all-bits-highest	ASSUMED:LED-CPU-0015	Operand $FF selects every register: the highest is MPR7 (reset value $00), so A = $00 and not MPR0 ($F8) or the $77 it held
+59	tma-latch-after-tma	ASSUMED:LED-CPU-0015	The one-byte latch takes the byte that a TMA with a nonzero operand returned ($F9 here), and the guest sees it through TMA #0: bus_latch gives $F9, a_unchanged leaves A ($11); each case supplies it (observe=59:VALUE)	observe
+60	tma-latch-after-tam-zero	ASSUMED:LED-CPU-0015	TAM #0 is a no-op for the latch too: after a TAM #0 with A = $C3 and A set to $22, TMA #0 gives $F9 under bus_latch (not $C3) and $22 under a_unchanged; each case supplies it (observe=60:VALUE)	observe
+61	power-up-mpr0	ASSUMED:LED-PROF-0003	The power-up byte of MPR0, read before this fixture writes any mapping register: 0 under zero and seeded-prng-v1, drawn under seeded-prng-v2; observe-only, each case says observe=61:policy	observe
+62	power-up-mpr3	ASSUMED:LED-PROF-0003	The power-up byte of MPR3, the row of the policy-diff control: mmu_mpr_policy_diff requires it to differ between zero and the v2 seeds; observe-only	observe
+63	power-up-mpr4	ASSUMED:LED-PROF-0003	The power-up byte of MPR4; observe-only, observe=63:policy	observe
+64	power-up-mpr5	ASSUMED:LED-PROF-0003	The power-up byte of MPR5; observe-only, observe=64:policy	observe
+65	power-up-mpr6	ASSUMED:LED-PROF-0003	The power-up byte of MPR6; observe-only, observe=65:policy (MPR1 and MPR2 are written by the shared startup before any fixture code, MPR7 is the constant $00 of the reset)	observe

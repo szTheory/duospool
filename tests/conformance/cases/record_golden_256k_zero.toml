@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Record golden, E0 repeatability (D-53): the default request over the 256 KiB synthetic image, so the power-on policy is zero and no seed is
+# recorded. The printed record must equal golden/accept_256k_zero.record.toml byte for byte after its leading comment block. Repeatability
+# only: it shows that the same inputs give the same bytes, not that the machine behaviour is right.
+id = "record_golden_256k_zero"
+kind = "record_golden"
+fixture = "plain-256k"
+request = ""
+expect = "accept_256k_zero"
+meaning = "The full record of a zero-policy boot of the 256 KiB synthetic image, printed to a buffer, equals the committed golden byte for byte, including seed_present false and seed 0"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

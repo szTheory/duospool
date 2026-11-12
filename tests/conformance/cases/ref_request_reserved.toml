@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: the reserved word of the request is not zero. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_request_reserved"
+kind = "refuse"
+fixture = "plain-256k"
+request = "reserved=1"
+expect = "load.request_invalid"
+meaning = "A request whose reserved word is non-zero is refused as load.request_invalid, so the word stays available to later revisions"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

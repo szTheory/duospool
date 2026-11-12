@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Interleave with input (plan 03-29; D-55, D-118, T-03-81, ER-5): two instances of the authored pad_2btn image live in one process, A with the correct input script and B with the wrong one, and are stepped to the deadline in rounds of 20000 master clocks (A first, then B, in every round) beside solo copies that were run alone to the deadline first.
+# Each interleaved instance must end with the digest, the machine time and the verdict block of its solo copy, the verdict of A must be a pass and that of B a guest failure, and the two verdicts must differ. Per-instance input is proven unshared by the toy tests/controls/shared-input, which routes the level of a port through a static that every instance shares
+# and must turn this case red; the real core passes it.
+# Evidence tier E0 (isolation and repeatability) with E2 pad literals (the pad core and the fixture are written by one party, ER-5): no pad-accurate or hardware claim.
+id = "interleave_pad"
+kind = "interleave_pad"
+fixture = "authored:pad-2btn"
+request = ""
+expect = "id=14;a=pad_2btn_correct;b=pad_2btn_wrong;chunk=20000"
+meaning = "Two pad_2btn instances with different input scripts, stepped alternately in rounds, each end with the digest, machine time and verdict of the same instance run alone, so the input of an instance is its own"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 800000
+checks = 12

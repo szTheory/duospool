@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# fixture-lint control mini-root: incbin
+id=1
+checks=4
+1	copy	GUEST:copy	guest copy
+2	zp	MAN:H8-5	zero page
+3	imm	ASSUMED:LED-CPU-0010	immediate
+4	four	GUEST:copy	an observe-only row	observe

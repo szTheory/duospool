@@ -1,0 +1,149 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# opcode-check - the two-way opcode oracle (CPU-01, CPU-06; plan 03-09; D-96, D-97, D-98, ER-1, CR-01).
+# It compares the core's opcode table src/core/cpu_ops.def with tests/oracle/huc6280-opcodes.tsv, two transcriptions of the manual page images made by passes that did not read each other, row by row and
+# both ways on opcode, mnemonic, mode, bytes and base cycles (a block transfer's 17 in the def is compared as the manual's 17+6x). The 22 UNDEF rows are compared by membership only: both sides mark the opcode
+# undefined; their one byte and two cycles are an assumption (LED-CPU-0010) that the TSV's - columns do not carry (I11). A built-in cross-check requires 234 defined and 22 undefined opcodes in each file.
+# A difference is never resolved by editing one table to match the other: re-read the page image, then correct the side that is wrong.
+# usage: opcode-check [--expect CODE[,CODE...]] [--root DIR] [--work DIR]
+#   --root DIR   the root that holds src/core/cpu_ops.def and tests/oracle/huc6280-opcodes.tsv (default: the repository root)
+#   --work DIR   keep the stage records in DIR (the gate uses build/gate/opcode-oracle); default a scratch directory that is removed
+# Three awk runs in scripts/lib/opcode-rules.awk, each writing to a file with its exit status tested (CR-01, no awk on the left of a pipe): stage 1 for the def and stage 1 for the tsv, each ending in an END
+# sentinel, then stage 2, which requires both sentinels. A stage that died, or a stage 1 that printed no sentinel, is OPC_STAGE_DEAD (exit 2), never a pass.
+# Codes: OPC_MISSING_ROW OPC_EXTRA_ROW OPC_FIELD OPC_UNDEF_COUNT OPC_SHAPE | exit 2 only: PREFLIGHT_MISSING, OPC_STAGE_DEAD, HARNESS_*
+# stdout: sorted violations  FILE<TAB>CODE<TAB>OPCODE<TAB>DETAIL , then (clean)  OPCODE defined=N undefined=M  and the marker  STATUS opcode-oracle ok defined=N undefined=M
+# stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
+# exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage error, missing tool or harness error
+set -eu
+LC_ALL=C; export LC_ALL
+# no external command before the tool check: with an empty PATH only builtins run, and a missing tool is reported as PREFLIGHT_MISSING (exit 2), never a skip
+case $0 in */*) here=${0%/*} ;; *) here=. ;; esac
+here=$(cd "$here" && pwd)
+
+usage() {
+  echo "usage: opcode-check [--expect CODE[,CODE...]] [--root DIR] [--work DIR]" >&2
+  exit 2
+}
+
+expect=""
+have_expect=0
+root=$(cd "$here/.." && pwd)
+work=""
+while [ $# -gt 0 ]; do
+  case $1 in
+    --expect) [ $# -ge 2 ] || usage; expect=$2; have_expect=1; shift 2 ;;
+    --root) [ $# -ge 2 ] || usage; root=$2; shift 2 ;;
+    --work) [ $# -ge 2 ] || usage; work=$2; shift 2 ;;
+    *) usage ;;
+  esac
+done
+
+missing=0
+for t in awk grep cut sort tr mktemp cmp; do
+  if command -v "$t" > /dev/null 2>&1; then :; else
+    echo "PREFLIGHT_MISSING $t"
+    missing=$((missing + 1))
+  fi
+done
+if [ "$missing" -gt 0 ]; then
+  exit 2
+fi
+
+# an --expect that names no code would make a control assert nothing (WR-05): exit 2, never 0
+if [ "$have_expect" -eq 1 ] && [ -z "$(printf '%s' "$expect" | tr -d ', \t\r\n')" ]; then
+  echo "HARNESS_EMPTY_EXPECT --expect names no code" >&2
+  exit 2
+fi
+if [ ! -d "$root" ]; then
+  echo "HARNESS_NO_FILE $root" >&2
+  exit 2
+fi
+root=$(cd "$root" && pwd)
+def="$root/src/core/cpu_ops.def"
+tsv="$root/tests/oracle/huc6280-opcodes.tsv"
+for f in "$def" "$tsv"; do
+  if [ ! -f "$f" ]; then
+    echo "HARNESS_NO_FILE $f" >&2
+    exit 2
+  fi
+done
+defrel=${def#"$root"/}
+tsvrel=${tsv#"$root"/}
+tab=$(printf '\t')
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+if [ -n "$work" ]; then
+  mkdir -p "$work"
+  w=$(cd "$work" && pwd)
+else
+  w=$tmp/w
+  mkdir -p "$w"
+fi
+# a stale file of an earlier run must never be read as this run's output
+rm -f "$w/def.rec" "$w/tsv.rec" "$w/compare.out"
+
+dead() {
+  echo "OPC_STAGE_DEAD $1" >&2
+  exit 2
+}
+
+# stage 1 for each file: the records, a file, its status tested, the sentinel required
+if awk -v stage=1 -v kind=def -f "$here/lib/opcode-rules.awk" "$def" > "$w/def.rec" 2> "$tmp/s1d.err"; then :; else
+  dead "stage 1 of the def (opcode-rules.awk) failed"
+fi
+if grep -q '^END	def	' "$w/def.rec"; then :; else
+  dead "stage 1 of the def printed no END sentinel"
+fi
+if awk -v stage=1 -v kind=tsv -f "$here/lib/opcode-rules.awk" "$tsv" > "$w/tsv.rec" 2> "$tmp/s1t.err"; then :; else
+  dead "stage 1 of the tsv (opcode-rules.awk) failed"
+fi
+if grep -q '^END	tsv	' "$w/tsv.rec"; then :; else
+  dead "stage 1 of the tsv printed no END sentinel"
+fi
+
+# stage 2: the two-way comparison
+if awk -v stage=2 -f "$here/lib/opcode-rules.awk" "$w/def.rec" "$w/tsv.rec" > "$w/compare.out" 2> "$tmp/s2.err"; then :; else
+  dead "stage 2 (opcode-rules.awk) failed or found no END sentinel from stage 1"
+fi
+: > "$tmp/viol0"
+nsum=0
+ndef=0
+nund=0
+while IFS="$tab" read -r tag a b c d; do
+  case $tag in
+    V) # a row found in one of the two files in stage 1 carries that file's kind in column 5: name the file it is in, not always the def (IN-02); the rows of the comparison and the count rows name the def, or the table where the row says so
+      if [ "$d" = tsv ] || { [ "$a" = OPC_UNDEF_COUNT ] && [ "$b" = tsv ]; }; then vfile=$tsvrel; else vfile=$defrel; fi
+      printf '%s\t%s\t%s\t%s\n' "$vfile" "$a" "$b" "$c" >> "$tmp/viol0" ;;
+    N) nsum=$((nsum + 1)); ndef=$a; nund=$b ;;
+    *) dead "unknown record $tag from stage 2" ;;
+  esac
+done < "$w/compare.out"
+# stage 2 always prints exactly one N record: its absence is a dead checker, not a pass
+if [ "$nsum" -ne 1 ]; then
+  dead "stage 2 printed no summary record"
+fi
+sort -u "$tmp/viol0" > "$tmp/viol"
+
+if [ "$have_expect" -eq 1 ]; then
+  cut -f2 "$tmp/viol" > "$tmp/got.codes"
+  sort -u "$tmp/got.codes" | tr '\n' ',' | sed 's/,$//' > "$tmp/got"
+  printf '%s\n' "$expect" | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/,$//' > "$tmp/want"
+  if cmp -s "$tmp/got" "$tmp/want"; then
+    echo "EXPECT_OK"
+    exit 0
+  fi
+  echo "EXPECT_MISMATCH wanted '$(cat "$tmp/want")' got '$(cat "$tmp/got")'" >&2
+  cat "$tmp/viol" >&2
+  exit 1
+fi
+
+cat "$tmp/viol"
+if [ -s "$tmp/viol" ]; then
+  exit 1
+fi
+echo "OPCODE defined=$ndef undefined=$nund"
+echo "STATUS opcode-oracle ok defined=$ndef undefined=$nund"
+exit 0

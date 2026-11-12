@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The observer non-interference matrix on the random program set (plan 03-26; D-93, D-119, D-127, CORE-06, ER-7, T-03-71, T-03-72): the 32 in-process programs of tests/conformance/randprog.c (the same set and seeds as chunk_equiv_random32: a splitmix64 stream per program index, defined opcodes with
+# random operands, in memory only) are each run under the matrix of observer_ds_proto: no sink (the reference) and both sinks in three
+# configurations (large, drop4, poison; cap0 and cap1 are covered by the authored cases and cost 6 boots more per program), each in three modes: whole (one call to the deadline of 300000 master clocks), chunk:7 and stop:2000 (a stop callback that holds at its 2000th invocation). Every run must give the reference verdict RAM, machine time, stop sequence (the stop
+# callback folds the registers, the bus latch and the block transfer state) and digest; the sinks are checked for consistent headers, untouched guard bytes
+# and record memory past the count, the first-records rule of a limited sink and the equality of the logs accumulated over seven chunks with the logs of the whole run. The random programs reach instructions, bus windows and block transfers that no authored fixture does, so the instruction sink and
+# the device-register sink see records of every kind, and they run in the sanitizers stage (T-03-72). Evidence tier E0 (repeatability and
+# non-interference: the core is compared with itself, ER-7); the programs have no meaning, no literal comes from a DuoSpool run, no accuracy, compatibility or hardware claim, and the word pass is not a support claim.
+id = "observer_random"
+kind = "observer"
+fixture = "none"
+request = ""
+expect = "compare=verdict,machine_time,stops,digest;random=32"
+meaning = "Enabling the instruction sink and the device-register sink in any of three configurations (large, 4-record drop-newest, poisoned header), whole or in 7 chunks or stopped by the callback, changes neither the verdict RAM, the machine time, the stop sequence nor the digest of any of 32 in-process random programs"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 300000
+sinks = "large,drop4,poison"
+chunks = "whole,chunk:7,stop:2000"

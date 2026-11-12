@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Model refusal coverage (plan 03-17; D-86 pattern, D-113, F4): a DEFERRED kind. The runner does not evaluate it inside the case loop; the model_refuse kind records every model refusal code a ds_model_set call returned, and in a second pass after the loop the set must equal
+# every member of src/core/model_refusals.def. The verdict does not depend on where this row sits in the cases TSV. The same pass checks that the rows of src/core/model_params.def are well formed: at most 4, two allowed values or more each, the default is the first allowed value,
+# the ledger id has the LED-AREA-NNNN shape and the status is assumed or open. A model_refuse row removed so that a code goes unobserved makes this case guest_failure. The request and expect keys carry no data for this kind. Evidence tier E0.
+id = "model_param_refusal"
+kind = "model_refusal_coverage"
+fixture = "none"
+request = "all-model-refuse-rows"
+expect = "every-member-observed"
+meaning = "Every model refusal code of model_refusals.def is returned by at least one model_refuse row and every row of model_params.def has two allowed values, its default first, a ledger id and a status of assumed or open"
+required = true
+control = false
+expect_outcome = "pass"
+pins = ["LED-PROF-0004"]

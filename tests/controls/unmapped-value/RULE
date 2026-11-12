@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Toy control (D-85, D-131): a bus whose unmapped read returns $00 instead of the one constant $FF, made from the live src/core/bus.c by scripts/control-mutate. The anchor is the one return statement of ds_bus_read that ends the
+# switch for an unmapped bank (the HuCard miss and the empty windows of the hardware page spell their $FF differently on purpose, so the anchor occurs exactly once); the replacement returns $00, the plausible bug of an
+# open-bus model that was never given its constant. The case in EXPECT must come out guest_failure on the toy, or the mmu_mpr fixture cannot see an unmapped read that is not $FF: its checks 1 to 4 read banks $80, $F7, $FC and $FE.
+tag=rule-unmapped-value
+file=src/core/bus.c
+anchor=return (uint8_t)DS_UNMAPPED_READ;
+replace=return 0u;

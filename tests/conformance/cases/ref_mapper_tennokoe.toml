@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: a 1 MiB image declared tennokoe, a named mapper the core does not implement. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_mapper_tennokoe"
+kind = "refuse"
+fixture = "plain-1m"
+request = "mapper=tennokoe"
+expect = "load.mapper_unsupported"
+meaning = "A 1 MiB request declared tennokoe is refused as load.mapper_unsupported and no save-memory behaviour is invented"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

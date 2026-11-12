@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Interleave (CORE-01, D-55): instance A (256K content, seed 1) and instance B (384K content, seed 2) live in one process, in blocks that this test
+# allocates with canary bytes around them, and are stepped alternately on a fixed-seed integer LCG schedule (64 calls of 1 to 4093 cycles). Each
+# is stepped beside a solo copy that receives only its own calls. Digests are compared at every eighth call and at the end, printed records at the
+# end. A hidden global in the core would make a machine's digest depend on the other machine's calls (the toy tests/controls/shared-state shows
+# this case red). Evidence tier E0: isolation and repeatability of the placeholder stepping, nothing about hardware.
+id = "interleave_ab"
+kind = "interleave"
+fixture = "plain-256k"
+request = "bind.powerup_policy=seeded-prng-v1;seed=1||bind.powerup_policy=seeded-prng-v1;seed=2;len=393216"
+expect = "lcg=20241110;steps=64"
+meaning = "Two instances with different content and seeds, stepped alternately on a fixed-seed schedule, each end with the digest and printed record of the same instance run alone"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

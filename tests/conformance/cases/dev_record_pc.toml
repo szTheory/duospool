@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The pc field of the device-register records of a block transfer (code review WR-02; D-100, D-119). The runner builds an eleven-byte program in memory: LDA #$FF, TAM #2 (MPR1 = the hardware page, so the zero page and the stack at logical $2000-$21FF reach the page) and a TII of three bytes
+# from $E000 to $2002 (the VDC data window) at $E004 (LDA is two bytes at $E000, TAM two at $E002, so the TII starts at $E004: the hand-assembled layout, GUEST), then a BRA to itself. The transfer makes six logged accesses, three pushes of Y, A and X in the prologue (S8-88) and three byte writes
+# (the manual's three bytes of the operand), and every one of them must carry the address of the instruction, $E004, which is also the pc of the one insn record of the transfer. The old code put the address after the transfer ($E00B) in the byte records. A consumer that joins dev records to insn
+# records by pc depends on this. Entry-time records are documented in ds_obs.h (they carry the interrupted instruction's next address). Evidence tier E0; no accuracy, compatibility, cycle-accurate or hardware claim, and the word pass is not a support claim.
+id = "dev_record_pc"
+kind = "dev_record_pc"
+fixture = "none"
+request = ""
+expect = "pc=0xE004;records=6"
+meaning = "Every device-register record of a TII carries the address of the TII, the pc of its single insn record, for the prologue pushes and the byte writes alike"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 2000

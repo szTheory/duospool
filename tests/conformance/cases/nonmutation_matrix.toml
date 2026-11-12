@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Non-mutation matrix (D-43): one live instance is booted in its own block, then every refuse row is booted into a fresh block that is
+# prefilled with a fixed byte pattern and surrounded by guard canaries. After each refusal the block, its slack and both guards must be
+# byte-identical, and at the end the live block must be unchanged byte for byte. The request and expect keys carry no data for this
+# kind. A byte comparison, not a digest (the digest upgrade is plan 13). Evidence tier E0 (repeatability and a literal).
+id = "nonmutation_matrix"
+kind = "nonmutation"
+fixture = "none"
+request = "all-refuse-rows"
+expect = "unchanged"
+meaning = "No refuse row writes a byte of the caller block or of the guard canaries around it, and none disturbs a live instance in another block"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

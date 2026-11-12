@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Restore at each CPU speed (plan 03-30 task 3; CORE-05, D-90, D-101, D-121): the spd_speed fixture runs at the power-up low speed and after CSH at high speed; the median boundary at each of the two speeds is restored, so the speed byte of CPU0 and the cycle length that follows from it are part of the
+# restored state. The runner (kind snapshot_restore, tests/conformance/snapkinds.c) runs the fixture once, uninterrupted, one step at a time, keeping the machine time, pc, opcode and record fold of every step and a copy of the machine at the deadline; a second run of the same fixture is stopped at
+# each planned boundary, snapshotted and restored into a FRESH instance booted with another seed, the defaults of the model parameters, no schedule and no stimulus, whose restorable members are then poisoned (0xA5, and again 0x5A). The restored instance must equal the source in every member of the
+# hand-written tiling list except the ROM (raw compare), re-serialise to the same snapshot, run in lockstep with the uninterrupted run over the window, and, at the lead stop of each class (finish), end the run with the machine time, verdict RAM, digest and members of the uninterrupted run; at the lead
+# stops flipping one byte of every region of the restored instance changes the digest (perturb). Evidence tier E0: the core compared with itself; no correctness claim.
+id = "snapshot_restore_speed"
+kind = "snapshot_restore"
+fixture = "authored:spd-speed"
+request = "bind.powerup_policy=seeded-prng-v2;seed=3"
+expect = "stops=first,last,speed;window=32;finish;perturb"
+meaning = "Snapshots of the spd_speed run taken at the low speed and at the high speed restore into a fresh poisoned instance and continue as the uninterrupted run"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 600000

@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The selected value of the model parameter irq_i_sample is machine state and is in the digest stream, in the region IRQC (plan 03-22; D-111, D-113, D-121): the same boot with model.irq_i_sample=pre (the default, named) and with post gives different digests. Evidence tier E0.
+id = "digest_model_irq_i_sample_differs"
+kind = "digest_pair"
+fixture = "plain-256k"
+request = "bind.powerup_policy=seeded-prng-v1;seed=42;model.irq_i_sample=pre||bind.powerup_policy=seeded-prng-v1;seed=42;model.irq_i_sample=post"
+expect = "differ"
+meaning = "model.irq_i_sample=pre and model.irq_i_sample=post give different digests, so the selection is carried in the digest stream"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

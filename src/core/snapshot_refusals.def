@@ -1,0 +1,38 @@
+/* SPDX-License-Identifier: MIT OR Apache-2.0 */
+/* SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors */
+/*
+ * snapshot_refusals.def - the closed refusal set of ds_snapshot and ds_restore (plan 03-30; D-121, T-03-83 to T-03-85, Pitfall 20, F4), defined once.
+ * One X-macro row per refusal: DS_SNAPREF(name, number). 0 is "no refusal" and has no row. The string form is snapshot.NAME, never load.NAME, run.NAME, model.NAME, stim.NAME or input.NAME: these codes belong to the snapshot and its restore alone.
+ * Numbers are stable and never reused; a new refusal takes the next free number, and the name table has DS_SNAPREF_SLOTS slots (a number at or above it fails to compile). A refusal writes nothing: ds_restore leaves the instance byte-identical and ds_snapshot leaves the caller's buffer alone.
+ * ds_restore runs its checks in this order: the arguments, the overlap of the buffer with the instance, the length (truncated, then trailing), the prefix, the version, then the regions in stream order, each one tag, its length and its fields (profile and content first, as the stream carries them).
+ *
+ * name           number  returned when
+ * argument       1       the instance or the buffer is NULL (ds_snapshot accepts a NULL written pointer: it is optional)
+ * overlap        2       the buffer shares a byte with the instance (a restore would read bytes it is about to overwrite)
+ * capacity       3       ds_snapshot: the buffer is smaller than ds_snapshot_size() bytes
+ * truncated      4       ds_restore: the length is below ds_snapshot_size()
+ * trailing       5       ds_restore: the length is above ds_snapshot_size() (bytes after the last region)
+ * prefix         6       the prefix "duospool-state" and its NUL are not there
+ * version        7       the serializer version is not DS_SERIAL_VERSION
+ * tag            8       a region tag is not the tag the region table has at that position (swapped, repeated, missing or unknown)
+ * region_length  9       a region frame announces another payload length than the region table has
+ * profile        10      the profile hash of the stream is not the one of the instance (also a power-on policy that is not the one the profile binds)
+ * content        11      the content id, the size class or the size of the stream is not the one of the instance: a snapshot is restored only onto an instance booted from the same content
+ * field          12      a field is outside its domain (a speed, a flag, a counter, a selection, a block transfer field, a timer origin after the machine time, a stimulus or schedule slot)
+ * time           13      the machine time is 2^63 or above: a deadline arithmetic that near 2^64 would wrap (Pitfall 20)
+ * reserved       14      a reserved bit or word is not zero (the B bit of P, which is never stored, and the reserved word of the schedule)
+ */
+DS_SNAPREF(argument, 1)
+DS_SNAPREF(overlap, 2)
+DS_SNAPREF(capacity, 3)
+DS_SNAPREF(truncated, 4)
+DS_SNAPREF(trailing, 5)
+DS_SNAPREF(prefix, 6)
+DS_SNAPREF(version, 7)
+DS_SNAPREF(tag, 8)
+DS_SNAPREF(region_length, 9)
+DS_SNAPREF(profile, 10)
+DS_SNAPREF(content, 11)
+DS_SNAPREF(field, 12)
+DS_SNAPREF(time, 13)
+DS_SNAPREF(reserved, 14)

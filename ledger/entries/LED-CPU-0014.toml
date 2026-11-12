@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# TAM and TMA with the one-hot operand (D-105; CPU-02). Supported (E1, documentary) by plan 03-32 under ER-2: the equality of the core with page statements, not a hardware measurement. The multi-bit and zero operands are LED-CPU-0015.
+# ER-2 record (plan 03-32, verifier gsd-executor, 2026-11-11). Condition 1: S8-90 (TAMi machine code 53, 2^i, 2 bytes, 5 cycles, MPRi <- A, T = 0), S8-101 (TMAi 43, 2^i, 2 bytes, 4 cycles, A <- MPRi), H8-8 (Table 2-2-2 one bit of the second byte per mapping register, first row misprints MPR 1 for MPR0; reset sets MPR7 to $00) and H8-18 (reset: MPR7 $00)
+# were read as page images from a scratch copy of the hardware manual (sha256 40a32e5d..., never committed) and a scratch copy of the software manual (sha256 51eeda39..., never committed); H8-9 and H8-24 (RAM at $1F0000 for F8 to FB) for the translation rows.
+# Condition 2: the pinned cpu_huc checks 35 to 50 are MAN-class: the values $F8 $FB $FA $33 $44 $55 $66 written by TAM are read back by TMA (S8-90, S8-101: MPRi <- A, A <- MPRi), and the reset value $00 of MPR7 is H8-8; none comes from cpu_ops.def or a DuoSpool run. The cycle counts 5 and 4 are items of cycle_adders_manual and the 2 bytes are in opcode_table_manual.
+# The statement names what the checks show: no check of the pinned case writes MPR7 through TAM, so i = 7 is claimed only for the TMA read of the reset value. Condition 3: equals the manual's stated values. Condition 4: withheld lists the three required items and the edge operands. Condition 5: pin TEST:cpu_huc.
+id = "LED-CPU-0014"
+statement = "DuoSpool's TAMi and TMAi with the one-hot operand 2^i are 2-byte instructions of 5 and 4 cycles; for i = 0 to 6 TAM writes MPRi from A and TMA reads MPRi into A, and after reset TMA of MPR7 reads $00. This equals the manual's stated values (S8-90, S8-101, H8-8, H8-18)."
+profile = "pce-hucard-2btn"
+status = "supported"
+sources = ["FACT|S8-90 S8-101|gsd-executor images 2026-11-11: TAMi 53 2^i 2 bytes 5 cycles MPRi <- A; TMAi 43 2^i 2 bytes 4 cycles A <- MPRi", "FACT|H8-8 H8-18|same read: Table 2-2-2 one bit per mapping register; reset sets MPR7 to $00", "FACT|H8-9 H8-24|same read: RAM at $1F0000 for MPR = $F8 to $FB"]
+evidence = ["E1|tests/conformance/cases/cpu_huc.toml: MAN-class checks 35 to 50 (TMA reads of MPR0 to MPR6 and MPR7 at reset, TAM translations, flags kept); pages re-read in plan 03-32", "E1|tests/conformance/cases/cycle_adders_manual.toml: TAM 5 and TMA 4 cycles against S8-90 and S8-101", "E0|tests/conformance/cases/opcode_table_manual.toml: 2 bytes of both opcodes, consistency only"]
+disagreement = "H8-8 Table 2-2-2 prints MPR 1 for the first row 00000001, a printing typo for MPR0 (03-RESEARCH mismatch 7); it is not transcribed. No other disagreement recorded for the one-hot operand."
+pinning_test = "TEST:cpu_huc"
+updated = "2026-11-11"
+assumption = "Not claimed: TAM into MPR7 (no check writes it), and any multi-bit or zero operand (LED-CPU-0015)."
+revisit_phase = 3
+withheld = ["any claim of hardware cycle accuracy", "any claim of interrupt latency in cycles", "any claim of game compatibility", "any TG-16 or region claim", "any claim about a multi-bit or zero operand"]
+origin = "03-CONTEXT D-105"

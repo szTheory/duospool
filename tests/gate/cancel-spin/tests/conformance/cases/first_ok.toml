@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# A control case of a live-runner mini-root. It is never part of the real inventory: scripts/conformance-run control runs it
+# through the real ds_runner and compares the id and outcome fields of its RESULT line with the pair in EXPECT.
+id = "first_ok"
+kind = "refuse"
+fixture = "plain-256k"
+request = "len=524288"
+expect = "load.size_unsupported"
+meaning = "A 524288-byte request is refused as load.size_unsupported; this case finishes first so that the control can see that the runner has started"
+required = true
+control = true
+expect_outcome = "pass"
+pins = []

@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Field-name row: three copies of the 13 names must be one set. Evidence tier E0: it shows consistency of names, not anything about hardware.
+id = "profile_names_both_ways"
+kind = "names_both_ways"
+fixture = "none"
+request = ""
+expect = "same"
+meaning = "The 13 field names are the same set in the X-list of the core, the table names of the flattened r1 record and the field list of scripts/lib/profile-rules.awk, each checked against each in both directions and each name exactly once"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

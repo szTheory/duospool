@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Resolve row: profile resolution is typed and names the offending field; an open field has no default (D-49). Evidence tier E0, no hardware claim.
+id = "resolve_bind_not_allowed"
+kind = "resolve"
+fixture = "none"
+request = "bind.lines_per_frame=264"
+expect = "load.bind_not_allowed;field=lines_per_frame"
+meaning = "A value outside the allowed set of an open field is refused as load.bind_not_allowed naming that field"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

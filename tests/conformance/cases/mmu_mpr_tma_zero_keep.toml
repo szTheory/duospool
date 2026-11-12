@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The model parameter tma_zero set to a_unchanged (plan 03-17; D-105, D-113, ER-8): the same authored ROM as mmu_mpr_tma_zero_latch, run with model.tma_zero=a_unchanged.
+# Under a_unchanged TMA with the operand $00 leaves A alone, so the guest sees the byte it loaded before the instruction: $5A for check 49, $11 for check 59 and $22 for check 60 (observe=49:90, 59:17, 60:34).
+# The two cases differ only in the parameter and in the expected bytes, so a core that ignored the parameter fails one of them. A modelling assumption (ASSUMED:LED-CPU-0015, status assumed), E0, never a hardware claim.
+# Checks 61 to 65 are the power-up observe rows (plan 03-24; D-114, D-127): the guest reads MPR0 and MPR3 to MPR6 before it writes any mapping register and stores the bytes without comparing them,
+# so this case marks each observe=IDX:policy (recorded, compared with no value, exempt from the cross-policy equality that the default three-policy list of the guest kind applies).
+# mmu_mpr_policy_diff is the control that requires check 62 to differ between zero and the v2 seeds.
+id = "mmu_mpr_tma_zero_keep"
+kind = "guest"
+fixture = "authored:mmu-mpr"
+request = "model.tma_zero=a_unchanged"
+expect = "id=8;observe=49:90;observe=59:17;observe=60:34;observe=61:policy;observe=62:policy;observe=63:policy;observe=64:policy;observe=65:policy"
+meaning = "With the model parameter tma_zero set to a_unchanged, TMA with the operand $00 leaves A as the guest loaded it"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+checks = 65

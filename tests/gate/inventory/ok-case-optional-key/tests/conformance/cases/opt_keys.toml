@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# A mini-root case of the inventory controls: all ten mandatory keys and all seven optional keys of plan 03-04 with valid types. It is read by scripts/inventory-check and never run.
+id = "opt_keys"
+kind = "guest"
+fixture = "authored:ds-proto"
+request = ""
+expect = "id=1"
+meaning = "a case of an inventory control mini-root, never run"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+policies = "zero"
+checks = 2
+input = "none"
+irq_stim = ["0,1,0"]
+sinks = "none"
+chunks = "mix"

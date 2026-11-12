@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Chunk invariance of the plain image of the cpu_blk fixture (plan 03-26; D-92, D-93, D-95, D-100, CORE-04, ER-7): the five block transfers, the timed rows and the interrupt rows with I set run in calls to the deadlines of seven schedules (chunks key: 1, 7, 168 and 3072 master clocks, a fixed
+# 357368, 3072k-1 and 3072k+1). A block transfer is a prologue, one step per byte and an epilogue, so every schedule ends calls inside transfers (block-stop: at least one call per schedule takes a step and ends at a block byte stop). Each schedule must end with the machine time, the step count, the
+# verdict RAM, the digest and the sequence of step boundaries (the stop sequence) of the uninterrupted run to the same absolute deadline past the guest's done state. A snapshot does not exist yet (plan 03-30), so equality is of outputs, machine time, stop sequence and digests. Evidence tier E0: the
+# core compared with itself (repeatability and consistency, ER-7); no accuracy, compatibility, cycle-accurate or hardware claim, and the word pass is not a support claim. The toy control block-progress-lost must turn this case red.
+id = "chunk_equiv_cpu_blk"
+kind = "chunk_equiv"
+fixture = "authored:cpu-blk"
+request = ""
+expect = "compare=verdict,machine_time,stops,digest;block-stop"
+meaning = "The plain cpu_blk image, stopped inside its block transfers by seven chunk schedules, ends with the machine time, step count, verdict RAM, stop sequence and digest of the uninterrupted run to the same absolute deadline past done"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 1150000
+chunks = "1,7,168,3072,frame,tick-1,tick+1"

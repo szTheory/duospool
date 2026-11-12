@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# DSV1 protocol control (plan 03-05, D-124, D-95; the reading of D-124 recorded in plan 03-01): the variant seals the block (checksum, then the done state) before its checks run, so the results it writes afterwards leave a stale checksum and the judge gives guest_failure for the checksum.
+# The ROM is one of the variants of fixtures/src/ds_proto.s that scripts/fixture-build assembles in the gate (never committed). The case passes only when the judge gives exactly the
+# declared outcome and reason, so a judge that missed the fault would turn the case red. Evidence tier E0 (repeatability and a mechanism check of the verdict judge): no accuracy,
+# compatibility or hardware claim, and the word pass here means the declared fault was caught.
+id = "ds_proto_predone"
+kind = "guest"
+fixture = "authored:ds-proto-predone"
+request = ""
+expect = "id=1;verdict=guest_failure:checksum"
+meaning = "A guest that writes the done state before its checks ran is caught: the judge gives guest_failure because the checksum no longer covers the results"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+checks = 8

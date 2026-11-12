@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Order independence (CORE-01, D-55): A takes 26660 master clocks, then B is booted and takes 4332, then A takes 15976 more. Afterwards a reference A is
+# booted and takes 42636 in one uninterrupted run (other call sizes) and a reference B takes 4332. A must equal the reference A and B the reference
+# B, in digest and printed record, so that neither the presence of B nor the order of the runs matters. Evidence tier E0 (repeatability only).
+# The call sizes were 9000, 6000, 11000 (plan 03-05) and became 26660, 4332, 15976 in plan 03-09: with the 256-row cycle table the random stream of plain-256k executes instructions of 2 to 17 cycles
+# instead of mostly 2, and the old sizes then moved a step boundary under the shared-state toy for only 16 of 25 counter phases measured. The toy adds a clock every fifth step of the process, so a single
+# order case is red only for some counter phases. These sizes were picked by a search over random sizes, each judged on the toy after a filler case of 75 different lengths ahead of it (every one red);
+# the real core passes them. Do not retune them by eye: re-measure the phases.
+id = "interleave_aba_order"
+kind = "interleave_aba_order"
+fixture = "plain-256k"
+request = "bind.powerup_policy=seeded-prng-v1;seed=1||bind.powerup_policy=seeded-prng-v1;seed=2;len=393216"
+expect = "lcg=2718281;t1=26660;t2=4332;t3=15976"
+meaning = "Running A, then B, then A again gives A the digest and record of an uninterrupted A booted later, and B those of a B booted last"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

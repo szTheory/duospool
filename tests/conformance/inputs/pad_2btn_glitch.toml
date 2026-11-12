@@ -1,0 +1,60 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The glitch script of the two-button pad fixture fixtures/src/pad_2btn.s (plan 03-29; D-117, D-118, ER-5): the correct script with a press of one CPU cycle (12 master clocks at the low speed) in the middle of each gap between reads, at 90000, 280000 and 460000, each returning to the set of its phase.
+# No guest read lies inside a pulse (the reads sit near 37000, 228000, 415000 and 601000), so the pulses must be invisible: every check passes exactly as with the correct script. A core that latched a press until the next read would show the pulse sets to the reads of phases 2, 3 and 4 and fail checks 7 to 12.
+# Read only by scripts/conformance-flatten --inputs. A test input declared by a case, E2 self-consistency, not a claim about any pad.
+[script]
+format = 1
+time_unit = "master_clock"
+events = 10
+
+[ev_0001]
+at = 0
+port = 1
+held = ["run"]
+
+[ev_0002]
+at = 90000
+port = 1
+held = ["ii", "select"]
+
+[ev_0003]
+at = 90012
+port = 1
+held = ["run"]
+
+[ev_0004]
+at = 140000
+port = 1
+held = ["i", "right"]
+
+[ev_0005]
+at = 280000
+port = 1
+held = ["ii", "select"]
+
+[ev_0006]
+at = 280012
+port = 1
+held = ["i", "right"]
+
+[ev_0007]
+at = 320000
+port = 1
+held = ["ii", "up", "left"]
+
+[ev_0008]
+at = 460000
+port = 1
+held = ["run", "up"]
+
+[ev_0009]
+at = 460012
+port = 1
+held = ["ii", "up", "left"]
+
+[ev_0010]
+at = 510000
+port = 1
+held = ["select", "right", "down"]

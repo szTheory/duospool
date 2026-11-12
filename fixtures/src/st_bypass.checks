@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# st_bypass.checks - one row per CHECK of fixtures/src/st_bypass.s (D-125, plan 03-20). Columns separated by one TAB: check index (1-based, the entry number of the DCK1 table), slug, class tag, meaning.
+# Class tags: MAN:<page> (the literal is a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model> (the expected byte is computed in the guest, the table entry is an XOR mask of $00), ASSUMED:<LED-id>.
+# The five checks show that the three immediate stores ST0, ST1 and ST2 (H8-8 Table 2-2-3, S8-80 to S8-82) did not reach the work RAM in four settings of MPR0. The device-register records of the same stores (physical address and value) are judged by the runner kind st_bypass
+# from the dev log, against the immediates of the source (case st_bypass). A pass is not a support claim (ER-4).
+id=9
+checks=5
+1	st0-keeps-ram0	GUEST:ram-before-equals-ram-after	ST0 writes physical $1FE000 and does not consult the MPRs (H8-8 Table 2-2-3, S8-80, D-106): with MPR0 mapped to work RAM, RAM[0] read at logical $0000 still holds the $5A the guest wrote
+2	st-ram-sum-f8	GUEST:ram-before-equals-ram-after	ST0, ST1 and ST2 with MPR0 = $F8 left RAM[0], RAM[2] and RAM[3] as written: their sum is the sum of the three sentinels ($5A, $5B and $5C), computed in the guest
+3	st-ram-sum-hucard	GUEST:ram-before-equals-ram-after	With MPR0 = $01 (a HuCard bank) the three stores left the same three RAM cells as written
+4	st-ram-sum-unmapped	GUEST:ram-before-equals-ram-after	With MPR0 = $80 (a bank that maps nothing) the three stores left the same three RAM cells as written
+5	st-ram-sum-hwpage	GUEST:ram-before-equals-ram-after	With MPR0 = $FF (the hardware page) the three stores left the same three RAM cells as written

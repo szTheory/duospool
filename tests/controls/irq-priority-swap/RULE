@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Toy control (D-85, D-131; toy 5 of 8): an interrupt controller that prefers IRQ1 over the timer, made from the live src/core/irq.c by scripts/control-mutate. The anchor is the one return statement of ds_irq_pending that chains the sources in priority order (timer, IRQ1, IRQ2, H8-13);
+# the replacement tries IRQ1 first, the plausible bug of a priority table written in the order of the vectors or of the request bits. The case in EXPECT must come out guest_failure on the toy, or the irq_ctl fixture cannot see the priority: its window C has all three sources pending at CLI and logs the order of the three handlers.
+tag=rule-irq-priority-swap
+file=src/core/irq.c
+anchor=return (bits & IRQ_BIT_TIQ) != 0u ? VEC_TIMER_LOW : (bits & IRQ_BIT_IRQ1) != 0u ? VEC_IRQ1_LOW : (bits & IRQ_BIT_IRQ2) != 0u ? VEC_IRQ2_LOW : 0u;
+replace=return (bits & IRQ_BIT_IRQ1) != 0u ? VEC_IRQ1_LOW : (bits & IRQ_BIT_TIQ) != 0u ? VEC_TIMER_LOW : (bits & IRQ_BIT_IRQ2) != 0u ? VEC_IRQ2_LOW : 0u;

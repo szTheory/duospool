@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# No-heuristic row (D-70): a 256 KiB image whose byte at offset 0x1FFF is 0x2D, below the 0xE0 threshold at which one emulator reverses the bits of the whole image, declared pce. The core never reverses bits. The toy tests/controls/heuristic-reverse does, and this case must be red on it. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "noheur_reverse_vector"
+kind = "noheur"
+fixture = "plain-256k"
+request = "mapper=plain;order=pce;header=none"
+expect = "byte@0x1FFF=0x2D"
+meaning = "An image whose byte at offset 0x1FFF is below 0xE0 and that is declared pce loads with every bank equal to the supplied buffer, so no bit reversal heuristic exists, and a toy that adds one is shown red by this case"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

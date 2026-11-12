@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# An interrupt that becomes pending during a block transfer (plan 03-25; D-92, D-100, D-111, ASSUMED LED-IRQ-0007, plan check B3): the irq image of fixtures/src/cpu_blk.s (assembled with -D BLK_IRQ, never committed) starts the timer at reload 0 with I clear and runs a TII of 4096 bytes. The timer borrows every
+# prescaler step (3072 master clocks) during the 294912-clock transfer and the case raises IRQ2 inside it with the declared test stimulus below (irq_stim: events AT,LINE,LEVEL in master clocks; a test hook, never a claim about the VDC, ER-5, D-112). The guest keeps IRQ1D set and reads the IRQ1 level as its synchronisation line:
+# it polls the request register, so the transfer starts a few hundred clocks after the rise of the IRQ1 level at 2000000, and IRQ2 rises 100000 clocks later, inside the transfer wherever the poll caught the first line (the transfer ends about 296000 clocks after 2000000). The window of IRQ1 ends at 2400000, after the transfer.
+# Checks 43 to 50 then say that the handlers ran only after the epilogue (all 4096 destination bytes already written, A, X and Y equal to their values before the transfer at the timer handler's entry and after both handlers), that the timer interrupt came once and before IRQ2, and that the return address the
+# entry pushed is the instruction after the transfer. These are the assumed model of LED-IRQ-0007 (the manual states no sample rule for block transfers); the chunk and observer coverage of the same stops is plan 03-26. Evidence tier E0: no accuracy, compatibility or hardware claim, and the word pass is not a support claim.
+# Ledger pin: this case is the pin of LED-IRQ-0007 (no interrupt sampled inside a block transfer); the entry names it in pinning_test and the pins key below names the entry back (inventory-check, D-72).
+id = "cpu_blk_irq_pending"
+kind = "guest"
+fixture = "authored:cpu-blk-irq"
+request = ""
+expect = "id=13"
+meaning = "The irq image of the cpu_blk fixture is interrupted by the timer and by a declared IRQ2 level that are both pending inside a 4096-byte transfer: the handlers run only after the epilogue with all 4096 bytes written and A, X and Y given back, the timer interrupt once and first, and the return address is the instruction after the transfer"
+required = true
+control = false
+expect_outcome = "pass"
+pins = ["LED-IRQ-0007"]
+until_mclk = 2500000
+checks = 54
+irq_stim = ["2000000,1,1", "2100000,2,1", "2400000,1,0"]

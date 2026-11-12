@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Reason coverage (D-86): a DEFERRED kind. The runner does not evaluate it inside the case loop; the refuse handler records every
+# reason it observed, and in a second pass after the loop the set must equal every refusal enum member except OK. The verdict does
+# not depend on where this row sits in the cases TSV. A row removed so that a reason goes unobserved makes this case guest_failure.
+# The request and expect keys carry no data for this kind. Evidence tier E0 (repeatability and a literal).
+id = "ref_reason_coverage"
+kind = "coverage"
+fixture = "none"
+request = "all-refuse-rows"
+expect = "every-member-observed"
+meaning = "Every refusal enum member except OK is returned by at least one refuse row, so no reason is declared and never exercised"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+[script]
+format = 1
+time_unit = "master_clock"
+events = 1
+
+[ev_0001]
+at = 10
+port = 2
+held = ["run"]

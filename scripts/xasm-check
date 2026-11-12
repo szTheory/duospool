@@ -1,0 +1,248 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# xasm-check - the assembler encoding oracle (FIX-01, CPU-01, CPU-06; plan 03-08; D-129, D-130, ER-9, CR-01).
+# It builds one assembler line per defined row of tests/oracle/huc6280-opcodes.tsv (the manual transcription), assembles the lines with ca65 and ld65, and requires the bytes of every row to equal
+# the TSV encoding: the opcode followed by fixed placeholder operand bytes. Two independent encoders, the manual page images and the assembler, must agree. Identity of the assembler is by these bytes, never
+# by its printed version (fixtures/lib/TOOLS.md). UNDEF rows are skipped.
+# usage: xasm-check [--expect CODE[,CODE...]] [--root DIR] [--ca65 CMD] [--ld65 CMD] [--rows N] [--work DIR]
+#   --root DIR   the root that holds tests/oracle/huc6280-opcodes.tsv (default: the repository root)
+#   --ca65 CMD   the assembler command (default ca65), --ld65 CMD the linker (default ld65): a control passes a shim by PATH or by name
+#   --rows N     the table must hold exactly N defined rows and 256-N UNDEF rows (the real stage passes 234: 234 instructions, H8-1)
+#   --work DIR   keep the generated source, image and records in DIR (the gate uses build/gate/xasm); default a scratch directory that is removed
+# Optional cross-check: when wla-huc6280 and wlalink are both on PATH the same rows are assembled with WLA-DX (GPL-2.0-or-later, an external tool only: never committed or installed in CI, its output compared and
+# discarded, D-130) and compared in the same way; otherwise the status line says wla=optional-absent and no cross-assembler claim is made. The WLA path ran once locally (plan 03-33, WLA-DX 10.7 Homebrew bottle, a one-off, not CI): after the accumulator
+# INC and DEC were respelled ina and dea it assembled all 234 rows and 233 equal the table; BRK differs (WLA emits two bytes), so the wla=equal marker has never been printed and no cross-assembler claim is made. Since the code review (WR-05) that one difference is not a failure: it is printed as
+# XASM_WLA_DIFF and the marker is wla=known-diff-brk, never wla=equal; any other difference is XASM_MISMATCH, and the WLA stage 2 must print its N record like the ca65 one. A WLA run that cannot assemble the rows is XASM_WLA_FAILED (exit 2), never a silent skip.
+# Two awk stages in scripts/lib/xasm-matrix.awk, each writing to a file with its exit status tested (CR-01, no awk on the left of a pipe): stage 1 writes the source and the expected bytes and ends with an END
+# sentinel, stage 2 compares and requires the sentinel. A stage that died, or a stage 1 that printed no sentinel, is XASM_STAGE_DEAD (exit 2), never a pass.
+# Codes: XASM_MISMATCH XASM_TSV_SHAPE XASM_ASSEMBLE (ca65 or ld65 refused the generated source) | exit 2 only: PREFLIGHT_MISSING, XASM_STAGE_DEAD, XASM_WLA_FAILED, HARNESS_*
+# stdout: sorted violations  FILE<TAB>CODE<TAB>OPCODE-OR-LINE<TAB>DETAIL , then (clean)  XASM rows=N  and the marker  STATUS xasm ok rows=N wla=optional-absent|equal|known-diff-brk
+# stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
+# exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage error, missing tool or harness error
+set -eu
+LC_ALL=C; export LC_ALL
+# no external command before the tool check: with an empty PATH only builtins run, and the missing assembler is reported as PREFLIGHT_MISSING (exit 2), never a skip
+case $0 in */*) here=${0%/*} ;; *) here=. ;; esac
+here=$(cd "$here" && pwd)
+
+usage() {
+  echo "usage: xasm-check [--expect CODE[,CODE...]] [--root DIR] [--ca65 CMD] [--ld65 CMD] [--rows N] [--work DIR]" >&2
+  exit 2
+}
+
+expect=""
+have_expect=0
+root=$(cd "$here/.." && pwd)
+ca65=ca65
+ld65=ld65
+rows=""
+work=""
+while [ $# -gt 0 ]; do
+  case $1 in
+    --expect) [ $# -ge 2 ] || usage; expect=$2; have_expect=1; shift 2 ;;
+    --root) [ $# -ge 2 ] || usage; root=$2; shift 2 ;;
+    --ca65) [ $# -ge 2 ] || usage; ca65=$2; shift 2 ;;
+    --ld65) [ $# -ge 2 ] || usage; ld65=$2; shift 2 ;;
+    --rows) [ $# -ge 2 ] || usage; rows=$2; shift 2 ;;
+    --work) [ $# -ge 2 ] || usage; work=$2; shift 2 ;;
+    *) usage ;;
+  esac
+done
+
+missing=0
+for t in "$ca65" "$ld65" awk od tr sort grep cut mktemp; do
+  if command -v "$t" > /dev/null 2>&1; then :; else
+    echo "PREFLIGHT_MISSING $t"
+    missing=$((missing + 1))
+  fi
+done
+if [ "$missing" -gt 0 ]; then
+  exit 2
+fi
+
+# an --expect that names no code would make a control assert nothing (WR-05): exit 2, never 0
+if [ "$have_expect" -eq 1 ] && [ -z "$(printf '%s' "$expect" | tr -d ', \t\r\n')" ]; then
+  echo "HARNESS_EMPTY_EXPECT --expect names no code" >&2
+  exit 2
+fi
+case $rows in
+  "") ;;
+  *[!0-9]*) echo "HARNESS_BAD_ROWS --rows is not a number" >&2; exit 2 ;;
+esac
+if [ ! -d "$root" ]; then
+  echo "HARNESS_NO_FILE $root" >&2
+  exit 2
+fi
+root=$(cd "$root" && pwd)
+tsv="$root/tests/oracle/huc6280-opcodes.tsv"
+if [ ! -f "$tsv" ]; then
+  echo "HARNESS_NO_FILE $tsv" >&2
+  exit 2
+fi
+tsvrel=${tsv#"$root"/}
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+tab=$(printf '\t')
+if [ -n "$work" ]; then
+  mkdir -p "$work"
+  w=$(cd "$work" && pwd)
+else
+  w=$tmp/w
+  mkdir -p "$w"
+fi
+# a stale file of an earlier run must never be read as this run's output
+rm -f "$w/matrix.rec" "$w/matrix.s" "$w/matrix.o" "$w/matrix.bin" "$w/matrix.hex" "$w/matrix.cmp" "$w/matrix.cfg" "$w/matrix.err" "$w/wla.s" "$w/wla.o" "$w/wla.lnk" "$w/wla.bin" "$w/wla.hex" "$w/wla.cmp"
+
+dead() {
+  echo "XASM_STAGE_DEAD $1" >&2
+  exit 2
+}
+
+# stage 1: the matrix records, a file, its status tested
+if awk -v stage=1 -v asm=ca65 -f "$here/lib/xasm-matrix.awk" "$tsv" > "$w/matrix.rec" 2> "$tmp/s1.err"; then :; else
+  dead "stage 1 (xasm-matrix.awk) failed"
+fi
+if grep -q '^END	' "$w/matrix.rec"; then :; else
+  dead "stage 1 printed no END sentinel"
+fi
+: > "$tmp/viol0"
+ndef=0; nund=0
+while IFS="$tab" read -r tag a b c d; do
+  case $tag in
+    V) printf '%s\t%s\t%s\t%s\n' "$tsvrel" "$a" "$b" "$c" >> "$tmp/viol0" ;;
+    END) ndef=$a; nund=$b ;;
+    S|R) ;;
+    *) dead "unknown record $tag from stage 1" ;;
+  esac
+done < "$w/matrix.rec"
+if [ -n "$rows" ]; then
+  if [ "$ndef" -ne "$rows" ] || [ "$nund" -ne $((256 - rows)) ]; then
+    printf '%s\tXASM_TSV_SHAPE\t0\twanted %s defined and %s UNDEF rows, the table has %s and %s\n' "$tsvrel" "$rows" "$((256 - rows))" "$ndef" "$nund" >> "$tmp/viol0"
+  fi
+fi
+
+# the rest needs a well-formed table: a malformed row would make the generated source and its expectations disagree for the wrong reason
+if [ ! -s "$tmp/viol0" ]; then
+  {
+    echo '        .setcpu "huc6280"'
+    echo '        .segment "CODE"'
+  } > "$w/matrix.s"
+  grep "^S$tab" "$w/matrix.rec" > "$tmp/s.lines" || true
+  cut -f2- "$tmp/s.lines" >> "$w/matrix.s"
+  printf 'MEMORY { ROM: start=$0000, size=$10000, file="%%O"; }\nSEGMENTS { CODE: load=ROM, type=ro, align=8; }\n' > "$w/matrix.cfg"
+  if "$ca65" --cpu huc6280 -o "$w/matrix.o" "$w/matrix.s" > "$w/matrix.err" 2>&1 && "$ld65" -C "$w/matrix.cfg" -o "$w/matrix.bin" "$w/matrix.o" >> "$w/matrix.err" 2>&1; then
+    od -An -v -tx1 "$w/matrix.bin" > "$tmp/od.out"
+    tr -d ' \n' < "$tmp/od.out" > "$w/matrix.hex"
+    if awk -v stage=2 -v asm=ca65 -f "$here/lib/xasm-matrix.awk" "$w/matrix.rec" "$w/matrix.hex" > "$w/matrix.cmp" 2> "$tmp/s2.err"; then :; else
+      dead "stage 2 (xasm-matrix.awk) failed or found no END sentinel from stage 1"
+    fi
+    nsum=0
+    while IFS="$tab" read -r tag a b c; do
+      case $tag in
+        V) printf '%s\t%s\t%s\t%s\n' "$tsvrel" "$a" "$b" "$c" >> "$tmp/viol0" ;;
+        N) nsum=$((nsum + 1)) ;;
+        *) dead "unknown record $tag from stage 2" ;;
+      esac
+    done < "$w/matrix.cmp"
+    # stage 2 always prints exactly one N record: its absence is a dead checker, not a pass
+    if [ "$nsum" -ne 1 ]; then
+      dead "stage 2 printed no summary record"
+    fi
+  else
+    err=$(head -n 3 "$w/matrix.err" | tr '\n' ' ')
+    printf '%s\tXASM_ASSEMBLE\t0\t%s did not assemble or link the generated matrix: %s\n' "$tsvrel" "$ca65" "$err" >> "$tmp/viol0"
+  fi
+fi
+
+# the optional cross-check with WLA-DX: only when both tools are on PATH, and only on a well-formed table that ca65 accepted
+wla=optional-absent
+: > "$tmp/wla.info"
+if [ ! -s "$tmp/viol0" ] && command -v wla-huc6280 > /dev/null 2>&1 && command -v wlalink > /dev/null 2>&1; then
+  if awk -v stage=1 -v asm=wla -f "$here/lib/xasm-matrix.awk" "$tsv" > "$w/wla.rec" 2> "$tmp/w1.err"; then :; else
+    dead "stage 1 (xasm-matrix.awk, wla form) failed"
+  fi
+  {
+    echo '.MEMORYMAP'
+    echo 'DEFAULTSLOT 0'
+    echo 'SLOT 0 START $0000 SIZE $2000'
+    echo '.ENDME'
+    echo '.ROMBANKMAP'
+    echo 'BANKSTOTAL 1'
+    echo 'BANKSIZE $2000'
+    echo 'BANKS 1'
+    echo '.ENDRO'
+    echo '.EMPTYFILL $FF'
+    echo '.BANK 0 SLOT 0'
+  } > "$w/wla.s"
+  grep "^S$tab" "$w/wla.rec" > "$tmp/ws.lines" || true
+  cut -f2- "$tmp/ws.lines" >> "$w/wla.s"
+  printf '[objects]\nwla.o\n' > "$w/wla.lnk"
+  if (cd "$w" && wla-huc6280 -o wla.o wla.s > wla.err 2>&1 && wlalink -r wla.lnk wla.bin >> wla.err 2>&1); then
+    od -An -v -tx1 "$w/wla.bin" > "$tmp/od.out"
+    tr -d ' \n' < "$tmp/od.out" > "$w/wla.hex"
+    if awk -v stage=2 -v asm=wla -f "$here/lib/xasm-matrix.awk" "$w/wla.rec" "$w/wla.hex" > "$w/wla.cmp" 2> "$tmp/w2.err"; then :; else
+      dead "stage 2 (xasm-matrix.awk, wla form) failed or found no END sentinel"
+    fi
+    # the WLA form is a cross-check, not a gate: the one known permanent difference (BRK, opcode 00: WLA emits two bytes) is recorded, not failed (WR-05). Any other difference is still XASM_MISMATCH.
+    # Like the ca65 form, stage 2 must print exactly one N record: a hollow stage 2 never reads as equal.
+    nsum=0
+    wla_known=0
+    wla_other=0
+    : > "$tmp/wviol"
+    while IFS="$tab" read -r tag a b c; do
+      case $tag in
+        V) printf '%s\t%s\t%s\t%s\n' "$a" "$b" "$c" "$tsvrel" >> "$tmp/wviol" ;;
+        N) nsum=$((nsum + 1)) ;;
+        *) dead "unknown record $tag from stage 2 (wla form)" ;;
+      esac
+    done < "$w/wla.cmp"
+    if [ "$nsum" -ne 1 ]; then
+      dead "stage 2 (wla form) printed no summary record"
+    fi
+    while IFS="$tab" read -r vcode vop vdetail vrel; do
+      if [ "$vcode" = XASM_MISMATCH ] && [ "$vop" = 00 ]; then
+        wla_known=$((wla_known + 1))
+        echo "XASM_WLA_DIFF opcode 00 (BRK): wla-huc6280 emits another encoding than the table (known and permanent, informational, not a failure): $vdetail" >> "$tmp/wla.info"
+      else
+        wla_other=$((wla_other + 1))
+        printf '%s\t%s\t%s\t%s\n' "$vrel" "$vcode" "$vop" "$vdetail" >> "$tmp/viol0"
+      fi
+    done < "$tmp/wviol"
+    if [ "$wla_other" -gt 0 ]; then
+      wla=different
+    elif [ "$wla_known" -gt 0 ]; then
+      wla=known-diff-brk
+    else
+      wla=equal
+    fi
+  else
+    echo "XASM_WLA_FAILED wla-huc6280 or wlalink did not accept the generated rows (remove WLA-DX from PATH to skip the optional check): $(head -n 2 "$w/wla.err" | tr '\n' ' ')" >&2
+    exit 2
+  fi
+fi
+sort -u "$tmp/viol0" > "$tmp/viol"
+
+if [ "$have_expect" -eq 1 ]; then
+  cut -f2 "$tmp/viol" > "$tmp/got.codes"
+  sort -u "$tmp/got.codes" | tr '\n' ',' | sed 's/,$//' > "$tmp/got"
+  printf '%s\n' "$expect" | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/,$//' > "$tmp/want"
+  if cmp -s "$tmp/got" "$tmp/want"; then
+    echo "EXPECT_OK"
+    exit 0
+  fi
+  echo "EXPECT_MISMATCH wanted '$(cat "$tmp/want")' got '$(cat "$tmp/got")'" >&2
+  cat "$tmp/viol" >&2
+  exit 1
+fi
+
+cat "$tmp/viol"
+if [ -s "$tmp/viol" ]; then
+  exit 1
+fi
+cat "$tmp/wla.info"
+echo "XASM rows=$ndef undef=$nund"
+echo "STATUS xasm ok rows=$ndef wla=$wla"
+exit 0

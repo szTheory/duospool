@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# ds_run refusal run.sink_unsupported (plans 03-35 and 03-19; D-93, D-119, F4, T-03-94): a sink whose capacity exceeds DS_SINK_MAX_RECORDS (1048576 records). Variants: the insn sink alone, the dev sink alone, each beside a valid other sink (a valid non-overlapping buffer each, W6), both at the largest
+# capacity (4294967295), and a NULL record pointer with an oversized capacity (the capacity is judged before the record range). The boundary: a capacity of exactly DS_SINK_MAX_RECORDS with a NULL record pointer is not unsupported but run.memory_invalid. Every refusal carries 0 steps and overshoot 0, and the instance
+# (raw bytes and digest) is the same before and after. The boot of the authored ds-proto has run past 600 master clocks first, so the instance is not at its boot state. Since plan 03-19 a sink with a valid capacity is accepted (a bad placement is run.memory_invalid, case run_refuse_memory_invalid).
+# Evidence tier E0 (repeatability and a literal): the refusal names, the limit and the non-mutation rule are the specification of this plan, not a hardware claim.
+id = "run_refuse_sink_unsupported"
+kind = "run_refuse"
+fixture = "none"
+request = ""
+expect = "rom=ds-proto;refuse=sink_unsupported"
+meaning = "A ds_run request that carries an observer sink with a capacity above DS_SINK_MAX_RECORDS is refused as run.sink_unsupported and leaves the instance byte-identical"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

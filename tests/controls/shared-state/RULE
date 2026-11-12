@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Toy control (D-85, D-55): a run library with state shared by every instance, made from the live src/core/run.c by scripts/control-mutate (plan 03-02 re-pointed it from the deleted
+# placeholder stepping). The anchor is the one live line that adds the clocks of a step to the machine time; the replacement folds a hidden function-local static counter into that
+# update: every step of every instance in the process adds the counter, which goes up by one per step, so the machine time of an instance depends on how many steps the whole process has taken.
+# Plan 03-12 made the counter strictly increasing: the earlier form (every fifth step takes one clock more) went NOT_RED twice when the instruction set grew, because it is red for a case only for some counter
+# phases. Here the argument holds for every phase: an instance that is stepped after another instance has stepped in between sees every counter value larger by at least that many steps than the same
+# instance run solo (or booted later and run uninterrupted), and a sum of strictly larger terms is strictly larger, so a case that compares an interleaved run with a solo run (the three cases of EXPECT) cannot
+# agree whatever the counter was when the case began. A deliberately aliased toy lives in build/ only, never in src/core (the boundary check bans exactly this in the real core, and no copy of run.c is committed).
+# The interleave cases in EXPECT must come out guest_failure on the toy, or they prove nothing about sharing; the real core passes them (they are REQUIRED cases).
+tag=rule-shared-counter
+file=src/core/run.c
+anchor=inst->machine_time = inst->machine_time + (uint64_t)ds_cpu_step_obs(inst, obs);
+replace={ static uint64_t shared_n = 0u; shared_n = shared_n + 1u; inst->machine_time = inst->machine_time + (uint64_t)ds_cpu_step_obs(inst, obs) + shared_n; }

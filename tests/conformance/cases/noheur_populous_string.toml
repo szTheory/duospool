@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# No-heuristic row (D-70): a 1 MiB image with the text POPULOUS at offset 0x1F26, the place some emulators look for a mapper, declared plain, pce and none. The core never inspects content, so it loads as declared. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "noheur_populous_string"
+kind = "noheur"
+fixture = "plain-1m"
+request = "mapper=plain;order=pce;header=none"
+expect = "str@0x1F26=POPULOUS"
+meaning = "An image carrying POPULOUS at offset 0x1F26 and declared plain, pce and none loads as plain exactly as supplied, and every bank reads the bytes of the supplied buffer, so no content heuristic chooses a mapper"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

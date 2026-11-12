@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# Open conflict (D-44, D-82): how a 512 KiB, 768 KiB or 192 KiB HuCard maps into the bank window. No model is chosen; the sizes are refused.
+id = "LED-LOAD-0004"
+statement = "DuoSpool refuses a HuCard image of 512 KiB, 768 KiB or 192 KiB as load.size_unsupported because the supported-size rule admits only 256 KiB, 384 KiB and 1 MiB; an image above the 1 MiB cap, a 2 MiB image included, is refused as load.too_large by the cap and not by the size rule."
+profile = "pce-hucard-2btn"
+status = "open"
+sources = ["CODE|MAME|512K blocks 0,1,2,3 repeated (b mod 64); 192K special map 0,1,2,2,0,1,2,2 (02-RESEARCH)", "CODE|Beetle PCE|512K banks 64 and above give file banks 32 to 63 repeated; 192K modulo 24 banks (02-RESEARCH)", "CODE|Geargrafx|as Beetle for 512K and 192K; 768K special case of 0x60 banks (02-RESEARCH)", "UNKNOWN|pcetech.txt|primary source unreachable, not read"]
+evidence = []
+disagreement = "512K: MAME repeats file banks 0,1,2,3 (b mod 64) where Beetle and Geargrafx repeat file banks 32 to 63 for banks 64 and above; 192K: MAME uses the special map 0,1,2,2,0,1,2,2 where Beetle and Geargrafx use modulo 24 banks; 768K is special-cased by Geargrafx only; no primary source settles any of the three"
+pinning_test = "TEST:ref_size_512k"
+updated = "2026-11-10"
+withheld = ["any claim about a 512 KiB, 768 KiB or 192 KiB card", "any claim about how such a card maps into the bank window"]
+origin = "02-CONTEXT D-44"

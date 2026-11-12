@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Power-on, seeded-prng-v2 with seed 42, the tracer of plan 03-24 (D-114, D-134, D-50 additive): a boot bound to the new policy name draws the registers that the manual leaves open (the cpu domain: A, X, Y, S and the N V Z C flags; the mpr domain: MPR0 to MPR6; the tmr domain: the
+# timer reload and counter) and keeps every reset fact constant (H8-18: I set, D and T clear, low speed, MPR7 $00, the timer stopped, the disable register 0, TIQ clear; io_buffer and mpr_latch have no domain and are 0). The items drawn=cpu, drawn=mpr and drawn=tmr assert only that a domain is not all
+# zero, a structural property that names no value and so cannot be copied from a DuoSpool run; the exact bytes are pinned by poweron_v2_draw_order with literals recomputed by an independent implementation. The record's policy_version 2 is checked by record_power_on_v2. A modelling assumption of this project
+# (LED-PROF-0003), never a hardware claim. Evidence tier E0.
+id = "poweron_v2_smoke"
+kind = "poweron"
+fixture = "plain-256k"
+request = "bind.powerup_policy=seeded-prng-v2;seed=42"
+expect = "policy=seeded-prng-v2;seed=42;reset=constants;drawn=cpu;drawn=mpr;drawn=tmr;time=0"
+meaning = "A seed-42 boot under seeded-prng-v2 draws the CPU registers, MPR0 to MPR6 and the timer reload and counter, while the reset facts and the two bus latches stay constant"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

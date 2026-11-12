@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The late-event script of the two-button pad fixture fixtures/src/pad_2btn.s (plan 03-29; D-117, D-118, ER-5): the correct script with its third event moved from 320000 to 450000 master clocks, after the guest has read phase 3 (the reads of phase 3 sit near 415000, 34000 master clocks before the event).
+# The guest still sees the held set of phase 2 when it reads phase 3, so exactly the checks of phase 3 (9 and 10) must fail and every other check must pass; the level a read sees is the level at its own access stamp, so an event after a read cannot be seen by it.
+# Read only by scripts/conformance-flatten --inputs. A test input declared by a case, E2 self-consistency, not a claim about any pad.
+[script]
+format = 1
+time_unit = "master_clock"
+events = 4
+
+[ev_0001]
+at = 0
+port = 1
+held = ["run"]
+
+[ev_0002]
+at = 140000
+port = 1
+held = ["i", "right"]
+
+[ev_0003]
+at = 450000
+port = 1
+held = ["ii", "up", "left"]
+
+[ev_0004]
+at = 510000
+port = 1
+held = ["select", "right", "down"]

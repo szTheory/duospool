@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Power-on, seeded-prng-v2 with seed 42 (D-50 additive, D-75, D-114, D-134): pins LED-PROF-0003. Every literal was recomputed by a throwaway perl script outside the repo, run once (Math::BigInt, unsigned 64-bit masks, no C code and no DuoSpool run involved): for each domain sub = one splitmix64 step started from
+# (seed XOR DOMAIN_CONST), the domain stream starts at sub, each draw is written as little-endian bytes, and byte k of the draws is byte k of the stream. The constants are the ASCII names padded with underscores to eight bytes (the script checked each against its name): cpu "CPU_____" 0x4350555F5F5F5F5F,
+# mpr "MPR_____" 0x4D50525F5F5F5F5F, tmr "TMR_____" 0x544D525F5F5F5F5F and, unchanged from seeded-prng-v1, ram8k "RAM8K___" 0x52414D384B5F5F5F. The script also reproduced the committed v1 ram@0 literal (37db8e2e...) and the ram@8184 literal (the 1024th draw), which is the check that its splitmix64 is the one of D-75.
+# The layout under test: cpu draws 5 bytes, A X Y S and a byte whose bits 7, 6, 1 and 0 are N, V, Z and C; mpr draws 7 bytes for MPR0 to MPR6; tmr draws 2 bytes, the timer reload and the counter, each and $7F.
+# Seed 42 stream bytes: cpu 8a eb 57 be 9b, so A = $8A, X = $EB, Y = $57, S = $BE and the byte $9B and $C3 = $83; after the reset (I set, D and T clear: P = $83 or $04 = $87). mpr dacbc62869a061, so MPR0 = $DA and MPR6 = $61 (MPR7 is the constant $00 of the reset, outside the drawn bytes). tmr f3 ad, so reload = $F3 and $7F = $73 and counter = $AD and $7F = $2D.
+# The ram@ literals are the v1 literals of poweron_draw_order, unchanged. A stream that starts at the bare XOR with no splitmix step gives other bytes. Evidence tier E0, a modelling assumption and not a hardware claim.
+id = "poweron_v2_draw_order"
+kind = "poweron"
+fixture = "plain-256k"
+request = "bind.powerup_policy=seeded-prng-v2;seed=42"
+expect = "policy=seeded-prng-v2;seed=42;a=0x8a;x=0xeb;y=0x57;s=0xbe;p=0x87;mpr@0=dacbc62869a061;mpr@7=00;timer_reload=0x73;timer_counter=0x2d;ram@0=37db8e2ea18a90d91bed048d161cb5d2;ram@8184=86e36fa23afcda5d;reset=constants;time=0"
+meaning = "A seed-42 boot under seeded-prng-v2 holds the perl-derived bytes in A, X, Y, S, the N V Z C flags, MPR0 to MPR6 and the timer reload and counter, with RAM exactly as under v1 and the reset facts constant"
+required = true
+control = false
+expect_outcome = "pass"
+pins = ["LED-PROF-0003"]

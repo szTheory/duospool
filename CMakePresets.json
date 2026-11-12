@@ -1,0 +1,73 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "gate-base",
+      "hidden": true,
+      "generator": "Ninja",
+      "cacheVariables": {
+        "DS_WARNING_FLAGS": "-std=c11 -pedantic -Wall -Wextra -Wconversion -Wshadow -Werror",
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "gate",
+      "inherits": "gate-base",
+      "binaryDir": "${sourceDir}/build/gate",
+      "cacheVariables": {
+        "DS_EXTRA_FLAGS": "-fwrapv"
+      }
+    },
+    {
+      "name": "sanitize",
+      "inherits": "gate-base",
+      "binaryDir": "${sourceDir}/build/sanitize",
+      "cacheVariables": {
+        "DS_EXTRA_FLAGS": "-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer",
+        "DS_SANITIZE": "ON",
+        "DS_ALLOC_SHIM": "OFF"
+      }
+    },
+    {
+      "name": "gate-gcc",
+      "inherits": "gate-base",
+      "binaryDir": "${sourceDir}/build/gate-gcc",
+      "cacheVariables": {
+        "DS_EXTRA_FLAGS": "-fwrapv",
+        "CMAKE_C_COMPILER": "gcc"
+      }
+    },
+    {
+      "name": "gate-clang",
+      "inherits": "gate-base",
+      "binaryDir": "${sourceDir}/build/gate-clang",
+      "cacheVariables": {
+        "DS_EXTRA_FLAGS": "-fwrapv",
+        "CMAKE_C_COMPILER": "clang"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "gate",
+      "configurePreset": "gate"
+    },
+    {
+      "name": "sanitize",
+      "configurePreset": "sanitize"
+    },
+    {
+      "name": "gate-gcc",
+      "configurePreset": "gate-gcc"
+    },
+    {
+      "name": "gate-clang",
+      "configurePreset": "gate-clang"
+    }
+  ]
+}

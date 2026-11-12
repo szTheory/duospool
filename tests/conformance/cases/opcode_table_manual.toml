@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The compiled opcode table against the manual transcription (plan 03-15; D-96, D-97, D-98, ER-2, ER-7, T-03-41): kind opcode_table reads tests/oracle/huc6280-opcodes.tsv, which scripts/conformance-run passes as --opcode-tsv,
+# and compares, for all 256 opcodes, the instruction length and the base cycle count that the core table reports through its private accessor (ds_op_meta, ds_cpu_op_defined). One assertion per opcode, 256 in all.
+# The expected values are the rows of the TSV, an independent page-image transcription of H8-25 and the S8 instruction pages (plan 03-08); no value comes from src/core/cpu_ops.def or from a DuoSpool run, and the literals of this case
+# are the manual's counts: 234 defined opcodes and 22 undefined cells. A block transfer prints 17+6x in the manual (H8-6, S8-89; the H8-25 footnote prints 17+16z, a misprint, R-1) and the core table holds the base 17.
+# The 22 undefined opcodes are compared by membership only: the core marks them undefined; their 1 byte and 2 cycles are an assumption (LED-CPU-0010) and the TSV carries - for them.
+# Evidence tier E0: the transcription and the core table are two readings by the same project, and agreement shows consistency with that transcription, not that the manual is right. The word pass is not a support claim; no accuracy, compatibility or cycle claim.
+id = "opcode_table_manual"
+kind = "opcode_table"
+fixture = "none"
+request = ""
+expect = "defined=234;undefined=22"
+meaning = "The instruction length and base cycle count of every one of the 256 opcodes in the compiled core table equal the rows of the manual transcription (234 defined and 22 undefined), and the core marks exactly the 22 undefined cells as undefined"
+required = true
+control = false
+expect_outcome = "pass"
+pins = ["LED-CPU-0001"]

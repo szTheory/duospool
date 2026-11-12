@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# Step granularity and stop points (D-92; CORE-04, CPU-05). A modelling assumption of this project, not a hardware measurement.
+id = "LED-CPU-0004"
+statement = "DuoSpool models a run as instruction-atomic steps (an instruction plus the interrupt entry it triggers, a block prologue, one block byte, a block epilogue): a run stops only between steps, bus accesses carry their own master clock stamp under one default in-instruction offset rule, and boot costs zero machine time. This is a modelling choice."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["UNKNOWN|stop granularity|no source applies: a chip has no stop points, they belong to the emulation API (D-92)", "UNKNOWN|in-instruction bus access offsets|no page read gives them; the default rule is the project own choice (D-92)", "UNKNOWN|reset cost|not read; zero reset cost is a modelling choice (D-92)"]
+evidence = ["E0|tests/conformance/cases/run_chunk_sum.toml: one run to a deadline equals runs in chunks to the same absolute deadline, repeatability of the stop rule only"]
+disagreement = "none: no source was consulted for the stop points or access offsets, so there is nothing to disagree with"
+pinning_test = "TEST:run_chunk_sum"
+updated = "2026-11-11"
+assumption = "Stops only between steps, a fixed in-instruction offset rule and zero reset cost are one consistent scheme. The pinned case shows chunk invariance of the stop rule; the in-instruction access offsets and the block-transfer steps get their own cases in later plans of this phase."
+revisit_phase = 3
+withheld = ["any claim of hardware cycle accuracy", "any claim of interrupt latency in cycles", "any claim of game compatibility", "any TG-16 or region claim", "any claim that in-instruction bus access timing matches hardware"]
+origin = "03-CONTEXT D-92"

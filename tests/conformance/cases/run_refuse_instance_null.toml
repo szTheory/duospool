@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# ds_run refusal run.instance_null (plan 03-35; D-93, F4, T-03-94): a NULL instance pointer. The refusal carries 0 steps and overshoot 0, and the instance (raw bytes and digest) is the same before and after.
+# The boot of the authored ds-proto has run past 600 master clocks first, so the instance is not at its boot state. The instance pointer is NULL: the result is written (REFUSED, machine time 0) and the live instance, which is passed to no call, is byte-identical afterwards.
+# Evidence tier E0 (repeatability and a literal): the refusal names and the non-mutation rule are the specification of this plan, not a hardware claim.
+id = "run_refuse_instance_null"
+kind = "run_refuse"
+fixture = "none"
+request = ""
+expect = "rom=ds-proto;refuse=instance_null"
+meaning = "A ds_run call with a NULL instance is refused as run.instance_null and the separate live instance is untouched"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

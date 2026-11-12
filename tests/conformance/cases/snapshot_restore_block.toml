@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Restore inside a block transfer (plan 03-30 task 3; CORE-05, D-92, D-100, D-121, D-122): the len0 image of fixtures/src/cpu_blk.s (assembled with -D LEN0, never committed), whose long transfer has the length operand 0 and so moves 65536 bytes. The mid-block stops are the first boundary after the
+# prologue (65536 bytes still to move), the middle of the transfer, its last boundary and the first boundary with no byte left (the epilogue next); the block transfer state BLKT (active flag, opcode, alternation state, remaining count, source and destination) travels in the snapshot. The runner (kind
+# snapshot_restore, tests/conformance/snapkinds.c) runs the fixture once, uninterrupted, one step at a time, keeping the machine time, pc, opcode and record fold of every step and a copy of the machine at the deadline; a second run of the same fixture is stopped at each planned boundary, snapshotted
+# and restored into a FRESH instance booted with another seed, the defaults of the model parameters, no schedule and no stimulus, whose restorable members are then poisoned (0xA5, and again 0x5A). The restored instance must equal the source in every member of the hand-written tiling list except the
+# ROM (raw compare), re-serialise to the same snapshot, run in lockstep with the uninterrupted run over the window, and, at the lead stop of each class (finish), end the run with the machine time, verdict RAM, digest and members of the uninterrupted run; at the lead stops flipping one byte of every
+# region of the restored instance changes the digest (perturb). Evidence tier E0: the core compared with itself; no correctness claim.
+id = "snapshot_restore_block"
+kind = "snapshot_restore"
+fixture = "authored:cpu-blk-len0"
+request = "bind.powerup_policy=seeded-prng-v2;seed=3"
+expect = "stops=first,last,mid-block;window=64;finish;perturb"
+meaning = "Snapshots taken inside the 65536-byte block transfer of cpu_blk_len0 (after the prologue, in the middle, with no byte left) restore into a fresh poisoned instance and continue as the uninterrupted run"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 5900000

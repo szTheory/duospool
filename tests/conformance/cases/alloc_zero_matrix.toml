@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Zero allocation on refusal: every refuse-kind row of the case inventory is booted again with fresh test-allocated memory and the
+# allocation counter is read around ds_boot, which must read 0 for each row. The counter must first prove itself alive; a dead one
+# fails the case. One assertion per row, so the assertion count equals the number of refuse rows. Gate presets only (see
+# alloc_shim_selfcheck); the nm check of a later plan is the primary proof that the core links no allocator. Evidence tier E0.
+id = "alloc_zero_matrix"
+kind = "alloc_zero"
+fixture = "none"
+request = "matrix"
+expect = "allocs=0"
+meaning = "Booting any refuse-kind request makes no allocator call from the core, with the allocation counter proven alive first"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

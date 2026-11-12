@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The bank map against an awk re-derivation of its ledger text (plan 03-20; D-103, ER-7, T-03-54, ASSUMED LED-CPU-0011): the class of every bank 0 to 255 in the core's const table (the private accessor ds_bank_class) is compared, one assertion per
+# bank, with the class that tests/conformance/bankclass-oracle.awk derives from the statement of LED-CPU-0011 with its own arithmetic. scripts/conformance-run writes the rows in the same run, before the runner starts, and the script refuses to print
+# when a clause of the statement is reworded (ORACLE_RULE_TEXT_DRIFT; scripts/check --selftest mutation-bankclass-drift). The oracle has the same author as the core: this is labelled E0/E2 and is not an independent oracle, and no ledger promotion rests on it.
+# What it shows is that the table of the core equals one reading of the ledger text, bank by bank, so an edit of one entry of the table or of the text turns the gate red. It says nothing about hardware.
+id = "bankclass_oracle"
+kind = "bankclass_oracle"
+fixture = "none"
+request = ""
+expect = "banks=256"
+meaning = "The class of each of the 256 banks in the core equals the class derived from the statement of LED-CPU-0011 by an independent awk script: HuCard 0x00-0x7F, unmapped 0x80-0xF7, work RAM 0xF8-0xFB, unmapped 0xFC-0xFE, hardware page 0xFF"
+required = true
+control = false
+expect_outcome = "pass"
+pins = ["LED-CPU-0011"]

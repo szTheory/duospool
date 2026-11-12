@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The policy-diff negative control (plan 03-24; D-114, D-127, NW1): the authored mmu_mpr fixture runs under the default three-policy list of the guest kind (zero, seeded-prng-v2 seed 1, seeded-prng-v2 seed 2), and the byte of observe row 62 (the power-up value of MPR3, read before the fixture writes any mapping register)
+# must DIFFER from the byte under zero in every later run: policy-diff=62 with observe=62:differs. The other four power-up rows are observe=IDX:policy as in every mmu_mpr case. A pass shows that the cross-policy comparison of the guest kind can see a power-on dependence: the same comparison over a fixture
+# that reads nothing of the power-on state would find no difference, and a fixture that initialised MPR3 before observing it would make this case guest_failure (the selftest mutation-policy-diff builds exactly that copy and requires it).
+# The expected differences are not DuoSpool output: the independent perl recomputation of the mpr domain (see poweron_v2_draw_order) gives MPR3 = $08 for seed 1 (MPR0 to MPR6 0c ca dd 08 08 ec a1) and $42 for seed 2 (74 f8 42 42 71 2f c3), while the zero policy leaves it $00, so both differ. Evidence tier E0 (a control of the harness).
+id = "mmu_mpr_policy_diff"
+kind = "guest"
+fixture = "authored:mmu-mpr"
+request = "model.tma_zero=bus_latch"
+expect = "id=8;policy-diff=62;observe=49:248;observe=59:249;observe=60:249;observe=61:policy;observe=62:differs;observe=63:policy;observe=64:policy;observe=65:policy"
+meaning = "The power-up byte of MPR3 read by the mmu_mpr fixture differs between the zero policy and each seeded-prng-v2 seed, so the three-policy comparison of the guest kind is able to see a dependence on power-on state"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+checks = 65

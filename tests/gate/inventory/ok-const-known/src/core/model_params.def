@@ -1,0 +1,4 @@
+/* SPDX-License-Identifier: MIT OR Apache-2.0 */
+/* SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors */
+/* an inventory control mini-root: the one parameter row names a ledger entry that exists */
+DS_MODEL(known_param, "a|b", "a", "LED-PROF-0001", "open")

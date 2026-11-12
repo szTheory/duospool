@@ -1,0 +1,127 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# cites.txt - the cite registry of the fixture linter (scripts/fixture-lint; plan 03-37; D-125, ER-1, ER-9). One row per manual page that a fixture may name
+# in a MAN:<label> class tag or in a ; RAW:<label> comment. Columns separated by one TAB: label, flag, verifier, date, fact.
+#   label     H8-n (HuC6280 Hardware Manual, label n is PDF page n+3), S8-n (HuC6280 Software Manual, label n is PDF page n+2), CDBIOS-p28 (Hu7 CD BIOS Manual, printed page 28)
+#   flag      img = a person or agent read the numbers off the page image (ER-1); ocr = the OCR text layer only, so the page may back an ASSUMED-class check, never a supported entry
+#   verifier  who read it; date  the day of the read (YYYY-MM-DD); fact  a short numeric fact seen on the page, in the registrar's own words
+# ER-9: this file holds page labels and short numeric facts only. No manual text, scan or image is committed anywhere in this repository.
+# The labels follow the corrected cites of the Phase 3 research errata: ST0 to ST2 are on H8-8 (not H8-3), there is no H8-26 (the hardware manual ends at H8-25), and the block-transfer
+# cycle count 17+6x is cited from H8-6 plus S8-88 and S8-89 (the H8-25 footnote prints 17+16z, a misprint). Source: 03-RESEARCH.md, Manual Page Image Verification.
+# Plan 03-32: scripts/fixture-lint requires an img flag for every page a supported ledger entry names in a FACT source or a MAN: check cites (FXL_OCR_BACKS_SUPPORTED) and a ledger entry for every ASSUMED: id (FXL_UNKNOWN_LEDGER_ID). The rows read again in plan 03-32 (page images, gsd-executor, 2026-11-11) carry that verifier and date; the other rows keep their first read.
+H8-1	img	gsd-phase-researcher	2026-11-10	234 instructions in 89 groups; 138 ns bus cycle rating; 276 ns minimum instruction cycle; 256-byte stack; 2M physical, 64K logical
+H8-3	img	gsd-phase-researcher	2026-11-10	reset reads physical $001FFE and $001FFF; stack is logical $2100-$21FF; BRK pushes BRK+2; not the ST0-ST2 page
+H8-4	img	gsd-executor	2026-11-11	P layout N V T B D I Z C; D=1 makes ADC and SBC take one more cycle; I set by reset, interrupt and BRK; carry prose says borrow, use the formula pages
+H8-5	img	gsd-executor	2026-11-11	B pushed 0 for IRQ2 and 1 for BRK; B reads 1 through PHP or PLA; T reads 0 through PHP; BIT TRB TSB TST take N from bit 7 and V from bit 6; SET affects only a following AND ORA EOR ADC
+H8-6	img	gsd-executor	2026-11-11	block transfer: length 0 means 65536 bytes; six bus cycles per byte; (17 + 6x) cycles; A X Y saved on the stack and returned; three stack bytes; Table 2-1-1 source and destination modes
+H8-7	img	gsd-phase-researcher	2026-11-10	Table 2-2-1: top three logical address bits select MPR0 to MPR7; the MPR byte supplies physical A13 to A20
+H8-8	img	gsd-executor	2026-11-11	reset sets MPR7 to $00 only, vector at physical $001FFE and $001FFF; TAMi and TMAi second byte has one bit per MPR (Table 2-2-2, first row misprints MPR 1 for MPR0); ST0 ST1 ST2 drive A1,A0 = 00, 10, 11 with A13 to A20 high (Table 2-2-3)
+H8-9	img	gsd-executor	2026-11-11	chip enables: CE7 HuC6270 $1FE000-$1FE3FF, CEK $1FE400, CEP PSG $1FE800, CET timer $1FEC00, CEIO $1FF000, CECG $1FF400; CER RAM $1F0000-$1F7FFF; block F8 holds zero page and stack when MPR1 = F8
+H8-10	img	gsd-phase-researcher	2026-11-10	64K logical, 2M physical, 256 blocks $00-$FF; MPR1 = $F8 puts $1F0000-$1F1FFF at logical $2000-$3FFF
+H8-11	img	gsd-phase-researcher	2026-11-10	continuation of the bank and block example for MPR1 = $F8
+H8-12	img	gsd-executor	2026-11-11	interrupt inputs sampled in the last bus cycle; NMI edge sensed H to L, vector $FFFC; entry pushes PCH, PCL, P; B pushed 0; I set; D reset
+H8-13	img	gsd-executor	2026-11-11	priority RESET, NMI, BRK, TIMER, IRQ1, IRQ2; vectors FFF6 IRQ2 and BRK, FFF8 IRQ1, FFFA timer, FFFC NMI, $001FFE reset; IRQ1 and IRQ2 are level sense, taken at L with I reset and the disable bit 0
+H8-14	img	gsd-executor	2026-11-11	timer vector $FFFA; TIQ reset by a write cycle to the request register; wording conditions TIQ set on I reset and TIQD 0 (differs from H8-15 and H8-21)
+H8-15	img	gsd-executor	2026-11-11	request register bit 0 IRQ2, bit 1 IRQ1, bit 2 TIQ; IRQ1 and IRQ2 read the inverted pin level (1 = L); TIQ read only, set by a timer borrow, reset by a write cycle, 0 at reset; A1,A0 = 1,1
+H8-16	img	gsd-executor	2026-11-11	disable register bit 0 IRQ2D, bit 1 IRQ1D, bit 2 TIQD; read and write; 1 disables; all 0 after reset; A1,A0 = 1,0
+H8-17	img	gsd-phase-researcher	2026-11-10	BRK vector $FFF6; B pushed 1; I set; D reset; return address BRK+2
+H8-18	img	gsd-executor	2026-11-11	reset: I set, D reset, MPR7 $00, timer stopped, disable register reset, TIQ reset, low speed mode set, port O driven high, T reset
+H8-19	img	gsd-phase-researcher	2026-11-10	read cycle at $1FF000-$1FF3FF reads port K; write cycle outputs port O
+H8-20	img	gsd-executor	2026-11-11	timer: 7-bit downcounter and 7-bit reload; prescaler OSC1 / 3 (PPS3) then / 1024; reload loaded when control bit 0 goes 0 to 1 or on a borrow; reset leaves the counter invalid and the start flag reset
+H8-21	img	gsd-executor	2026-11-11	borrow sets TIQ, CPU requested if TIQD 0 and I 0, counter reloaded; writing 0 to the flag stops the timer and resets the prescaler; 21.48 MHz / 3 / 1024 = 6.992 kHz; interval 143 usec to 18.3 msec
+H8-22	img	gsd-executor	2026-11-11	figures 2-7-1 and 2-7-2: control register is one start/stop bit at A0 = 1; downcounter loaded when the flag changes from 0 to 1
+H8-24	img	gsd-executor	2026-11-11	device table: VDC at logical 0000, 0002, 0003 for ST0 ST1 ST2; timer $0C00 reload and counter, $0C01 start/stop bit 0; $1402 disable and $1403 request with the bit layout of H8-15 and H8-16; RAM $1F0000-$1F7FFF through MPR1 = $F8-$FB
+H8-25	img	gsd-executor	2026-11-11	instruction map: 234 defined cells and 22 empty; bytes and cycles of 230 cells equal the transcription, cells 35 36 37 B5 print other numbers and 34 another mnemonic; CSL (54) and CSH (D4) 1 byte 3 cycles; ST0-ST2 2 bytes 4; TAMi 2 bytes 5; TMAi 2 bytes 4; BSR 2 bytes 8; BRK 8; RTI 7; footnote prints 17+16z
+S8-11	img	gsd-phase-researcher	2026-11-10	zero page high byte is always logical $20, also for zero page indexed modes
+S8-17	img	gsd-executor	2026-11-11	ADC: imm 69 2 bytes 2 cycles; zp 4; zp,X 4; (zp) 7; abs 5; abs,X 5; T=1 adds 3 cycles; D=1 adds 1 cycle and V is unaffected; flags N V Z C
+S8-18	img	gsd-executor	2026-11-11	AND: imm 29 2 bytes 2 cycles; zp 25 4; zp,X 35 2 bytes 4 cycles; (zp) 32 7; abs 5; T=1 adds 3 cycles; flags N and Z, T reads 0
+S8-19	img	gsd-executor	2026-11-11	ASL: zp 06, zp,X 16, abs 0E, abs,X 1E, acc 0A; zp and abs forms 6 and 7 cycles, acc 2; bit 7 into C, 0 into bit 0; flags N Z C
+S8-20	img	gsd-executor	2026-11-11	BBRi: ZP,REL machine code 10i+F, 3 bytes, 6 cycles, 2 more when taken; flags: T = 0, others unchanged
+S8-21	img	gsd-executor	2026-11-11	BBSi: ZP,REL machine code 10i+8F, 3 bytes, 6 cycles, 2 more when taken; PC <- PC+3+rr if bit i of the zero-page cell is 1, PC+3 otherwise; rr = hhll-(PC+3); flags: T = 0, others unchanged
+S8-22	img	gsd-executor	2026-11-11	BCC 90, 2 bytes, 2 cycles, 2 more when taken; PC <- PC+2+rr if C=0, PC+2 otherwise; flags: T = 0, others unchanged
+S8-23	img	gsd-executor	2026-11-11	BCS B0, 2 bytes, 2 cycles, 2 more when taken; PC <- PC+2+rr if C=1, PC+2 otherwise; flags: T = 0, others unchanged
+S8-24	img	gsd-executor	2026-11-11	BEQ F0, 2 bytes, 2 cycles, 2 more when taken (the text says BCS, a misprint); rr = hhll-(PC+2); flags: T = 0, others unchanged
+S8-25	img	gsd-executor	2026-11-11	BIT: imm 89, zp 24, zp,X 34 (2 bytes 4 cycles), abs 2C, abs,X 3C; A AND M not stored; flag row N = M7, V = M6, Z; C unchanged
+S8-26	img	gsd-executor	2026-11-11	BMI 30, 2 bytes, 2 cycles, 2 more when taken; PC <- PC+2+rr if N=1, PC+2 otherwise; flags: T = 0, others unchanged
+S8-27	img	gsd-executor	2026-11-11	BNE D0, 2 bytes, 2 cycles, 2 more when taken; PC <- PC+2+rr if Z=0, PC+2 otherwise; rr = hhll-(PC+2), -128 to 127; flags: T = 0, others unchanged
+S8-28	img	gsd-executor	2026-11-11	BPL 10, 2 bytes, 2 cycles, 2 more when taken; branches when N=0 (the two formula lines under the text print N=1 and N=0 swapped, a misprint; the text and the title are used); flags: T = 0, others unchanged
+S8-29	img	gsd-executor	2026-11-11	BRA 80, 2 bytes, 4 cycles; PC <- PC+2+rr; rr = hhll-(PC+2), -128 to 127; flags: T = 0, others unchanged
+S8-30	img	gsd-executor	2026-11-11	BRK $00, 1 byte, 8 cycles; pushes PCH, PCL, P; B pushed 1; flag row T=0 B=1 D=0 I=1; vector $FFF6 and $FFF7
+S8-31	img	gsd-executor	2026-11-11	BSR 44, 2 bytes, 8 cycles; PC <- PC+1, PCH then PCL pushed (the address of the last byte of the BSR), then PC <- PC+2+rr; flags: T = 0, others unchanged
+S8-32	img	gsd-executor	2026-11-11	BVC 50, 2 bytes, 2 cycles, 2 more when taken; PC <- PC+2+rr if V=0, PC+2 otherwise; flags: T = 0, others unchanged
+S8-33	img	gsd-executor	2026-11-11	BVS 70, 2 bytes, 2 cycles, 2 more when taken; PC <- PC+2+rr if V=1, PC+2 otherwise; flags: T = 0, others unchanged
+S8-34	img	gsd-executor	2026-11-11	CLA $62, 1 byte, 2 cycles; A <- $00; no flag changes (T reads 0)
+S8-35	img	gsd-executor	2026-11-11	CLC 18, 1 byte, 2 cycles; C <- 0; flag row C = 0, T = 0, others unchanged
+S8-36	img	gsd-executor	2026-11-11	CLD D8, 1 byte, 2 cycles; D <- 0; flag row D = 0, T = 0, others unchanged
+S8-37	img	gsd-executor	2026-11-11	CLI 58, 1 byte, 2 cycles; I <- 0; flag row I = 0, T = 0, others unchanged
+S8-38	img	gsd-executor	2026-11-11	CLV B8, 1 byte, 2 cycles; V <- 0; flag row V = 0, T = 0, others unchanged
+S8-39	img	gsd-executor	2026-11-11	CLX $82, 1 byte, 2 cycles; X <- $00; no flag changes
+S8-40	img	gsd-executor	2026-11-11	CLY $C2, 1 byte, 2 cycles; Y <- $00; no flag changes
+S8-41	img	gsd-executor	2026-11-11	CMP: A - M, result not stored; imm C9 and eight memory modes; flags N Z C, V unchanged
+S8-42	img	gsd-executor	2026-11-11	CPX: X - M, result not stored; imm E0, zp E4, abs EC; flags N Z C
+S8-43	img	gsd-executor	2026-11-11	CPY: Y - M, result not stored; imm C0, zp C4, abs CC; flags N Z C
+S8-44	img	gsd-executor	2026-11-11	DEC: M <- M - 1 or A <- A - 1; zp C6, zp,X D6, abs CE, abs,X DE, acc 3A; flags N and Z only
+S8-45	img	gsd-executor	2026-11-11	DEX CA, 1 byte, 2 cycles; flags N and Z; the function line prints Y <- X - 1 (a misprint: title, opcode and mnemonic are X)
+S8-46	img	gsd-executor	2026-11-11	DEY 88, 1 byte, 2 cycles; Y <- Y - 1; flags N and Z
+S8-47	img	gsd-executor	2026-11-11	EOR: A <- A xor M, or M(x) <- M(x) xor M with T=1 and 3 more cycles; modes as AND with opcodes 49 45 55 52 41 51 4D 5D 59; flags N and Z; the abs,X row prints AND (a misprint)
+S8-48	img	gsd-executor	2026-11-11	INC: M <- M + 1 or A <- A + 1; zp E6, zp,X F6, abs EE, abs,X FE, acc 1A; flags N and Z only
+S8-49	img	gsd-executor	2026-11-11	INX E8, 1 byte, 2 cycles; X <- X + 1; flags N and Z
+S8-50	img	gsd-executor	2026-11-11	INY C8, 1 byte, 2 cycles; Y <- Y + 1; flags N and Z
+S8-51	img	gsd-executor	2026-11-11	JMP: ABS 4C 3 bytes 4 cycles (PCL <- ll, PCH <- hh); (ABS) 6C 3 bytes 7 cycles (PCL <- (hhll), PCH <- (hhll+1)); (ABS,X) 7C 3 bytes 7 cycles (PCL <- (hhll+X), PCH <- (hhll+X+1))
+S8-52	img	gsd-executor	2026-11-11	JSR 20, 3 bytes, 7 cycles; PC <- PC+2, PCH pushed first then PCL (the address of the last byte of the JSR), then PC <- hhll; flags: T = 0, others unchanged
+S8-53	img	gsd-executor	2026-11-11	LDA: A <- M; immediate A9 2 bytes 2 cycles, zp 4, zp,X B5 2 bytes 4 cycles, (zp) 7, (zp,X) 7, (zp),Y 7, abs 5, abs,X 5, abs,Y 5; flags N and Z only
+S8-54	img	gsd-executor	2026-11-11	LDX: immediate A2 2 bytes 2 cycles, zp A6 4, zp,Y B6 4, abs AE 5, abs,Y BE 5; flags N and Z only
+S8-55	img	gsd-executor	2026-11-11	LDY: immediate A0 2 bytes 2 cycles, zp A4 4, zp,X B4 2 bytes 4 cycles, abs AC 5, abs,X BC 5; flags N and Z only
+S8-56	img	gsd-executor	2026-11-11	LSR: 0 into bit 7, bit 0 into C; zp 46, zp,X 56, abs 4E, abs,X 5E, acc 4A; flags N Z C
+S8-57	img	gsd-executor	2026-11-11	NOP EA, 1 byte, 2 cycles; PC <- PC+1; flag row T = 0, others unchanged
+S8-58	img	gsd-executor	2026-11-11	ORA: A <- A or M, or M(x) <- M(x) or M with T=1 and 3 more cycles; opcodes 09 05 15 12 01 11 0D 1D 19; flags N and Z
+S8-59	img	gsd-executor	2026-11-11	PHA $48, 1 byte, 3 cycles; Ms <- A, S <- S - 1; no flag changes
+S8-61	img	gsd-executor	2026-11-11	PHX $DA, 1 byte, 3 cycles; Ms <- X, S <- S - 1; no flag changes
+S8-62	img	gsd-executor	2026-11-11	PHY $5A, 1 byte, 3 cycles; Ms <- Y, S <- S - 1; no flag changes
+S8-63	img	gsd-executor	2026-11-11	PLA $68, 1 byte, 4 cycles; S <- S + 1, A <- Ms; flags N and Z
+S8-64	img	gsd-executor	2026-11-11	PLP $28, 1 byte, 4 cycles; S <- S + 1, P <- Ms; the flag row reads RESTORED
+S8-65	img	gsd-executor	2026-11-11	PLX $FA, 1 byte, 4 cycles; S <- S + 1, X <- Ms; flags N and Z
+S8-66	img	gsd-executor	2026-11-11	PLY $7A, 1 byte, 4 cycles; S <- S + 1, Y <- Ms; flags N and Z
+S8-67	img	gsd-executor	2026-11-11	RMBi: zero page only, machine code 10i+7 and the zero-page address, 2 bytes, 7 cycles; the specified bit of the zero-page cell is reset (Mi <- 0); flag row T = 0, others unchanged
+S8-68	img	gsd-executor	2026-11-11	ROL: C into bit 0, bit 7 into C; zp 26 and zp,X 36 (2 bytes 6 cycles), abs 2E and abs,X 3E (3 bytes 7), acc 2A (1 byte 2); flags N Z C
+S8-69	img	gsd-executor	2026-11-11	ROR: C into bit 7, bit 0 into C; zp 66, zp,X 76, abs 6E, abs,X 7E, acc 6A; flags N Z C
+S8-70	img	gsd-executor	2026-11-11	RTI $40, 1 byte, 7 cycles; P pulled first, then PCL, PCH; flags RESTORED
+S8-71	img	gsd-executor	2026-11-11	RTS 60, 1 byte, 7 cycles; PCL pulled first then PCH, then PC <- PC+1; flags: T = 0, others unchanged
+S8-72	img	gsd-executor	2026-11-11	SAX $22, 1 byte, 3 cycles; A and X exchange (A <-> X); flag row T = 0, others unchanged
+S8-73	img	gsd-executor	2026-11-11	SAY $42, 1 byte, 3 cycles; A and Y exchange (A <-> Y); flag row T = 0, others unchanged
+S8-74	img	gsd-executor	2026-11-11	SBC: A - M - not C; imm E9 2 bytes 2 cycles, zp 4, (zp) 7, abs 5, the cycle table of ADC; D=1 adds 1 cycle and V is unaffected; flags N V Z C
+S8-75	img	gsd-executor	2026-11-11	SEC $38, 1 byte, 2 cycles; C <- 1; flag row C = 1, T = 0, others unchanged
+S8-76	img	gsd-executor	2026-11-11	SED $F8, 1 byte, 2 cycles; D <- 1; flag row D = 1, T = 0, others unchanged
+S8-77	img	gsd-executor	2026-11-11	SEI 78, 1 byte, 2 cycles; I <- 1; flag row I = 1, T = 0, others unchanged
+S8-78	img	gsd-executor	2026-11-11	SET $F4, 1 byte, 2 cycles; T <- 1; flag row T = 1, others unchanged
+S8-79	img	gsd-executor	2026-11-11	SMBi: zero page only, machine code 10i+87 and the zero-page address, 2 bytes, 7 cycles; the specified bit of the zero-page cell is set (Mi <- 1); flag row T = 0, others unchanged
+S8-80	img	gsd-executor	2026-11-11	ST0 $03 nn, 2 bytes, 4 cycles; CE7 L, A1 L, A0 L: (A1,A0) = (0,0)
+S8-81	img	gsd-executor	2026-11-11	ST1 $13 nn, 2 bytes, 4 cycles; CE7 L, A1 H, A0 L: (A1,A0) = (1,0)
+S8-82	img	gsd-executor	2026-11-11	ST2 $23 nn, 2 bytes, 4 cycles; CE7 L, A1 H, A0 H: (A1,A0) = (1,1)
+S8-83	img	gsd-executor	2026-11-11	STA: zp 85, zp,X 95, (zp) 92, (zp,X) 81, (zp),Y 91, abs 8D, abs,X 9D, abs,Y 99; M <- A; no flag changes
+S8-84	img	gsd-executor	2026-11-11	STX: zp 86, zp,Y 96, abs 8E; M <- X; no flag changes
+S8-85	img	gsd-executor	2026-11-11	STY: zp 84, zp,X 94, abs 8C; M <- Y; no flag changes
+S8-86	img	gsd-executor	2026-11-11	STZ: zp 64, zp,X 74, abs 9C, abs,X 9E; M <- $00; no flag changes
+S8-87	img	gsd-executor	2026-11-11	SXY $02, 1 byte, 3 cycles; X and Y exchange (X <-> Y); flag row T = 0, others unchanged
+S8-88	img	gsd-executor	2026-11-11	TAI flowchart: Y, A, X saved on the stack; first byte source post-increment, second post-decrement; length 0 means 65,536 bytes; three stack levels
+S8-89	img	gsd-executor	2026-11-11	TAI F3 SL SH DL DH LL LH, 7 bytes, 17+6x cycles, T=0; X, A, Y popped at the end
+S8-90	img	gsd-executor	2026-11-11	TAMi $53, operand 2^i, 2 bytes, 5 cycles; MPRi <- A; T = 0
+S8-91	img	gsd-executor	2026-11-11	TAX $AA, 1 byte, 2 cycles; X <- A; flags N and Z
+S8-92	img	gsd-executor	2026-11-11	TAY $A8, 1 byte, 2 cycles; Y <- A; flags N and Z
+S8-94	img	gsd-executor	2026-11-11	TDD C3 SL SH DL DH LL LH, 7 bytes, 17+6x cycles, T=0
+S8-96	img	gsd-executor	2026-11-11	the page prints TAI with machine code E3, 7 bytes, 17+6x (a misprint: the opcode map has TIA at E3 and TAI at F3)
+S8-98	img	gsd-executor	2026-11-11	TII 73 SL SH DL DH LL LH, 7 bytes, 17+6x cycles, T=0
+S8-100	img	gsd-executor	2026-11-11	TIN D3 SL SH DL DH LL LH, 7 bytes, 17+6x cycles, T=0
+S8-101	img	gsd-executor	2026-11-11	TMAi $43, operand 2^i, 2 bytes, 4 cycles; A <- MPRi; T = 0
+S8-102	img	gsd-executor	2026-11-11	TRB: zp 14 6 cycles, abs 1C 7 cycles; formula M <- not A and M while the prose says the result is not stored; N = M7, V = M6, Z
+S8-103	img	gsd-phase-researcher	2026-11-10	TSB $04 zero page 6 cycles, $0C absolute 7 cycles; N from memory bit 7, V from bit 6
+S8-104	img	gsd-phase-researcher	2026-11-10	TST $83 $A3 3 bytes 7 cycles, $93 $B3 4 bytes 8 cycles; operand order opcode, immediate, address
+S8-105	img	gsd-executor	2026-11-11	TSX $BA, 1 byte, 2 cycles; X <- S; flags N and Z
+S8-106	img	gsd-executor	2026-11-11	TXA $8A, 1 byte, 2 cycles; A <- X; flags N and Z
+S8-107	img	gsd-executor	2026-11-11	TXS $9A, 1 byte, 2 cycles; S <- X; no flag changes
+S8-108	img	gsd-executor	2026-11-11	TYA $98, 1 byte, 2 cycles; A <- Y; flags N and Z
+CDBIOS-p28	img	gsd-executor	2026-11-11	EX_JOYSNS output byte: bit 0 ONE, 1 TWO, 2 SELECT, 3 RUN, 4 UP, 5 RIGHT, 6 DOWN, 7 LEFT; 1 is on (printed page 28)
+S8-7	img	gsd-executor	2026-11-11	Table 2-3-1 ADC to DEY: function, flag row and a reference-page column; T column 0 in every row
+S8-8	img	gsd-executor	2026-11-11	Table 2-3-2 EOR to SMBi: flag rows, SET has T = 1; the reference-page column prints some numbers that differ from the page footers (INC S8-58, ORA S8-68, SET S8-88): the footers decide
+S8-9	img	gsd-executor	2026-11-11	Table 2-3-3 ST0 to TYA: ST0 ST1 ST2 give (A1,A0) = (0,0), (1,0), (1,1); the reference-page column prints TAI S8-90 and TAMi S8-88 where the footers say S8-96 and S8-90: the footers decide

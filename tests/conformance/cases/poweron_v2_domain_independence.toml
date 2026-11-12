@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Domain independence of seeded-prng-v2 (D-50 additive, D-114): v2 draws v1's ram8k domain unchanged and adds the domains cpu, mpr and tmr, each with its own stream, so a seed-42 boot under v2 lays down the same RAM bytes as under v1. The ram@ literals are the v1 literals of poweron_draw_order, recomputed
+# independently by perl (see that case), copied here as text and never read back from a run; the same two offsets are checked, the first two draws and the 1024th. The case also holds that the four streams of the seed start with four different 8-byte words, so no two domains share a stream, and that the
+# reset facts stay constant. The same seed under seeded-prng-v1 (poweron_draw_order) and under zero (poweron_zero) draws nothing in the three new domains: both cases carry cpu=zero and tmr=zero items. Evidence tier E0, a modelling assumption and not a hardware claim (LED-PROF-0003).
+id = "poweron_v2_domain_independence"
+kind = "poweron"
+fixture = "plain-256k"
+request = "bind.powerup_policy=seeded-prng-v2;seed=42"
+expect = "policy=seeded-prng-v2;seed=42;ram@0=37db8e2ea18a90d91bed048d161cb5d2;ram@8184=86e36fa23afcda5d;streams=distinct;reset=constants"
+meaning = "Under seeded-prng-v2 the work RAM of seed 42 equals the v1 literals, the four domain streams start differently, and the reset facts hold"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

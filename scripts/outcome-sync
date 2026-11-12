@@ -1,0 +1,117 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# outcome-sync - tests/conformance/outcomes.def holds exactly the seven required outcome names, in order (D-57, ROADMAP
+# success criterion 4). The literal list of seven below is the one statement of that criterion in the repository; the def
+# file is the single definition that C, sh and awk all read, and this check keeps the two from drifting apart.
+# usage: outcome-sync [--expect CODE[,CODE...]] [--root DIR] [--names FILE]      (--root defaults to the repository root)
+#   OUTSYNC_ROWS   the def file does not hold exactly seven DS_OUTCOME rows
+#   OUTSYNC_NAME   the set of row names differs from the required set (a name missing, extra or spelled differently); with
+#                  --names also: the list in FILE (the names compiled into the runner, build/gate/ds_runner --outcomes, one per
+#                  line) is not the list of def rows, row for row, in order (a name missing, extra, renamed, moved or repeated)
+#   OUTSYNC_ORDER  seven rows with the right names, in a different order (reported only when the two codes above are clear)
+#   --names FILE   a missing FILE is a harness error (exit 2); the list is compared with the def rows read from --root
+# stdout: sorted violations  CODE<TAB>DETAIL , or the single line  STATUS outcome-sync ok  on a clean run
+# stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
+# exit  : 0 clean (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error
+set -eu
+LC_ALL=C; export LC_ALL
+
+usage() {
+  echo "usage: outcome-sync [--expect CODE[,CODE...]] [--root DIR] [--names FILE]" >&2
+  exit 2
+}
+
+required="pass guest_failure timeout harness_failure skip cancelled missing_artifact"
+
+expect=""
+have_expect=0
+names_file=""
+root=$(cd "$(dirname "$0")/.." && pwd)
+while [ $# -gt 0 ]; do
+  case $1 in
+    --expect) [ $# -ge 2 ] || usage; expect=$2; have_expect=1; shift 2 ;;
+    --root) [ $# -ge 2 ] || usage; root=$2; shift 2 ;;
+    --names) [ $# -ge 2 ] || usage; names_file=$2; shift 2 ;;
+    *) usage ;;
+  esac
+done
+# an --expect that names no code would make a control assert nothing: with no violations got and want are both empty and the
+# control would pass vacuously (WR-05). Exit 2, never 0.
+if [ "$have_expect" -eq 1 ] && [ -z "$(printf '%s' "$expect" | tr -d ', \t\r\n')" ]; then
+  echo "HARNESS_EMPTY_EXPECT --expect names no code" >&2
+  exit 2
+fi
+if [ ! -d "$root" ]; then
+  echo "HARNESS_NO_FILE $root" >&2
+  exit 2
+fi
+if [ -n "$names_file" ] && [ ! -f "$names_file" ]; then
+  echo "HARNESS_NO_FILE $names_file" >&2
+  exit 2
+fi
+root=$(cd "$root" && pwd)
+def="$root/tests/conformance/outcomes.def"
+if [ ! -f "$def" ]; then
+  echo "HARNESS_NO_FILE $def" >&2
+  exit 2
+fi
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+viol="$tmp/viol"
+
+# CR-01: no awk in this file is the left side of a pipe. POSIX sh has no pipefail, so `awk ... | sort -u > file` reports the status of sort
+# and an awk that died reads as "no violations". Each awk writes a file and its own status is tested (the first one is covered by set -e); only then is the file sorted.
+# the row names in file order: the text between DS_OUTCOME( and the first ) of every line that starts with DS_OUTCOME(
+awk '/^DS_OUTCOME\(/ { s = substr($0, 12); i = index(s, ")"); if (i > 0) s = substr(s, 1, i - 1); print s }' "$def" > "$tmp/names"
+
+req="$required" awk '
+function viol(code, detail) { printf "%s\t%s\n", code, detail }
+BEGIN { nreq = split(ENVIRON["req"], rq, " "); for (i = 1; i <= nreq; i++) inreq[rq[i]] = 1 }
+{ n++; name[n] = $0; seen[$0] = 1 }
+END {
+  rows = (n == nreq)
+  if (n != nreq) viol("OUTSYNC_ROWS", n + 0 " rows, wanted " nreq)
+  nameok = 1
+  for (i = 1; i <= nreq; i++) if (!(rq[i] in seen)) { nameok = 0; viol("OUTSYNC_NAME", "required name missing: " rq[i]) }
+  for (i = 1; i <= n; i++) if (!(name[i] in inreq)) { nameok = 0; viol("OUTSYNC_NAME", "row " i " is not a required name: " name[i]) }
+  if (rows && nameok) for (i = 1; i <= nreq; i++) if (name[i] != rq[i]) { viol("OUTSYNC_ORDER", "row " i " is " name[i] ", wanted " rq[i]); break }
+}' "$tmp/names" > "$tmp/viol.raw" || { echo "HARNESS_AWK_FAILED outcome-sync (row check)" >&2; exit 2; }
+sort -u "$tmp/viol.raw" > "$viol"
+
+# the compiled list (--names) against the def rows, row for row and in order: any difference at all is OUTSYNC_NAME
+if [ -n "$names_file" ]; then
+  awk '
+  function viol(code, detail) { printf "%s\t%s\n", code, detail }
+  FILENAME == ARGV[1] { nd++; def[nd] = $0; next }
+  { nc++; cmp[nc] = $0 }
+  END {
+    if (nc != nd) viol("OUTSYNC_NAME", "the compiled list has " nc + 0 " names, outcomes.def has " nd + 0)  # rule-compiled-names
+    m = (nc > nd) ? nc : nd
+    for (i = 1; i <= m; i++) if (cmp[i] != def[i]) { viol("OUTSYNC_NAME", "compiled name " i " is " ((i <= nc) ? cmp[i] : "(none)") ", outcomes.def has " ((i <= nd) ? def[i] : "(none)")); break }  # rule-compiled-names
+  }' "$tmp/names" "$names_file" > "$tmp/viol.names" || { echo "HARNESS_AWK_FAILED outcome-sync (compiled list)" >&2; exit 2; }
+  cat "$tmp/viol.names" >> "$viol"
+  sort -u "$viol" > "$tmp/viol.sorted"
+  mv "$tmp/viol.sorted" "$viol"
+fi
+
+if [ "$have_expect" -eq 1 ]; then
+  got=$(awk -F'\t' '{ print $1 }' "$viol" | sort -u | tr '\n' ',' | sed 's/,$//')
+  want=$(printf '%s\n' "$expect" | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/,$//')
+  if [ "$got" = "$want" ]; then
+    echo "EXPECT_OK"
+    exit 0
+  fi
+  echo "EXPECT_MISMATCH wanted '$want' got '${got:-<none>}'" >&2
+  cat "$viol" >&2
+  exit 1
+fi
+
+if [ -s "$viol" ]; then
+  cat "$viol"
+  exit 1
+fi
+echo "STATUS outcome-sync ok"
+exit 0

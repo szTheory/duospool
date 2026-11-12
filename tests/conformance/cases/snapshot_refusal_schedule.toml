@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Snapshot stimulus, schedule and port rows (plan 03-30 task 2; D-112, D-116, D-117, D-121): a declared IRQ stimulus whose times decrease, that has a used slot after an unused one or names line 3; an input schedule with a count of 1025, a reserved word that is not 0 (reserved), an event on an empty
+# port or on port 0, a mask with a reserved bit or with opposite directions, times that decrease, an equal time on an equal port, and a nonzero unused slot; a device kind on a port the profile leaves empty or the wrong kind on port 1. Each row edits a copy of a valid snapshot of ds_proto (taken at a
+# mid-run stop under the seeded-prng-v2 policy) with offsets of the hand-kept frame table of tests/conformance/snapkinds.c, and ds_restore must refuse it with exactly the declared code of src/core/snapshot_refusals.def while the target instance (a twin booted with another seed whose restorable members
+# are poisoned) stays byte-identical, compared over the whole instance including the ROM and member by member. Evidence tier E0; the stream is untrusted input (T-03-83, T-03-85).
+id = "snapshot_refusal_schedule"
+kind = "snapshot_refuse"
+fixture = "authored:ds-proto"
+request = "bind.powerup_policy=seeded-prng-v2;seed=3"
+expect = "stim-order=field|stim-gap=field|stim-line-3=field|schd-count-1025=field|schd-reserved=reserved|schd-port-2=field|schd-port-0=field|schd-bit-8=field|schd-opposite=field|schd-order=field|schd-equal-port=field|schd-unused-slot=field|iopt-port-2=field|iopt-port-1=field|iopt-kind-2=field"
+meaning = "A snapshot whose stimulus or input schedule is not a valid declared list followed by zero slots, or whose port kinds are not the profile's, is refused and the instance is byte-identical"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 100000

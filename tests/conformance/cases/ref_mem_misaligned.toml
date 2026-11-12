@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: the memory block starts one byte past an aligned address, otherwise a fully declared request. The core tests the address as an integer and never casts it first. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_mem_misaligned"
+kind = "refuse"
+fixture = "plain-256k"
+request = "mem=misaligned"
+expect = "load.memory_invalid"
+meaning = "A fully declared request over a misaligned block is refused as load.memory_invalid, the pointer is never cast before the alignment test passes and caller memory stays byte-identical"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

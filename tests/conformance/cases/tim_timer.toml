@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The timer and the timer interrupt seen from the guest (plan 03-21; D-109, D-110, D-111, D-124, D-125, D-127, ER-3, ER-4): the authored fixture fixtures/src/tim_timer.s is assembled by ca65 in the gate (never committed), boots on the core, runs to the absolute deadline until_mclk (master clocks)
+# and writes a DSV1 verdict block that the runner judges from raw RAM. Checks 1 to 10 are the tracer: they start the timer at reload 0 with I clear and D set, take the TIQ interrupt through the TIMER vector, and check what the handler saw (I set, D clear, the request register with TIQ set and then cleared by a write) and what the
+# entry pushed. Checks 11 to 13 read the reset state, 14 to 27 read the counter after counted delays and the edges of the control register (hold on stop, no-op rewrites, bit 7 from io_buffer), 28 to 33 take the interrupt with the request masked by TIQD and by I. The expected literals are in the
+# literal table of fixtures/lib/check.inc and classed in fixtures/src/tim_timer.checks: a manual page (MAN), a value the guest or the assembler computed from the instruction counts (GUEST, labelled timer-e2) or an assumed ledger entry (ASSUMED: LED-IRQ-0002, -0003 and -0005, written in plan 03-34);
+# none comes from DuoSpool output. The case has no policies key, so the guest kind runs the ROM under its default policy list (D-127).
+# Evidence tier E0 for the mechanism, and E2 self-consistency for every row that reads the counter after a counted number of instructions (those depend on the community-reported CPU cycle length, ER-3): no accuracy, timer-accuracy or CPU-speed claim, and the word pass is not a support claim.
+id = "tim_timer"
+kind = "guest"
+fixture = "authored:tim-timer"
+request = ""
+expect = "id=10"
+meaning = "The authored tim_timer fixture takes the TIQ interrupt at reload 0, reads the counter after counted delays, checks the hold and no-op edges and the masking by TIQD and I, and leaves a consistent DSV1 block of 33 passing checks"
+required = true
+control = false
+expect_outcome = "pass"
+pins = ["LED-IRQ-0003"]
+until_mclk = 4000000
+checks = 33

@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Deferred coverage row of the input refusals (plan 03-27; D-86 pattern, F4): evaluated after every other case of the run, it requires that every code of src/core/input_refusals.def was returned by at least one refused=input.NAME row, that every name prints as input.NAME and that the limits are the 1024 events and the five
+# ports of D-116 and D-117. A refusal code added to the .def without a row that observes it turns this case red. Evidence tier E0.
+id = "input_refusal_coverage"
+kind = "input_refusal_coverage"
+fixture = "none"
+request = "all-input-refuse-rows"
+expect = "every-member-observed"
+meaning = "Every input refusal code of input_refusals.def is returned by at least one input refusal row, with the instance unchanged, and the schedule holds at most 1024 events on five ports"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

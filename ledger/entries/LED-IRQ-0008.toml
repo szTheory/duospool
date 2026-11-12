@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# The IRQ1 and IRQ2 test stimulus (D-112; CPU-03, ER-5). A TEST HOOK: IRQ1 and IRQ2 have no hardware source in the machine until the VDC exists in Phase 4, so a case declares their levels with the key irq_stim and the core copies the list in before the first step. It is not evidence about the VDC or any real source.
+# Events are AT,LINE,LEVEL (master clocks, line 1 or 2, level 1 requested or 0 not), at most 16, times non-decreasing, validated by the core with typed stim.* refusals, evaluated as a pure function of time and printed in the [stimulus] table of the run record. With none declared both lines read 0. NMI has no driver.
+# Checks 1 and 15 of irq_ctl name this entry. Phase 4 replaces the stimulus for IRQ1 and it stays for IRQ2. Page images read on 2026-11-11 by the plan 03-34 executor from a scratch copy of the hardware manual (sha256 40a32e5d..., never committed): H8-12, H8-13, H8-15.
+id = "LED-IRQ-0008"
+statement = "DuoSpool drives IRQ1 and IRQ2 only from a test stimulus the case declares (irq_stim: at most 16 events, line 1 or 2, level 0 or 1, times non-decreasing, accepted only before the first step, a pure function of time); with none declared both read 0, and NMI has no driver. A test hook, not evidence about the VDC or any real source."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|H8-12 H8-13 H8-15|gsd-executor image read 2026-11-11: IRQ1 and IRQ2 are level-sensed, read as inverted pin level; NMI is edge sensed, vector FFFC; the stimulus gives the level only", "UNKNOWN|IRQ1 and IRQ2 sources|no VDC before Phase 4; the stimulus is the project own test hook (D-112)", "UNKNOWN|NMI wiring|ER-8 lists it as open; no reading recorded, NMI stays undriven"]
+evidence = ["E0|tests/conformance/cases/record_stimulus_shown.toml: the printed [stimulus] table equals the declared list, five events, repeatability only", "E0|tests/conformance/cases/irq_stim_refusal_coverage.toml: every refusal of the stimulus (count, line, level, order, state) is returned by a case"]
+disagreement = "none: the stimulus is a test hook and no source describes it. ER-8 lists NMI wiring as a disagreement; its readings are not recorded in this repository, and no emulator is named here."
+pinning_test = "TEST:record_stimulus_shown"
+updated = "2026-11-11"
+assumption = "The stimulus lets the controller logic (masking, priority, vectors) be run before the VDC exists; its levels are the case author's, so a check that uses it is E0 or E2 self-consistency only. The pin shows the record repeats what the case declared; the refusal cases show the core judges the list."
+revisit_phase = 4
+withheld = ["any claim of hardware cycle accuracy", "any claim of interrupt latency in cycles", "any claim of game compatibility", "any TG-16 or region claim", "any claim that a declared level is what a VDC or any other source would drive"]
+origin = "03-CONTEXT D-112"

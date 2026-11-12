@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Fixture manifest entry (FIX-02, FIX-01, D-59 amended, D-123): one authored HuCard image of fixtures/src/cyc_probe.s. The bytes are assembled in the gate by ca65 and ld65 and are
+# never committed. scripts/fixture-check compares size and sha256 below with the bytes scripts/fixture-build wrote, as hashed by the host sha tool, so a changed source, library or
+# toolchain output turns the gate red. The pin was measured on the Homebrew cc65 2.19 bottle (see fixtures/lib/TOOLS.md); it proves the build is repeatable, nothing more.
+id = "cyc_probe"
+kind = "authored"
+source = "fixtures/src/cyc_probe.s"
+recipe = "cyc-probe: ca65 --cpu huc6280 -D ROMBANKS=32 -I fixtures/lib -o build/gate/fx/cyc-probe.o fixtures/src/cyc_probe.s; ld65 -C fixtures/lib/hucard.cfg -D ROMBANKS=32 -o build/gate/fixtures/cyc-probe.pce build/gate/fx/cyc-probe.o"
+toolchain = "cc65 V2.19 (ca65 prints V2.18; identity by encoding-matrix bytes, plan 03-08), Homebrew bottle 2.19 locally, hashed by sha256sum or shasum -a 256"
+size = 262144
+sha256 = "5b551bec8ae1b00cf47790e0049f16f32ae0d5b3fe8a54d764be7ad2cac0c12c"
+licence = "0BSD"
+notices = "none: assembled at gate time from the project-owned sources fixtures/src/cyc_probe.s and fixtures/lib/*.inc and hucard.cfg (0BSD); no HuC, PCEAS or cc65 library or startup code, no emulator code, no game content"
+redistribution = "generated-not-committed"
+meaning = "Authored diagnostic HuCard of 256 KiB: a fixed instruction sequence at logical $E100 (taken and untaken branches, SET and SED arithmetic, TAM, TMA, BRK with RTI, CSH, CSL) and a penalty section (ST0 and hardware-page accesses) whose cycle counts the runner reads from the instruction trace, plus thirteen DSV1 completion checks. A pass is not a support claim."
+verdict_source = "manual-cite:S8-24+manual-cite:S8-20+manual-cite:S8-17+manual-cite:S8-74+manual-cite:S8-101+manual-cite:S8-30+manual-cite:S8-70+manual-cite:H8-25+guest-computed"

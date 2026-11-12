@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# The interrupt sample around a block transfer (D-100, D-111; CPU-05, CPU-03). A modelling choice: no page states when an interrupt is sampled during a block transfer. The constant row block_irq_after_epilogue (1) in src/core/constants.def, read by cpu.c and printed with this id in the run record,
+# selects the sample at the end of the epilogue; 0 would leave it to the next instruction.
+# The pin is cpu_blk_irq_pending, the case that really makes an interrupt pending during a transfer: the irq image of fixtures/src/cpu_blk.s has the timer borrowing every prescaler step and a declared IRQ2 level (irq_stim, a test hook and never a claim about the VDC, ER-5, D-112) inside a 4096-byte
+# transfer.
+# Plan 03-26 adds chunk_equiv_cpu_blk_irq and observer_cpu_blk, whose stops fall at block byte boundaries with the timer interrupt and IRQ2 both pending (asserted with the pure query ds_irq_pending_query at the stop stamp). H8-12 was read as a page image by the plan 03-22 executor on 2026-11-11 from
+# a scratch copy of the hardware manual (sha256 40a32e5d..., never committed).
+id = "LED-IRQ-0007"
+statement = "DuoSpool models a block transfer as taking no interrupt from its first step to the end of its epilogue: the controller is sampled once, at the end of the epilogue, by the rule used after any instruction, so an interrupt that became pending during a transfer is entered after A, X, Y are given back with the next instruction address pushed. Modelling assumption."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|H8-12|page image 2026-11-11: inputs are sampled in the last bus cycle of an instruction; no mention of block transfers", "REPORT|03-CONTEXT D-100|interrupts are sampled only after the epilogue and stop points are byte boundaries: the project choice", "UNKNOWN|the manual|no page states whether or when an interrupt is sampled inside a block transfer"]
+evidence = ["E0|tests/conformance/cases/cpu_blk_irq_pending.toml: both pending inside the transfer, handlers run once after the epilogue (checks 43 to 48)", "E0|tests/conformance/cases/chunk_equiv_cpu_blk_irq.toml: stops at block bytes with both pending equal the whole run", "E0|tests/conformance/cases/observer_cpu_blk.toml: sinks and stops inside the transfer change nothing"]
+disagreement = "No page states a sample rule for block transfers; H8-12 gives only the last bus cycle of an instruction. The alternative, a sample between the bytes of a transfer, is not implemented (a deferred parameter, block_xfer_irq). No reading of an emulator is recorded for this entry in 03-CONTEXT D-100 and none was re-read."
+pinning_test = "TEST:cpu_blk_irq_pending"
+updated = "2026-11-11"
+assumption = "No interrupt is sampled inside a transfer and one is sampled once after the epilogue, a single choice that makes a stop at a byte boundary and a resume change nothing; the pin asserts the modelled order of events, not that hardware does the same. The IRQ2 level is a declared test stimulus, not evidence about any source."
+revisit_phase = 3
+withheld = ["any claim of hardware cycle accuracy", "any claim of interrupt latency in cycles", "any claim of game compatibility", "any TG-16 or region claim"]
+origin = "03-CONTEXT D-100"

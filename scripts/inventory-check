@@ -1,0 +1,205 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# inventory-check - the required-test inventory checker (FIX-04, D-58). This check enforces that the set of tests the gate must run is
+# the set that exists: it fails closed when a required test disappears, when a case claims to be required without being listed, and
+# (from the pin rules) when a ledger claim points at a test that is not there. It does not judge what a test asserts.
+# usage: inventory-check [--expect CODE[,CODE...]] [--root DIR]      (--root defaults to the repository root)
+#   Reads ROOT/tests/conformance/REQUIRED (one case id per line, # comments and blank lines skipped), the case files
+#   ROOT/tests/conformance/cases/ID.toml and the ledger entries ROOT/ledger/entries/*.toml, each file through the two stages
+#   scripts/lib/toml-subset.awk and scripts/lib/inventory-rules.awk, then compares them across files.
+#   Codes (a code is one rule, so a control can show it red and a selftest mutation can remove it):
+#     INV_REQUIRED_MISSING  a REQUIRED id has no case file
+#     INV_UNLISTED_CASE     a case file says required = true and its id is not in REQUIRED
+#     INV_PIN_UNRESOLVED    a ledger entry whose pinning_test is TEST:ID names an ID that has no case file
+#     INV_NOT_REQUIRED      a ledger TEST pin points at a case whose required key is not true
+#     INV_PIN_BACKLINK      a pin that is not mutual: the case does not name the ledger id in its pins array, or the case names a ledger id whose
+#                           pinning_test is not TEST:that-case (both directions, D-72, ledger/SCHEMA.md)
+#     INV_CASE_FIELD        a case without all ten keys (id kind fixture request expect meaning required control expect_outcome pins), with a key of
+#                           the wrong type or an unknown key, with an id that is not its file stem; also a REQUIRED id whose case says required = false
+#     INV_CASE_TYPE         until_mclk or checks (two of the seven optional case keys of plan 03-04: until_mclk policies checks input irq_stim sinks
+#                           chunks) is present and not an integer; those keys may be absent
+#     INV_REQUIRED_EMPTY    REQUIRED lists no id (an emptied list must not switch the inventory off)
+#     INV_BAD_LINE          a REQUIRED line that is not a case id [a-z][a-z0-9_]*, or an id listed twice
+#     INV_CONST_LEDGER      a row of ROOT/src/core/constants.def or ROOT/src/core/model_params.def (DS_CONST, DS_MODEL) that names no quoted ledger id, or an id that has no entry in ROOT/ledger/entries
+#                           (plan 03-32; D-113, W7): every named constant the record prints resolves to a ledger entry. A root without either file yields no ids and no violation. Stage 1 is scripts/lib/inventory-defs.awk.
+#   Also NO_SENTINEL and STAGE2_DEAD (a dead stage never passes). ledger-check stays structure-only: TEST pin resolution lives only here (D-58).
+# stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then (clean) a line  INVENTORY required=N cases=M pins=P  and  STATUS inventory ok
+# stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
+# exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error
+set -eu
+LC_ALL=C; export LC_ALL
+here=$(cd "$(dirname "$0")" && pwd)
+
+usage() {
+  echo "usage: inventory-check [--expect CODE[,CODE...]] [--root DIR]" >&2
+  exit 2
+}
+
+expect=""
+have_expect=0
+root=$(cd "$here/.." && pwd)
+while [ $# -gt 0 ]; do
+  case $1 in
+    --expect) [ $# -ge 2 ] || usage; expect=$2; have_expect=1; shift 2 ;;
+    --root) [ $# -ge 2 ] || usage; root=$2; shift 2 ;;
+    *) usage ;;
+  esac
+done
+# an --expect that names no code would make a control assert nothing (WR-05): exit 2, never 0
+if [ "$have_expect" -eq 1 ] && [ -z "$(printf '%s' "$expect" | tr -d ', \t\r\n')" ]; then
+  echo "HARNESS_EMPTY_EXPECT --expect names no code" >&2
+  exit 2
+fi
+if [ ! -d "$root" ]; then
+  echo "HARNESS_NO_FILE $root" >&2
+  exit 2
+fi
+root=$(cd "$root" && pwd)
+reqfile="$root/tests/conformance/REQUIRED"
+casedir="$root/tests/conformance/cases"
+ledgerdir="$root/ledger/entries"
+[ -f "$reqfile" ] || { echo "HARNESS_NO_FILE tests/conformance/REQUIRED" >&2; exit 2; }
+[ -d "$casedir" ] || { echo "HARNESS_NO_FILE tests/conformance/cases" >&2; exit 2; }
+[ -d "$ledgerdir" ] || { echo "HARNESS_NO_FILE ledger/entries" >&2; exit 2; }
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+tab=$(printf '\t')
+nl=$(printf '\n.'); nl=${nl%.}
+viol0="$tmp/viol0"
+viol="$tmp/viol"
+recs="$tmp/recs"
+: > "$viol0"
+: > "$recs"
+
+# the REQUIRED list: R records for ids, B records for lines that are not an id
+awk 'BEGIN { FS = "\n" }
+  /^[ \t]*(#.*)?$/ { next }
+  $0 ~ /^[a-z][a-z0-9_]*[ \t]*$/ { id = $0; sub(/[ \t]+$/, "", id); printf "R\t%s\t%d\n", id, NR; next }
+  { printf "B\t%d\t%s\n", NR, $0 }' "$reqfile" >> "$recs" || { echo "HARNESS_AWK failed (REQUIRED)" >&2; exit 2; }
+
+# file_stage KIND FILE REL: the two stages over one file. A name with a TAB or a newline would forge a record, so it is refused here.
+file_stage() {
+  fs_kind=$1
+  fs_f=$2
+  fs_rel=$3
+  case $fs_f in
+    *"$tab"* | *"$nl"*)
+      printf '%s\tNO_SENTINEL\t0\tfile name holds a TAB or a newline\n' "<bad-filename>" >> "$viol0"
+      return 0
+      ;;
+  esac
+  fs_stem=$(basename "$fs_f" .toml)
+  fs_size=$(wc -c < "$fs_f" | tr -d ' ')
+  if [ "$fs_size" -eq 0 ] || [ "$fs_size" -gt 16384 ]; then
+    printf '%s\tNO_SENTINEL\t0\tfile is empty or above 16384 bytes\n' "$fs_rel" >> "$viol0"
+    return 0
+  fi
+  # no pipeline: a failing stage 1 must not read as no violations
+  awk -f "$here/lib/toml-subset.awk" "$fs_f" > "$tmp/stage1" 2> /dev/null || : > "$tmp/stage1"
+  # stage 2 always prints at least one record; an empty or failed stage 2 is a dead checker, not a pass
+  if fname="$fs_stem" what="$fs_kind" awk -f "$here/lib/inventory-rules.awk" "$tmp/stage1" > "$tmp/stage2" 2> /dev/null && [ -s "$tmp/stage2" ]; then :; else
+    printf '%s\tSTAGE2_DEAD\t0\t\n' "$fs_rel" >> "$viol0"
+    return 0
+  fi
+  # awk, not read: a TAB is IFS white space for read, which would collapse an empty field (an empty required or pins value)
+  rel="$fs_rel" viol0="$viol0" recs="$recs" awk 'BEGIN { FS = "\t"; rel = ENVIRON["rel"]; vf = ENVIRON["viol0"]; rf = ENVIRON["recs"] }
+    $1 == "V" { printf "%s\t%s\t%s\t%s\n", rel, $2, $3, $4 >> vf; next }
+    $1 == "C" || $1 == "L" { printf "%s\t%s\t%s\t%s\t%s\n", $1, $2, $3, $4, rel >> rf; next }
+    { printf "%s\tSTAGE2_DEAD\t0\tunknown record %s\n", rel, $1 >> vf }' "$tmp/stage2" || { echo "HARNESS_AWK failed (stage 2 records)" >&2; exit 2; }
+}
+
+for f in "$casedir"/*.toml; do
+  [ -f "$f" ] || continue
+  file_stage case "$f" "tests/conformance/cases/$(basename "$f")"
+done
+for f in "$ledgerdir"/*.toml; do
+  [ -f "$f" ] || continue
+  file_stage ledger "$f" "ledger/entries/$(basename "$f")"
+done
+
+# the constants and parameters (plan 03-32; D-113, W7, CR-01): stage 1 (scripts/lib/inventory-defs.awk, its status tested, nothing on the left of a pipe) lists the ledger id of every row of the two def files and prints a
+# DEND sentinel; a stage that failed or printed no sentinel is NO_SENTINEL for that file and never a pass. A root without a def file has no rows (a mini-root without core sources). Stage 2 is the cross-file awk below.
+for dspec in src/core/constants.def src/core/model_params.def; do
+  [ -f "$root/$dspec" ] || continue
+  # the sentinel is DEND<TAB>N with N the rows read: a def file that exists must give at least one row (WR-03), so an indented or reformatted file whose rows are no longer seen is a dead stage
+  if awk -v rel="$dspec" -f "$here/lib/inventory-defs.awk" "$root/$dspec" > "$tmp/defs1" 2> /dev/null && dend=$(tail -n 1 "$tmp/defs1") && case $dend in "DEND$tab"[0-9]*) [ "${dend#DEND"$tab"}" -ge 1 ] 2> /dev/null ;; *) false ;; esac; then
+    grep -v "^DEND$tab" "$tmp/defs1" >> "$recs" || true
+  else
+    printf '%s\tNO_SENTINEL\t0\tthe constants stage printed no DEND sentinel, or read no row of the file\n' "$dspec" >> "$viol0"
+  fi
+done
+
+# ---- the cross-file rules: one awk over the records of every file ----
+awk -v reqrel="tests/conformance/REQUIRED" '
+  BEGIN { FS = "\t"; OFS = "\t" }
+  $1 == "R" {
+    nreq++; rid[nreq] = $2; rln[nreq] = $3
+    if ($2 in isreq) printf "%s\tINV_BAD_LINE\t%d\t%s repeats an earlier line\n", reqrel, $3, $2
+    isreq[$2] = 1
+    next
+  }
+  $1 == "B" { printf "%s\tINV_BAD_LINE\t%d\tnot a case id: %s\n", reqrel, $2, $3; next }
+  $1 == "C" { havecase[$2] = 1; creq[$2] = $3; cpins[$2] = $4; cfile[$2] = $5; next }
+  $1 == "L" { haveled[$2] = 1; lpin[$2] = $3; lfile[$2] = $5; next }
+  $1 == "D" { nd++; did[nd] = $2; dln[nd] = $3; dfl[nd] = $4; next }
+  END {
+    for (i = 1; i <= nd; i++) if (!(did[i] in haveled)) printf "%s\tINV_CONST_LEDGER\t%d\t%s\n", dfl[i], dln[i], (did[i] == "-" ? "a row names no ledger id" : did[i] " has no ledger entry")  # rule-const-ledger
+    if (nreq == 0) printf "%s\tINV_REQUIRED_EMPTY\t0\tno required id: an emptied list would let every check disappear\n", reqrel
+    for (i = 1; i <= nreq; i++) {
+      id = rid[i]
+      if (!(id in havecase)) printf "%s\tINV_REQUIRED_MISSING\t%d\t%s\n", reqrel, rln[i], id  # rule-required-missing
+      if ((id in havecase) && creq[id] != "true") printf "%s\tINV_CASE_FIELD\t0\t%s is listed in REQUIRED but its required key is not true\n", cfile[id], id
+    }
+    for (id in havecase) {
+      if (creq[id] == "true" && !(id in isreq)) printf "%s\tINV_UNLISTED_CASE\t0\t%s\n", cfile[id], id  # rule-unlisted-case
+    }
+    # ledger pins, direction one: every ledger entry whose pinning_test is TEST:ID names an existing, required case that pins it back
+    for (lid in haveled) {
+      if (lpin[lid] !~ /^TEST:/) continue
+      t = substr(lpin[lid], 6)
+      if (!(t in havecase)) { printf "%s\tINV_PIN_UNRESOLVED\t0\t%s pins TEST:%s, which no case file carries\n", lfile[lid], lid, t; continue }  # rule-pin-unresolved
+      if (creq[t] != "true") printf "%s\tINV_NOT_REQUIRED\t0\t%s pins %s, whose required key is not true\n", lfile[lid], lid, t  # rule-not-required
+      np = split(cpins[t], pl, ",")
+      found = 0
+      for (j = 1; j <= np; j++) if (pl[j] == lid) found = 1
+      if (!found) printf "%s\tINV_PIN_BACKLINK\t0\t%s pins %s but the case does not name %s in pins\n", lfile[lid], lid, t, lid  # rule-backlink-forward
+    }
+    # direction two: every ledger id a case names in pins is an entry whose pinning_test is exactly TEST:that-case
+    for (cid in havecase) {
+      np = split(cpins[cid], pl, ",")
+      for (j = 1; j <= np; j++) {
+        if (pl[j] == "") continue
+        if (!(pl[j] in haveled) || lpin[pl[j]] != "TEST:" cid) printf "%s\tINV_PIN_BACKLINK\t0\t%s names %s in pins but its pinning_test is not TEST:%s\n", cfile[cid], cid, pl[j], cid  # rule-backlink-reverse
+      }
+    }
+    for (lid in haveled) if (lpin[lid] ~ /^TEST:/) npinned++
+    print "P", npinned + 0 > "/dev/stderr"
+  }' "$recs" >> "$viol0" 2> "$tmp/pinned" || { echo "HARNESS_AWK failed (cross-file rules)" >&2; exit 2; }
+npinned=$(awk '$1 == "P" { print $2 }' "$tmp/pinned")
+
+ncases=$(awk -F'\t' '$1 == "C" { n++ } END { print n + 0 }' "$recs")
+nrequired=$(awk -F'\t' '$1 == "R" { n++ } END { print n + 0 }' "$recs")
+sort -u "$viol0" > "$viol"
+
+if [ "$have_expect" -eq 1 ]; then
+  got=$(awk -F'\t' '{ print $2 }' "$viol" | sort -u | tr '\n' ',' | sed 's/,$//')
+  want=$(printf '%s\n' "$expect" | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/,$//')
+  if [ "$got" = "$want" ]; then
+    echo "EXPECT_OK"
+    exit 0
+  fi
+  echo "EXPECT_MISMATCH wanted '$want' got '${got:-<none>}'" >&2
+  cat "$viol" >&2
+  exit 1
+fi
+
+cat "$viol"
+if [ -s "$viol" ]; then
+  exit 1
+fi
+echo "INVENTORY required=$nrequired cases=$ncases pins=${npinned:-0}"
+echo "STATUS inventory ok"
+exit 0

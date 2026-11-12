@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# Power-on state of the CPU, the mapping registers, the timer and the bus latches under the policies zero, seeded-prng-v1 and seeded-prng-v2 (D-114; CPU-06, CORE-03). A modelling assumption, not a hardware fact; it extends LED-PROF-0002 (the policies) and supersedes nothing there.
+# The reset facts of H8-18 are constants under every policy; the registers the manual leaves open are 0 under zero and seeded-prng-v1 (v1 stays byte for byte) and are drawn under seeded-prng-v2 (domains cpu, mpr, tmr).
+# Plan 03-24 defined seeded-prng-v2 once (src/core/poweron.c, its header comment gives the layout) and pinned it: poweron_v2_draw_order holds the draws of seed 42 as literals recomputed by an independent perl implementation of splitmix64,
+# poweron_v2_smoke the structure (drawn domains, constant reset facts) and poweron_v2_domain_independence the unchanged RAM draws; poweron_draw_order and poweron_zero hold cpu=zero and tmr=zero items for the two older policies.
+# The core sets the reset facts at reset (cpu.c) and leaves A, X, Y, S, the flags other than I, MPR0 to MPR6, the timer reload and counter at 0 under zero and seeded-prng-v1; seeded-prng-v2 draws them; io_buffer and mpr_latch are 0 under all three.
+# The in-guest rows that read a reset fact are listed as E0 evidence (irq_ctl_pre check 2 and spd_speed check 1, E2, read one too), and every required fixture runs under zero and two v2 seeds (D-127).
+# Page images read on 2026-11-11 by the plan 03-34 executor (hardware manual scratch copy, sha256 40a32e5d..., never committed): H8-18, H8-20.
+id = "LED-PROF-0003"
+statement = "DuoSpool sets I, clears D and T, selects low speed, sets MPR7 to $00, stops the timer, clears the disable register and TIQ at reset under every policy; A, X, Y, S, the other flags, MPR0 to MPR6, the timer reload and counter are 0 under zero and seeded-prng-v1 and drawn under seeded-prng-v2; io_buffer and mpr_latch are 0 under every policy. Modelling assumption."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|H8-18|gsd-executor image read 2026-11-11: reset sets I, resets D and T, MPR7 00, stops timer, clears disable and TIQ, low speed", "FACT|H8-20|gsd-executor image read 2026-11-11: after reset reload and downcounter are invalid", "REPORT|research/PITFALLS.md|other MPRs random at power-up (pcetech); not re-read", "UNKNOWN|A, X, Y, S, flags, latches|no page; own constants"]
+evidence = ["E0|tests/conformance/cases/poweron_v2_draw_order.toml: v2 draws of seed 42 equal literals recomputed outside the C code", "E0|tests/conformance/cases/mmu_mpr_policy_diff.toml: the MPR3 byte read before any write differs between zero and both v2 seeds", "E0|tests/conformance/cases/tim_timer.toml: checks 11 to 13 read the reset TIQ, disable register and stopped timer"]
+disagreement = "none recorded: pcetech (a report, not re-read) says the MPRs other than MPR7 are random at power-up, which is why seeded-prng-v2 draws them; no source is recorded for A, X, Y, S, the flags, the latches or the timer registers. The manual states the reload and counter are invalid, not their values."
+pinning_test = "TEST:poweron_v2_draw_order"
+updated = "2026-11-11"
+assumption = "Reset facts are constants because H8-18 states them; every unspecified register is a policy choice, so a guest that depends on one is not a valid fixture (each required fixture initialises what it reads, D-127). Plan 03-24 defined seeded-prng-v2 and its cases, so the pin is the case that holds its draws; plan 03-32 may re-read it."
+revisit_phase = 3
+withheld = ["any claim of hardware cycle accuracy", "any claim of interrupt latency in cycles", "any claim of game compatibility", "any TG-16 or region claim", "any claim that a power-on value of an unspecified register matches hardware"]
+origin = "03-CONTEXT D-114"

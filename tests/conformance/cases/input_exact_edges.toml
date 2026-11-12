@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The exactness of an input level change at the C level (plan 03-29; D-115, D-117, D-118, ER-5; ASSUMED LED-IO-0004): the authored pad_2btn image is booted, no guest is run, the script pad_2btn_correct is pushed, and for each of its three events after time 0 (140000, 320000 and 510000 master clocks) the byte that ds_io_read returns at the stamps at - 1, at and
+# at + 1 is compared with the
+# protocol byte computed in the test from the held masks of the script: the level before the event at at - 1, the new level at at and at at + 1, under both selections of the latch (the buttons and the directions, CLR low). The two bytes either side of an edge must differ, or the edge could not be seen. The level is the mask of the last event at or before the
+# stamp (ties inclusive), so a change is invisible one master clock before its stamp.
+# The formula restates the protocol of D-115 (E2 self-consistency, ER-5; the request is empty, so d6 = d7 = 1): it is the plan's own text, not DuoSpool output. No pad-accurate or hardware claim.
+id = "input_exact_edges"
+kind = "guest"
+fixture = "authored:pad-2btn"
+request = ""
+expect = "id=14;exact-edges"
+meaning = "A level change of the input script at master clock at is invisible to a read at at - 1 and visible to reads at at and at + 1, for each of the three events after time 0 of the correct script and under both selections of the latch"
+required = true
+control = false
+expect_outcome = "pass"
+pins = ["LED-IO-0004"]
+until_mclk = 800000
+checks = 12
+input = "pad_2btn_correct"

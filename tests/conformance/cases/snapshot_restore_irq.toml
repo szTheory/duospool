@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Restore at interrupt boundaries with a non-default model parameter and a declared stimulus (plan 03-30 task 3; CORE-05, D-110 to D-113, D-121, D-122): the irq_ctl fixture under model.irq_i_sample=post with the ten-event IRQ1 and IRQ2 stimulus of irq_ctl_post, stopped after CLI, RTI and SEI. The
+# target instance is booted without the model parameter (the default pre) and without the stimulus: both must come from the snapshot (IRQC and IRQS), which the lockstep after a CLI shows, since pre and post differ right there. The runner (kind snapshot_restore, tests/conformance/snapkinds.c) runs the
+# fixture once, uninterrupted, one step at a time, keeping the machine time, pc, opcode and record fold of every step and a copy of the machine at the deadline; a second run of the same fixture is stopped at each planned boundary, snapshotted and restored into a FRESH instance booted with another
+# seed, the defaults of the model parameters, no schedule and no stimulus, whose restorable members are then poisoned (0xA5, and again 0x5A). The restored instance must equal the source in every member of the hand-written tiling list except the ROM (raw compare), re-serialise to the same snapshot, run
+# in lockstep with the uninterrupted run over the window, and, at the lead stop of each class (finish), end the run with the machine time, verdict RAM, digest and members of the uninterrupted run; at the lead stops flipping one byte of every region of the restored instance changes the digest
+# (perturb). Evidence tier E0: the core compared with itself; no correctness claim.
+id = "snapshot_restore_irq"
+kind = "snapshot_restore"
+fixture = "authored:irq-ctl"
+request = "bind.powerup_policy=seeded-prng-v2;seed=3;model.irq_i_sample=post"
+expect = "stops=first,last,after-cli,after-rti,after-sei;window=64;finish;perturb"
+meaning = "Snapshots taken after CLI, RTI and SEI in the irq_ctl run under irq_i_sample=post restore into a fresh poisoned instance booted with the default model and no stimulus, and continue as the uninterrupted run"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 5900000
+irq_stim = ["1200000,1,1", "1500000,1,0", "2200000,2,1", "2500000,2,0", "3200000,1,1", "3200000,2,1", "3500000,1,0", "3500000,2,0", "4200000,1,1", "4500000,1,0"]

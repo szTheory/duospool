@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# malformed.tsv - a synthetic record with an unusable timestamp (the month is 13): scripts/ci-timings must exit 2 on it, never print a row.
+run	1234567890	2028-13-29T23:59:50Z	2028-03-01T00:00:02Z	success
+job	gate	2028-03-01T00:00:05Z	2028-03-01T00:02:30Z

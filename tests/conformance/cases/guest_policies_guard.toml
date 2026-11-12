@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Control of the policies guard (plan 03-24; D-127, W7): a REQUIRED guest case that carries an explicit policies key narrows the three-policy run that every guest case gets by default, so the guest kind gives harness_failure unless the meaning of the case starts with policies-override: and names the reason.
+# This case is the one defect: the explicit key (zero only, which would silently drop the two seeded policies) and a meaning with no override note. The case passes only when the judge gives exactly harness_failure with a reason containing policies-key; the guest is never run. A guard that did not exist would let
+# the case run under one policy and pass as a plain ds_proto, so this control is red when the guard is missing. Evidence tier E0 (a control of the harness).
+id = "guest_policies_guard"
+kind = "guest"
+fixture = "authored:ds-proto"
+request = ""
+expect = "id=1;verdict=harness_failure:policies-key"
+meaning = "A REQUIRED guest case that narrows the policy list with an explicit policies key and carries no override note is a harness failure, not a one-policy pass"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+policies = ""
+checks = 8

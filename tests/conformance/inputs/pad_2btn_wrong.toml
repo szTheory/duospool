@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The wrong-input script of the two-button pad fixture fixtures/src/pad_2btn.s (plan 03-29; D-117, D-118, ER-5): the event times of the correct script (0, 140000, 320000, 510000 master clocks) with a different held set in every phase, and an empty set in the last one.
+# A negative control of the correct script (pad_2btn_correct.toml): the same ROM reads other levels, so the checks of the held sets (1, 4 and 7 to 12) must fail and the checks that do not depend on the held set (2, 3, 5 and 6) must pass. Phase 1 holds SELECT and UP, phase 2 RUN and LEFT, phase 3 I and DOWN, phase 4 nothing.
+# Read only by scripts/conformance-flatten --inputs. A test input declared by a case, E2 self-consistency, not a claim about any pad.
+[script]
+format = 1
+time_unit = "master_clock"
+events = 4
+
+[ev_0001]
+at = 0
+port = 1
+held = ["select", "up"]
+
+[ev_0002]
+at = 140000
+port = 1
+held = ["run", "left"]
+
+[ev_0003]
+at = 320000
+port = 1
+held = ["i", "down"]
+
+[ev_0004]
+at = 510000
+port = 1
+held = []

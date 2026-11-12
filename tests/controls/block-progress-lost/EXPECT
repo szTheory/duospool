@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Case ids that must come out guest_failure on the toy, one per line.
+cpu_blk_stop_resume
+chunk_equiv_cpu_blk_len0
+chunk_equiv_cpu_blk
+chunk_equiv_cpu_blk_irq
+chunk_equiv_random32
+observer_cpu_blk

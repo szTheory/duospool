@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The [run] table after a real run (plan 03-18; D-53 amended, D-95): the authored fixture fixtures/src/ds_proto.s is booted, ds_run takes it to the absolute deadline until_mclk (master clocks), and the record is printed with that result. The literals are the
+# case's own words for the stop reason and the stop point (run.reason=until, run.stop_point=instruction); everything else is structural and names no DuoSpool-derived number: steps are above 0, the overshoot is below ds_max_step_mclk and equals the machine
+# time past the deadline, and the machine time is at or past it. The same instance is printed again with no run named (reason none), after a stop callback that holds at once (callback, no step) and after a refused request (refused); a result with a reason outside
+# the set is a printer error. Evidence tier E0: the table repeats what the run returned and says nothing about the machine.
+id = "record_run_shown"
+kind = "record_run"
+fixture = "authored:ds-proto"
+request = ""
+expect = "run.reason=until;run.stop_point=instruction"
+meaning = "After ds_run took the ds_proto fixture to a deadline, the record's [run] table shows reason until, stop point instruction, steps above 0 and an overshoot below the longest single step, and it shows none, callback or refused for the runs that did not take a step"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000

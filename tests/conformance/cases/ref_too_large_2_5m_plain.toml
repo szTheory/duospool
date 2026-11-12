@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: 2.5 MiB declared plain. ref_mapper_sf2 is the same length declared sf2, where the mapper check runs first; with the supported mapper the cap decides. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_too_large_2_5m_plain"
+kind = "refuse"
+fixture = "plain-256k"
+request = "len=2621440"
+expect = "load.too_large"
+meaning = "A 2.5 MiB request declared plain is refused as load.too_large, in contrast to the same length declared sf2, which is refused by the mapper check that runs before the cap"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

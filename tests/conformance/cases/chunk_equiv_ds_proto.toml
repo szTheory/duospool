@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Chunk invariance of the authored ds_proto fixture (plan 03-26; D-93, D-95, CORE-04, ER-7): the fixture is run to one absolute deadline in a single call and then in calls whose deadlines follow each of seven schedules (chunks key: the fixed sizes 1, 7, 168 and 3072 master clocks, a frame-sized
+# fixed size of 357368, and 3072k-1 and 3072k+1 either side of a timer prescaler step; the schedule 3072 lands on the steps themselves). Each schedule must end with the machine time, the step count, the verdict RAM, the digest and the sequence of step boundaries (the stop sequence) of the
+# uninterrupted run to the same absolute deadline past the guest's done state. A snapshot does not exist yet (plan 03-30), so equality is of outputs, machine time, stop sequence and digests. Evidence tier E0: the core compared with itself (repeatability and consistency, ER-7); no accuracy,
+# compatibility, cycle-accurate or hardware claim, and the word pass is not a support claim.
+id = "chunk_equiv_ds_proto"
+kind = "chunk_equiv"
+fixture = "authored:ds-proto"
+request = ""
+expect = "compare=verdict,machine_time,stops,digest"
+meaning = "The ds_proto fixture run in calls to the deadlines of seven chunk schedules ends with the machine time, step count, verdict RAM, stop sequence and digest of the uninterrupted run to the same absolute deadline past done"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 400000
+chunks = "1,7,168,3072,frame,tick-1,tick+1"

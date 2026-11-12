@@ -1,0 +1,92 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# cpu_ldst.checks - one row per CHECK of fixtures/src/cpu_ldst.s (D-125, plan 03-11). Columns separated by one TAB: check index (1-based, the entry number of the DCK1 table), slug, class tag, meaning.
+# Class tags: MAN:<page> (the literal is a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model> (the expected byte is computed in the guest, the table entry is an XOR mask of $00),
+# ASSUMED:<LED-id> (the literal is DuoSpool's own model, an assumption). The stack-page and zero-page locations are the facts of S8-11 and H8-3; the pointer-wrap rows are LED-CPU-0010 assumptions (the manual does not state them).
+# P read through PHP then PLA is N and Z plus $14 (I set by the reset code, B reads 1 through PHP, T reads 0; D, V and C clear): the $14 comes from H8-18 and H8-5, the N and Z bits from the flag row of the instruction page.
+# A pass is not a support claim (ER-4).
+id=3
+checks=82
+1	lda-imm	MAN:S8-53	LDA immediate: A takes the immediate byte ($5A)
+2	lda-imm-flag-n	MAN:S8-53	LDA of $80 sets N and clears Z: P byte $94 (N, B, I)
+3	lda-imm-flag-z	MAN:S8-53	LDA of $00 sets Z and clears N: P byte $16 (Z, B, I)
+4	lda-imm-flag-pos	MAN:S8-53	LDA of $01 clears N and Z: P byte $14
+5	lda-zp	MAN:S8-11	LDA zero page reads logical $2000 plus the operand (the cell $2010 holds $11)
+6	lda-zpx	MAN:S8-11	LDA zero page,X reads $2000 plus operand plus X (X = 3 reads the cell $2013 that holds $12)
+7	lda-ind	MAN:S8-53	LDA (zz) reads the byte that the pointer in zero page names ($21 at $2600)
+8	lda-indx	MAN:S8-53	LDA (zz,X) takes the pointer from zz plus X (X = 4: the pointer at $34 names $2601, which holds $22)
+9	lda-indy	MAN:S8-53	LDA (zz),Y adds Y to the pointer (Y = 3: $2603 holds $23)
+10	lda-abs	MAN:S8-53	LDA absolute ($B1 at $2500)
+11	lda-absx	MAN:S8-53	LDA absolute,X (X = 2: $B2 at $2502)
+12	lda-absy	MAN:S8-53	LDA absolute,Y (Y = 5: $B3 at $2505)
+13	lda-abs-flag-n	MAN:S8-53	LDA absolute of a byte with bit 7 set sets N: P byte $94
+14	lda-ind-flag-z	MAN:S8-53	LDA (zz) of a zero byte sets Z: P byte $16
+15	tax-txa	MAN:S8-91	TAX copies A to X: A = $7C, TAX, A cleared, TXA gives $7C
+16	tay-tya	MAN:S8-92	TAY copies A to Y: A = $3D, TAY, A cleared, TYA gives $3D
+17	tax-flag-n	MAN:S8-91	TAX sets N from the moved value: A = $80 with N cleared by LDY first, P byte $94
+18	tay-flag-z	MAN:S8-92	TAY sets Z from the moved value: A = $00 with Z cleared by LDX first, P byte $16
+19	txa-flag-n	MAN:S8-106	TXA sets N from the moved value: X = $80 with N cleared by LDA first, P byte $94
+20	txs-tsx	MAN:S8-107	TXS copies X to S and TSX copies it back: X = $EC, TXS, X cleared, TSX, TXA gives $EC
+21	tsx-flag-n	MAN:S8-105	TSX sets N from S: S = $EC, X = $01 clears N first, P byte $94
+22	txs-no-flags	MAN:S8-107	TXS changes no flag: X = $80, N cleared by LDA, TXS, P byte $14 (N stays clear)
+23	cla-value	MAN:S8-34	CLA clears A
+24	clx-value	MAN:S8-39	CLX clears X (read back with TXA)
+25	cly-value	MAN:S8-40	CLY clears Y (read back with TYA)
+26	cla-no-flags	MAN:S8-34	CLA changes no flag: N set by LDY, CLA, P byte $94 (Z stays clear)
+27	ldx-imm	MAN:S8-54	LDX immediate
+28	ldx-zp	MAN:S8-11	LDX zero page ($2010 holds $11)
+29	ldx-zpy	MAN:S8-11	LDX zero page,Y reads $2000 plus operand plus Y (Y = 3: $2013 holds $12)
+30	ldx-abs	MAN:S8-54	LDX absolute ($B1 at $2500)
+31	ldx-absy	MAN:S8-54	LDX absolute,Y (Y = 5: $B3 at $2505)
+32	ldx-flag-n	MAN:S8-54	LDX of a byte with bit 7 set sets N: P byte $94
+33	ldy-imm	MAN:S8-55	LDY immediate
+34	ldy-zp	MAN:S8-11	LDY zero page ($2010 holds $11)
+35	ldy-zpx	MAN:S8-11	LDY zero page,X (X = 3: $2013 holds $12)
+36	ldy-abs	MAN:S8-55	LDY absolute ($B1 at $2500)
+37	ldy-absx	MAN:S8-55	LDY absolute,X (X = 2: $B2 at $2502)
+38	ldy-flag-z	MAN:S8-55	LDY of a zero byte sets Z: P byte $16
+39	sta-zp	MAN:S8-83	STA zero page stores A at $2000 plus the operand ($2040)
+40	sta-zpx	MAN:S8-83	STA zero page,X (X = 3 stores at $2043)
+41	sta-ind	MAN:S8-83	STA (zz) stores through the pointer at $3A ($2700)
+42	sta-indx	MAN:S8-83	STA (zz,X) takes the pointer from zz plus X (X = 2: the pointer at $3C names $2701)
+43	sta-indy	MAN:S8-83	STA (zz),Y adds Y to the pointer (Y = 3: $2703)
+44	sta-abs	MAN:S8-83	STA absolute ($2710)
+45	sta-absx	MAN:S8-83	STA absolute,X (X = 3: $2713)
+46	sta-absy	MAN:S8-83	STA absolute,Y (Y = 5: $2715)
+47	sta-no-flags	MAN:S8-83	STA changes no flag: A = $5A, Z set by LDX of $00, STA, P byte $16 (a store that set N and Z from A would give $14)
+48	stx-zp	MAN:S8-84	STX zero page ($2051)
+49	stx-zpy	MAN:S8-84	STX zero page,Y (Y = 3 stores at $2053)
+50	stx-abs	MAN:S8-84	STX absolute ($2730)
+51	stx-no-flags	MAN:S8-84	STX changes no flag: X = $04, Z set by LDA of $00, STX, P byte $16
+52	sty-zp	MAN:S8-85	STY zero page ($2061)
+53	sty-zpx	MAN:S8-85	STY zero page,X (X = 3 stores at $2063)
+54	sty-abs	MAN:S8-85	STY absolute ($2740)
+55	stz-zp	MAN:S8-86	STZ zero page stores $00 ($2071 was $FF)
+56	stz-zpx	MAN:S8-86	STZ zero page,X (X = 3: $2073 was $FF)
+57	stz-abs	MAN:S8-86	STZ absolute ($2750 was $FF)
+58	stz-absx	MAN:S8-86	STZ absolute,X (X = 2: $2752 was $FF)
+59	stz-no-flags	MAN:S8-86	STZ changes no flag: N set by LDA of $80, STZ, P byte $94 (a store that set Z from the zero it writes would give $16)
+60	pha-pla	MAN:S8-59	PHA pushes A and PLA pulls it: A = $B7, PHA, A cleared, PLA gives $B7
+61	pla-flag-n	MAN:S8-63	PLA sets N from the pulled byte: $80 pulled, N cleared by LDA first, P byte $94
+62	pla-flag-z	MAN:S8-63	PLA sets Z from the pulled byte: $00 pulled, P byte $16
+63	phx-plx	MAN:S8-61	PHX pushes X and PLX pulls it: X = $B8, PHX, X cleared, PLX, TXA gives $B8
+64	plx-flag-n	MAN:S8-65	PLX sets N from the pulled byte: $80 pulled, P byte $94
+65	phy-ply	MAN:S8-62	PHY pushes Y and PLY pulls it: Y = $B9, PHY, Y cleared, PLY, TYA gives $B9
+66	ply-flag-z	MAN:S8-66	PLY sets Z from the pulled byte: $00 pulled, P byte $16
+67	php-pushed-byte	MAN:H8-5	PHP pushes P with B = 1 and T = 0: with Z and I set the byte on the stack is $16 (read from the stack page; PLX then restores S)
+68	plp-loads-flags	MAN:S8-64	PLP restores N, V, I and C from the stack: $C5 pulled, PHP then PLA gives $D5 (B reads 1)
+69	plp-loads-z	MAN:S8-64	PLP restores Z: $06 pulled, PHP then PLA gives $16
+70	zpx-wrap-load	MAN:S8-11	LDA zero page,X with the sum above $FF wraps inside zero page: $20 + $F0 reads $2010 ($11), not $2110 ($EE)
+71	zpx-wrap-store	MAN:S8-11	STA zero page,X wraps inside zero page: $90 + $F0 stores at $2080
+72	zpx-wrap-no-spill	MAN:S8-11	the same store leaves $2180 alone ($EE written before the probe)
+73	zpy-wrap-load	MAN:S8-11	LDX zero page,Y wraps inside zero page: $20 + $F0 reads $2010 ($11), not $2110
+74	indx-wrap	ASSUMED:LED-CPU-0010	LDA (zz,X) takes its pointer from the zero-page cell (zz + X) mod 256: $98 + $F0 names $2088, whose pointer reads $F1 at $2680, not the pointer at $2188
+75	ind-ff-pointer	ASSUMED:LED-CPU-0010	LDA (zz) with zz = $FF takes the pointer high byte from $2000, not $2100: the pointer is $2600 ($21)
+76	indy-ff-pointer	ASSUMED:LED-CPU-0010	LDA (zz),Y with zz = $FF: pointer $2600 plus Y = 3 reads $23
+77	absx-wrap	GUEST:abs-index-wrap	LDA absolute,X wraps at $FFFF: $FFFF + 2 reads logical $0001 (MPR0 = bank 0), the byte that bank 0 shows at $E001; the model reads that byte at $E001
+78	absy-wrap	GUEST:abs-index-wrap	LDA absolute,Y wraps at $FFFF: $FFFF + 3 reads logical $0002, which bank 0 shows at $E002
+79	stack-wrap-s	MAN:H8-3	a push with S = $00 writes $2100 and wraps S to $FF: two pushes leave S = $FE
+80	stack-wrap-low	MAN:H8-3	the first push of the wrap probe wrote $2100
+81	stack-wrap-high	MAN:H8-3	the second push of the wrap probe wrote $21FF
+82	stack-pull-wrap	MAN:H8-3	a pull with S = $FF wraps S to $00 and reads $2100: the byte the first push left there

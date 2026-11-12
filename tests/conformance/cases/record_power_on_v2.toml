@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The [power_on] table under seeded-prng-v2 (plan 03-24; D-134, D-50): the record names the policy that ran and prints the version of the policy table per policy, 2 for seeded-prng-v2 where zero and seeded-prng-v1 print 1 (record_golden_384k_seeded holds the version 1 case byte for byte). The expect literals are the policy
+# name this case binds and the version number that D-134 assigns; they come from the decision and not from a run. Evidence tier E0: the record repeats the bound policy and says nothing about the machine.
+id = "record_power_on_v2"
+kind = "record_lines"
+fixture = "plain-256k"
+request = "bind.powerup_policy=seeded-prng-v2;seed=42"
+expect = "power_on.policy=seeded-prng-v2;power_on.policy_version=2;power_on.seed_present=true;power_on.seed=42;field_powerup_policy.value=seeded-prng-v2"
+meaning = "A run under seeded-prng-v2 prints policy seeded-prng-v2 with policy_version 2 and its seed, and the powerup_policy field table shows the bound value"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

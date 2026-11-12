@@ -1,0 +1,21 @@
+/* SPDX-License-Identifier: MIT OR Apache-2.0 */
+/* SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors */
+/*
+ * model_params.def - the named modelling parameters of the machine, defined once (plan 03-17; D-105, D-113, D-134).
+ * A parameter names a behaviour that no manual page settles and that the project implements in more than one way: a modelling assumption, never a fact.
+ * One X-macro row per parameter: DS_MODEL(name, allowed, default, ledger, status)
+ *   name     the parameter name; it is also the name of the one-byte member of struct ds_instance that holds the selection (an index into the allowed list), and the key model.NAME of a run request
+ *   allowed  the permitted values separated by a vertical bar; the FIRST value is the default (a zeroed instance holds index 0), so a booted machine needs no initialiser
+ *   default  the default value as text; it must equal the first allowed value (the conformance case model_param_refusal checks it)
+ *   ledger   the ledger id that governs the parameter (the entry is written by plan 03-18)
+ *   status   assumed or open: never a supported claim (ER-2)
+ * A row exists only because both values are implemented and a fixture distinguishes them (D-113); at most 4 rows in Phase 3. The selection is set only by ds_model_set, before the first step; it is machine state and travels in
+ * the snapshot region that owns the behaviour (tma_zero in BUS0, irq_i_sample in IRQC, D-121). A change of a default bumps DS_BEHAVIOUR_EPOCH. Everything that depends on the rows (the index enum, the name, allowed, default, ledger and status tables,
+ * the setter) is generated from this file: no consumer keeps its own copy.
+ *
+ * tma_zero   TMA with the operand $00: bus_latch returns the one-byte latch mpr_latch (the last value that TAM or TMA moved), a_unchanged leaves A alone. The manual defines only the one-hot operand (S8-101).
+ * irq_i_sample   which I flag the interrupt sample uses after an instruction that changes it (CLI, SEI, PLP, RTI): pre uses the value in force BEFORE the instruction (the sample after CLI sees I still set, so the entry follows the next instruction; after SEI the sample still sees I clear), post
+ *                 uses the value AFTER it (no latency). BRK is not among the four: its sample always sees the I it left (R-9). The manual says only that the inputs are sampled in the last bus cycle of an instruction (H8-12); which I value that sample sees is not stated (D-111). Status open: neither value is a hardware claim. The fixture irq_ctl distinguishes them (observe row 30).
+ */
+DS_MODEL(tma_zero, "bus_latch|a_unchanged", "bus_latch", "LED-CPU-0015", "assumed")
+DS_MODEL(irq_i_sample, "pre|post", "pre", "LED-IRQ-0005", "open")

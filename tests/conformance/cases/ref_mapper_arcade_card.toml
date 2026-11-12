@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: a 1 MiB image declared arcade_card, a named mapper the core does not implement. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_mapper_arcade_card"
+kind = "refuse"
+fixture = "plain-1m"
+request = "mapper=arcade_card"
+expect = "load.mapper_unsupported"
+meaning = "A 1 MiB request declared arcade_card is refused as load.mapper_unsupported and no Arcade Card behaviour is invented"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

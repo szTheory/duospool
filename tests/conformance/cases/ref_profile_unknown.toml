@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: a run request naming a profile id that is not registered. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_profile_unknown"
+kind = "refuse"
+fixture = "plain-256k"
+request = "profile=nope"
+expect = "load.profile_unknown"
+meaning = "A run request that names a profile id the core has not registered is refused as load.profile_unknown and no instance is created"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

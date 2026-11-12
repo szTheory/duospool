@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The region BLKT of the state digest, pinned with nonzero bytes (plan 03-25; D-92, D-100, D-121): the kind writes a transfer in progress into the booted instance before the capture (poke=block-mid: blk_active 1, blk_opcode $E3, blk_toggle 1, blk_remaining $00010000, blk_src $1234, blk_dst $ABCD; a test hook, a boot leaves them zero),
+# parses the stream here without calling ds_digest, and compares the BLKT payload with the documented rule: the active byte, the opcode byte, the toggle byte, the remaining count as a u32 little-endian (00 00 01 00: the 17th bit, because a length of 0 means 65536 bytes), the source as a u16 little-endian (34 12) and the
+# destination (CD AB), eleven bytes: 01 E3 01 00 00 01 00 34 12 CD AB. The literal was derived outside the code by a throwaway python script that took the 8588-byte version 5 stream of the plain-256k seed-42 boot from the core's stream writer, checked that its sha256 equals the committed version 5 literal b10fea3a... of
+# digest_stream_prefix under shasum -a 256, set the version to 6 and appended the frame BLKT with the eleven bytes above; the 8607-byte stream it wrote hashes to the literal below. Evidence tier E0: it pins the encoding and shows repeatability, never that the state is right.
+# Plan 03-29 added the regions IOPT (the latch of port O and the device kind of each of the five ports, 6 bytes: FF 01 00 00 00 00 at boot) and SCHD (the declared input schedule, 1024 slots of 16 bytes and the count and a reserved word, 16392 zero bytes for a run with no input) and the serial version 7, so the literal changed: a throwaway C
+# program outside the repo booted this request and wrote the 8607-byte version 6 stream with the core's stream writer, which hashes to the committed version 6 literal e3f935fa17ce7da35875c144ba2170ac8a52accc0aa0cba972b0c24bf243e7d0 under shasum -a 256; a throwaway python script outside the repo then set the version to 7 and appended the
+# frames IOPT (6 bytes) and SCHD (16392 zero bytes) written from the rules above, and the 25021-byte stream it wrote hashes to the new literal under shasum -a 256. Evidence tier E0 (see above).
+id = "digest_stream_blkt"
+kind = "digest_stream"
+fixture = "plain-256k"
+request = "bind.powerup_policy=seeded-prng-v1;seed=42"
+expect = "version=7;frames=PROF:32,CONT:40,POWR:16,TIME:8,RAM8:8192,MPRS:8,CPU0:8,BUS0:3,TIMR:11,IRQC:3,IRQS:160,BLKT:11,IOPT:6,SCHD:16392;size=262144;enum=1;poke=block-mid;digest=18d810fcd8b379c5b9403bf17f16199661d4935020adbeff3f560d61c16fca25"
+meaning = "With a block transfer in progress poked into the instance the region BLKT carries the documented little-endian bytes (the remaining count 65536 as a u32, the addresses as u16), the payloads match the instance, and the SHA-256 of the stream equals the independently derived literal"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

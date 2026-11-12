@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: 2 MiB, a bank multiple that is not a supported size. The 1 MiB cap is checked before the supported-size rule (D-82), so only the cap rule can refuse it. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_size_2m_too_large"
+kind = "refuse"
+fixture = "plain-256k"
+request = "len=2097152"
+expect = "load.too_large"
+meaning = "A fully declared request of 2097152 bytes is refused as load.too_large, not as an unsupported size, because the cap is checked before the supported-size rule; no instance is created"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

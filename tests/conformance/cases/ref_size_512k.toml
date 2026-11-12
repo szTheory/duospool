@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: a 512 KiB request, otherwise fully declared (plain, pce, none). The emulator sources disagree about how such a card is wired (LED-LOAD-0004), so the size is refused rather than guessed. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_size_512k"
+kind = "refuse"
+fixture = "plain-256k"
+request = "len=524288"
+expect = "load.size_unsupported"
+meaning = "A fully declared request of 524288 bytes is within the 1 MiB cap and a multiple of the bank size, is not one of the three supported sizes, and is refused as load.size_unsupported with no instance created; no claim is made about a 512 KiB card"
+required = true
+control = false
+expect_outcome = "pass"
+pins = ["LED-LOAD-0004"]

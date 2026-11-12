@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# A two-button pad without turbo, and the inputs the core refuses (D-116; INP-04; ER-5). Modelling assumption: the refusals are the project own rules for what a test input may declare, enforced twice (scripts/input-check and ds_input_push), not claims about what a pad can do.
+# Refused: an event for a port without a pad (r1 populates port 1 only), a button bit outside the eight of a two-button pad (III to VI are reserved), opposite directions held together (UP with DOWN, LEFT with RIGHT), and an event list that is out of order, too long, late or pushed twice (the typed input.* refusals of
+# src/core/input_refusals.def). The turbo counter report was recorded by the discuss advisor and was not re-read by plan 03-29; the CD BIOS page was read on 2026-11-11 from a scratch copy (sha256 8e92ead8..., PDF page 27, not committed).
+id = "LED-IO-0005"
+statement = "DuoSpool models the two-button pad without turbo and refuses an input event that holds opposite directions (UP with DOWN, LEFT with RIGHT), sets a button bit above bit 7, or names a port that has no pad. A modelling assumption: the refusals are project rules for declared test input, not claims about hardware."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["REPORT|PCE_Controller_Info|a turbo pad uses a counter clocked by CLR (a 74HC163); advisor-recorded, not re-read", "FACT|CDBIOS-p28|the logical mask has eight bits (ONE to LEFT) and none for turbo; image read 2026-11-11", "UNKNOWN|opposite directions|no source says whether a pad can report an opposing pair; a d-pad cannot press them, so a test input may not (D-116)"]
+evidence = ["E0|tests/conformance/cases/input_refusal_rows.toml: the typed refusals bits, order, queue_full, state and late come back for synthetic events, instance unchanged", "E0|tests/conformance/cases/input_port_refusal.toml: ports 2 to 5, 0 and 6 are refused as input.port", "E0|tests/conformance/cases/input_refusal_coverage.toml: every member of input_refusals.def is observed by a case"]
+disagreement = "none: no source describes the refused inputs. Whether a real pad can report opposite directions, and how a turbo switch behaves, are unknown here and are not modelled."
+pinning_test = "TEST:input_refusal_rows"
+updated = "2026-11-11"
+assumption = "A test input that holds opposite directions, a reserved bit or an empty port is a mistake of the author and is refused rather than interpreted; the pin shows the core and the checker refuse them, not what hardware does."
+revisit_phase = 6
+withheld = ["any claim of pad-accurate or controller-accurate behaviour", "any claim of game compatibility", "any TG-16 or region claim", "any claim about turbo or about opposite directions on hardware"]
+origin = "03-CONTEXT D-116"

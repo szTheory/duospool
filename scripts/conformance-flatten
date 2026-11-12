@@ -1,0 +1,195 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# conformance-flatten - hand-edited TOML to one validated TSV (D-51, D-69). It wraps scripts/lib/toml-subset.awk, the only
+# parser of hand-edited data: this script adds no second parser. The conformance runner and the tests read the TSV, never TOML.
+# usage: conformance-flatten [--inputs] [--expect CODE[,CODE...]] PATH...
+#   PATH is a TOML file, or a directory whose *.toml files are read in name order. A directory with no *.toml is FLAT_NO_INPUT.
+#   --inputs (plan 03-27; D-51, D-117): the PATHs are input scripts, not case files. Stage 1 is the same parser, stage 2 is scripts/lib/input-rules.awk, and the rows are not K rows but
+#          SCRIPT<TAB>NAME<TAB>N (one per script, NAME the file name without .toml, N its event count, 0 for an explicit empty script) followed by INPUT<TAB>NAME<TAB>IDX<TAB>AT<TAB>PORT<TAB>MASK
+#          (IDX from 1, AT in master clocks, PORT 1 to 5, MASK the button mask in the CD BIOS layout), and the last row END<TAB>FILECOUNT as before. The codes are the stage 1 codes and the INP_ codes of input-rules.awk,
+#          INP_TOO_LARGE (a script over 64 KiB, checked before stage 1 reads it) and INP_STAGE_DEAD (stage 2 printed no closing RULES row). The runner reads this TSV as --inputs and never a script.
+# stdout: one row per key  K<TAB>STEM<TAB>TABLE<TAB>KEY<TAB>TYPE<TAB>VALUE  and a last row  END<TAB>FILECOUNT
+#         STEM is the file name without .toml; TABLE is empty for root keys; TYPE is s, i, b or a (array: the elements joined
+#         by the unit separator, octal 037). Nothing is printed to stdout until EVERY input is clean, so no partial TSV can
+#         reach a consumer. On a clean run the line  STATUS flatten ok N  goes to stderr (scripts/check needs a marker).
+# on any error stdout is empty; the violations go to stderr as  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL
+#   FLAT_NO_INPUT, FLAT_NO_SENTINEL (stage 1 printed no closing END row, or it is not last), FLAT_BAD_ROW, BAD_FILENAME, and the
+#   stage 1 codes passed through unchanged (SYNTAX, DUP_KEY, DUP_TABLE, BAD_STRING, BAD_ARRAY, BAD_VALUE, TRAILING_GARBAGE,
+#   NON_ASCII_OR_CTRL, LINE_TOO_LONG).
+# stdout on a met --expect: the single line EXPECT_OK, and nothing else
+# exit  : 0 clean (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error
+set -eu
+LC_ALL=C; export LC_ALL
+here=$(cd "$(dirname "$0")" && pwd)
+
+usage() {
+  echo "usage: conformance-flatten [--expect CODE[,CODE...]] PATH..." >&2
+  exit 2
+}
+
+expect=""
+have_expect=0
+fmode=case
+while [ $# -gt 0 ]; do
+  case $1 in
+    --expect) [ $# -ge 2 ] || usage; expect=$2; have_expect=1; shift 2 ;;
+    --inputs) fmode=input; shift ;;
+    --) shift; break ;;
+    -*) usage ;;
+    *) break ;;
+  esac
+done
+# an --expect that names no code would make a control assert nothing: with no violations got and want are both empty and the
+# control would pass vacuously (WR-05). Exit 2, never 0.
+if [ "$have_expect" -eq 1 ] && [ -z "$(printf '%s' "$expect" | tr -d ', \t\r\n')" ]; then
+  echo "HARNESS_EMPTY_EXPECT --expect names no code" >&2
+  exit 2
+fi
+[ $# -ge 1 ] || usage
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+viol0="$tmp/viol0"
+viol="$tmp/viol"
+rows="$tmp/rows"
+t1="$tmp/t1"
+t2="$tmp/t2"
+: > "$viol0"
+: > "$rows"
+nfiles=0
+
+# a TAB or a newline in a path would forge a TSV row or a violation record, so such a name is refused (CR-01)
+tab=$(printf '\t')
+nl=$(printf '\n.'); nl=${nl%.}
+bad_name() {
+  case $1 in
+    *"$tab"* | *"$nl"*) return 0 ;;
+  esac
+  return 1
+}
+bad_filename() {
+  printf '%s\tBAD_FILENAME\t0\tpath contains TAB or newline\n' "<bad-filename>" >> "$viol0"
+}
+
+# flatten_file FILE: stage 1 into a temp file (no pipeline: a failing stage 1 must not read as "no violations"), then sort its
+# rows into key rows (kept aside, released only if everything is clean) and violations. The sentinel must be present once, last.
+flatten_file() {
+  f=$1
+  if bad_name "$f"; then
+    bad_filename
+    return 0
+  fi
+  nfiles=$((nfiles + 1))
+  if [ "$fmode" = input ] && [ "$(wc -c < "$f" | tr -d ' ')" -gt 65536 ]; then
+    printf '%s\tINP_TOO_LARGE\t0\tan input script is at most 64 KiB\n' "$f" >> "$viol0"
+    return 0
+  fi
+  awk -f "$here/lib/toml-subset.awk" "$f" > "$t1" 2>/dev/null || : > "$t1"
+  stem=$(basename "$f" .toml) ff="$f" viol0="$viol0" rowsf="$rows" fmode="$fmode" awk '
+    function vio(code, ln, detail) { printf "%s\t%s\t%s\t%s\n", ENVIRON["ff"], code, ln, detail >> ENVIRON["viol0"] }
+    BEGIN { FS = "\t"; nend = 0; last = "" }
+    {
+      last = $0
+      if ($1 == "ERR") {
+        if (NF == 4 && $2 ~ /^[A-Z][A-Z_]*$/) vio($2, $3, $4)
+        else vio("FLAT_BAD_ROW", NR, "malformed ERR row")
+        next
+      }
+      if ($1 == "END") {
+        if (NF == 2 && $2 ~ /^[0-9]+$/) nend++
+        else vio("FLAT_BAD_ROW", NR, "malformed END row")
+        next
+      }
+      if (NF == 5 && ($1 == "" || $1 ~ /^[a-z][a-z0-9_]*$/) && $2 ~ /^[a-z][a-z0-9_]*$/ && $3 ~ /^[sbia]$/ && $5 ~ /^[0-9]+$/) {
+        if (ENVIRON["fmode"] != "input") printf "K\t%s\t%s\t%s\t%s\t%s\n", ENVIRON["stem"], $1, $2, $3, $4 >> ENVIRON["rowsf"]
+        next
+      }
+      vio("FLAT_BAD_ROW", NR, "stage 1 row has an unexpected shape")
+    }
+    END {
+      if (nend != 1 || last !~ /^END\t[0-9]+$/) vio("FLAT_NO_SENTINEL", NR, "stage 1 sentinel missing, repeated or not last")
+    }' "$t1" || { echo "HARNESS_AWK_FAILED $f" >&2; exit 2; }
+  if [ "$fmode" = input ]; then
+    input_stage2 "$f"
+  fi
+  return 0
+}
+
+# input_stage2 FILE (plan 03-27): stage 2 of an input script. It runs only when stage 1 reported nothing for the file (an ERR row means the records are partial), writes to a file whose exit status is tested (no pipeline with awk on the left,
+# CR-01), and requires its closing RULES row: without it the stage is dead and the script is INP_STAGE_DEAD, never accepted. Violations become  FILE CODE LINE DETAIL , events become the rows SCRIPT and INPUT of the usage text.
+input_stage2() {
+  i2f=$1
+  case $(basename "$i2f" .toml) in
+    [a-z]* )
+      case $(basename "$i2f" .toml) in
+        *[!a-z0-9_]*) printf '%s\tBAD_FILENAME\t0\tan input script name is [a-z][a-z0-9_]*\n' "$i2f" >> "$viol0"; return 0 ;;
+      esac ;;
+    *) printf '%s\tBAD_FILENAME\t0\tan input script name is [a-z][a-z0-9_]*\n' "$i2f" >> "$viol0"; return 0 ;;
+  esac
+  if grep -q '^ERR' "$t1"; then
+    return 0
+  fi
+  if awk -f "$here/lib/input-rules.awk" "$t1" > "$t2" 2> /dev/null; then :; else : > "$t2"; fi
+  if ! tail -n 1 "$t2" | grep -Eq "^RULES${tab}[0-9]+\$"; then
+    printf '%s\tINP_STAGE_DEAD\t0\tinput-rules.awk printed no closing RULES row\n' "$i2f" >> "$viol0"
+    return 0
+  fi
+  awk -F'\t' -v ff="$i2f" -v stem="$(basename "$i2f" .toml)" -v viol0="$viol0" -v rowsf="$rows" '
+    $1 == "V" { printf "%s\t%s\t%s\t%s\n", ff, $2, $3, $4 >> viol0; nv++; next }
+    $1 == "S" { nevents = $2; next }
+    $1 == "E" { ev[++ne] = sprintf("INPUT\t%s\t%s\t%s\t%s\t%s", stem, $2, $3, $4, $5); next }
+    END {
+      if (nv == 0) {
+        printf "SCRIPT\t%s\t%d\n", stem, nevents >> rowsf
+        for (i = 1; i <= ne; i++) print ev[i] >> rowsf
+      }
+    }' "$t2" || { echo "HARNESS_AWK_FAILED $i2f" >&2; exit 2; }
+}
+
+for p in "$@"; do
+  if bad_name "$p"; then
+    bad_filename
+    continue
+  fi
+  if [ -d "$p" ]; then
+    n=0
+    for f in "$p"/*.toml; do
+      [ -e "$f" ] || continue
+      n=$((n + 1))
+      flatten_file "$f"
+    done
+    if [ "$n" -eq 0 ]; then
+      printf '%s\tFLAT_NO_INPUT\t0\tno *.toml file\n' "$p" >> "$viol0"
+    fi
+  elif [ -f "$p" ]; then
+    flatten_file "$p"
+  else
+    echo "HARNESS_NO_FILE $p" >&2
+    exit 2
+  fi
+done
+
+sort -u "$viol0" > "$viol"
+
+if [ "$have_expect" -eq 1 ]; then
+  got=$(awk -F'\t' '{ print $2 }' "$viol" | sort -u | tr '\n' ',' | sed 's/,$//')
+  want=$(printf '%s\n' "$expect" | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/,$//')
+  if [ "$got" = "$want" ]; then
+    echo "EXPECT_OK"
+    exit 0
+  fi
+  echo "EXPECT_MISMATCH wanted '$want' got '${got:-<none>}'" >&2
+  cat "$viol" >&2
+  exit 1
+fi
+
+if [ -s "$viol" ]; then
+  cat "$viol" >&2
+  exit 1
+fi
+cat "$rows"
+printf 'END\t%d\n' "$nfiles"
+echo "STATUS flatten ok $nfiles" >&2
+exit 0

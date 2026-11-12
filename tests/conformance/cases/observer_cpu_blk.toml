@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The observer non-interference matrix on a block transfer with interrupts pending (plan 03-26, plan check B3; D-92, D-100, D-111, D-119, CORE-04, CORE-06, ER-7): the irq image of fixtures/src/cpu_blk.s (assembled with -D BLK_IRQ, never committed) runs a TII of 4096 bytes during which the timer interrupt (TIQ) and a declared IRQ2 level
+# are pending (irq_stim: events AT,LINE,LEVEL in master clocks, the same stimulus as cpu_blk_irq_pending; a test hook and never a claim about the VDC, ER-5, D-112). The matrix is that of observer_ds_proto: no sink (the reference) and both sinks in five configurations (large, drop4, poison, cap0,
+# cap1), each in three modes: whole (one call to the deadline), chunk:13 (13 calls to equal
+# parts of the deadline, one of which, the 11th at 2.2 million master clocks, ends inside the transfer) and stop:53000 (a stop callback that holds at its 53000th invocation, which is inside the transfer: the callback is called after every step and a block transfer is one step per byte). The expect
+# item pending-stop requires of the reference run of each mode but whole at least one call that took a step
+# and ended inside a block transfer with the timer interrupt and IRQ2 both pending at the stop stamp (the pure query ds_irq_pending_query of plan 03-22 at the machine time of the stop, after the disable mask: bits 0 and 2), so the stops under test are the ones the plan asks for, and the sinks must
+# not change which calls those are. The stop callback folds the block transfer state too, so a hook that disturbs a transfer
+# is seen at the next call. The instruction sink is offered once per instruction (the prologue), not once per byte step. Every run must give the reference verdict RAM, machine time, stop sequence and digest. Evidence tier E0 (repeatability and non-interference: the core is compared with itself): no
+# accuracy, compatibility or hardware claim, and the word pass is not a support claim.
+id = "observer_cpu_blk"
+kind = "observer"
+fixture = "authored:cpu-blk-irq"
+request = ""
+expect = "compare=verdict,machine_time,stops,digest;pending-stop"
+meaning = "Enabling the instruction sink and the device-register sink in any of five configurations, whole or in 13 chunks or stopped by the callback inside the 4096-byte transfer with the timer interrupt and IRQ2 pending, changes neither the verdict RAM, the machine time, the stop sequence nor the digest of the cpu_blk irq image"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 2600000
+sinks = "large,drop4,poison,cap0,cap1"
+chunks = "whole,chunk:13,stop:53000"
+irq_stim = ["2000000,1,1", "2100000,2,1", "2400000,1,0"]

@@ -1,0 +1,16 @@
+/* SPDX-License-Identifier: MIT OR Apache-2.0 */
+/* SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors */
+/*
+ * model_refusals.def - the closed refusal set of ds_model_set (plan 03-17; D-113, F4), defined once.
+ * One X-macro row per refusal: DS_MODELREF(name, number). 0 is "no refusal" and has no row. The string form is model.NAME, never load.NAME or run.NAME: these codes belong to neither a boot nor a run request. Numbers are stable and
+ * never reused; a new refusal takes the next free number, and the name table has DS_MODELREF_SLOTS slots (a number at or above it fails to compile). A refusal writes nothing.
+ * The checks run in the order of the rows: the name, then the value, then the state of the machine.
+ *
+ * name             number  returned when
+ * unknown_name     1       the parameter name is NULL or is not a row of model_params.def
+ * value_not_allowed 2      the value is NULL or is not one of the allowed values of that row (an exact match, no case folding, no prefix)
+ * state            3       the machine has taken a step (machine time is not 0) or the instance is NULL: a parameter is set before the first step and never changes under a running machine
+ */
+DS_MODELREF(unknown_name, 1)
+DS_MODELREF(value_not_allowed, 2)
+DS_MODELREF(state, 3)

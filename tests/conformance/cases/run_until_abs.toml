@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Absolute deadlines of ds_run (plan 03-02; D-93, D-94, D-95) on the authored fixture ds-proto: ds_run stops only between whole instructions, so the machine time at the end is the
+# first instruction boundary at or past the deadline and the overshoot is the distance past it (the kind asserts overshoot = time - until, below ds_max_step_mclk()). A deadline not ahead of machine time (0, equal, or below it)
+# returns until with 0 steps, overshoot 0 and leaves the whole instance unchanged (again=N makes a second call with that deadline and compares the instance byte for byte). A stop callback
+# that holds before the first step gives callback with 0 steps; otherwise it fires after the step on which it first holds, and wins over a deadline reached on that same step.
+# The literals follow from the ds_proto instruction cycle table (manual cycle counts: SEI CLD LDX# TXS LDA# 2 cycles each, TAM 5, STZ abs,X 5, INX 2, taken BNE 2 + 2) and the 12 master clocks of
+# a low-speed cycle, never from a DuoSpool run: the instruction ends are 24, 48, 72, 96, 120 (LDA #$F8), 180 (TAM), 204, 264 (TAM), 288 (LDX #$00), 348 (STZ), 372 (INX), 420 (BNE taken), 480 (STZ); a deadline of 1 ends at 24 (overshoot 23), of 421 at 480 (overshoot 59), of 100 with a stop at 100 at 120 (overshoot 20).
+# Evidence tier E0 (repeatability and a literal): the run API only, no hardware claim.
+id = "run_until_abs"
+kind = "run_until"
+fixture = "none"
+request = ""
+expect = "rom=ds-proto|until=0,steps=0,time=0,again=0|until=1,steps=1,time=24,again=24|until=24,steps=1,time=24,again=3|until=264,steps=8,time=264|until=421,steps=13,time=480,again=100|until=1000,stop=0,result=callback,steps=0,time=0,again=0|until=120,stop=120,result=callback,steps=5,time=120|until=120,stop=121,steps=5,time=120|until=100,stop=100,result=callback,steps=5,time=120"
+meaning = "ds_run to an absolute deadline ends at the first instruction boundary at or past it with the overshoot as the distance, a deadline not ahead of machine time takes 0 steps and changes nothing, and a stop callback is checked before the first step and after every step"
+required = true
+control = false
+expect_outcome = "pass"
+pins = ["LED-CPU-0003"]

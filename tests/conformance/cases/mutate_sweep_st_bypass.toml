@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Mutation sweep of the st_bypass fixture (plan 03-20; D-126, ER-7, FIX-03): the built image of fixtures/src/st_bypass.s is loaded once, its DCK1 literal table is found at file offset $1000, and for each of the 5 checks the value byte of its entry (an XOR mask of $00,
+# all five checks are GUEST class) is XORed with $FF in a fresh in-memory copy that is booted and run in this same process. The unmutated image must pass first. Each mutation must flip exactly its own check to $46 and leave the others $50: a check whose literal can be changed
+# without flipping it is vacuous and the case is guest_failure. st_bypass has no observe row, so there is nothing to exclude. The sweep covers the guest checks only: the device-register records of the stores are judged by the runner kind st_bypass (case st_bypass).
+# The sweep runs under the default power-on policy only. Evidence tier E0 (a mechanism check of the checks themselves): no accuracy or compatibility claim.
+id = "mutate_sweep_st_bypass"
+kind = "mutate_sweep"
+fixture = "authored:st-bypass"
+request = ""
+expect = "id=9"
+meaning = "Changing the expected literal of any one of the five st_bypass checks flips exactly that check to fail and no other, so none of the five checks is vacuous"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+checks = 5

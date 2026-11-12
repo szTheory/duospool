@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Fixture manifest entry (FIX-02, D-59): one synthetic recipe of tests/conformance/synth.c. The bytes are generated at test time and are
+# never committed. scripts/fixture-check compares size and sha256 below with the bytes that ds_runner --emit plain-384k wrote, as hashed by
+# the host sha tool, so a changed generator or an undocumented image turns the gate red.
+id = "plain_384k"
+kind = "synthetic"
+source = "tests/conformance/synth.c"
+recipe = "plain-384k: 393216 bytes (48 file banks); lcg32 seed=12345 x=x*1664525+1013904223 mod 2^32 byte=(x>>16)&255; then bank tags: the first byte of file bank k (k = 0 to natural size / 8192 - 1, 8192 bytes each) is (k*37+11) mod 256 and the last byte is (k*91+5) mod 256"
+toolchain = "ds_runner --emit plain-384k (tests/conformance/synth.c, ISO C11, integer arithmetic only), hashed by sha256sum or shasum -a 256"
+size = 393216
+sha256 = "dea83b86f5837a056859d5cf1ff5db8612092a2855be3e5da32ed277fc5f37e0"
+licence = "0BSD"
+notices = "none: generated at test time from an integer generator; no third-party material and no game content"
+redistribution = "generated-not-committed"
+meaning = "Base synthetic HuCard-shaped image of 384 KiB (48 file banks), the natural size of the recipe; fixture of 2 cases, for example accept_384k_banksig, record_golden_384k_seeded. Expected bank signatures come from the awk mirror oracle (LED-LOAD-0003), not from core output."
+verdict_source = "spec-literal:LED-LOAD-0003"

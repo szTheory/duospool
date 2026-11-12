@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Resolve row: profile resolution is typed and names the offending field; an open field has no default (D-49). Evidence tier E0, no hardware claim.
+id = "resolve_open_unbound"
+kind = "resolve"
+fixture = "none"
+request = "bind.io_1000_d6_value=-"
+expect = "load.open_unbound;field=io_1000_d6_value"
+meaning = "An open profile field that the run request leaves unbound is refused as load.open_unbound naming that field; the core never fills in a default"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

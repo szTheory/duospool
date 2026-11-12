@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The encoding of the region SCHD with nonzero bytes (plan 03-29; D-117, D-121, INP-04): the same boot as digest_stream_prefix, with the key input naming the script pad_2btn_correct, whose four events (AT,PORT,MASK = 0,1,8 / 140000,1,33 / 320000,1,146 / 510000,1,100, the masks being the CD BIOS layout of the held names, CDBIOS-p28, as in
+# record_input_shown) are pushed to the instance before the capture. The kind captures the stream, parses it here without calling ds_digest, and checks the frames IOPT and SCHD field by field against the instance (1024 slots of time, port and mask, then the count 4 and the reserved word 0), and the SHA-256 of the captured stream must equal
+# ds_digest and the literal below. The literal comes from a throwaway python script outside the repo that took the 8607-byte version 6 stream of the digest_stream_prefix boot (written by the core's stream writer from a throwaway C program, which hashes to the committed version 6 literal 518d1ebf... under shasum -a 256), set the version to
+# 7, appended IOPT (FF 01 00 00 00 00) and a SCHD frame whose first four slots are the little-endian encoding of the four events, the other 1020 slots zero, then the count 4 and the reserved word 0; the 25021-byte stream it wrote hashes to the literal under shasum -a 256. Evidence tier E0: it pins the encoding and shows repeatability, never
+# that the schedule or any pad behaviour is right.
+id = "digest_stream_input"
+kind = "digest_stream"
+fixture = "plain-256k"
+request = "bind.powerup_policy=seeded-prng-v1;seed=42"
+expect = "version=7;frames=PROF:32,CONT:40,POWR:16,TIME:8,RAM8:8192,MPRS:8,CPU0:8,BUS0:3,TIMR:11,IRQC:3,IRQS:160,BLKT:11,IOPT:6,SCHD:16392;size=262144;enum=1;digest=3dbe2cac9174bc1a352b76d9570030b75202fcc8e38454ea7c006f0679d076d9"
+meaning = "The digest stream carries the declared input schedule as the region SCHD (1024 slots of time, port and mask, then the count and a reserved word) and the port bytes as IOPT, its payloads match the instance, and ds_digest is the SHA-256 of exactly that stream and of the independently derived literal"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+input = "pad_2btn_correct"

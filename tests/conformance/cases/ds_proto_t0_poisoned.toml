@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# DSV1 protocol control (plan 03-05, D-124, D-95; the reading of D-124 recorded in plan 03-01): the runner writes the DSV1 magic and the done state into work RAM after boot and before the first step, and the t=0 precondition must give harness_failure; the guest is never run.
+# The ROM is one of the variants of fixtures/src/ds_proto.s that scripts/fixture-build assembles in the gate (never committed). The case passes only when the judge gives exactly the
+# declared outcome and reason, so a judge that missed the fault would turn the case red. Evidence tier E0 (repeatability and a mechanism check of the verdict judge): no accuracy,
+# compatibility or hardware claim, and the word pass here means the declared fault was caught.
+# Without the planting the same ROM passes: that is the case ds_proto.
+id = "ds_proto_t0_poisoned"
+kind = "guest"
+fixture = "authored:ds-proto"
+request = ""
+expect = "id=1;poison-t0"
+meaning = "A DSV1 block planted in work RAM before the first step is caught by the t=0 precondition as harness_failure, so a stale or hostile block can never be read as the verdict of a run"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+checks = 8

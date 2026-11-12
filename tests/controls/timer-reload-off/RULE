@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Toy control (D-85, D-131; toy 4 of 8): a timer whose period is one prescaler step too long, made from the live src/core/timer.c by scripts/control-mutate. The anchor is the one statement of fold that forms the period of the borrow cycle, (reload + 1) steps in the live file;
+# the replacement makes it reload + 2, the plausible off-by-one of a counter that is reloaded one step late (a period of reload + 0, the other way round, divides by zero for reload 0 on some hosts and not on others, so the toy takes the direction that is defined everywhere).
+# The two cases in EXPECT must come out guest_failure on the toy: tim_timer reads the counter seven steps after a reload-2 start (check 18: a period of 4 steps reads 2 where the live period of 3 reads 1), and timer_pure_function compares the period with a naive per-clock model.
+tag=rule-timer-reload-off
+file=src/core/timer.c
+anchor=uint64_t period = (uint64_t)inst->timer_reload + UINT64_C(1);
+replace=uint64_t period = (uint64_t)inst->timer_reload + UINT64_C(2);

@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Toy control (D-85, D-122, D-131; plan 03-31; toy 7 of 8): a restore that drops the T flag, made from the live src/core/snapshot.c by scripts/control-mutate. The anchor is the one line of dec_cpu0 that stores the processor status P into the instance (the T bit, bit 5, is in P: it is set by SET and cleared by the next instruction,
+# so a machine stopped between the two has it set); the replacement stores P with bit 5 cleared, the plausible slip of a restore that treats the byte as flags it knows. The plan named serial.c, the line that emits P; that line is shared with the digest, so a change there would change every digest and golden and not only the restore, and the restore side is where
+# the state is dropped: the live serial.c is untouched and the snapshot of the toy is still the digest stream, so the toy differs from the live core in the one thing that this control is for. The cases in EXPECT must come out guest_failure on the toy: snapshot_restore_set restores at boundaries right after SET (cpu_flow), where the restored instance lacks the T flag that the
+# source has (a raw member compare names p, and the machine then executes the next instruction as an ordinary one instead of a memory-to-memory one, so the lockstep breaks too). The real core passes it (a REQUIRED case). The EXPECT run reads only the cases named there.
+tag=rule-snapshot-drop-t
+file=src/core/snapshot.c
+anchor=inst->p = p;
+replace=inst->p = (uint8_t)(p & 0xDFu);

@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The [input] table of the run record (plan 03-28; D-117, D-53 amended, ER-5, Pitfall 16, T-03-79): a synthetic 256 KiB image is booted, the case names the input script pad_2btn_correct with the key input (scripts/conformance-flatten --inputs parsed it with the one parser of hand-edited data and the runner gives its events to the core with ds_input_push
+# before the first step), then the record is printed. input.events is the number of events of the script, 4, and input.schedule_sha256 is the sha256 of the canonical encoding of the schedule: one line AT,PORT,MASK in plain decimal and one LF per event, nothing else in the stream. The four lines are
+#   0,1,8 / 140000,1,33 / 320000,1,146 / 510000,1,100
+# which are the four events of the script with the held names turned into the logical mask of the CD BIOS manual page 28 (I 1, II 2, SELECT 4, RUN 8, UP 16, RIGHT 32, DOWN 64, LEFT 128: run is 8, i and right 33, ii and up and left 146, select and right and down 100), and the literal below was computed with the host sha256 tool over exactly those four lines (printf and shasum -a 256),
+# never from the printer's output. The kind also rebuilds the encoding from the parsed events with another formatting path and compares; a boot that names no input prints an explicit empty script, events = 0 and the sha256 of zero bytes (record_skeleton_256k and the two goldens), and the two identities differ.
+# The identity says which declared events the core was given and says nothing about any pad: a script is a test input declared by the case (E2 at most, ER-5). Evidence tier E0: the record repeats the declared input and says nothing about the machine.
+id = "record_input_shown"
+kind = "record_lines"
+fixture = "plain-256k"
+request = ""
+expect = "input.events=4;input.schedule_sha256=8d209fc6295f784d5d0409c574794e649b948377c218556eb67cdace552c9c54"
+meaning = "A boot given the four-event pad_2btn_correct input script prints in its record input.events = 4 and the sha256 of the canonical AT,PORT,MASK encoding of that schedule, which differs from the identity of the empty schedule that a boot with no input prints"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+input = "pad_2btn_correct"

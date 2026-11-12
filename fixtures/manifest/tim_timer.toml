@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Fixture manifest entry (FIX-02, FIX-01, D-59 amended, D-123): one authored HuCard image of fixtures/src/tim_timer.s. The bytes are assembled in the gate by ca65 and ld65 and are
+# never committed. scripts/fixture-check compares size and sha256 below with the bytes scripts/fixture-build wrote, as hashed by the host sha tool, so a changed source, library or
+# toolchain output turns the gate red. The pin was measured on the Homebrew cc65 2.19 bottle (see fixtures/lib/TOOLS.md); it proves the build is repeatable, nothing more.
+id = "tim_timer"
+kind = "authored"
+source = "fixtures/src/tim_timer.s"
+recipe = "tim-timer: ca65 --cpu huc6280 -D ROMBANKS=32 -I fixtures/lib -o build/gate/fx/tim-timer.o fixtures/src/tim_timer.s; ld65 -C fixtures/lib/hucard.cfg -D ROMBANKS=32 -o build/gate/fixtures/tim-timer.pce build/gate/fx/tim-timer.o"
+toolchain = "cc65 V2.19 (ca65 prints V2.18; identity by encoding-matrix bytes, plan 03-08), Homebrew bottle 2.19 locally, hashed by sha256sum or shasum -a 256"
+size = 262144
+sha256 = "37f00fa024fe37ea22a28000a23e854f3e46f94a709c9740ba60a5bef908d974"
+licence = "0BSD"
+notices = "none: assembled at gate time from the project-owned sources fixtures/src/tim_timer.s and fixtures/lib/*.inc and hucard.cfg (0BSD); no HuC, PCEAS or cc65 library or startup code, no emulator code, no game content"
+redistribution = "generated-not-committed"
+meaning = "Authored diagnostic HuCard of 256 KiB that takes the TIQ interrupt at reload 0, reads the timer counter after counted delays (E2 self-consistency), checks the stop, no-op rewrite and masking edges and the T bit pushed by the entry, 33 DSV1 checks. A pass is not a support claim."
+verdict_source = "manual-cite:H8-12+manual-cite:H8-15+manual-cite:H8-16+manual-cite:H8-18+manual-cite:H8-21+manual-cite:H8-22+guest-computed+spec-literal:LED-IRQ-0003"

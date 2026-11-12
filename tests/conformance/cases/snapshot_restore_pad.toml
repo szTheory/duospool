@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Restore between a SEL write and the following $1000 read (plan 03-30 task 3; CORE-05, D-116, D-117, D-121; W8 of the plan check): the pad_2btn fixture against its correct input script, stopped right after a step that wrote the $1000 window; the target instance is booted with an EMPTY input schedule,
+# so the declared events (region SCHD) and the latch of port O (region IOPT) must come from the snapshot, and the window runs through the next read of the pad window, whose byte the lockstep fold covers. The runner (kind snapshot_restore, tests/conformance/snapkinds.c) runs the fixture once,
+# uninterrupted, one step at a time, keeping the machine time, pc, opcode and record fold of every step and a copy of the machine at the deadline; a second run of the same fixture is stopped at each planned boundary, snapshotted and restored into a FRESH instance booted with another seed, the defaults
+# of the model parameters, no schedule and no stimulus, whose restorable members are then poisoned (0xA5, and again 0x5A). The restored instance must equal the source in every member of the hand-written tiling list except the ROM (raw compare), re-serialise to the same snapshot, run in lockstep with
+# the uninterrupted run over the window, and, at the lead stop of each class (finish), end the run with the machine time, verdict RAM, digest and members of the uninterrupted run; at the lead stops flipping one byte of every region of the restored instance changes the digest (perturb). Evidence tier
+# E0: the core compared with itself; no correctness claim.
+id = "snapshot_restore_pad"
+kind = "snapshot_restore"
+fixture = "authored:pad-2btn"
+request = "bind.powerup_policy=seeded-prng-v2;seed=3"
+expect = "stops=first,last,pad-write;window=32;finish;perturb"
+meaning = "Snapshots of the pad_2btn run taken between a SEL write and the next read of $1000 restore into a fresh instance with an empty schedule, which then reads the pad bytes of the uninterrupted run"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 800000
+input = "pad_2btn_correct"

@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Run refusal coverage (plan 03-35; D-86 pattern, F4): a DEFERRED kind. The runner does not evaluate it inside the case loop; the run_refuse kind records every run refusal code a ds_run call returned, and in a
+# second pass after the loop the set must equal every member of src/core/run_refusals.def. The verdict does not depend on where this row sits in the cases TSV. A run_refuse row removed so that a code goes
+# unobserved makes this case guest_failure. The request and expect keys carry no data for this kind. Evidence tier E0 (repeatability and a literal).
+id = "run_refusal_coverage"
+kind = "run_refusal_coverage"
+fixture = "none"
+request = "all-run-refuse-rows"
+expect = "every-member-observed"
+meaning = "Every run refusal code of run_refusals.def is returned by at least one run_refuse row, so no code is declared and never exercised"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

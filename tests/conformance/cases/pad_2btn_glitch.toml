@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The glitch control of the two-button pad (plan 03-29; D-117, D-118, ER-4, ER-5, R-7): the same authored ROM as pad_2btn_correct runs against tests/conformance/inputs/pad_2btn_glitch.toml, the correct script with a press of one CPU cycle (12 master clocks at the low speed) in the middle of each gap between reads, at 90000, 280000 and 460000, each pulse
+# returning to the set of its phase.
+# No read of the guest lies inside a pulse (the reads sit near 37000, 228000, 415000 and 601000, read off the pad log of pad_2btn_correct), so the pulses must be invisible and all 12 checks pass exactly as with the correct script; a core that latched a press until the next read would show the pulse sets (II and SELECT, II and SELECT, RUN and UP) to the reads
+# of phases 2, 3 and 4 and fail checks 7 to 12.
+# The dev sink is attached and the pad-window records are written as pad_2btn_glitch.padlog.tsv beside the evidence text (an E0 runner artifact, D-118). The literals are ASSUMED LED-IO-0002 to LED-IO-0004 (E2 self-consistency, ER-5). The exact stamps at which a level changes are shown by input_exact_edges (at - 1, at, at + 1), not by this case.
+id = "pad_2btn_glitch"
+kind = "guest"
+fixture = "authored:pad-2btn"
+request = ""
+expect = "id=14;padlog"
+meaning = "With one-cycle presses between the guest's reads the authored pad_2btn fixture passes all 12 checks as with the correct script, so a press that no read overlaps is not seen"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 800000
+checks = 12
+input = "pad_2btn_glitch"

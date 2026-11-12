@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Fixture manifest entry (FIX-02, FIX-01, D-59 amended, D-123): one authored HuCard image of fixtures/src/ds_proto.s. The bytes are assembled in the gate by ca65 and ld65 and are
+# never committed. scripts/fixture-check compares size and sha256 below with the bytes scripts/fixture-build wrote, as hashed by the host sha tool, so a changed source, library or
+# toolchain output turns the gate red. The pin was measured on the Homebrew cc65 2.19 bottle (see fixtures/lib/TOOLS.md); it proves the build is repeatable, nothing more.
+id = "ds_proto_badsum"
+kind = "authored"
+source = "fixtures/src/ds_proto.s"
+recipe = "ds-proto-badsum: ca65 --cpu huc6280 -D ROMBANKS=32 -D DSV_BADSUM -I fixtures/lib -o build/gate/fx/ds-proto-badsum.o fixtures/src/ds_proto.s; ld65 -C fixtures/lib/hucard.cfg -D ROMBANKS=32 -o build/gate/fixtures/ds-proto-badsum.pce build/gate/fx/ds-proto-badsum.o"
+toolchain = "cc65 V2.19 (ca65 prints V2.18; identity by encoding-matrix bytes, plan 03-08), Homebrew bottle 2.19 locally, hashed by sha256sum or shasum -a 256"
+size = 262144
+sha256 = "e6e4e1bb4a9b8a2e4679737adc4df0911bdc397b5f1ac609213ef19e29d63ad7"
+licence = "0BSD"
+notices = "none: assembled at gate time from the project-owned sources fixtures/src/ds_proto.s and fixtures/lib/*.inc and hucard.cfg (0BSD); no HuC, PCEAS or cc65 library or startup code, no emulator code, no game content"
+redistribution = "generated-not-committed"
+meaning = "DSV1 protocol control: the same source with the switch DSV_BADSUM, which writes a wrong checksum low byte. The expected outcome is declared in tests/conformance/cases/ds_proto_badsum.toml from the fault the switch plants, never from DuoSpool output."
+verdict_source = "guest-computed"

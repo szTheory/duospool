@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The model parameter tma_zero set to bus_latch (plan 03-17; D-105, D-113, ER-8): the authored fixture fixtures/src/mmu_mpr.s runs with the run-request key model.tma_zero=bus_latch, applied by ds_model_set after the boot and before the first step.
+# The manual defines the TMA operand only as 2^i (S8-101), so TMA with the operand $00 is a modelling assumption (ASSUMED:LED-CPU-0015, status assumed). Checks 49, 59 and 60 are observe-only rows: the guest puts a byte in the one-byte latch (a TAM, a TMA, or a TAM #0 that must not),
+# loads A with a known byte, executes TMA #0 and stores the A it sees. Under bus_latch the instruction returns the latch: $F8 for check 49, $F9 for checks 59 and 60 (observe=49:248, 59:249, 60:249).
+# mmu_mpr_tma_zero_keep runs the same ROM under the other value and expects the A the guest loaded (90, 17, 34). The expected bytes come from the stated rule, never from a run. Evidence tier E0 and a labelled assumption: a pass says the core does what the parameter says, and nothing about the hardware.
+# Checks 61 to 65 are the power-up observe rows (plan 03-24; D-114, D-127): the guest reads MPR0 and MPR3 to MPR6 before it writes any mapping register and stores the bytes without comparing them,
+# so this case marks each observe=IDX:policy (recorded, compared with no value, exempt from the cross-policy equality that the default three-policy list of the guest kind applies).
+# mmu_mpr_policy_diff is the control that requires check 62 to differ between zero and the v2 seeds.
+id = "mmu_mpr_tma_zero_latch"
+kind = "guest"
+fixture = "authored:mmu-mpr"
+request = "model.tma_zero=bus_latch"
+expect = "id=8;observe=49:248;observe=59:249;observe=60:249;observe=61:policy;observe=62:policy;observe=63:policy;observe=64:policy;observe=65:policy"
+meaning = "With the model parameter tma_zero set to bus_latch, TMA with the operand $00 returns the one-byte latch that the last TAM or TMA left, and a TAM #0 does not change it"
+required = true
+control = false
+expect_outcome = "pass"
+pins = ["LED-CPU-0015"]
+until_mclk = 4000000
+checks = 65

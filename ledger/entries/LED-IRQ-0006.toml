@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# Sample stamp, ties, same-cycle acknowledge and same-step entry (D-111; CPU-03, CPU-05). Modelling choices where the manual says only "last bus cycle": not a hardware measurement. Constant row irq_sample_cycles_before_end (1; 1 or 2 by a static assert) in src/core/constants.def, read by src/core/cpu.c and printed with this id in the run record.
+# The sample stamp is the end of the instruction minus that many CPU cycles at the speed the instruction STARTED at (a CSL or CSH ends at its old speed). A timer borrow or a write to $1403 at exactly that stamp is seen by the sample (ties inclusive), and the entry runs in the same step, so no latch persists between steps (LED-CPU-0004).
+# Checks 31 to 33 of irq_ctl are E2 self-consistency (ER-3): they count instruction cycles with the community-reported 12 master clocks per low-speed cycle and the access stamp rule. A scratch edit of the constant to 2 turned irq_ctl_pre check 33 red (plan 03-23).
+# Page image read on 2026-11-11 by the plan 03-34 executor from a scratch copy of the hardware manual (sha256 40a32e5d..., never committed): H8-12.
+id = "LED-IRQ-0006"
+statement = "DuoSpool models the interrupt sample stamp as the end of the instruction minus one CPU cycle at the speed it started at (constant irq_sample_cycles_before_end 1), ties inclusive, so a write to $1403 or a timer borrow in that cycle takes effect before the sample, and the entry runs in the same step as the instruction. Modelling assumption."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|H8-12|gsd-executor image read 2026-11-11: inputs are sampled in the last bus cycle of one instruction; ties and a write in that cycle are not stated", "UNKNOWN|ties, same-cycle acknowledge, same-step entry|no page; the project own choice (D-111)", "REPORT|research/PITFALLS.md C5|MAME delays interrupts for a pending pipeline instruction; reports, not re-read"]
+evidence = ["E2|tests/conformance/cases/irq_ctl_pre.toml: checks 31 to 33 (write in the sample cycle absorbs the borrow, the tie is inclusive); self-consistency (ER-3)", "E0|tests/conformance/cases/irq_ctl_pre.toml: the whole fixture on the declared test stimulus, repeatability"]
+disagreement = "none recorded beyond LED-IRQ-0005: no page gives the stamp, the tie rule or the same-cycle acknowledge (H8-12 says last bus cycle only) and no emulator reading of them is recorded in this repository."
+pinning_test = "TEST:irq_ctl_pre"
+updated = "2026-11-11"
+assumption = "One stamp rule and one tie rule so that every guest check has one answer. A distinguishing observation would settle the 1 or 2 of the constant; none exists. The pin shows the core does what the rule says, not that hardware samples there."
+revisit_phase = 3
+withheld = ["any claim of hardware cycle accuracy", "any claim of interrupt latency in cycles", "any claim of game compatibility", "any TG-16 or region claim", "any claim that the sample stamp or the tie rule matches hardware"]
+origin = "03-CONTEXT D-111"

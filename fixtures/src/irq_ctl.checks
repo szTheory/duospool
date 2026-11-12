@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# irq_ctl.checks - one row per CHECK of fixtures/src/irq_ctl.s (D-125, plan 03-22). Columns separated by one TAB: check index (1-based, the entry number of the DCK1 table), slug, class tag, meaning.
+# Class tags: MAN:<page> (the literal is a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model> (the expected byte is computed in the guest, the table entry is an XOR mask of $00), ASSUMED:<LED-id>.
+# The interrupt registers are $1402 (disable, bit 0 IRQ2D, bit 1 IRQ1D, bit 2 TIQD) and $1403 (request, bit 0 IRQ2, bit 1 IRQ1, bit 2 TIQ). IRQ1 and IRQ2 are driven by a TEST stimulus that the case declares with the key irq_stim (events AT,LINE,LEVEL in master clocks, a pure function of time);
+# it is not evidence about the VDC or any other hardware source (ER-5, D-112): rows that depend on the shape of the declared stimulus are ASSUMED:LED-IRQ-0008, and the rows that follow a manual page state the controller facts of H8-12 to H8-16 and H8-18. LED-IRQ-0004, -0005, -0006 and -0008 are written by plan 03-34.
+# Window A is checks 5 to 15, B (IRQ2 and BRK) 16 to 21, C (all three sources) 22 to 28, D (the latency probe) 29 and 30 and E (the sample cycle and a write to $1403 in it, E2: it depends on the community-reported CPU cycle length and the access stamp rule, LED-CPU-0004) 31 to 33. Row 30 is observe-only (the fifth column, plan 03-10): the expected value legitimately differs by the model parameter irq_i_sample, so each case supplies it (observe=30:VALUE).
+# A pass is not a support claim (ER-4).
+id=11
+checks=33
+1	stim-low-before-first-event	ASSUMED:LED-IRQ-0008	No line is asserted before the first event of the declared stimulus: bits 0 and 1 of the request register read 0
+2	disable-reset-zero	MAN:H8-16	The disable register is 0 after the reset: bits 2 to 0 of $1402 read 0
+3	disable-rw-5	MAN:H8-16	The disable register reads back what was written: $05 gives IRQ2D and TIQD set, IRQ1D clear
+4	disable-three-bits	MAN:H8-16	Three bits are stored: a write of $FF reads back as 7 in the three register bits
+5	irq1-level-bit1	MAN:H8-15	Bit 1 of the request register is the IRQ1 level; IRQ2 (bit 0) and TIQ (bit 2) read 0 while only IRQ1 is asserted
+6	irq1-masked-by-i	MAN:H8-13	With I set the asserted IRQ1 is not taken: the handler did not run
+7	irq1-masked-by-irq1d	MAN:H8-16	IRQ1D = 1 disables the interrupt request at the IRQ1 pin: with I clear the handler did not run
+8	request-reads-level-while-disabled	MAN:H8-15	The request register shows the level of the pin whatever the disable bit says: bit 1 reads 1 while IRQ1D = 1
+9	irq1-taken	MAN:H8-13	The IRQ1 interrupt was taken once after the disable bit was cleared (the handler masks the line again, so there is no second entry)
+10	irq1-not-fff6	MAN:H8-13	The entry went through the IRQ1 vector $FFF8: the IRQ2 and BRK vector $FFF6 was not used
+11	pushed-status	MAN:H8-12	The entry pushed the status byte with B = 0 and the interrupted flags: D = 1 and I = 0 as the main program had them (mask $1C, B D I)
+12	handler-i-set-d-clear	MAN:H8-12	I is set and D is reset inside the handler (mask $0C, D I)
+13	handler-reads-irq1	MAN:H8-15	Bit 1 of the request register reads 1 inside the handler and bit 0 reads 0
+14	write-1403-keeps-level	MAN:H8-15	The IRQ1 level is an input and is not reset by a write to the request register: bit 1 still reads 1 inside the window
+15	stim-low-after-window	ASSUMED:LED-IRQ-0008	After the second event of the declared stimulus both lines read 0 again: the level is a pure function of time
+16	irq2-level-bit0	MAN:H8-15	Bit 0 of the request register is the IRQ2 level; IRQ1 (bit 1) and TIQ (bit 2) read 0 while only IRQ2 is asserted
+17	irq2-masked-by-irq2d	MAN:H8-16	IRQ2D = 1 disables the interrupt request at the IRQ2 pin: with I clear the handler did not run
+18	brk-and-irq2-share-fff6	MAN:H8-13	BRK and IRQ2 reach the same handler through $FFF6: it ran twice, once for a BRK executed with I set and once for the asserted IRQ2
+19	brk-pushes-b1	MAN:H8-5	The BRK entry pushed the status byte with B = 1
+20	irq2-pushes-b0	MAN:H8-5	The IRQ2 entry pushed the status byte with B = 0, so the shared handler can tell the two apart
+21	irq2-not-fff8	MAN:H8-13	IRQ2 does not use the IRQ1 vector $FFF8: the IRQ1 handler did not run
+22	all-three-read-together	MAN:H8-15	IRQ2, IRQ1 and TIQ read 1 together in bits 0, 1 and 2 of the request register
+23	write-clears-tiq-only	MAN:H8-15	A write to the request register resets TIQ only: bit 2 reads 0 and the two levels, which are inputs, still read 1
+24	borrow-sets-tiq-again	MAN:H8-15	The next timer borrow sets TIQ again after the write: the register reads 7
+25	one-entry-per-source	MAN:H8-13	Three entries, one per source: each handler masks or acknowledges its own source
+26	priority-timer-first	MAN:H8-13	The timer (log code $04) is taken first: the priority is timer, IRQ1, IRQ2
+27	priority-irq1-before-irq2	MAN:H8-13	IRQ1 (log code $01) is taken before IRQ2
+28	priority-irq2-last	MAN:H8-13	IRQ2 (log code $02) is taken last
+29	pending-irq1-taken-after-cli	MAN:H8-13	An IRQ1 that is pending when CLI executes is taken, once, under both values of irq_i_sample
+30	cli-latency-observe	ASSUMED:LED-IRQ-0005	The A register at the handler entry after CLI; $77 under irq_i_sample = pre (the entry follows the instruction after CLI), $00 under post (the entry follows CLI); each case supplies it (observe=30:VALUE)	observe
+31	ack-in-sample-cycle	ASSUMED:LED-IRQ-0006	E2: a write to $1403 in the cycle of the borrow (ties inclusive) takes effect before the sample: the borrow is absorbed and the timer handler did not run
+32	ack-in-sample-cycle-clears	ASSUMED:LED-IRQ-0006	E2: TIQ reads 0 after that write: the borrow was cleared, not delayed
+33	tie-inclusive-address	GUEST:tie-address	E2: the borrow is due at exactly the sample stamp of a NOP; the entry came right after that NOP and pushed the address of the label after it (ASSUMED:LED-IRQ-0006: a sample that excluded the tie would push the next address)

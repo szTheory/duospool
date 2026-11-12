@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The load, store, transfer and stack fixture (plan 03-11; D-99, D-125, D-127): the authored fixture fixtures/src/cpu_ldst.s is assembled by ca65 in the gate (never committed), boots on the core, runs to the absolute
+# deadline until_mclk (master clocks) and writes a DSV1 verdict block that the runner judges from raw RAM. The expected literals are in the literal table of fixtures/lib/check.inc and classed in fixtures/src/cpu_ldst.checks:
+# a manual page (MAN), an in-guest model (GUEST) or an assumed ledger entry (ASSUMED); none comes from DuoSpool output. The case has no policies key, so the guest kind runs the ROM under its default policy list (D-127).
+# Evidence tier E0, a mechanism check: no accuracy or compatibility claim, and the word pass is not a support claim.
+id = "cpu_ldst"
+kind = "guest"
+fixture = "authored:cpu-ldst"
+request = ""
+expect = "id=3"
+meaning = "The authored cpu_ldst fixture runs the load, store, transfer and stack instructions in their addressing modes and leaves a consistent DSV1 block whose check results are all pass"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+checks = 82

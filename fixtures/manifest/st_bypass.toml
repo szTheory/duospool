@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Fixture manifest entry (FIX-02, FIX-01, D-59 amended, D-123): one authored HuCard image of fixtures/src/st_bypass.s. The bytes are assembled in the gate by ca65 and ld65 and are
+# never committed. scripts/fixture-check compares size and sha256 below with the bytes scripts/fixture-build wrote, as hashed by the host sha tool, so a changed source, library or
+# toolchain output turns the gate red. The pin was measured on the Homebrew cc65 2.19 bottle (see fixtures/lib/TOOLS.md); it proves the build is repeatable, nothing more.
+id = "st_bypass"
+kind = "authored"
+source = "fixtures/src/st_bypass.s"
+recipe = "st-bypass: ca65 --cpu huc6280 -D ROMBANKS=32 -I fixtures/lib -o build/gate/fx/st-bypass.o fixtures/src/st_bypass.s; ld65 -C fixtures/lib/hucard.cfg -D ROMBANKS=32 -o build/gate/fixtures/st-bypass.pce build/gate/fx/st-bypass.o"
+toolchain = "cc65 V2.19 (ca65 prints V2.18; identity by encoding-matrix bytes, plan 03-08), Homebrew bottle 2.19 locally, hashed by sha256sum or shasum -a 256"
+size = 262144
+sha256 = "9b5f8b6db6145b3e1e48be4fa09c0956fdc0da074224b65d24dfcd4ae74fdaee"
+licence = "0BSD"
+notices = "none: assembled at gate time from the project-owned sources fixtures/src/st_bypass.s and fixtures/lib/*.inc and hucard.cfg (0BSD); no HuC, PCEAS or cc65 library or startup code, no emulator code, no game content"
+redistribution = "generated-not-committed"
+meaning = "Authored diagnostic HuCard of 256 KiB that executes ST0, ST1 and ST2 with distinct immediates in four settings of MPR0 (work RAM, a HuCard bank, a bank that maps nothing, the hardware page) and checks that no store reached the work RAM, five DSV1 checks. The device-register log of the twelve stores is judged by the runner kind st_bypass. A pass is not a support claim."
+verdict_source = "manual-cite:H8-8+manual-cite:S8-80+guest-computed+spec-literal:LED-CPU-0016"

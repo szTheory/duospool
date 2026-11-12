@@ -30,6 +30,12 @@ while [ $# -gt 0 ]; do
     *) break ;;
   esac
 done
+# an --expect that names no code would make a control assert nothing: with no violations got and want are both empty and the
+# control would pass vacuously (WR-05). Exit 2, never 0.
+if [ "$have_expect" -eq 1 ] && [ -z "$(printf '%s' "$expect" | tr -d ', \t\r\n')" ]; then
+  echo "HARNESS_EMPTY_EXPECT --expect names no code" >&2
+  exit 2
+fi
 [ $# -ge 1 ] || usage
 
 tmp=$(mktemp -d)
@@ -40,10 +46,25 @@ t2="$tmp/stage2"
 viol="$tmp/viol"
 : > "$raw"
 tab=$(printf '\t')
+nl=$(printf '\n.'); nl=${nl%.}
+
+# bad_name PATH : true when PATH holds a TAB or a newline. Those bytes are the record separators of the stream below, so a
+# name carrying one could pick its own record tag (a P record is dropped from the violations) and turn garbage into a pass
+# (CR-01). Such a path never reaches the stream; it is reported as BAD_FILENAME under a fixed placeholder.
+bad_name() {
+  case $1 in
+    *"$tab"* | *"$nl"*) return 0 ;;
+  esac
+  return 1
+}
 
 # check_file FILE : size gates, stage 1 into a temp file, stage 2 over that file, then resolve REF and DECISION records
 check_file() {
   f=$1
+  if bad_name "$f"; then
+    printf '%s\tBAD_FILENAME\t0\tpath contains TAB or newline\n' "<bad-filename>" >> "$raw"
+    return 0
+  fi
   size=$(wc -c < "$f" | tr -d ' ')
   if [ "$size" -eq 0 ]; then
     printf '%s\tEMPTY_FILE\t0\t\n' "$f" >> "$raw"

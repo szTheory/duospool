@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# ds_run refusal run.time_wrap (plan 03-35; D-93, F4, T-03-94): a deadline or machine time within one maximum step of 2^64.
+# The refusal carries 0 steps and overshoot 0, and the instance (raw bytes and digest) is the same before and after.
+#
+# The boot of the authored ds-proto has run past 600 master clocks first, so the instance is not at its boot state.
+# Variants: until = 2^64 - 1, until = 2^64 - guard, and machine time = 2^64 - guard with deadline 0 (guard = ds_max_step_mclk(), Pitfall 20).
+# The edge itself is accepted: until = 2^64 - 1 - guard with a stop that holds returns callback with 0 steps, and machine time = 2^64 - 1 - guard with deadline 0 returns until with 0 steps.
+# Evidence tier E0 (repeatability and a literal): the refusal names and the non-mutation rule are the specification of this plan, not a hardware claim.
+id = "run_refuse_time_wrap"
+kind = "run_refuse"
+fixture = "none"
+request = ""
+expect = "rom=ds-proto;refuse=time_wrap"
+meaning = "A ds_run request whose deadline or machine time is within one maximum step of 2^64 is refused as run.time_wrap and leaves the instance byte-identical, while the edge itself is accepted"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

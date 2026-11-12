@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Chunk invariance of the authored tim_timer fixture (plan 03-26; D-93, D-95, CORE-04, ER-7): the timer fixture, whose counter is a closed form of machine time (D-110) and whose interrupt is taken in the same step as the instruction it follows, is run in calls to the deadlines of seven schedules
+# (chunks key: 1, 7, 168 and 3072 master clocks, a fixed 357368, 3072k-1 and 3072k+1; the prescaler step of the timer is 3072 master clocks, so tick-1 and tick+1 end calls one clock either side of a borrow). Each schedule must end with the machine time, the step count, the verdict RAM, the digest
+# and the sequence of step boundaries (the stop sequence) of the uninterrupted run to the same absolute deadline past the guest's done state. A snapshot does not exist yet (plan 03-30), so equality is of outputs, machine time, stop sequence and digests. Evidence tier E0: the core compared with
+# itself (repeatability and consistency, ER-7); no accuracy, compatibility, cycle-accurate or hardware claim, and the word pass is not a support claim.
+id = "chunk_equiv_tim_timer"
+kind = "chunk_equiv"
+fixture = "authored:tim-timer"
+request = ""
+expect = "compare=verdict,machine_time,stops,digest"
+meaning = "The tim_timer fixture run in calls to the deadlines of seven chunk schedules, among them one clock either side of every prescaler step, ends with the machine time, step count, verdict RAM, stop sequence and digest of the uninterrupted run"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 800000
+chunks = "1,7,168,3072,frame,tick-1,tick+1"

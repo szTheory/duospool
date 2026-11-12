@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Toy control (D-85, D-122, D-131; plan 03-31; toy 8 of 8): a restore that drops the block transfer state, made from the live src/core/snapshot.c by scripts/control-mutate. The anchor is the one line of dec_blkt that stores the active flag of a block transfer into the instance; the replacement stores 0, so a machine restored from a snapshot taken inside a block transfer has
+# no transfer in progress (the other five BLKT members are stored as they were, which keeps the toy compiling and the stream valid; the restored machine does not move the remaining bytes). The plan named serial.c, the line that emits the BLKT payload; that line is shared with the digest, so a change there would change every digest and golden and not only the restore: the live serial.c
+# is untouched and the snapshot of the toy is still the digest stream. The cases in EXPECT must come out guest_failure on the toy: snapshot_restore_block restores inside the 65536-byte transfer of cpu_blk_len0 (after the prologue, in the middle, with no byte left), where the raw member compare names blk_active and the lockstep leaves the uninterrupted run;
+# snapshot_hostile restores a machine inside a block transfer, whose BLKT bytes are live, so an accepted input no longer re-serialises to itself; chunk_equiv_random32 restores at drawn stops of the random programs, 20 of which are inside a transfer. The real core passes them (REQUIRED cases). The EXPECT run reads only the cases named there.
+tag=rule-snapshot-drop-blkt
+file=src/core/snapshot.c
+anchor=inst->blk_active = active;
+replace=inst->blk_active = 0u;

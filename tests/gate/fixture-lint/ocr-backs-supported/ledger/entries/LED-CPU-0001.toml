@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# fixture-lint control mini-root ledger: one supported entry that names the page S8-7 in a FACT source; only the id, status and sources lines are read
+id = "LED-CPU-0001"
+status = "supported"
+sources = ["FACT|S8-7|control row, the page the check cites"]

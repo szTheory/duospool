@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# DSV1 protocol control (plan 03-05, D-124, D-95; the reading of D-124 recorded in plan 03-01): the variant never writes the done state, so the block stays in the running state and the judge gives timeout at the deadline.
+# The ROM is one of the variants of fixtures/src/ds_proto.s that scripts/fixture-build assembles in the gate (never committed). The case passes only when the judge gives exactly the
+# declared outcome and reason, so a judge that missed the fault would turn the case red. Evidence tier E0 (repeatability and a mechanism check of the verdict judge): no accuracy,
+# compatibility or hardware claim, and the word pass here means the declared fault was caught.
+id = "ds_proto_nodone"
+kind = "guest"
+fixture = "authored:ds-proto-nodone"
+request = ""
+expect = "id=1;verdict=timeout:deadline"
+meaning = "A guest that never writes the done state is caught: the run ends at until_mclk with the block still running and the judge gives timeout"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+checks = 8

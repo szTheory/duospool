@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Toy control (D-85, D-131): a core whose binary add drops the carry in, made from the live src/core/cpu.c by scripts/control-mutate. The anchor is the one live line of add_binary that forms the 9-bit sum a + m + C
+# (ADC and, through the complemented operand, SBC both use it); the replacement leaves C out of the sum, the plausible bug of an adder that forgets the carry. The case in EXPECT must come out guest_failure on the toy,
+# or the cpu_alu fixture cannot see a carry bug: its literal checks with C set and its in-guest adder model over sums with C set differ from such a core.
+tag=rule-adc-carry
+file=src/core/cpu.c
+anchor=uint32_t sum = a + m + ((uint32_t)inst->p & P_C);
+replace=uint32_t sum = a + m;

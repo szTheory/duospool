@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: the request binds vdc_count, a field the profile owner selected and the run request may not bind. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_bind_closed"
+kind = "refuse"
+fixture = "plain-256k"
+request = "bind.vdc_count=2"
+expect = "load.bind_closed_field;field=vdc_count"
+meaning = "A request that binds the owner-selected field vdc_count is refused as load.bind_closed_field naming that field, even though the field exists, and no instance is created"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

@@ -1,0 +1,147 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# record-lint - structure and hygiene checker for run records (D-53, D-55, D-69). A record is the canonical text of one run: an accept record
+# (record, core, profile, 13 field tables, withheld, content, power_on, the model tables, constants, run, limits, machine) or a refusal record (record, core, refusal). This
+# check enforces shape and host-independence, not truth: a clean record is not evidence that the machine behaved correctly.
+# usage: record-lint [--expect CODE[,CODE...]] FILE|DIR...
+#   A DIR stands for every *.toml file directly inside it (a directory without one is a harness error). Stage 1 is scripts/lib/toml-subset.awk
+#   unchanged (records parse with it as they are, comment lines included, which is how a golden's header passes); stage 2 is
+#   scripts/lib/record-rules.awk. The 13 field names are cut out of scripts/lib/profile-rules.awk, so the list has one source.
+#   Codes: REC_TABLES REC_FIELDS REC_PATH REC_POINTER REC_TIMESTAMP, the codes of toml-subset.awk, EMPTY_FILE, FILE_TOO_BIG, BAD_FILENAME,
+#   NO_SENTINEL and STAGE2_DEAD (stage 2 printed nothing: a dead checker is never a pass).
+# stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then on a clean run the marker line  STATUS record-lint ok n=N
+# stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
+# exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error
+set -eu
+LC_ALL=C; export LC_ALL
+here=$(cd "$(dirname "$0")" && pwd)
+
+usage() {
+  echo "usage: record-lint [--expect CODE[,CODE...]] FILE|DIR..." >&2
+  exit 2
+}
+
+expect=""
+have_expect=0
+while [ $# -gt 0 ]; do
+  case $1 in
+    --expect) [ $# -ge 2 ] || usage; expect=$2; have_expect=1; shift 2 ;;
+    --) shift; break ;;
+    -*) usage ;;
+    *) break ;;
+  esac
+done
+# an --expect that names no code would make a control assert nothing: with no violations got and want are both empty and the
+# control would pass vacuously (WR-05). Exit 2, never 0.
+if [ "$have_expect" -eq 1 ] && [ -z "$(printf '%s' "$expect" | tr -d ', \t\r\n')" ]; then
+  echo "HARNESS_EMPTY_EXPECT --expect names no code" >&2
+  exit 2
+fi
+[ $# -ge 1 ] || usage
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+raw="$tmp/raw"        # FILE<TAB>CODE<TAB>LINE<TAB>DETAIL violations, plus  FILE<TAB>P<TAB>1  per record read
+t1="$tmp/stage1"
+t2="$tmp/stage2"
+viol="$tmp/viol"
+: > "$raw"
+tab=$(printf '\t')
+nl=$(printf '\n.'); nl=${nl%.}
+
+# the 13 field names, one source: the list that scripts/lib/profile-rules.awk checks profile records against
+rec_fields=$(sed -n 's/^.*split("\([a-z0-9_ ]*\)", fl, " ").*$/\1/p' "$here/lib/profile-rules.awk")
+if [ "$(printf '%s\n' "$rec_fields" | tr ' ' '\n' | sed -n '$=')" != 13 ]; then
+  echo "HARNESS_ERROR the field list of scripts/lib/profile-rules.awk did not give exactly 13 names" >&2
+  exit 2
+fi
+export rec_fields
+
+# bad_name PATH : true when PATH holds a TAB or a newline, the record separators of the stream below (CR-01)
+bad_name() {
+  case $1 in
+    *"$tab"* | *"$nl"*) return 0 ;;
+  esac
+  return 1
+}
+
+# check_file FILE : size gates, stage 1 into a temp file, then stage 2 over that file
+check_file() {
+  f=$1
+  if bad_name "$f"; then
+    printf '%s\tBAD_FILENAME\t0\tpath contains TAB or newline\n' "<bad-filename>" >> "$raw"
+    return 0
+  fi
+  size=$(wc -c < "$f" | tr -d ' ')
+  if [ "$size" -eq 0 ]; then
+    printf '%s\tEMPTY_FILE\t0\t\n' "$f" >> "$raw"
+    return 0
+  fi
+  if [ "$size" -gt 16384 ]; then
+    printf '%s\tFILE_TOO_BIG\t0\t%s bytes\n' "$f" "$size" >> "$raw"
+    return 0
+  fi
+  # no pipeline: a failing stage 1 must not read as "no violations"
+  awk -f "$here/lib/toml-subset.awk" "$f" > "$t1" 2> /dev/null || : > "$t1"
+  # stage 2 always prints at least one record; an empty or failed stage 2 is a dead checker, not a pass
+  if awk -f "$here/lib/record-rules.awk" "$t1" > "$t2" 2> /dev/null && [ -s "$t2" ]; then :; else
+    printf '%s\tSTAGE2_DEAD\t0\t\n' "$f" >> "$raw"
+    return 0
+  fi
+  while IFS="$tab" read -r tag a b c; do
+    case $tag in
+      V) printf '%s\t%s\t%s\t%s\n' "$f" "$a" "$b" "$c" >> "$raw" ;;
+      P) printf '%s\tP\t%s\t\n' "$f" "$a" >> "$raw" ;;
+      *) printf '%s\tSTAGE2_DEAD\t0\tunknown record %s\n' "$f" "$tag" >> "$raw" ;;
+    esac
+  done < "$t2"
+  return 0
+}
+
+for p in "$@"; do
+  if [ -d "$p" ]; then
+    n_in=0
+    for f in "$p"/*.toml; do
+      [ -f "$f" ] || continue
+      n_in=$((n_in + 1))
+      check_file "$f"
+    done
+    if [ "$n_in" -eq 0 ]; then
+      echo "HARNESS_NO_RECORDS $p holds no .toml file" >&2
+      exit 2
+    fi
+  elif [ -f "$p" ]; then
+    check_file "$p"
+  else
+    echo "HARNESS_NO_FILE $p" >&2
+    exit 2
+  fi
+done
+
+# violations: everything but the P records, sorted and de-duplicated. No pipeline has awk on its left (CR-01): a filter that dies must not
+# read as "no violations", so awk writes a file, its status is tested, and only then does sort read it.
+awk 'BEGIN { FS = "\t" } $2 != "P"' "$raw" > "$tmp/viol.raw" || { echo "HARNESS_AWK failed (violation filter)" >&2; exit 2; }
+sort -u "$tmp/viol.raw" > "$viol"
+nrec=$(awk 'BEGIN { FS = "\t" } $2 == "P" { n++ } END { print n + 0 }' "$raw")
+
+if [ "$have_expect" -eq 1 ]; then
+  awk -F'\t' '{ print $2 }' "$viol" > "$tmp/codes.raw" || { echo "HARNESS_AWK failed (code list)" >&2; exit 2; }
+  got=$(sort -u "$tmp/codes.raw" | tr '\n' ',' | sed 's/,$//')
+  want=$(printf '%s\n' "$expect" | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/,$//')
+  if [ "$got" = "$want" ]; then
+    echo "EXPECT_OK"
+    exit 0
+  fi
+  echo "EXPECT_MISMATCH wanted '$want' got '${got:-<none>}'" >&2
+  cat "$viol" >&2
+  exit 1
+fi
+
+cat "$viol"
+if [ -s "$viol" ]; then
+  exit 1
+fi
+echo "STATUS record-lint ok n=$nrec"
+exit 0

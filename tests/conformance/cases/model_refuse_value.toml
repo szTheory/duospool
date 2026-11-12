@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# ds_model_set refusal model.value_not_allowed (plan 03-17; D-113, F4, T-03-47): a value that is NULL, empty, a prefix, an extension or another case of an allowed value, two values joined by a vertical bar, padded with a space, or a number.
+# Every variant must return the code, write nothing (the whole instance, raw bytes and digest, is byte-identical afterwards) and leave the selected value where it was. The authored ds-proto is booted first; the model codes are their own set and print as model.NAME, never load.NAME or run.NAME.
+# Evidence tier E0 (a mechanism check of a setter against the closed refusal set of src/core/model_refusals.def): the refusal names and the order of the checks are the specification of this plan, not a hardware claim.
+id = "model_refuse_value"
+kind = "model_refuse"
+fixture = "none"
+request = ""
+expect = "rom=ds-proto;refuse=value_not_allowed"
+meaning = "A value that is NULL or not exactly one allowed value of the parameter is refused as model.value_not_allowed and leaves the instance byte-identical"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

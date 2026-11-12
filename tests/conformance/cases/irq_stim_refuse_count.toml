@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Stimulus refusal row (plan 03-22; D-112, T-03-60, F4): the declared IRQ1 and IRQ2 test stimulus is validated by the core when the runner gives it over (ds_irq_stim_set, before the first step), so a bad list is refused with a typed code of src/core/stim_refusals.def and the
+# instance is left byte-identical. This row is a list of 17 events, one more than the maximum of 16 (D-112). The kind is guest with the expect item refused=stim.NAME: the built image of irq_ctl is booted, a valid list is first proven accepted and cleared (a core that refused everything must fail), then the list below must come back as exactly the named
+# code, and the guest is never run. The stimulus is a test hook, not evidence about the VDC or any hardware source (ER-5, ASSUMED LED-IRQ-0008). Evidence tier E0. The deferred case irq_stim_refusal_coverage checks that every code of the .def is observed by a row.
+id = "irq_stim_refuse_count"
+kind = "guest"
+fixture = "authored:irq-ctl"
+request = ""
+expect = "id=11;refused=stim.count"
+meaning = "An irq_stim list of 17 events, one more than the maximum of 16, is refused as stim.count before the first step, with the instance unchanged; a NULL list with a count too"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 600
+checks = 15
+irq_stim = ["1000,1,1", "2000,1,0", "3000,1,1", "4000,1,0", "5000,1,1", "6000,1,0", "7000,1,1", "8000,1,0", "9000,1,1", "10000,1,0", "11000,1,1", "12000,1,0", "13000,1,1", "14000,1,0", "15000,1,1", "16000,1,0", "17000,1,1"]

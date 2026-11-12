@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The cases that are deliberately not run in one build mode (D-78): rows are MODE ID. In the sanitize mode the sanitizer runtime owns the
+# allocator, so the allocation-counting shim cannot work and the two alloc_zero cases cannot run there. The set is exact: a listed
+# id must be REQUIRED and must pass in the gate mode, and must not run in the mode it is excluded from; an exclusion that is not
+# listed here is a missing required result and fails. The exclusion is logged as EXCLUDED_IN_MODE and is never counted as a skip.
+# Add a row here only in the same change that makes the case impossible in that mode, with the reason in this comment.
+sanitize alloc_shim_selfcheck
+sanitize alloc_zero_matrix

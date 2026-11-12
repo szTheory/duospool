@@ -1,0 +1,5 @@
+/* SPDX-License-Identifier: MIT OR Apache-2.0 */
+/* SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors */
+/* an inventory control mini-root (WR-03): the rows are indented and one names LED-CPU-9999, which does not exist; a stage that only saw rows at the start of a line would print no violation */
+  DS_CONST(known_constant, 1, "LED-PROF-0001")
+	DS_CONST (orphan_constant, 2, "LED-CPU-9999")

@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# xasm-check control mini-root: BRK (opcode 00, the row WLA-DX encodes differently, WR-05) first, then LDA immediate; the optional WLA cross-check controls of scripts/check run this root with shim tools
+00	BRK	IMPLIED	1	8	--0101--	H8-25+S8-30+S8-7
+A9	LDA	IMM	2	2	N-0---Z-	H8-25+S8-53+S8-8

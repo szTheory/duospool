@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# fixture-lint control mini-root: a ledger entry whose file is not named LED-*.toml; inventory-check reads every *.toml, so fixture-lint must see it too (IN-04)
+id = "LED-CPU-0001"
+status = "assumed"

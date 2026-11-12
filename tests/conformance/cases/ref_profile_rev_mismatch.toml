@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: the request names revision 2 of a profile whose only revision is 1. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_profile_rev_mismatch"
+kind = "refuse"
+fixture = "plain-256k"
+request = "rev=2"
+expect = "load.rev_mismatch"
+meaning = "A request naming profile revision 2 of pce-hucard-2btn is refused as load.rev_mismatch and no instance is created"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Deferred coverage row of the stimulus refusals (plan 03-22; D-86 pattern, F4): evaluated after every other case of the run, it requires that every code of src/core/stim_refusals.def was returned by at least one refused=stim.NAME row, that every name prints as stim.NAME and that the
+# maximum of the declared stimulus is the 16 events of D-112. A refusal code added to the .def without a row that observes it turns this case red. Evidence tier E0.
+id = "irq_stim_refusal_coverage"
+kind = "stim_refusal_coverage"
+fixture = "none"
+request = "all-stim-refuse-rows"
+expect = "every-member-observed"
+meaning = "Every stimulus refusal code of stim_refusals.def is returned by at least one irq_stim_refuse row, with the instance unchanged, and the declared stimulus holds at most 16 events"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

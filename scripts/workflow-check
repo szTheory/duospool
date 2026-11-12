@@ -1,0 +1,160 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# workflow-check - static check of the CI definition (CI-01, D-61, D-62, record 0006). It reads files; it never touches a network and
+# never runs a workflow. The shape it enforces is the least-privilege, pinned one: a rule that is not a gate property would be lost the
+# first time someone adds a secret, a mutable tag or an injectable expression.
+# usage: workflow-check [--expect CODE[,CODE...]] [--root DIR]      (--root defaults to the repository root; it reads ROOT/.github)
+#   Every ROOT/.github/workflows/*.yml and *.yaml goes through the restricted line checker scripts/lib/workflow-rules.awk (its header lists
+#   the accepted YAML subset and the rules). The file gate.yml must exist and carry the gate step. Codes (one rule each):
+#     WF_NO_PERMISSIONS        no top-level permissions block
+#     WF_EXCESS_PERMISSION     any permission other than contents: read, at any level, or permissions given as a scalar
+#     WF_UNPINNED_ACTION       a uses value whose ref is not a full 40-character lowercase hex commit
+#     WF_UNEXPECTED_ACTION     a uses value that is not actions/checkout
+#     WF_FORBIDDEN_TRIGGER     a pull_request_target or workflow_run trigger
+#     WF_MISSING_FETCH_DEPTH   the checkout step lacks fetch-depth: 0 (or there is no checkout step)
+#     WF_PERSIST_CREDENTIALS   the checkout step lacks persist-credentials: false
+#     WF_SHELL                 defaults.run.shell is not sh -eu {0}, or a shell key says otherwise
+#     WF_RUNNER                runs-on is not ubuntu-24.04
+#     WF_NO_GATE_STEP          gate.yml is missing, or has no step named Gate whose run is exactly: sh scripts/check
+#     WF_NO_CC65_STEP          no step before the Gate step runs an apt-get install command that names cc65 (the fixture assembler, D-60)
+#     WF_TEMPLATE              ROOT/.github/pull_request_template.md lacks the record 0007 line (grep -qxF, a whole line)
+#     WF_EXPR_IN_RUN           an expression opener inside a run value or run block (pass it through env, D-62)
+#     WF_UNTRUSTED_EXPR        an expression outside the allowlist: github.event.pull_request.base.sha, github.event_name, github.workflow,
+#                              github.ref, github.sha (and one of those compared with == to a quoted word)
+#     WF_FORBIDDEN_KEY         a secrets reference, self-hosted, a continue-on-error key, or || true / || : in a run block
+#     WF_CONCURRENCY           the top-level concurrency block lacks the exact group or the exact cancel-in-progress expression (D-62)
+#     WF_DEPENDABOT            ROOT/.github/dependabot.yml is missing or lacks version 2, the github-actions ecosystem, monthly, or the group
+#     WF_UNPARSABLE            YAML outside the accepted subset: printed, then exit 2 (a file the checker cannot read is never a pass,
+#                              and an --expect cannot name it)
+# stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then (clean) a line  WORKFLOWS n  and  STATUS workflow ok
+# stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
+# exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error, or WF_UNPARSABLE
+set -eu
+LC_ALL=C; export LC_ALL
+here=$(cd "$(dirname "$0")" && pwd)
+
+usage() {
+  echo "usage: workflow-check [--expect CODE[,CODE...]] [--root DIR]" >&2
+  exit 2
+}
+
+expect=""
+have_expect=0
+root=$(cd "$here/.." && pwd)
+while [ $# -gt 0 ]; do
+  case $1 in
+    --expect) [ $# -ge 2 ] || usage; expect=$2; have_expect=1; shift 2 ;;
+    --root) [ $# -ge 2 ] || usage; root=$2; shift 2 ;;
+    *) usage ;;
+  esac
+done
+# an --expect that names no code would make a control assert nothing (WR-05): exit 2, never 0
+if [ "$have_expect" -eq 1 ] && [ -z "$(printf '%s' "$expect" | tr -d ', \t\r\n')" ]; then
+  echo "HARNESS_EMPTY_EXPECT --expect names no code" >&2
+  exit 2
+fi
+if [ ! -d "$root" ]; then
+  echo "HARNESS_NO_FILE $root" >&2
+  exit 2
+fi
+root=$(cd "$root" && pwd)
+wfdir="$root/.github/workflows"
+[ -d "$wfdir" ] || { echo "HARNESS_NO_FILE .github/workflows" >&2; exit 2; }
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+tab=$(printf '\t')
+nl=$(printf '\n.'); nl=${nl%.}
+viol0="$tmp/viol0"
+viol="$tmp/viol"
+: > "$viol0"
+
+addv() { printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" >> "$viol0"; }
+
+# ---- the workflow files: restricted line checker per file ----
+nfiles=0
+for f in "$wfdir"/*.yml "$wfdir"/*.yaml; do
+  [ -f "$f" ] || continue
+  base=$(basename "$f")
+  rel=".github/workflows/$base"
+  case $base in
+    *"$tab"* | *"$nl"*)
+      addv "<bad-filename>" WF_UNPARSABLE 0 "file name holds a TAB or a newline"
+      continue
+      ;;
+  esac
+  nfiles=$((nfiles + 1))
+  size=$(wc -c < "$f" | tr -d ' ')
+  if [ "$size" -eq 0 ] || [ "$size" -gt 16384 ]; then
+    addv "$rel" WF_UNPARSABLE 0 "file is empty or above 16384 bytes"
+    continue
+  fi
+  needgate=0
+  [ "$base" = "gate.yml" ] && needgate=1
+  # no pipeline: a failing awk must not read as no violations
+  if awk -v needgate="$needgate" -f "$here/lib/workflow-rules.awk" "$f" > "$tmp/s2" 2> /dev/null; then :; else
+    echo "HARNESS_AWK_FAILED $rel" >&2
+    exit 2
+  fi
+  # the E record is printed last by every complete run; no E record means the rules did not finish
+  nend=$(awk -F'\t' '$1 == "E" { n++ } END { print n + 0 }' "$tmp/s2")
+  if [ "$nend" -ne 1 ]; then
+    echo "HARNESS_STAGE_DEAD $rel" >&2
+    exit 2
+  fi
+  rel="$rel" viol0="$viol0" awk 'BEGIN { FS = "\t"; rel = ENVIRON["rel"]; vf = ENVIRON["viol0"] }
+    $1 == "V" { printf "%s\t%s\t%s\t%s\n", rel, $2, $3, $4 >> vf }' "$tmp/s2" || { echo "HARNESS_AWK failed (records of $rel)" >&2; exit 2; }
+done
+[ -f "$wfdir/gate.yml" ] || addv ".github/workflows/gate.yml" WF_NO_GATE_STEP 0 "gate.yml is missing"
+
+# ---- the pull-request template carries the record 0007 line, as a whole line (D-62) ----
+tpl="$root/.github/pull_request_template.md"
+tpl_line='PR checklist: No code copied from another project without a Provenance marker and a PROVENANCE.md entry.'
+if [ ! -f "$tpl" ]; then
+  addv ".github/pull_request_template.md" WF_TEMPLATE 0 "file is missing"
+elif grep -qxF "$tpl_line" "$tpl"; then :; else
+  addv ".github/pull_request_template.md" WF_TEMPLATE 0 "the record 0007 checklist line is missing"
+fi
+
+# ---- the dependabot file: version 2, the github-actions ecosystem, monthly, one group (D-62) ----
+dep="$root/.github/dependabot.yml"
+if [ ! -f "$dep" ]; then
+  addv ".github/dependabot.yml" WF_DEPENDABOT 0 "file is missing"
+else
+  for dl in 'version: 2' '  - package-ecosystem: github-actions' '      interval: monthly' '    groups:'; do
+    if grep -qxF "$dl" "$dep"; then :; else
+      addv ".github/dependabot.yml" WF_DEPENDABOT 0 "line missing: $dl"
+    fi
+  done
+fi
+
+sort -u "$viol0" > "$viol"
+
+# an unreadable file is a harness error whatever --expect says
+if awk -F'\t' '$2 == "WF_UNPARSABLE" { f = 1 } END { exit !f }' "$viol"; then
+  cat "$viol"
+  echo "HARNESS_UNPARSABLE a workflow file is outside the accepted YAML subset" >&2
+  exit 2
+fi
+
+if [ "$have_expect" -eq 1 ]; then
+  got=$(awk -F'\t' '{ print $2 }' "$viol" | sort -u | tr '\n' ',' | sed 's/,$//')
+  want=$(printf '%s\n' "$expect" | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/,$//')
+  if [ "$got" = "$want" ]; then
+    echo "EXPECT_OK"
+    exit 0
+  fi
+  echo "EXPECT_MISMATCH wanted '$want' got '${got:-<none>}'" >&2
+  cat "$viol" >&2
+  exit 1
+fi
+
+cat "$viol"
+if [ -s "$viol" ]; then
+  exit 1
+fi
+echo "WORKFLOWS $nfiles"
+echo "STATUS workflow ok"
+exit 0

@@ -1,0 +1,85 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# cpu_huc.checks - one row per CHECK of fixtures/src/cpu_huc.s (D-125, plan 03-14). Columns separated by one TAB: check index (1-based, the entry number of the DCK1 table), slug, class tag, meaning.
+# Class tags: MAN:<page> (the literal is a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model> (the expected byte is computed in the guest from a value the guest wrote itself, the table entry is an XOR mask of $00),
+# ASSUMED:<LED-id> (the literal is DuoSpool's own model, an assumption; the ledger entry is written in plan 03-15).
+# P is read through PHP, PLA and a mask: B and T are not part of the literal. No row asserts a cycle count, the speed-switch timing or the VDC penalty (plans 03-16, 03-21, 03-23). A pass is not a support claim (ER-4).
+id=6
+checks=76
+1	sxy-x	MAN:S8-87	SXY exchanges X and Y: X = $12 and Y = $34 before, X reads $34 after (S8-87)
+2	sxy-y	MAN:S8-87	SXY exchanges X and Y: X = $12 and Y = $34 before, Y reads $12 after (S8-87)
+3	sax-a	MAN:S8-72	SAX exchanges A and X: A = $56 and X = $78 before, A reads $78 after (S8-72)
+4	sax-x	MAN:S8-72	SAX exchanges A and X: A = $56 and X = $78 before, X reads $56 after (S8-72)
+5	say-a	MAN:S8-73	SAY exchanges A and Y: A = $9A and Y = $BC before, A reads $BC after (S8-73)
+6	say-y	MAN:S8-73	SAY exchanges A and Y: A = $9A and Y = $BC before, Y reads $9A after (S8-73)
+7	swaps-keep-flags-set	MAN:S8-87	SXY, SAX and SAY change no flag (flag rows of S8-72, S8-73, S8-87 are T = 0 and dashes): P = N V Z C set, positive non-zero registers, the masked P byte stays $C3
+8	swaps-keep-flags-clear	MAN:S8-87	SXY, SAX and SAY change no flag: P = N V Z C clear, registers that would set N and Z ($80, $00, $FF), the masked P byte stays $00
+9	cla	MAN:S8-34	CLA sets A to $00: A = $FF before (S8-34)
+10	clx	MAN:S8-39	CLX sets X to $00: X = $FF before (S8-39)
+11	cly	MAN:S8-40	CLY sets Y to $00: Y = $FF before (S8-40)
+12	cla-keep-flags	MAN:S8-34	CLA changes no flag (S8-34): P = N V C set and Z clear, the masked P byte stays $C1 (a core that set Z for the zero result reads $C3)
+13	clx-keep-flags	MAN:S8-39	CLX changes no flag (S8-39): P = N V C set and Z clear, the masked P byte stays $C1
+14	cly-keep-flags	MAN:S8-40	CLY changes no flag (S8-40): P = N V C set and Z clear, the masked P byte stays $C1
+15	rmb0	MAN:S8-67	RMB0 clears bit 0 of the zero-page cell: the cell $FF gives $FE (S8-67)
+16	rmb1	MAN:S8-67	RMB1 clears bit 1 of the zero-page cell: the cell $FF gives $FD (S8-67)
+17	rmb2	MAN:S8-67	RMB2 clears bit 2 of the zero-page cell: the cell $FF gives $FB (S8-67)
+18	rmb3	MAN:S8-67	RMB3 clears bit 3 of the zero-page cell: the cell $FF gives $F7 (S8-67)
+19	rmb4	MAN:S8-67	RMB4 clears bit 4 of the zero-page cell: the cell $FF gives $EF (S8-67)
+20	rmb5	MAN:S8-67	RMB5 clears bit 5 of the zero-page cell: the cell $FF gives $DF (S8-67)
+21	rmb6	MAN:S8-67	RMB6 clears bit 6 of the zero-page cell: the cell $FF gives $BF (S8-67)
+22	rmb7	MAN:S8-67	RMB7 clears bit 7 of the zero-page cell: the cell $FF gives $7F (S8-67)
+23	smb0	MAN:S8-79	SMB0 sets bit 0 of the zero-page cell: the cell $00 gives $01 (S8-79)
+24	smb1	MAN:S8-79	SMB1 sets bit 1 of the zero-page cell: the cell $00 gives $02 (S8-79)
+25	smb2	MAN:S8-79	SMB2 sets bit 2 of the zero-page cell: the cell $00 gives $04 (S8-79)
+26	smb3	MAN:S8-79	SMB3 sets bit 3 of the zero-page cell: the cell $00 gives $08 (S8-79)
+27	smb4	MAN:S8-79	SMB4 sets bit 4 of the zero-page cell: the cell $00 gives $10 (S8-79)
+28	smb5	MAN:S8-79	SMB5 sets bit 5 of the zero-page cell: the cell $00 gives $20 (S8-79)
+29	smb6	MAN:S8-79	SMB6 sets bit 6 of the zero-page cell: the cell $00 gives $40 (S8-79)
+30	smb7	MAN:S8-79	SMB7 sets bit 7 of the zero-page cell: the cell $00 gives $80 (S8-79)
+31	rmb-keep-flags	MAN:S8-67	RMB changes no flag (S8-67): the cell $01 gives a zero result with P = N V C set and Z clear, the masked P byte stays $C1 (a core that set Z reads $C3)
+32	smb-keep-flags	MAN:S8-79	SMB changes no flag (S8-79): the cell $00 gives a negative result with P = V and C set and N and Z clear, the masked P byte stays $41 (a core that set N reads $C1)
+33	rmb-neighbours	MAN:S8-67	RMB changes only its own zero-page cell (S8-67): the cells before and after it hold $5A and $3C and read $5A EOR $3C = $66 after RMB2 on the cell between them
+34	smb-neighbours	MAN:S8-79	SMB changes only its own zero-page cell (S8-79): the cells before and after it hold $5A and $3C and read $66 after SMB5 on the cell between them
+35	tma-mpr7-reset	MAN:H8-8	A reset sets MPR7 to $00 (H8-8, H8-18): TMA with the operand $80 (S8-101) reads $00 into A, which held $FF
+36	tma-mpr0	MAN:S8-101	TMA with the one-hot operand $01 reads MPR0 into A (S8-101): after TAM wrote the seven distinct values $F8 $FB $FA $33 $44 $55 $66 to MPR0 to MPR6 (S8-90) it reads $F8
+37	tma-mpr1	MAN:S8-101	TMA with the one-hot operand $02 reads MPR1 into A (S8-101): after TAM wrote the seven distinct values $F8 $FB $FA $33 $44 $55 $66 to MPR0 to MPR6 (S8-90) it reads $FB
+38	tma-mpr2	MAN:S8-101	TMA with the one-hot operand $04 reads MPR2 into A (S8-101): after TAM wrote the seven distinct values $F8 $FB $FA $33 $44 $55 $66 to MPR0 to MPR6 (S8-90) it reads $FA
+39	tma-mpr3	MAN:S8-101	TMA with the one-hot operand $08 reads MPR3 into A (S8-101): after TAM wrote the seven distinct values $F8 $FB $FA $33 $44 $55 $66 to MPR0 to MPR6 (S8-90) it reads $33
+40	tma-mpr4	MAN:S8-101	TMA with the one-hot operand $10 reads MPR4 into A (S8-101): after TAM wrote the seven distinct values $F8 $FB $FA $33 $44 $55 $66 to MPR0 to MPR6 (S8-90) it reads $44
+41	tma-mpr5	MAN:S8-101	TMA with the one-hot operand $20 reads MPR5 into A (S8-101): after TAM wrote the seven distinct values $F8 $FB $FA $33 $44 $55 $66 to MPR0 to MPR6 (S8-90) it reads $55
+42	tma-mpr6	MAN:S8-101	TMA with the one-hot operand $40 reads MPR6 into A (S8-101): after TAM wrote the seven distinct values $F8 $FB $FA $33 $44 $55 $66 to MPR0 to MPR6 (S8-90) it reads $66
+43	tam-xlate-mpr0	MAN:S8-90	TAM with the operand $01 loads MPR0 (S8-90): MPR0 = $F8 maps logical $0000 to work RAM, so a read there returns the marker $A7 written at $2000
+44	tam-xlate-mpr3	MAN:S8-90	TAM with the operand $08 loads MPR3 (S8-90): MPR3 = $F8 maps logical $6000 to work RAM, so a read there returns the marker $A7
+45	tam-xlate-mpr4	MAN:S8-90	TAM with the operand $10 loads MPR4 (S8-90): MPR4 = $F8 maps logical $8000 to work RAM, so a read there returns the marker $A7
+46	tam-xlate-mpr5	MAN:S8-90	TAM with the operand $20 loads MPR5 (S8-90): MPR5 = $F8 maps logical $A000 to work RAM, so a read there returns the marker $A7
+47	tam-xlate-mpr6	MAN:S8-90	TAM with the operand $40 loads MPR6 (S8-90): MPR6 = $F8 maps logical $C000 to work RAM, so a read there returns the marker $A7
+48	tam-keep-flags	MAN:S8-90	TAM changes no flag (S8-90): P = V and C set with N and Z clear, A = $80, the masked P byte stays $41 (a core that set N reads $C1)
+49	tma-keep-flags-n	MAN:S8-101	TMA changes no flag (S8-101): MPR3 holds $80, P = V and C set with N and Z clear, the masked P byte stays $41 after the read of a byte with bit 7 set
+50	tma-keep-flags-z	MAN:S8-101	TMA changes no flag (S8-101): MPR7 holds $00, P = N V and C set with Z clear, the masked P byte stays $C1 after the read of a zero byte
+51	csh-length	MAN:H8-25	CSH is one byte (H8-25 map, no software-manual page): the instruction after it runs, so INX after CSH leaves X = $01
+52	csl-length	MAN:H8-25	CSL is one byte (H8-25 map, no software-manual page): the instruction after it runs, so INX after CSL leaves X = $01
+53	csh-csl-pair	MAN:H8-25	CSH then CSL execute and execution goes on at the next byte each time: two INX, one after each, leave X = $02
+54	st0-bypass	GUEST:ram-before-equals-ram-after	ST0 writes physical $1FE000 and does not consult the MPRs (H8-8 Table 2-2-3, S8-80, D-106): with MPR0 mapped to work RAM, RAM[0] still holds the $5A the guest wrote, read at logical $0000
+55	st1-bypass	GUEST:ram-before-equals-ram-after	ST1 writes physical $1FE002 and does not consult the MPRs (H8-8 Table 2-2-3, S8-81, D-106): with MPR0 mapped to work RAM, RAM[2] still holds the $5B the guest wrote
+56	st2-bypass	GUEST:ram-before-equals-ram-after	ST2 writes physical $1FE003 and does not consult the MPRs (H8-8 Table 2-2-3, S8-82, D-106): with MPR0 mapped to work RAM, RAM[3] still holds the $5C the guest wrote
+57	st-lengths	MAN:S8-80	ST0, ST1 and ST2 are two bytes each (S8-80 to S8-82): an INX after each runs three times, and the operand $E8 (the INX opcode) is never executed, so X reads $03
+58	st-keep-flags	MAN:S8-80	ST0 changes no flag (flag row of S8-80, S8-81, S8-82 is T = 0 and dashes): P = N V C set and Z clear, the operand $00 does not set Z, the masked P byte stays $C1
+59	ora-modes	MAN:S8-58	ORA (zz,X), zz, (zz), zz,X, abs,Y and abs,X of the operand cells (see the file header): A = $00 ORed with the six cells and with zz again gives $6F (S8-58): the cells $04, $01, $08, $02, $40 and $20 hold no bit $10
+60	and-modes	MAN:S8-18	AND (zz,X), (zz),Y, (zz), zz,X, abs,Y and abs,X with A = $3F each time (S8-18): the ORed results are $04, $10, $08, $02, $00 and $20, so $3E
+61	eor-modes	MAN:S8-47	EOR (zz,X), zz, (zz),Y, (zz), zz,X and abs,Y then zz again from A = $FF (S8-47): $FF EOR $5F EOR $01 gives $A1
+62	adc-modes	MAN:S8-17	ADC (zz),Y, (zz) and (zz) again with C clear from A = $00 (S8-17): $10 + $08 + $08 gives $20
+63	sbc-modes	MAN:S8-74	SBC (zz,X), zz, (zz),Y, (zz), zz,X, abs,Y and abs,X with C set from A = $FF (S8-74): $FF minus $04, $01, $10, $08, $02, $40 and $20 gives $80
+64	cmp-modes	MAN:S8-41	CMP (zz,X), zz, (zz),Y, (zz), abs,Y and abs,X with A equal to the cell (S8-41): Z and C set each time, so the ORed cell values give $7D
+65	cpx-zp	MAN:S8-42	CPX zero page with X equal to the cell $01 (S8-42): Z and C set, N clear, the masked P byte is $03
+66	cpy-abs	MAN:S8-43	CPY absolute with Y equal to the cell $80 (S8-43): Z and C set, N clear, the masked P byte is $03
+67	asl-modes	MAN:S8-19	ASL absolute ($01 gives $02), zero page,X ($04 gives $08) and absolute,X ($10 gives $20) shift left (S8-19): the ORed results are $2A
+68	rol-modes	MAN:S8-68	ROL zero page ($01 gives $03), absolute ($04 gives $09) and absolute,X ($10 gives $21) with C set rotate left through C (S8-68): the ORed results are $2B
+69	lsr-modes	MAN:S8-56	LSR zero page ($02 gives $01), zero page,X ($08 gives $04) and absolute,X ($20 gives $10) shift right (S8-56): the ORed results are $15
+70	ror-modes	MAN:S8-69	ROR zero page ($02 gives $81), absolute ($08 gives $84) and zero page,X ($20 gives $90) with C set rotate right through C (S8-69): the ORed results are $95
+71	dec-modes	MAN:S8-44	DEC zero page ($03 gives $02), absolute ($09 gives $08) and zero page,X ($21 gives $20) subtract one (S8-44): the ORed results are $2A
+72	inc-modes	MAN:S8-48	INC zero page,X ($03 gives $04) and absolute,X ($0F gives $10) add one (S8-48): the ORed results are $14
+73	bit-abs	MAN:S8-25	BIT absolute on the cell $C0 with A = $00 and C clear (S8-25): N = M7 = 1, V = M6 = 1, Z = 1 and C unchanged, the masked P byte is $C2
+74	bit-zpx	MAN:S8-25	BIT zero page,X (X = 3) on the cell $40 with A = $FF and C set (S8-25): N = 0, V = 1, Z = 0 and C unchanged, the masked P byte is $41
+75	trb-abs	ASSUMED:LED-CPU-0010	TRB absolute on the cell $3C with A = $0F stores not A AND M (the formula of S8-102; its prose says the result is not stored, the stored reading is the project's): the cell reads $30
+76	tst-abs	MAN:S8-104	TST #imm,absolute with the immediate $0F on the cell $F0 (S8-104): Z = 1 (the AND is zero), N = M7 = 1, V = M6 = 1 and C unchanged with C clear, the masked P byte is $C2

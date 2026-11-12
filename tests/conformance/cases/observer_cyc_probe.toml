@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The observer non-interference matrix on the authored cyc-probe (plan 03-19; D-119, CORE-06): the same configurations and modes as observer_ds_proto (large, drop4, poison, cap0, cap1; whole, chunk:7, stop:5000), run over the fixture whose penalty section
+# makes hardware-page accesses, so the device-register sink has records to store, to drop (drop4 holds at most 4 and cap1 one of the logged accesses) and to keep out of the verdict. The records of a limited sink must be the first records of the large sink, and the logs
+# accumulated over seven chunks must equal the logs of the whole run. Evidence tier E0 (repeatability and non-interference: the core is compared with itself): no accuracy, compatibility or hardware claim, and the word pass is not a support claim.
+id = "observer_cyc_probe"
+kind = "observer"
+fixture = "authored:cyc-probe"
+request = ""
+expect = "compare=verdict,machine_time,stops,digest"
+meaning = "Enabling the instruction sink and the device-register sink in any of five configurations, whole or in 7 chunks or stopped by the callback, changes neither the verdict RAM, the machine time, the stop sequence nor the digest of cyc-probe, whose hardware-page accesses are logged"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+sinks = "large,drop4,poison,cap0,cap1"
+chunks = "whole,chunk:7,stop:5000"

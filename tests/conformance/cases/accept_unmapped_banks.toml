@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Unmapped bank row: for each of the three sizes, banks 0x80 to 0xFF are reported unmapped, an offset of 8192 in a mapped
+# bank is a bad offset, and neither status writes the output or reads the ROM array. Evidence tier E0: the window rule is
+# an assumption (LED-LOAD-0005) and the case names no value for an unmapped read, which Phase 3 owns.
+id = "accept_unmapped_banks"
+kind = "unmapped"
+fixture = "plain-256k"
+request = ""
+expect = "sizes=3"
+meaning = "For each of the 256 KiB, 384 KiB and 1 MiB synthetic images every bank 0x80 to 0xFF is reported unmapped and an offset of 8192 is reported as a bad offset, with no value read and no byte written; the value of an unmapped read is not specified"
+required = true
+control = false
+expect_outcome = "pass"
+pins = ["LED-LOAD-0005"]

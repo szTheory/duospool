@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Memory overlap row (WR-02): the content bytes lie inside the instance block.
+# ds_boot zeroes the instance before it reads the request and the content, so an overlap would boot from zeroed or garbled bytes and report a content id for them.
+# The request is the ordinary plain one and the expect key names the overlap (content, request, result or edge). The core refuses an overlap as load.memory_invalid after every other check has passed (no row of boot_order.def changes) and leaves the block untouched.
+# Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_mem_overlap_content"
+kind = "mem_overlap"
+fixture = "plain-256k"
+request = "mapper=plain;order=pce;header=none"
+expect = "content"
+meaning = "A fully declared request whose content bytes lie inside the instance block is refused as load.memory_invalid and the block stays byte-identical, instead of booting from zeroed bytes"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

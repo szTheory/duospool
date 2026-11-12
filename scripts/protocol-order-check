@@ -36,6 +36,12 @@ while [ $# -gt 0 ]; do
     *) usage ;;
   esac
 done
+# an --expect that names no code would make a control assert nothing: with no violations got and want are both empty and the
+# control would pass vacuously (WR-05). Exit 2, never 0.
+if [ "$have_expect" -eq 1 ] && [ -z "$(printf '%s' "$expect" | tr -d ', \t\r\n')" ]; then
+  echo "HARNESS_EMPTY_EXPECT --expect names no code" >&2
+  exit 2
+fi
 if [ ! -d "$repo" ]; then
   echo "HARNESS_NO_FILE $repo" >&2
   exit 2
@@ -61,16 +67,46 @@ viol="$tmp/viol"
 : > "$viol0"
 nrec=0
 
-# add_commit PATH: the oldest commit on HEAD's history that adds PATH, or nothing
-add_commit() {
-  g log --format=%H --diff-filter=A --no-renames -- "$1" 2> /dev/null | tail -n 1 || true
+# harness_fail DESC: a git (or other) read failed; stop with exit 2 and show the command's stderr. A failed read is never
+# turned into an empty answer: an empty answer disables the ordering checks and would read as a pass (CR-03).
+harness_fail() {
+  echo "HARNESS_GIT_FAILED $1" >&2
+  [ ! -s "$tmp/err" ] || sed 's/^/  /' "$tmp/err" >&2
+  exit 2
 }
 
-add=$(add_commit "$proto")
+# add_commit PATH: sets add_c to the oldest commit on HEAD's history that adds PATH (empty when there is none); exits 2
+# when git fails. The log goes to a file first so that git's own status is tested, not the status of a later pipe stage.
+add_c=""
+add_commit() {
+  g log --format=%H --diff-filter=A --no-renames -- "$1" > "$tmp/log.out" 2> "$tmp/err" || harness_fail "git log -- $1"
+  add_c=$(tail -n 1 "$tmp/log.out")
+}
+
+# is_ancestor A B: 0 when A is an ancestor of B, 1 when it is not; any other git status is a harness failure (exit 2)
+is_ancestor() {
+  if g merge-base --is-ancestor "$1" "$2" > /dev/null 2> "$tmp/err"; then
+    return 0
+  else
+    mb=$?
+  fi
+  [ "$mb" -eq 1 ] || harness_fail "git merge-base --is-ancestor $1 $2"
+  return 1
+}
+
+# an unborn HEAD (no commit yet) is a legitimate "no protocol" state; a HEAD that exists must be readable from here on
+have_head=0
+if g rev-parse --verify -q HEAD > /dev/null 2>&1; then have_head=1; fi
+
+add=""
 first_spike=""
 spike_adds=""
-if g rev-parse --verify -q HEAD > /dev/null 2>&1; then
-  spike_adds=$(g log --format=%H --diff-filter=A --no-renames --reverse -- "$spikes" 2> /dev/null || true)
+if [ "$have_head" -eq 1 ]; then
+  add_commit "$proto"
+  add=$add_c
+  g log --format=%H --diff-filter=A --no-renames --reverse -- "$spikes" > "$tmp/log.out" 2> "$tmp/err" \
+    || harness_fail "git log -- $spikes"
+  spike_adds=$(cat "$tmp/log.out")
 fi
 first_spike=$(printf '%s\n' "$spike_adds" | sed -n 1p)
 
@@ -84,7 +120,7 @@ else
 
   # ordering: the add commit must be a strict ancestor of every commit that adds a spikes/tool-01 file
   for s in $spike_adds; do
-    if [ "$s" = "$add" ] || ! g merge-base --is-ancestor "$add" "$s" 2> /dev/null; then
+    if [ "$s" = "$add" ] || ! is_ancestor "$add" "$s"; then
       printf '%s\tPROTOCOL_AFTER_SPIKE\t0\tadd %s spike %s\n' "$proto" "$add" "$s" >> "$viol0"
       break
     fi
@@ -93,7 +129,7 @@ else
   # in-place edits: text before the first amendment heading must equal the add commit's, byte for byte
   # An appended amendment leaves every byte of the add commit's text where it was, so that text must be an exact
   # byte prefix of the current file. This also catches a fake amendment heading planted above edited text.
-  g show "$add:$proto" > "$tmp/add.md"
+  g show "$add:$proto" > "$tmp/add.md" 2> "$tmp/err" || harness_fail "git show $add:$proto"
   add_size=$(wc -c < "$tmp/add.md" | tr -d ' ')
   head -c "$add_size" "$repo/$proto" > "$tmp/cur.head"
   if ! cmp -s "$tmp/add.md" "$tmp/cur.head"; then
@@ -101,7 +137,11 @@ else
   fi
 
   # amendment headings: dated, and counted
-  grep -n '^## Amendment' "$repo/$proto" > "$tmp/headings" || true
+  if grep -n '^## Amendment' "$repo/$proto" > "$tmp/headings"; then :; else
+    gr=$?
+    : > "$tmp/err"
+    [ "$gr" -eq 1 ] || harness_fail "grep amendment headings in $proto (status $gr)"
+  fi
   while IFS= read -r hl; do
     [ -n "$hl" ] || continue
     amendments=$((amendments + 1))
@@ -112,10 +152,11 @@ else
     fi
     if [ -n "$first_spike" ]; then
       # the commit that introduced this heading is the oldest one whose diff changes the heading's occurrence count
-      intro=$(g log -S"$text" --format=%H --no-renames -- "$proto" 2> /dev/null | tail -n 1 || true)
+      g log -S"$text" --format=%H --no-renames -- "$proto" > "$tmp/log.out" 2> "$tmp/err" || harness_fail "git log -S -- $proto"
+      intro=$(tail -n 1 "$tmp/log.out")
       if [ -z "$intro" ]; then
         amended_after=yes   # not committed yet, so it will be committed after the spike
-      elif [ "$intro" = "$first_spike" ] || g merge-base --is-ancestor "$first_spike" "$intro" 2> /dev/null; then
+      elif [ "$intro" = "$first_spike" ] || is_ancestor "$first_spike" "$intro"; then
         amended_after=yes
       fi
     fi
@@ -134,12 +175,13 @@ fi
 # the scorer is pre-registered too (D-35): once any spike file exists, its add commit must be a strict ancestor of
 # every spike-adding commit, and a scorer that was never committed counts as late
 if [ -n "$spike_adds" ]; then
-  score_add=$(add_commit "$scorer")
+  add_commit "$scorer"
+  score_add=$add_c
   if [ -z "$score_add" ]; then
     printf '%s\tSCORER_AFTER_SPIKE\t0\tno add commit for the scorer\n' "$scorer" >> "$viol0"
   else
     for s in $spike_adds; do
-      if [ "$s" = "$score_add" ] || ! g merge-base --is-ancestor "$score_add" "$s" 2> /dev/null; then
+      if [ "$s" = "$score_add" ] || ! is_ancestor "$score_add" "$s"; then
         printf '%s\tSCORER_AFTER_SPIKE\t0\tadd %s spike %s\n' "$scorer" "$score_add" "$s" >> "$viol0"
         break
       fi

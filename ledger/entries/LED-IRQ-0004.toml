@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# Interrupt controller registers, priority and vectors (D-110; CPU-03). Supported (E1, documentary) by plan 03-32 under ER-2 for the page-backed clauses only (writer note 3): the statement is restricted to them and the model clauses moved to the assumption field.
+# ER-2 record (plan 03-32, verifier gsd-executor, 2026-11-11). Condition 1: H8-12 (inputs sampled in the last bus cycle, NMI edge), H8-13 (priority RESET, NMI, BRK, TIMER, IRQ1, IRQ2; vectors FFF6 IRQ2 and BRK, FFF8 IRQ1, FFFA timer; IRQ1 and IRQ2 are level sense), H8-14 (TIQ reset by a write cycle to the request register), H8-15 (request register: bit 0 IRQ2, bit 1 IRQ1, bit 2 TIQ,
+# IRQ1 and IRQ2 are the inverted pin level, TIQ read only, set by a timer borrow, reset by a write, 0 at reset), H8-16 (disable register bits IRQ2D, IRQ1D, TIQD, 1 disables, all 0 after reset), H8-24 ($1402 and $1403 in the device table), H8-5 (B pushed 0 for IRQ2 and 1 for BRK) and H8-18 were read as page images from a scratch copy of the hardware manual (sha256 40a32e5d..., never committed).
+# Condition 2: the MAN-class checks of irq_ctl (2 to 14 and 16 to 29) state those page facts as literals; checks 30 to 33 are ASSUMED or GUEST class and are not counted, and checks 1 and 15 only describe the declared stimulus. Condition 3: equals the manual's stated values. Condition 4: withheld lists the three required items. Condition 5: pin TEST:irq_ctl_pre.
+# The sources of IRQ1 and IRQ2 are a declared test stimulus (LED-IRQ-0008, ER-5), so the checks show the controller logic given the stimulus and nothing about the VDC or any real source. The in-guest checks are not used for any timing claim. The pin also names LED-IRQ-0006, which is not claimed here.
+id = "LED-IRQ-0004"
+statement = "DuoSpool's interrupt controller equals the manual's stated values: $1403 bits 0 to 2 read IRQ2, IRQ1 (inverted pin level) and TIQ (set by a timer borrow, reset by a write); $1402 bits 0 to 2 disable IRQ2, IRQ1 and the timer (1 disables, 0 after reset); IRQ1 and IRQ2 are level inputs; priority timer, IRQ1, IRQ2; vectors $FFFA, $FFF8, $FFF6 (shared with BRK)."
+profile = "pce-hucard-2btn"
+status = "supported"
+sources = ["FACT|H8-12 H8-13|gsd-executor images 2026-11-11: sample in last bus cycle; priority timer, IRQ1, IRQ2; vectors FFF6 FFF8 FFFA; IRQ1 and IRQ2 level sense", "FACT|H8-14 H8-15 H8-16 H8-24|same read: $1403 bits IRQ2, IRQ1, TIQ, TIQ set by borrow and reset by a write; $1402 disable bits, 1 disables, 0 at reset", "UNKNOWN|only-write acknowledge, masked borrow|no page states either"]
+evidence = ["E1|tests/conformance/cases/irq_ctl_pre.toml: MAN-class checks 2 to 14 and 16 to 29 against H8-12, H8-13, H8-15, H8-16 and H8-5; pages re-read in plan 03-32 (ER-1, R-8)", "E0|tests/conformance/cases/irq_ctl_pre.toml: all 33 checks on the declared test stimulus, repeatability", "E2|tests/conformance/cases/tim_timer.toml: checks 28 and 32 (latch while masked), self-consistency"]
+disagreement = "H8-14 sets TIQ only if a borrow occurs with I reset and TIQD 0; H8-15 (set by a timer borrow) and H8-21 read as unconditional. The model follows the unconditional reading (tim_timer checks 28 and 32). pcetech (report, not re-read): the timer enable bit does not mask the line. ER-8 lists NMI wiring as open; no reading is recorded and NMI is undriven."
+pinning_test = "TEST:irq_ctl_pre"
+updated = "2026-11-11"
+assumption = "Not claimed by the statement (the project's choices): a write to $1403 is the only acknowledge and clears TIQ only, a borrow sets TIQ even when masked (H8-14 conditions the set on I reset and TIQD 0), IRQ1 and IRQ2 come only from a test stimulus (ER-5), NMI is undriven."
+revisit_phase = 3
+withheld = ["any claim of hardware cycle accuracy", "any claim of interrupt latency in cycles", "any claim of game compatibility", "any TG-16 or region claim", "any claim that the acknowledge or masked-borrow rules match hardware", "any claim about the VDC or another real IRQ source"]
+origin = "03-CONTEXT D-110"

@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: the request declares byte order pce while its bindings bind content_byte_order to tg16. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_profile_mismatch"
+kind = "refuse"
+fixture = "plain-256k"
+request = "bind.content_byte_order=tg16"
+expect = "load.profile_mismatch;field=content_byte_order"
+meaning = "A request that declares byte order pce while binding content_byte_order to tg16 is refused as load.profile_mismatch naming content_byte_order, and the declaration is not corrected to match"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

@@ -16,9 +16,9 @@ Owner-gated decisions are not decided here. Phases that depend on one name it an
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Owner Decisions, Claim Ledger and Toolchain Spike** - Gate phase. Measured language spike, a first-profile record, and decision records for the owner to confirm. The claim ledger holds every open hardware fact
-- [ ] **Phase 2: Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate** - Typed accept/refuse of HuCard bytes into fresh, isolated, seeded instances. One local command and CI fail closed
-- [ ] **Phase 3: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad** - Authored fixtures report guest-RAM verdicts for the CPU, MMU, timer, IRQ, and SEL/CLR pad, with negative controls and resumable bounded runs
+- [x] **Phase 1: Owner Decisions, Claim Ledger and Toolchain Spike** - Gate phase. Measured language spike, a first-profile record, and decision records for the owner to confirm. The claim ledger holds every open hardware fact (completed 2026-11-09)
+- [x] **Phase 2: Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate** - Typed accept/refuse of HuCard bytes into fresh, isolated, seeded instances. One local command and CI fail closed (completed 2026-11-10)
+- [x] **Phase 3: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad** - Authored fixtures report guest-RAM verdicts for the CPU, MMU, timer, IRQ, and SEL/CLR pad, with negative controls and resumable bounded runs (completed 2026-11-11)
 - [ ] **Phase 4: VCE/VDC Raw Video** - Per-scanline raw video and guest-recorded interrupt timing, checked against literal expectations for background, sprites, DMA, palette, and dot clock
 - [ ] **Phase 5: PSG Raw Audio** - Timestamped PSG event log and PCM at a recorded format, checked by semantic properties. Can run in parallel with Phase 4
 - [ ] **Phase 6: Headless Runner, Installed-Consumer Proof and Staged Verification** - Separate observation artifacts, an independent consumer against the installed artifact, staged fuzzing, a benchmark, and a LibFuturo fit evaluation
@@ -37,7 +37,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. The claim ledger exists with these fields: statement, profile, evidence tier (E0-E4), source citation, disagreement, status, and pinning test. A ledger check rejects a deliberately mislabelled sample entry that is marked "supported" on E0/E4 evidence only.
   4. Each conflict the slice depends on is an open ledger entry with its chosen modelling assumption, not stated as fact. The list includes at least: PSG clock, 262 vs 263 lines, VBlank/RCR IRQ position, dot-clock encoding, 7 MHz active width, `$1000` bit 6, HuCard byte order, copier-header rule, and PSG channel numbering.
   5. Decision records exist for licence/visibility, fixture rights, API/ABI posture, CI provider, and the copied-code provenance rule. Each one is either owner-recorded or explicitly open. The fixture-rights record states that no GPL or unclear-licence material is admitted until the owner decides.
-**Plans:** 11/12 plans executed
+**Plans:** 12/12 plans complete
 
 Plans:
 **Wave 1**
@@ -74,7 +74,7 @@ Plans:
 - [x] 01-11-PLAN.md — Scores, record 0001 by the executable D-07 rule, evidence tag, spike removed from main
 
 **Wave 12** *(blocked on Wave 11 completion)*
-- [ ] 01-12-PLAN.md — Full-history audit and gitleaks, the owner checkpoint, then the public repository with main and the evidence tag pushed
+- [x] 01-12-PLAN.md — Full-history audit and gitleaks, the owner checkpoint, then the public repository with main and the evidence tag pushed
 **Research**: Not needed beyond the spike, which has a fixed plan (SUMMARY: standard pattern). The real work is the owner decisions.
 
 ### Phase 2: Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate
@@ -89,7 +89,29 @@ Plans:
   3. Every run record contains the full profile identity (every guest-visible setting) and the power-on policy and seed. Two instances run interleaved in one process produce the same digests as each instance run alone. The same inputs in a fresh process produce identical records. A build- or test-time check rejects core use of host clocks, filesystem, threads, environment, device, or UI APIs, and a deliberately violating negative control is shown to fail it.
   4. One documented local command runs the fast gate. Pass, guest failure, timeout, harness failure, skip, cancelled, and missing artifact are reported as distinct outcomes, and only pass is green. Each named negative control fails the gate: a removed required test, a missing manifest field, an unlisted fixture, a deliberately wrong literal, and an unlisted ROM/firmware-like binary added to the tree.
   5. CI on the owner-selected provider runs the same fast gate on every change. Each job is tied to a named failure class, and its critical-path time is recorded. If the CI provider is still undecided, this criterion is reported as blocked, not satisfied.
-**Plans**: TBD
+**Plans**: 22/22 plans complete
+- [x] 02-01-PLAN.md
+- [x] 02-02-PLAN.md
+- [x] 02-03-PLAN.md
+- [x] 02-04-PLAN.md
+- [x] 02-05-PLAN.md
+- [x] 02-06-PLAN.md
+- [x] 02-07-PLAN.md
+- [x] 02-08-PLAN.md
+- [x] 02-09-PLAN.md
+- [x] 02-10-PLAN.md
+- [x] 02-11-PLAN.md
+- [x] 02-12-PLAN.md
+- [x] 02-13-PLAN.md
+- [x] 02-14-PLAN.md
+- [x] 02-15-PLAN.md
+- [x] 02-16-PLAN.md
+- [x] 02-17-PLAN.md
+- [x] 02-18-PLAN.md
+- [x] 02-19-PLAN.md
+- [x] 02-20-PLAN.md
+- [x] 02-21-PLAN.md
+- [x] 02-22-PLAN.md
 **Research**: Needed. HuCard byte order (C7), copier-header rule (C8), and mirroring for non-power-of-two sizes (e.g. 384 KiB) are unknown or conflicting. The chosen policy must be recorded in the ledger before the refusal matrix is final.
 
 ### Phase 3: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
@@ -104,7 +126,47 @@ Plans:
   3. A fixture run in bounded chunks of varying size produces outputs identical to an uninterrupted run. This includes stops mid-frame and mid-block-transfer, including a length-0 (65,536-byte) transfer. A snapshot taken at any stop point and restored into a fresh instance continues identically.
   4. Turning on the CPU instruction trace and the device-register write log leaves verdicts, machine time, and state digests unchanged.
   5. Each cycle count and access penalty in use has a ledger entry that cites its source or labels it a modelling assumption. This covers speed switching and VDC/VCE access penalties. Unresolved edges are named profile or model parameters, not silent choices: interrupt latency around block transfers and after CLI/RTI, TAM/TMA #0, power-up MPR values, and ST0-ST2 MMU bypass.
-**Plans**: TBD
+**Plans**: 38/38 plans complete in 38 sequential waves, listed in execution order (context waves W1-W8 of 03-CONTEXT; W6-W7 are the Phase 3.1 cut line; ids 03-34..03-38 were added by the round-1 plan-check revision)
+
+Plans:
+- [x] 03-01-PLAN.md — W1 tracer: ca65 ds_proto through fixture-build, absolute-deadline ds_run in master clocks, minimal CPU and bus, DSV1 judged from guest RAM
+- [x] 03-02-PLAN.md — W1: placeholder run API deleted; run_until_abs and run_chunk_sum; spin and interleave kinds on ds_run
+- [x] 03-35-PLAN.md — W1: run refusals def with full coverage rows
+- [x] 03-03-PLAN.md — W1: CPU0 region, PSGN/VDCP out, serial 2, goldens; runner headroom
+- [x] 03-36-PLAN.md — W1: placeholder state removed; epoch 2, master-clocks record, goldens
+- [x] 03-04-PLAN.md — W1: optional case keys in three places, guestkinds.c, authored fixture key
+- [x] 03-05-PLAN.md — W1: fixture library (startup with RAM vectors, verdict, DCK1 literal table), DSV1 protocol controls, t=0 control
+- [x] 03-37-PLAN.md — W1: cites.txt and fixture-lint with dead-stage control
+- [x] 03-06-PLAN.md — W1: authored manifest entries, merged used list, assembler preflight, TOOLS.md, LED-TOOL-0001
+- [x] 03-07-PLAN.md — W1: CI apt cc65 step with workflow-check and regenerated mini-roots
+- [x] 03-38-PLAN.md — W1: README and docs-check, W1 ledger entries and timing
+- [x] 03-08-PLAN.md — W2 tracer: manual opcode TSV and the ca65 encoding oracle (xasm), WLA optional
+- [x] 03-09-PLAN.md — W2: 256-row cpu_ops.def, two-way opcode oracle, derived overshoot bound
+- [x] 03-10-PLAN.md — W2: mutate_sweep, insn sink, opcode-exercise inventory
+- [x] 03-11-PLAN.md — W2: load, store, transfer, stack semantics; cpu_ldst; default policies list
+- [x] 03-12-PLAN.md — W2: ALU, decimal and T flag; cpu_alu; adc-carry toy
+- [x] 03-13-PLAN.md — W2: control flow, BRK, RTI; cpu_flow
+- [x] 03-14-PLAN.md — W2: HuC6280 additions except block transfers; cpu_huc; opcode coverage required
+- [x] 03-15-PLAN.md — W2: opcode and cycle pin cases, cyc_probe sweep, W2 ledger entries
+- [x] 03-16-PLAN.md — W3 tracer: full bus and MMU, windows, stubs, io_buffer, VDC/VCE penalty; mmu_mpr; unmapped toy
+- [x] 03-17-PLAN.md — W3: model_params.def with tma_zero, TAM/TMA edges
+- [x] 03-18-PLAN.md — W3: [model_*], [run] and [constants] record tables, LED-PROF-0004, LED-CPU-0015
+- [x] 03-19-PLAN.md — W3: dev sink, observer matrix, trace-hook toy, --trace-out rights
+- [x] 03-20-PLAN.md — W3: bank-class oracle, mmu_mpr size variants, st_bypass, W3 ledger entries
+- [x] 03-21-PLAN.md — W4 tracer: closed-form timer, TIQ interrupt path, timer_pure_function, tim_timer
+- [x] 03-22-PLAN.md — W4: interrupt controller, irq_stim, irq_i_sample, TIMR/IRQC/IRQS regions, two toys
+- [x] 03-23-PLAN.md — W4: speed switching, spd_speed, [stimulus] table, W4 constants rows
+- [x] 03-34-PLAN.md — W4: W4 ledger entries
+- [x] 03-24-PLAN.md — W4: seeded-prng-v2, three-policy fixture runs, policy-diff control
+- [x] 03-25-PLAN.md — W5 tracer: resumable block transfers, cpu_blk, length 0 and interrupt-pending variants, BLKT region, block-progress toy
+- [x] 03-26-PLAN.md — W5: chunk_equiv (including mid-block with interrupts pending), 32-program random differential, W5 ledger entries
+- [x] 03-27-PLAN.md — W6 tracer: $1000 pad protocol, input schedule, ds_input_push, pad_2btn correct
+- [x] 03-28-PLAN.md — W6: input-check with one negative per code, [input] table
+- [x] 03-29-PLAN.md — W6: pad negative controls, exact edges, pad logs, pad sweep and chunk case, shared-input toy, IOPT/SCHD, W6 ledger
+- [x] 03-30-PLAN.md — W7 tracer: snapshot = digest stream, validate-then-commit restore, host hash check, sampled restores, tiling assert
+- [x] 03-31-PLAN.md — W7: hostile snapshot corpus, restore at random stops, snapshot toys
+- [x] 03-32-PLAN.md — W8: page re-reads, ledger finalisation under ER-2, evidence split by class, constants ledger rule, no PENDING pins
+- [x] 03-33-PLAN.md — W8: README wording with docs-check, timing re-baseline, optional WLA run, CI unverified record
 **Research**: Needed for targeted timing edges (C9, C10): block-transfer and CLI/RTI interrupt latency, speed-switch cycle count, TAM/TMA #0, power-up MPRs beyond MPR7, and ST0-ST2 (manual p. H8-3). Opcode tables come from the manual and follow a standard pattern.
 
 ### Phase 4: VCE/VDC Raw Video
@@ -174,9 +236,9 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phases 4 and 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Owner Decisions, Claim Ledger and Toolchain Spike | 11/12 | In Progress | - |
-| 2. Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate | 0/TBD | Not started | - |
-| 3. HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad | 0/TBD | Not started | - |
+| 1. Owner Decisions, Claim Ledger and Toolchain Spike | 12/12 | Complete    | 2026-11-09 |
+| 2. Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate | 22/22 | Complete    | 2026-11-10 |
+| 3. HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad | 38/38 | Complete    | 2026-11-11 |
 | 4. VCE/VDC Raw Video | 0/TBD | Not started | - |
 | 5. PSG Raw Audio | 0/TBD | Not started | - |
 | 6. Headless Runner, Installed-Consumer Proof and Staged Verification | 0/TBD | Not started | - |

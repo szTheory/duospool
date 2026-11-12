@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: the request pointer is NULL. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_request_null"
+kind = "refuse"
+fixture = "plain-256k"
+request = "req=null"
+expect = "load.request_invalid"
+meaning = "A NULL request pointer is refused as load.request_invalid with no read through the pointer, no instance created and caller memory untouched"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

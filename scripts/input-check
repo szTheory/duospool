@@ -1,0 +1,134 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# input-check - the input script checker (INP-02, INP-04; plan 03-28; D-51, D-117, D-131, ER-5, CR-01). It enforces the shape of the input scripts under tests/conformance/inputs, not the meaning of any script: a script is a test input declared
+# by a case, and an accepted script is a statement about the file format, never about a pad.
+# usage: input-check [--expect CODE[,CODE...]] [--root DIR]
+#   --root DIR   the root that holds tests/conformance/inputs/*.toml (default: the repository root). No script at all is a harness error (exit 2): a check of nothing never passes.
+# Two stages per script, each writing to a file whose exit status is tested (CR-01: no awk on the left of a pipe): stage 1 is scripts/lib/toml-subset.awk, the only parser of hand-edited data (D-51), which prints an END sentinel; stage 2 is scripts/lib/input-rules.awk, the same rules file that
+# scripts/conformance-flatten --inputs runs, which requires that sentinel and prints a closing RULES row. A dead stage 1 (no sentinel, a failed status), a dead stage 2 (no RULES row, a failed status) is INP_STAGE_DEAD (exit 2), never a pass.
+# Codes: the stage 1 codes (SYNTAX DUP_KEY DUP_TABLE BAD_STRING BAD_ARRAY BAD_VALUE TRAILING_GARBAGE NON_ASCII_OR_CTRL LINE_TOO_LONG), BAD_FILENAME (a script name is [a-z][a-z0-9_]*), INP_TOO_LARGE (a script over 64 KiB, checked before stage 1 reads it) and the INP_ codes of
+# scripts/lib/input-rules.awk: INP_FORMAT INP_TIME_UNIT INP_EVENTS_COUNT INP_TOO_MANY INP_TABLE_NAME INP_KEY_UNKNOWN INP_KEY_MISSING INP_AT_NOT_DECIMAL INP_AT_TOO_LONG INP_AT_LEADING_ZERO INP_ORDER INP_PORT_RANGE INP_PORT_EMPTY INP_HELD_UNKNOWN INP_HELD_ORDER INP_HELD_OPPOSITE INP_HELD_RESERVED.
+# stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then (clean) a line  INPUT_CHECK scripts=N events=M  and  STATUS input-check ok n=N
+# stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
+# exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error (including INP_STAGE_DEAD)
+set -eu
+LC_ALL=C; export LC_ALL
+here=$(cd "$(dirname "$0")" && pwd)
+
+usage() {
+  echo "usage: input-check [--expect CODE[,CODE...]] [--root DIR]" >&2
+  exit 2
+}
+
+expect=""
+have_expect=0
+root=$(cd "$here/.." && pwd)
+while [ $# -gt 0 ]; do
+  case $1 in
+    --expect) [ $# -ge 2 ] || usage; expect=$2; have_expect=1; shift 2 ;;
+    --root) [ $# -ge 2 ] || usage; root=$2; shift 2 ;;
+    *) usage ;;
+  esac
+done
+# an --expect that names no code would make a control assert nothing (WR-05): exit 2, never 0
+if [ "$have_expect" -eq 1 ] && [ -z "$(printf '%s' "$expect" | tr -d ', \t\r\n')" ]; then
+  echo "HARNESS_EMPTY_EXPECT --expect names no code" >&2
+  exit 2
+fi
+if [ ! -d "$root" ]; then
+  echo "HARNESS_NO_FILE $root" >&2
+  exit 2
+fi
+root=$(cd "$root" && pwd)
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+tab=$(printf '\t')
+viol0="$tmp/viol0"
+viol="$tmp/viol"
+t1="$tmp/stage1"
+t2="$tmp/stage2"
+: > "$viol0"
+
+dead() {
+  echo "INP_STAGE_DEAD $1" >&2
+  exit 2
+}
+
+nscripts=0
+nevents=0
+for f in "$root"/tests/conformance/inputs/*.toml; do
+  [ -f "$f" ] || continue
+  rel=${f#"$root"/}
+  case $rel in
+    *"$tab"*) echo "HARNESS_BAD_FILENAME a TAB in a file name" >&2; exit 2 ;;
+  esac
+  nscripts=$((nscripts + 1))
+  stem=$(basename "$f" .toml)
+  case $stem in
+    [a-z]*) ;;
+    *) printf '%s\tBAD_FILENAME\t0\tan input script name is [a-z][a-z0-9_]*\n' "$rel" >> "$viol0"; continue ;;  # rule-bad-filename
+  esac
+  case $stem in
+    *[!a-z0-9_]*) printf '%s\tBAD_FILENAME\t0\tan input script name is [a-z][a-z0-9_]*\n' "$rel" >> "$viol0"; continue ;;  # rule-bad-filename
+  esac
+  size=$(wc -c < "$f" | tr -d ' ')
+  if [ "$size" -gt 65536 ]; then
+    printf '%s\tINP_TOO_LARGE\t0\tan input script is at most 64 KiB\n' "$rel" >> "$viol0"  # rule-too-large
+    continue
+  fi
+  # stage 1: a file, its status tested, its sentinel required
+  if awk -f "$here/lib/toml-subset.awk" "$f" > "$t1" 2> "$tmp/stage1.err"; then :; else
+    dead "stage 1 (toml-subset.awk) failed on $rel"
+  fi
+  if ! tail -n 1 "$t1" | grep -Eq "^END${tab}[0-9]+\$" || [ "$(grep -c "^END${tab}" "$t1" || true)" -ne 1 ]; then
+    dead "stage 1 (toml-subset.awk) printed no closing END row for $rel"
+  fi
+  # an ERR row of stage 1 is a violation of the file and the records are partial: stage 2 does not judge such a file
+  if grep -q "^ERR${tab}" "$t1"; then
+    awk -F'\t' -v rel="$rel" '$1 == "ERR" { printf "%s\t%s\t%s\t%s\n", rel, $2, $3, $4 }' "$t1" >> "$viol0" || dead "stage 1 row reader failed on $rel"
+    continue
+  fi
+  # stage 2: a file, its status tested, its closing row required
+  if awk -f "$here/lib/input-rules.awk" "$t1" > "$t2" 2> "$tmp/stage2.err"; then :; else
+    dead "stage 2 (input-rules.awk) failed on $rel"
+  fi
+  if ! tail -n 1 "$t2" | grep -Eq "^RULES${tab}[0-9]+\$"; then
+    dead "stage 2 (input-rules.awk) printed no closing RULES row for $rel"
+  fi
+  awk -F'\t' -v rel="$rel" '$1 == "V" { printf "%s\t%s\t%s\t%s\n", rel, $2, $3, $4 }' "$t2" >> "$viol0" || dead "stage 2 row reader failed on $rel"
+  ne=$(awk -F'\t' '$1 == "S" { print $2 }' "$t2") || dead "stage 2 row reader failed on $rel"
+  case $ne in
+    '' | *[!0-9]*) dead "stage 2 printed no event count for $rel" ;;
+  esac
+  nevents=$((nevents + ne))
+done
+
+if [ "$nscripts" -eq 0 ]; then
+  echo "HARNESS_NO_FILE $root/tests/conformance/inputs holds no *.toml: a check of nothing never passes" >&2
+  exit 2
+fi
+sort -u "$viol0" > "$viol"
+
+if [ "$have_expect" -eq 1 ]; then
+  cut -f2 "$viol" > "$tmp/got.codes"
+  sort -u "$tmp/got.codes" | tr '\n' ',' | sed 's/,$//' > "$tmp/got"
+  printf '%s\n' "$expect" | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/,$//' > "$tmp/want"
+  if cmp -s "$tmp/got" "$tmp/want"; then
+    echo "EXPECT_OK"
+    exit 0
+  fi
+  echo "EXPECT_MISMATCH wanted '$(cat "$tmp/want")' got '$(cat "$tmp/got")'" >&2
+  cat "$viol" >&2
+  exit 1
+fi
+
+cat "$viol"
+if [ -s "$viol" ]; then
+  exit 1
+fi
+echo "INPUT_CHECK scripts=$nscripts events=$nevents"
+echo "STATUS input-check ok n=$nscripts"
+exit 0

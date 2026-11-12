@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Stimulus refusal row (plan 03-22; D-112, T-03-60, F4): the declared IRQ1 and IRQ2 test stimulus is validated by the core when the runner gives it over (ds_irq_stim_set, before the first step), so a bad list is refused with a typed code of src/core/stim_refusals.def and the
+# instance is left byte-identical. This row is a list that names line 3 (only 1 and 2 exist) and other lines outside the set. The kind is guest with the expect item refused=stim.NAME: the built image of irq_ctl is booted, a valid list is first proven accepted and cleared (a core that refused everything must fail), then the list below must come back as exactly the named
+# code, and the guest is never run. The stimulus is a test hook, not evidence about the VDC or any hardware source (ER-5, ASSUMED LED-IRQ-0008). Evidence tier E0. The deferred case irq_stim_refusal_coverage checks that every code of the .def is observed by a row.
+id = "irq_stim_refuse_line"
+kind = "guest"
+fixture = "authored:irq-ctl"
+request = ""
+expect = "id=11;refused=stim.line"
+meaning = "An irq_stim list that names line 3 is refused as stim.line before the first step, with the instance unchanged; lines 0, 257 and 4294967295 are refused too"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 600
+checks = 15
+irq_stim = ["1000,1,1", "2000,3,1"]

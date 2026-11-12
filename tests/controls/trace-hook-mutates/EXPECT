@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Case ids that must come out guest_failure on the toy, one per line.
+observer_ds_proto
+observer_cpu_blk
+observer_random

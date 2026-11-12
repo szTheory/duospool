@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# fixture-lint control mini-root: a MAN check whose page is flagged ocr while a supported entry cites that page
+id=1
+checks=1
+1	one	MAN:S8-7	a MAN check whose page is flagged ocr while a supported entry cites that page

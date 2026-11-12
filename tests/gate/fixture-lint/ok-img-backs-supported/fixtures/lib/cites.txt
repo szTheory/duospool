@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# fixture-lint control mini-root registry: one page, flagged img
+S8-7	img	gsd-executor	2026-11-11	control row: the instruction table of the alphabetical list

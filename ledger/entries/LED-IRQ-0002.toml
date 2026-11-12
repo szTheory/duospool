@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# Timer step, period, load and prescaler reset (D-109; CPU-03). Supported (E1, documentary) by plan 03-32 under ER-2 and ER-3: the closed-form timer of the core equals page numbers, not a hardware measurement and not a statement about the CPU cycle length.
+# ER-2 record (plan 03-32, verifier gsd-executor, 2026-11-11). Condition 1: H8-20 (7-bit downcounter and reload; prescaler OSC1 divided by 3 to PPS3, then by 1,024; the reload is loaded when the start/stop flag goes 0 to 1 or on a borrow), H8-21 (borrow sets TIQ and the counter is reloaded; writing 0 stops the timer and resets the prescaler;
+# 21.48 MHz / 3 / 1024 = 6.992 kHz; intervals from 143 usec to 18.3 msec) and H8-22 (Fig 2-7-2: the downcounter is loaded when the flag changes from 0 to 1) were read as page images from a scratch copy of the hardware manual (sha256 40a32e5d..., never committed).
+# Condition 2: timer_pure_function asserts the literals 3 * 1024 = 3072 master clocks per step and (reload + 1) steps per period, the second a derivation named as such (reload 0 is one step of 143 usec, reload 127 is 128 steps, 128 * 3072 / 21.48 MHz = 18.3 msec: both ends of the printed range, re-computed in integers by the case); none comes from the core or a DuoSpool run.
+# Condition 3: equals the manual's stated values. Condition 4: withheld lists the three required items and timer accuracy. Condition 5: pin TEST:timer_pure_function, the one E1-capable timer claim (ER-3).
+# The in-guest rows (tim_timer checks 14 to 18, 20, 24; spd_speed) are E2 self-consistency because they count steps with the community-reported CPU cycle length (LED-CPU-0003): they never support this entry.
+# Not in the statement: that a reload write leaves the counter alone (the page lists only start and borrow as load events, a reading, A1), the hold on stop and the other edges (LED-IRQ-0003).
+id = "LED-IRQ-0002"
+statement = "The DuoSpool timer equals the manual's stated values: a prescaler step is 3072 master clocks (OSC1 / 3 / 1024), the counter loads from the reload register when control bit 0 goes 0 to 1 and on a borrow, a write of 0 stops it and resets the prescaler, and the period is reload + 1 steps (the printed 143 usec to 18.3 msec range, 1 to 128 steps)."
+profile = "pce-hucard-2btn"
+status = "supported"
+sources = ["FACT|H8-20 H8-21|gsd-executor images 2026-11-11: OSC1 / 3 / 1024; loads on flag 0 to 1 or borrow; write 0 stops and resets prescaler; 143 usec to 18.3 msec", "FACT|H8-22|same read: Fig 2-7-2, counter loaded with the reload when start/stop goes 0 to 1", "UNKNOWN|period in steps|derived (A1) from the printed range, no page prints reload + 1"]
+evidence = ["E1|tests/conformance/cases/timer_pure_function.toml: step 3072 and period reload + 1 as literals against page numbers; pages re-read in plan 03-32 (ER-1, R-8)", "E0|tests/conformance/cases/timer_pure_function.toml: equals a naive model by the same project", "E2|tests/conformance/cases/tim_timer.toml: checks 14 to 18, 20, 24, self-consistency (ER-3)"]
+disagreement = "none among the pages read: H8-20, H8-21 and H8-22 agree on the load conditions, the prescaler and the stop; they give a range, so reload + 1 is this project's derivation. research/PITFALLS.md C5 (pcetech, a report not re-read) gives a tick of 1024 cycles of 7.16 MHz, the same step as OSC1 / 3 / 1024."
+pinning_test = "TEST:timer_pure_function"
+updated = "2026-11-11"
+assumption = "The period of reload + 1 steps is a derivation (A1) from the printed range; the pinned case compares the core with a naive model and with these literals only. The in-guest rows prove self-consistency only (ER-3)."
+revisit_phase = 3
+withheld = ["any claim of hardware cycle accuracy", "any claim of interrupt latency in cycles", "any claim of game compatibility", "any TG-16 or region claim", "any claim of timer accuracy or CPU speed accuracy"]
+origin = "03-CONTEXT D-109"

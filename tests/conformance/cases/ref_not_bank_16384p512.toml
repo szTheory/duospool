@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Refusal row: 16384 plus 512 bytes, otherwise fully declared. Refused by the size rules with no header diagnosis. Evidence tier E0 (repeatability and a literal), claims nothing about hardware.
+id = "ref_not_bank_16384p512"
+kind = "refuse"
+fixture = "plain-256k"
+request = "len=16896"
+expect = "load.size_not_bank_multiple"
+meaning = "A request of 16384 plus 512 bytes is refused as load.size_not_bank_multiple and no header is diagnosed from the length"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

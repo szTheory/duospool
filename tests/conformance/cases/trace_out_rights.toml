@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The rights rule of the --trace-out option (plan 03-19; D-120, D-56, D-80, T-03-51, T-03-52): the runner writes an instruction trace and a device log only on an explicit `--trace-out CASE_ID`, only for a case whose fixture is an authored image listed in build/gate/fixtures-authored.used or a synthetic
+# recipe (an instruction trace of a commercial ROM is a disassembly), only to build/gate/traces/CASE_ID.insn and .dev built by the runner from an id of the form [a-z][a-z0-9_]*, and never to stdout (stdout carries record counts, sizes and sha256 values only). This case runs the checks that come before any
+# file is opened: fixture keys that are permitted (the listed authored ds-proto, the synthetic plain-256k) and refused (an authored name that is not listed, none, a file path, a commercial title); the request for case ds_proto passes with its paths directly under build/gate/traces/; the request for a case whose
+# fixture is none (run_refuse_memory_invalid) or for no case is refused and leaves no file; ids with a slash, a dot-dot, upper case, a leading digit or a dot are refused with no path built and no file at any naive join. The writing of an allowed request is run by scripts/conformance-run with --trace-out ds_proto,
+# whose sizes and hashes it checks against host tools. Evidence tier E0 (a literal rule of this plan): no accuracy, compatibility or hardware claim, and the word pass is not a support claim.
+id = "trace_out_rights"
+kind = "trace_out_rights"
+fixture = "none"
+request = ""
+expect = "allow_fixture=authored:ds-proto;allow_fixture=plain-256k;deny_fixture=authored:ghost-rom;deny_fixture=none;deny_fixture=/etc/passwd;deny_fixture=commercial:title;allow_case=ds_proto;deny_case=run_refuse_memory_invalid;deny_case=no_such_case;bad_id=../x;bad_id=a/b;bad_id=Ds_proto;bad_id=1ds;bad_id=ds.proto;bad_id=;bad_id=ds_proto/../x"
+meaning = "A trace request is refused unless the case's fixture is an authored image listed in the gate's authored list or a synthetic recipe, and an id with a slash, dot-dot or any character outside [a-z0-9_] builds no path and writes no file"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

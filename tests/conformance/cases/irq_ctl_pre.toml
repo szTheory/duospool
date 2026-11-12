@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The interrupt controller seen from the guest (plan 03-22; D-110, D-111, D-112, D-124, D-125, D-127, ER-4, ER-5): the authored fixture fixtures/src/irq_ctl.s is assembled by ca65 in the gate (never committed), boots on the core, runs to the absolute deadline until_mclk (master clocks) and writes a
+# DSV1 verdict block that the runner judges from raw RAM. IRQ1 and IRQ2 have no hardware source in the machine yet: the key irq_stim below DECLARES a test stimulus (events AT,LINE,LEVEL in master clocks, line 1 or 2, level 1 requested or 0 not, a pure function of time) that the runner gives to the core with
+# ds_irq_stim_set before the first step. It is a test hook for the controller logic, E0 and E2 self-consistency, and says nothing about the VDC or any other hardware source (ER-5, D-112, ASSUMED LED-IRQ-0008). The checks of the fixture are classed in fixtures/src/irq_ctl.checks: a manual page (MAN) or an
+# assumed ledger entry (ASSUMED: LED-IRQ-0008, written in plan 03-34); none comes from DuoSpool output. The case has no policies key, so the guest kind runs the ROM under its default policy list (D-127). This case runs the default model value irq_i_sample = pre: the observe row 30 is the A register
+# the IRQ1 handler saw at its entry, $77 (119) because the entry came after the instruction that follows CLI (ASSUMED LED-IRQ-0005, open).
+# The declared windows (master clocks): IRQ1 1200000 to 1500000, IRQ2 2200000 to 2500000, IRQ1 and IRQ2 3200000 to 3500000, IRQ1 4200000 to 4500000; the fixture polls the request register for each, so it does not depend on its own timing.
+# Evidence tier E0 for the mechanism: no accuracy, compatibility or hardware claim, and the word pass is not a support claim.
+id = "irq_ctl_pre"
+kind = "guest"
+fixture = "authored:irq-ctl"
+request = ""
+expect = "id=11;observe=30:119"
+meaning = "The authored irq_ctl fixture takes the declared IRQ1 and IRQ2 test stimulus and the timer interrupt through their three vectors (BRK shares $FFF6), checking masking by I and the disable bits, the pushed B, D and I, the request register and the priority timer, IRQ1, IRQ2; 33 passing checks; observe row 30 (A at the entry after CLI) is $77 under the default irq_i_sample = pre"
+required = true
+control = false
+expect_outcome = "pass"
+pins = ["LED-IRQ-0004", "LED-IRQ-0006"]
+until_mclk = 6000000
+checks = 33
+irq_stim = ["1200000,1,1", "1500000,1,0", "2200000,2,1", "2500000,2,0", "3200000,1,1", "3200000,2,1", "3500000,1,0", "3500000,2,0", "4200000,1,1", "4500000,1,0"]

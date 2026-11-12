@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# Memory map and mirroring (D-103; CPU-02). The chip-enable allocation of the hardware manual is a fact; the class of each of the 256 banks, the x4 mirror of the work RAM, the PSG window mirror and the unmapped run $80-$F7 are modelling choices. Not a hardware measurement.
+# The clauses of the statement are parsed by tests/conformance/bankclass-oracle.awk, which refuses to judge when one of them is reworded (ORACLE_RULE_TEXT_DRIFT). A rewording must be made there on purpose, in its own arithmetic.
+# The oracle is the same author's assumption (ER-7): the case bankclass_oracle compares the core with a re-derivation of this text, which is repeatability of one reading and not independent evidence.
+# Page facts: H8-7 (the MPR byte is output as A13 to A20), H8-8 (reset sets MPR7 to 0), H8-9 and H8-24 (the chip-enable allocation: RAM CER at 1F0000-1F7FFF, windows of 1 KiB at 1FE000, 1FE400, 1FE800, 1FEC00, 1FF000, 1FF400, 1FF800-1FFFFF reserved). The hardware manual copy has sha256 40a32e5d..., never committed.
+id = "LED-CPU-0011"
+statement = "DuoSpool models the 256 banks as: banks 0x00-0x7F HuCard; banks 0x80-0xF7 unmapped; banks 0xF8-0xFB the 8 KiB work RAM mirrored four times; banks 0xFC-0xFE unmapped; bank 0xFF the hardware page of six 1 KiB windows (VDC, VCE, PSG, timer, I/O, interrupt registers) and an empty 2 KiB. Modelling assumption."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|H8-7 H8-8 H8-9 H8-24|MPR byte = A13-A20; MPR7 = 0 at reset; RAM enable 1F0000-1F7FFF; windows from 1FE000 to 1FF7FF; page images read by the plan 03-20 executor 2026-11-11", "REPORT|03-CONTEXT D-103|RAM x4 mirror, PSG mirror and unmapped 80-F7 are historical reports", "UNKNOWN|the manual|no page gives a value for an unused block"]
+evidence = ["E0|tests/conformance/cases/bankclass_oracle.toml: the class of all 256 banks equals an awk re-derivation of this text; same-author assumption, repeatability only", "E0|tests/conformance/cases/mmu_mpr_256k.toml: guest reads of unmapped and RAM banks; rows are ASSUMED class"]
+disagreement = "The Develo-book memory map (community-transcribed, a source named in 03-CONTEXT) maps up to F6 where this entry says F7; pcetech and the PCEdev wiki agree with 0x80-0xF7 (03-CONTEXT ER-8). The manual allocates F8 to FB to the RAM chip enable but states no mirror. None of these was re-read for this entry."
+pinning_test = "TEST:bankclass_oracle"
+updated = "2026-11-11"
+assumption = "Each class is one constant of the bank_class table in src/core/bus.c, chosen so that the authored fixtures can run. The pin shows the table equals this text under an independent re-derivation, not that hardware maps the banks this way."
+revisit_phase = 3
+withheld = ["any claim of hardware cycle accuracy", "any claim of interrupt latency in cycles", "any claim of game compatibility", "any TG-16 or region claim", "any claim about the value of a read from an unmapped or unused bank on hardware"]
+origin = "03-CONTEXT D-103"
