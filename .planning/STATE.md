@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 4
 current_phase_name: VCE/VDC Raw Video
-current_plan: 14
+current_plan: 15
 status: executing
-stopped_at: Completed 04-10-PLAN.md
-last_updated: "2026-11-12T11:57:01.660Z"
+stopped_at: Completed 04-11-PLAN.md
+last_updated: "2026-11-12T12:46:40.125Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 3 complete, transitioned to Phase 4
-state_head: f89f6d41e18b0d2a6ab3aa322fb132803cdfcb83
+state_head: 9bc7a293c880b7cd385ca8f32ee92fcd689390e2
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 91
-  completed_plans: 85
+  completed_plans: 86
   percent: 50
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 4 (VCE/VDC Raw Video) — READY TO EXECUTE
-Current Plan: 14
+Current Plan: 15
 Total Plans in Phase: 19
 Status: Ready to execute
 Last activity: 2026-11-11 — Phase 3 complete, transitioned to Phase 4
@@ -143,6 +143,7 @@ Progress: [█████░░░░░] 50%
 | Phase 04 P17 | 3h | 2 tasks | 32 files |
 | Phase 04 P09 | about 3 h | 3 tasks | 29 files |
 | Phase 04 P10 | about 2h | 3 tasks | 37 files |
+| Phase 04 P11 | about 50 min | 3 tasks | 30 files |
 
 ## Accumulated Context
 
@@ -313,6 +314,8 @@ Recent decisions affecting current work:
 - [Phase 04]: BURST is set on the display lines of a burst frame only; the blank payload is unchanged until 04-11
 - [Phase 04]: The vce_pal golden moved with the first burst flag (a33b1f0e), the literal case passing first
 - [Phase 04]: The SATB copy is made at the VBlank state entry EV_LINE and DS is due 256 * 4 * lat_div master clocks later, an assumed modelling choice (LED-VID-0013)
+- [Phase 04]: 04-11: bg_y stepped at each display line in beam.c and set by a BYR write in vdc.c; bxr_line a local of vid.c; BB and SB flags on every record; UNMODELLED on every record while the latched MWR has VM or SM set
+- [Phase 04]: 04-11: ROWS selector gains ;frame=F and STRUCT check frame_flags; guest frames counted by delays (polling fills the 16,384-record device log)
 
 ### Pending Todos
 
@@ -336,6 +339,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12T11:57:01.285Z
-Stopped at: Completed 04-10-PLAN.md
+Last session: 2026-11-12T12:46:39.756Z
+Stopped at: Completed 04-11-PLAN.md
 Resume file: None
