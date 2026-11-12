@@ -637,14 +637,15 @@ CI for Phase 4: unverified: no push authorised (D-64). Nothing of Phase 4 has ru
 research F-8, the staging
 levers of D-176, and the cut-line triggers, each as fired, not fired or unmeasured. The cut itself is decided by the orchestrator and the owner, not here.
 
-Measured on 2026-11-12 on the owner's development machine (Apple M5 Pro, 18 cores, macOS 26.6.2, BWK awk 20200816, Apple clang 21, cmake 4.4.3). **The machine was shared with unrelated jobs and was never quiet: the one-minute load average read between 11 and 43 during these runs.** No quiet window was available and none was waited for, as asked. User CPU is much less sensitive
+Measured on 2026-11-12 on the owner's development machine (Apple M5 Pro, 18 cores, macOS 26.6.2, BWK awk 20200816, Apple clang 21, cmake 4.4.3). **The machine was shared with unrelated jobs and was never quiet: the one-minute load average read between 7 and 43 during these runs.** No quiet window was available and none was waited for, as asked. User CPU is much less sensitive
 to load than wall time, but not
-insensitive (the same gate read 301 s, 374 s and 467 s of user CPU in three runs at load 11 to 43), so every figure below is recorded as measured and is load-dependent.
+insensitive (the same gate read 262 s, 301 s, 374 s and 467 s of user CPU in four runs at load 7 to 43), so every figure below is recorded as measured and is load-dependent.
 
 | Run | What | Wall s | User CPU s | System s | Load average (1 min) at start and end |
 |-----|------|--------|------------|----------|---------------------------------------|
 | A | `/usr/bin/time -p sh scripts/check --timing`, warm tree, at `2872067` (task 1 of this plan); the F-8 quiet measure | 397.3 | 301.3 | 79.1 | 21.3 and 14.7 |
 | B | the same at `d831680` (lever 1 applied; its first build of the new object libraries is inside this run) | 469.9 | 374.4 | 60.1 | 11.0 and 13.5 |
+| D | the final run: `/usr/bin/time -p sh scripts/check --timing` at `8f2ac96`, the last commit of this plan before the close-out; the quietest of the runs (load 7.4 at start), so the F-8 figure to read | 321.2 | 262.4 | 45.3 | 7.4 and 9.5 |
 | dash | `/usr/bin/time -p dash scripts/check` at `2872067` | 388.7 | 291.0 | 67.2 | not recorded |
 | C | a gate run at `a9f690d` that overlapped the Linux container run; contended, not used for any trigger | 1016.9 | 467.5 | 123.6 | high (container emulation) |
 
@@ -711,7 +712,7 @@ All 57 stages passed in every run (`video-check` is the 57th stage, added in Pha
 | 57 | named-controls | 8 | 11 |
 | | sum of stage seconds | 397 | 470 |
 
-The warm target of 120 s (D-132) is missed again, as it was at Phase 3 close and at the 04-05 spike. Compared with the spike (six plans done: conformance 45 s, sanitizers 88 s, determinism 36 s, user CPU 178.6 s) the growth sits in the same three stages: `conformance` 67 to 84 s, `sanitizers` 152 to 216 s and `determinism` 55 to 95 s, with every other stage at 11 s or less.
+The warm target of 120 s (D-132) is missed again, as it was at Phase 3 close and at the 04-05 spike. Compared with the spike (six plans done: conformance 45 s, sanitizers 88 s, determinism 36 s, user CPU 178.6 s) the growth sits in the same three stages: `conformance` 62 to 84 s, `sanitizers` 146 to 216 s and `determinism` 52 to 95 s, with every other stage at 11 s or less.
 The wall figures of those three stages
 swing by a factor of 1.4 between runs A and B on the same code, which is the load, not the code.
 
@@ -722,7 +723,7 @@ plan's own new cases cost, one at a time with
 
 ### D-176 staging levers (trigger: the CI job over 600 s, or `conformance` over 60 s)
 
-The `conformance` trigger fired: the stage read about 67 s after plan 04-12 (orchestrator note), 84 s in run A and 67 s in run B (79.4 s wall and 72.5 s user for the stage alone at load 13). The CI job time is unmeasured (no push). The levers are applied in order, each in a separate commit that weakens no evidence:
+The `conformance` trigger fired: the stage read about 67 s after plan 04-12 (orchestrator note), 84 s in run A, 67 s in run B and 62 s in run D at the lowest load (79.4 s wall and 72.5 s user for the stage alone at load 13). The CI job time is unmeasured (no push). The levers are applied in order, each in a separate commit that weakens no evidence:
 
 | Lever | Trigger | Status | Before and after |
 |-------|---------|--------|------------------|
@@ -742,11 +743,11 @@ to say (unmeasured, D-64).
 | Trigger | Measure | Result |
 |---------|---------|--------|
 | more than two plans needed a revision plan | revision plans created to fix a defect found in review or verification: 0 (04-20 and 04-21 are unused; 04-17 is a planned split and 04-18 and 04-19 are stop-rule splits, which do not count) | **not fired** |
-| the warm quiet gate over 150 s | user CPU of one `sh scripts/check --timing` run: 301.3 s (run A) and 374.4 s (run B), at load 11 to 43; the 04-05 spike had read 178.6 s with six plans done | **fired** (twice the threshold; not a quiet-machine figure, so load-dependent) |
+| the warm quiet gate over 150 s | user CPU of one `sh scripts/check --timing` run: 262.4 s (run D, load 7), 301.3 s (run A) and 374.4 s (run B), at load 11 to 43; the 04-05 spike had read 178.6 s with six plans done | **fired** (1.7 to 2.5 times the threshold; not a quiet-machine figure, so load-dependent) |
 | the CI job over 600 s with lever (1) not recovering it | no push is authorised (D-64) | **unmeasured** |
 | the owner prefers an earlier pull request | a question for the orchestrator | **unmeasured here** |
 
-Recommendation: take the cut. One trigger is measured as fired, on a figure that would have to be inflated by half again by the load to fall under the threshold, and the spike at plan 04-05 was already over it with a third of the phase done. If the cut is taken, plans 04-14 to 04-16 become 4.1-01 to 4.1-03 of an inserted Phase 4.1 (the orchestrator inserts it), the README and
+Recommendation: take the cut. One trigger is measured as fired, on a figure (262 s at load 7) that the load would have to inflate by three quarters to explain, and the spike at plan 04-05 was already over it with a third of the phase done. If the cut is taken, plans 04-14 to 04-16 become 4.1-01 to 4.1-03 of an inserted Phase 4.1 (the orchestrator inserts it), the README and
 04-VALIDATION.md text written in this plan is the Phase 4 close-out
 for the background scope, and VID-06 stays open for the sprite rows (plan-check info 4).
 
