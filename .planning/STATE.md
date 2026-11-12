@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 4
 current_phase_name: VCE/VDC Raw Video
-current_plan: 6
+current_plan: 7
 status: executing
-stopped_at: Stopped after 04-04 Task 1 (stop rule); Tasks 2 and 3 proposed as the next spare plan
-last_updated: "2026-11-12T05:51:59.215Z"
+stopped_at: Completed 04-19-PLAN.md
+last_updated: "2026-11-12T06:22:17.167Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 3 complete, transitioned to Phase 4
-state_head: 22b0742875baa6e75eabb3b597079caa360678d8
+state_head: 07ddf2e6b2255d9a3914e0c508da98685be2d0d1
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 91
-  completed_plans: 77
+  completed_plans: 78
   percent: 50
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 4 (VCE/VDC Raw Video) — READY TO EXECUTE
-Current Plan: 6
+Current Plan: 7
 Total Plans in Phase: 19
 Status: Ready to execute
 Last activity: 2026-11-11 — Phase 3 complete, transitioned to Phase 4
@@ -135,6 +135,7 @@ Progress: [█████░░░░░] 50%
 | Phase 4 P01 | 90min | 3 tasks | 45 files |
 | Phase 04 P02 | 80min | 3 tasks | 17 files |
 | Phase 04 P18 | 110min | 2 tasks | 24 files |
+| Phase 04 P19 | 30min | 2 tasks | 30 files |
 
 ## Accumulated Context
 
@@ -280,6 +281,8 @@ Recent decisions affecting current work:
 - [Phase 04]: Table-driven sink checks landed in the tracer task because a run must not write through an unchecked vid pointer
 - [Phase 04]: 04-18: seeded-prng-v3 is additive (every v2 draw first, then VRAM____, SATB____, PAL_____ straight into the arrays, odd palette bytes keep bit 0); policy 4 accepted by dec_powr only with the allowed set; the default guest list is zero, v3 seed 1, v3 seed 2
 - [Phase 04]: 04-18: restore refusal rows of the seven Phase 4 regions are split over four cases (vdc, beam, timeline, vdma) because a case expect list is capped at 511 characters
+- [Phase 04]: 04-19: reads of VDC and VCE windows are dev-logged once for the phase (D-149); the restore refuses a next event outside [machine_time, machine_time + 2730), a valid satb_done_at outside [machine_time, machine_time + 4096] and a running dma_start after machine_time, judged after the lat_div rule
+- [Phase 04]: 04-19: the video kind decodes VCE writes by offset & 7 in the window, and OB_DEV_LARGE is 16384 (measured 10,980 dev records in the 32 random programs); vce.inc is frozen
 
 ### Pending Todos
 
@@ -303,6 +306,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12T05:43:23.026Z
-Stopped at: Stopped after 04-04 Task 1 (stop rule); Tasks 2 and 3 proposed as the next spare plan
+Last session: 2026-11-12T06:22:16.818Z
+Stopped at: Completed 04-19-PLAN.md
 Resume file: None
