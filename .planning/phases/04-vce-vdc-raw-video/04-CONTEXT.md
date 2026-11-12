@@ -439,6 +439,22 @@ the loop body of the guest spin counter within the stated cost rule.
 3. H7-8 prints the (0,1) row of the sprite-mode table as "1 0"; H7-19 lists (0,1) and (1,0) separately. Irrelevant while SM = 0 only is modelled.
 4. If the owner ever obtains a fuller HuC6260 scan including H6-6 (a document, not a capture), re-run the D-179 image verification before any promotion of LED-VID-0001, -0003 or -0004.
 
+5. Research errata (binding on the planner; full text in 04-RESEARCH.md findings F-1..F-25, which the planner must read). Rulings that amend a decision above:
+   F-1 the restore bound on v_togo is 512, not 262, with no clamp (D-139, D-166: VDW is 9 bits).
+   F-2 observer count means whole records stored, lost = seq - count, with a sticky full flag (D-162, D-164).
+   F-3 the golden and digest cascade list also includes dev_log_records (cyc-probe adds 4 dev READ records),
+   record_skeleton_256k and the epoch and format literals in reckinds.c, DK_CAP and DS_REGIONS_MAX in digkinds.c, the digest_region tags, the snapkinds.c hand tables, the five digest_stream cases, profkinds.c, guestkinds.c, boot.c, the mmu_mpr manifest pins and the ds_obs_begin callers (D-178, D-165).
+   F-4 the toy machinery gets an optional second EXPECT column plus a filter and selftest extension for the toys that must stay green (D-173).
+   F-5 fixture-build writes NAME.vexp.tsv beside NAME.observe as the channel from .vexp rows to the runner (D-171).
+   F-9 the fold lives inside ds_cpu_step_obs, not ds_run (D-137).
+   F-10 vd_irq_phase and rcr_origin are flat instance members named exactly as the model rows, with the BEAM padding and tail_pad selftest anchor rules of the research map (D-165, D-168).
+   F-11 BEAM is not all zero at boot (rcr_counter 16384, frame_lines 262): boot.c initialises them and the regeneration text says so.
+   F-17 plan 04-03 is cut to five tasks; a data-only 04-03a may be split off (D-177).
+   F-18 only 04-01 and 04-02 are file-disjoint; 04-04 and 04-05 serialise.
+   F-20 chunk tokens add 1364, 1366 and one video frame.
+   F-22 digest_region on VRAM uses first and last bytes only.
+   F-25 the palette bijection is one function, chosen by the planner and used by both D-169 and D-170. The remaining findings are advisory and are carried into plans as the research map states.
+
 </reconciliations>
 
 <canonical_refs>
