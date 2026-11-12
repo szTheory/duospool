@@ -5,8 +5,9 @@
  * Two registers live in window 5 of the hardware page (bank $FF): the disable register at $1402 (three bits, 1 = disabled, bit 0 IRQ2D, bit 1 IRQ1D, bit 2 TIQD, reset 0, H8-16) and the request register at $1403 (bit 0 the IRQ2 level, bit 1 the
  * IRQ1 level, bit 2 TIQ, read-only, TIQ set by a timer borrow and reset by a write cycle, H8-15). The TIQ request bit is a latch that every borrow sets, masked or not, and that many borrows set once (D-109); a write to $1403 clears it and nothing else.
  * The latch is the stored bit or a borrow that is due at the stamp: both are folded into one pure query of the timer, so a read of the request register has no side effect (D-110).
- * IRQ1 and IRQ2 are levels (H8-13: driven by level sense). Nothing drives them yet (the VDC arrives in Phase 4): a case may declare a stimulus (ds_irq_stim_set, the arrays irq_stim_* of the instance), a list of events (at, line, level) whose levels are a pure
- * function of the stamp. It is a test hook and says nothing about the VDC or any other hardware source (ER-5, D-112); with no stimulus both levels are 0 at every stamp.
+ * IRQ1 and IRQ2 are levels (H8-13: driven by level sense). Since plan 04-08 the VDC drives the IRQ1 level: it is high while any of the status flags bits 0 to 5 is set (D-144), a level that the status read ends, ORed with the declared test stimulus. A case may also declare a stimulus (ds_irq_stim_set, the arrays irq_stim_* of the instance), a list of events (at, line, level)
+ * whose levels are a pure function of the stamp. The stimulus is a test hook and says nothing about the VDC or any other hardware source (ER-5, D-112); with no stimulus and no VDC flag both levels are 0 at every stamp. The VDC part reads the stored status of a FOLDED instance and ignores the stamp (F-21): the fold to the stamp runs before every read of $1403 and every sample (bus.c, cpu.c).
+ * The VDC drives no IRQ2 and no NMI (D-144); the delivery of IRQ1 stays governed by $1402 and the I flag.
  * Delivery: a source that is pending and not disabled is taken at the sample point when I is clear (the caller applies I, cpu.c); the vector is the logical address of its low byte, read through MPR7 like any access (H8-13: the timer vector is $FFFA/$FFFB, IRQ1 $FFF8/$FFF9,
  * IRQ2 and BRK $FFF6/$FFF7; the priority is timer, IRQ1, IRQ2). A disable bit does not stop the latch or the level, only the delivery. NMI has no driver (D-110).
  */
@@ -96,7 +97,10 @@ static uint32_t stim_level(const struct ds_instance *inst, uint32_t line, uint64
 /* the three request bits at the stamp, before any mask: bit 0 the IRQ2 level, bit 1 the IRQ1 level, bit 2 the TIQ request (the register layout of H8-15) */
 static uint32_t request_bits(const struct ds_instance *inst, uint64_t stamp)
 {
-    return (stim_level(inst, 2u, stamp) != 0u ? IRQ_BIT_IRQ2 : 0u) | (stim_level(inst, 1u, stamp) != 0u ? IRQ_BIT_IRQ1 : 0u) | (ds_timer_tiq(inst, stamp) != 0u ? IRQ_BIT_TIQ : 0u);
+    uint32_t vdc_level = ((uint32_t)inst->vdc_status & 0x3Fu) != 0u ? 1u : 0u; /* the VDC level of D-144: any of the flag bits 0 to 5 (the folded status, F-21) */
+    uint32_t irq1 = stim_level(inst, 1u, stamp) | vdc_level;
+
+    return (stim_level(inst, 2u, stamp) != 0u ? IRQ_BIT_IRQ2 : 0u) | (irq1 != 0u ? IRQ_BIT_IRQ1 : 0u) | (ds_timer_tiq(inst, stamp) != 0u ? IRQ_BIT_TIQ : 0u);
 }
 
 uint32_t ds_irq_read(const struct ds_instance *inst, uint32_t reg, uint64_t stamp)

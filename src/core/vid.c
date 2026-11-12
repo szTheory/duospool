@@ -4,7 +4,8 @@
  * vid.c - the raw video line record "DSVR v1" (plan 04-04; D-155, D-161, D-164, ER-13). One record per line of every frame, little-endian, written byte by byte from widened unsigned values; the header is 64 bytes:
  *   +00 u64 origin  +08 u32 frame  +12 u16 line  +14 u16 frame_lines  +16 u16 rec_bytes  +18 u16 line_mclk  +20 u8 div  +21 u8 vce_cr  +22 u16 active_x  +24 u16 active_w  +26 u16 border  +28 u16 active_k  +30 u8 v_state  +31 u8 flags
  *   +32 u8 line_dirty  +33 u8 slots_used  +34 u8 covering  +35 u8 version  +36 u16 rcr_counter  +38 u16 bxr_eff  +40 u16 byr_row  +42 u16 hsr  +44 u16 hdr  +46 u16 vpr  +48 u16 vdw  +50 u16 vcr  +52 u16 mwr_eff  +54 u16 vdc_cr  +56 u64 reserved (zero)
- * The payload (two u16 arrays of active_w entries, then zero padding to a multiple of 8) belongs to the plans that give the line an active window; a record of this plan is the header alone (rec_bytes 64, active_w 0, every colour of the line the border).
+ * The payload (two u16 arrays of active_w entries, then zero padding to a multiple of 8) belongs to the plans that give the line an active window; a record of this plan is the header alone (rec_bytes 64, active_w 0, every colour of the line the border). Plan 04-08 fills v_state, active_k (the display line index, 0xFFFF off display), rcr_counter and the ACTIVE flag from the vertical machine.
+ * Plan 04-08 fills v_state, active_k (the display line index inside VDW, 0xFFFF off display), rcr_counter and the ACTIVE flag from the vertical machine; the render still reads no VRAM and gives the line no active window.
  * The render function takes a CONST instance and a stack record and can write no machine state: the record is a pure function of the state at the line event (R1), and what the fold does with the record (emit or drop) changes nothing in the instance (D-164).
  * The layout is a project definition, not a hardware claim (LED-VID-0018, ER-13). The header offsets are asserted below.
  */
@@ -52,7 +53,11 @@ _Static_assert(OFF_RCR == OFF_VERSION + 1u && OFF_BXR == OFF_RCR + 2u && OFF_BYR
 _Static_assert(OFF_VDW == OFF_VPR + 2u && OFF_VCR == OFF_VDW + 2u && OFF_MWR == OFF_VCR + 2u && OFF_VDC_CR == OFF_MWR + 2u && OFF_RESERVED == OFF_VDC_CR + 2u && OFF_RESERVED + 8u == DS_VID_REC_HEADER_BYTES, "DSVR v1 header offsets (D-161)");
 
 /* the record flag bits of D-161 that this plan sets */
+#define FLAG_ACTIVE 0x01u
 #define FLAG_BURST 0x02u
+
+/* the vertical state VDW: a line in it is a display line (D-139) */
+#define V_STATE_VDW 1u
 
 /* the VDC register slots the header carries (D-146: the slot is the register number) */
 #define REG_CR 5u
@@ -87,6 +92,7 @@ uint32_t ds_vid_render(const struct ds_instance *inst, uint64_t origin, uint8_t 
     uint64_t k = (origin - (uint64_t)DS_CONST_raster_phase_mclk) / (uint64_t)DS_CONST_line_mclk;
     uint64_t fl = (uint64_t)inst->frame_lines;
     const uint16_t *reg = inst->vdc_reg;
+    int display = (uint32_t)inst->v_state == V_STATE_VDW;
 
     put_le(rec, OFF_ORIGIN, origin, 8u);
     put_le(rec, OFF_FRAME, fl != UINT64_C(0) ? k / fl : UINT64_C(0), 4u); /* the frame and the line in it are derived from the line index and the bound frame length, never stored (D-136) */
@@ -99,9 +105,9 @@ uint32_t ds_vid_render(const struct ds_instance *inst, uint64_t origin, uint8_t 
     put_le(rec, OFF_ACTIVE_X, UINT64_C(0), 2u);
     put_le(rec, OFF_ACTIVE_W, UINT64_C(0), 2u);
     put_le(rec, OFF_BORDER, (uint64_t)pal_entry(inst, BORDER_ENTRY), 2u);
-    put_le(rec, OFF_ACTIVE_K, (uint64_t)0xFFFFu, 2u);
+    put_le(rec, OFF_ACTIVE_K, display ? (uint64_t)inst->display_k : (uint64_t)0xFFFFu, 2u); /* the display line index inside VDW, 0xFFFF on every other line (plan 04-08) */
     put_le(rec, OFF_V_STATE, (uint64_t)inst->v_state, 1u);
-    put_le(rec, OFF_FLAGS, inst->burst != 0u ? (uint64_t)FLAG_BURST : UINT64_C(0), 1u);
+    put_le(rec, OFF_FLAGS, (display ? (uint64_t)FLAG_ACTIVE : UINT64_C(0)) | (inst->burst != 0u ? (uint64_t)FLAG_BURST : UINT64_C(0)), 1u);
     put_le(rec, OFF_LINE_DIRTY, (uint64_t)inst->line_dirty, 1u);
     put_le(rec, OFF_SLOTS, UINT64_C(0), 1u);
     put_le(rec, OFF_COVERING, UINT64_C(0), 1u);

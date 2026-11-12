@@ -23,6 +23,8 @@
 # (it turns video_vce_pal guest_failure on this group) and not from a record fault.
 # The golden scene row and the golden row are a change detector beside the literal case video_vce_pal, never a verdict (ER-11): the pinned digest is the SHA-256 of the canonical stream of the vce_pal guest (D-163), measured on the first run and recomputed outside the core with a host tool (shasum -a 256 of build/gate/video/video_vce_pal.dsvr),
 # E0 repeatability only. It is valid only beside the literal case of the same scene (the runner refuses video-hash-only and scripts/video-check says INV_VIDEO_HASH_ONLY otherwise). A change of the stream (a later plan that changes the records) repins it by the procedure of that plan.
+# Repin of plan 04-08 (E0 change detector, ER-11): the vertical machine and the RCR counter now run, so every record carries its v_state, the ACTIVE flag on display lines, active_k and a stepping rcr_counter (the vce_pal guest leaves every vertical register at 0, so the cycle is 4 lines: 2 of VDS, 1 of VDW, 1 of VSW).
+# Old digest 6c510913928bfa8703e0f5006bba728f894ccf9ce910ede9b7fcef50afd09c55, new digest c667ac7ada36e13b97178cf7a1c011e4494b6f4b3ec79359b894eafddaf35253, recomputed with shasum -a 256 over the --video-out file; the literal case video_vce_pal passed on the changed records first.
 scene	vce_pal	case=video_vce_pal	role=literal
 scene	vce_pal	case=video_vce_pal_golden	role=golden
 group	vce_pal	struct	form=STRUCT	class=ASSUMED:LED-VID-0004	sym=none	kills=F4,F8,F9
@@ -41,4 +43,4 @@ group	vce_pal	border	form=STRUCT	class=GUEST:pal_bijection	sym=none	kills=F0
 row	vce_pal	border	check=border_after_pal	value=273
 group	vce_pal	dirty	form=STRUCT	class=ASSUMED:LED-VID-0004	sym=none	kills=F0,F4
 row	vce_pal	dirty	check=line_dirty	cr_bit=0;pal_bit=4
-golden	vce_pal	sha256=6c510913928bfa8703e0f5006bba728f894ccf9ce910ede9b7fcef50afd09c55
+golden	vce_pal	sha256=c667ac7ada36e13b97178cf7a1c011e4494b6f4b3ec79359b894eafddaf35253

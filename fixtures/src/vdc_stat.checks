@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# vdc_stat.checks - one row per CHECK of fixtures/src/vdc_stat.s (D-125, plan 04-08). Columns separated by one TAB: check index (1-based), slug, class tag, meaning.
+# Class tags: MAN:<page> (a manual page value; the page label must be in fixtures/lib/cites.txt), GUEST:<model>, ASSUMED:<LED-id>. The slice of the tracer has the RR row only: the status layout and the rule that a flag is set only when its enable bit is set and cleared by the read are H7-4. A pass is not a support claim (ER-4).
+id=17
+checks=3
+1	rr-enable-clear-status-zero	MAN:H7-4	With CR bit 2 clear an RCR match leaves the status at 0: more than two frames pass with RCR = 100 and the status read gives $00
+2	rr-enable-set-bit2	MAN:H7-4	With CR bit 2 set the RCR match sets bit 2 (RR) of the status and nothing else: the first status read in the IRQ1 handler gives $04
+3	rr-read-clears	MAN:H7-4	A read of the status clears bits 0 to 5: the second status read in the handler gives $00

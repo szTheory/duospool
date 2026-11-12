@@ -5,7 +5,8 @@
  * The mutation rule of the file: raster, beam, status and DMA state change only inside ds_vdc_advance and the register write handlers of the plans that add them; nothing else writes them, and nothing here allocates, reads a file, a clock or the environment.
  * The grid (plan 04-04): line k starts at DS_CONST_raster_phase_mclk + k * DS_CONST_line_mclk and its EV_LINE is DS_CONST_line_sample_offset_mclk after that; the stored next event is derived from (line_idx, stage, vd_off, rcr_off), no clock value is stored (D-137). The fold processes every event with time <= stamp in time order, an event at the
  * stamp of an access BEFORE the access (the tie rule of D-138, ASSUMED LED-VID-0004), and never rewinds: a stamp below the next event does nothing. At EV_LINE the divider is latched from the control register, the record of the line is rendered from the state and offered to the sink when one is attached, the dirty flags are cleared with or without a sink (D-164),
- * and the line index advances. The vertical machine, the RCR counter, VD and the DMA closed forms are plans 04-08 and later: until then EV_LINE schedules no EV_VD and no EV_RCR (both offsets are none), the stages 1 and 2 only retire what a restored state names, and every record is the header alone.
+ * and the line index advances. Plan 04-08 adds the vertical machine, the RCR counter and the two interrupt events of the ladder: at EV_LINE, in the order of D-138, the vertical cycle advances (D-139), the RCR counter steps (D-142), the divider is latched and the two event offsets are computed, and the VBlank state entry latches MWR and raises VD (D-143);
+ * EV_VD and EV_RCR of the line follow at their offsets and raise VD and RR through ds_vdc_flag, whose enable gate is read at that instant (D-144). The DMA closed forms are plans 04-10 and later, so the DMA step of the ladder is empty and every record still has no active window. The positions are modelling assumptions (ASSUMED LED-IRQ-0001, LED-IRQ-0010, LED-VID-0004), not hardware measurements.
  * Plan 04-03 added the power-on state (ds_vdc_poweron) and the state layout of the instance (ds_core.h).
  */
 #include <stddef.h>
@@ -19,6 +20,11 @@
 #define EV_OFF_NONE 0xFFFFu
 /* the stages: which event of the line is next (BEAM region, ds_core.h) */
 enum { STAGE_LINE = 0, STAGE_VD = 1, STAGE_RCR = 2 };
+/* the vertical states of D-139 (v_state) and the register slots the ladder reads (the slot is the register number, vdc.c) */
+enum { VS_VDS = 0, VS_VDW = 1, VS_VCR = 2, VS_VSW = 3 };
+enum { SLOT_RCR = 6, SLOT_MWR = 9, SLOT_HSR = 10, SLOT_HDR = 11, SLOT_VPR = 12, SLOT_VDW = 13, SLOT_VCR = 14 };
+/* the status flag numbers of ds_vdc_flag (D-144): RR is bit 2 and VD bit 5 */
+enum { FLAG_RR = 2, FLAG_VD = 5 };
 
 /* the origin of line k on the grid; k is bounded by the caller (the fold from its own count, the restore rule from machine_time / line_mclk + 2), so the product stays inside 64 bits for every machine time a run can reach */
 static uint64_t line_origin(uint64_t k)
@@ -67,15 +73,115 @@ static uint8_t next_stage(const struct ds_instance *inst, uint32_t after)
     return (uint8_t)STAGE_LINE;
 }
 
-/* EV_LINE of line line_idx (items 4, 7 and 8 of D-138 as far as this plan has them): latch the divider, schedule nothing else, render and offer the record when a sink is attached (the want_pixels gate of D-164), clear the dirty flags, advance the line */
+/* the length in lines of vertical state st, read from the registers at the EV_LINE where the state is entered (D-139; MAN H7-10, H7-11, H7-13): VDS+2 (VPR bits 15-8), VDW+1 (9 bits), VCR (8 bits, 0 skips the state) and VSW+1 (VPR bits 4-0). At most 512, so v_togo never needs a clamp (F-1) */
+static uint32_t state_len(const struct ds_instance *inst, uint32_t st)
+{
+    uint32_t vpr = (uint32_t)inst->vdc_reg[SLOT_VPR];
+
+    switch (st) {
+    case (uint32_t)VS_VDS:
+        return ((vpr >> 8u) & 0xFFu) + 2u;
+    case (uint32_t)VS_VDW:
+        return ((uint32_t)inst->vdc_reg[SLOT_VDW] & 0x1FFu) + 1u;
+    case (uint32_t)VS_VCR:
+        return (uint32_t)inst->vdc_reg[SLOT_VCR] & 0xFFu;
+    default:
+        return (vpr & 0x1Fu) + 1u;
+    }
+}
+
+/* enter vertical state st on this line (its first line): v_togo counts the lines of the state still to come after this one, and display_k counts the display lines from 0 inside VDW and is 0xFFFF in every other state */
+static void enter_state(struct ds_instance *inst, uint32_t st, uint32_t len)
+{
+    inst->v_state = (uint8_t)st;
+    inst->v_togo = (uint16_t)(len - 1u);
+    inst->display_k = st == (uint32_t)VS_VDW ? (uint16_t)0u : (uint16_t)0xFFFFu;
+}
+
+/* item 2 of D-138, the vertical machine (D-139): the cycle restarts in VDS at frame line 0 (an unfinished state is cut, and no VD is raised for a VDW the wrap cut, LED-IRQ-0001) and otherwise runs VDS, VDW, VCR and VSW round again. A state whose length is 0 (only VCR can be) is skipped. Returns 1 when this line is the VBlank state entry, the first line after VDW */
+static int vertical_step(struct ds_instance *inst, uint64_t k)
+{
+    uint32_t prev = (uint32_t)inst->v_state;
+    uint32_t st = prev;
+    uint32_t len = 0u;
+    uint32_t tries;
+
+    if (inst->frame_lines != 0u && k % (uint64_t)inst->frame_lines == UINT64_C(0)) {
+        enter_state(inst, (uint32_t)VS_VDS, state_len(inst, (uint32_t)VS_VDS));
+        return 0;
+    }
+    if (inst->v_togo != 0u) { /* a later line of the same state */
+        inst->v_togo = (uint16_t)((uint32_t)inst->v_togo - 1u);
+        if (prev == (uint32_t)VS_VDW) {
+            inst->display_k = (uint16_t)(((uint32_t)inst->display_k + 1u) & 0xFFFFu);
+        }
+        return 0;
+    }
+    for (tries = 0u; tries < 4u && len == 0u; tries++) { /* the next state with at least one line; only VCR can have none, so the loop ends within two steps */
+        st = (st + 1u) & 3u;
+        len = state_len(inst, st);
+    }
+    if (len == 0u) { /* unreachable: keeps the loop bound a visible fact and not a proof about three registers */
+        len = 1u;
+    }
+    enter_state(inst, st, len);
+    return prev == (uint32_t)VS_VDW ? 1 : 0;
+}
+
+/* item 3 of D-138, the RCR counter (D-142): add 1 saturating at $7FFF, then set it to 64 on the origin line chosen by the model parameter rcr_origin (0 first_active: the first display line, 1 line_before: the last line of VDS). The set-to-64 is ONE statement, the anchor of the toy vid-rcr-base */
+static void rcr_step(struct ds_instance *inst)
+{
+    uint32_t origin;
+
+    if (inst->rcr_counter < (uint16_t)0x7FFFu) {
+        inst->rcr_counter = (uint16_t)((uint32_t)inst->rcr_counter + 1u);
+    }
+    if (inst->rcr_origin == 0u) {
+        origin = (uint32_t)inst->v_state == (uint32_t)VS_VDW && inst->display_k == (uint16_t)0u ? 1u : 0u;
+    } else {
+        origin = (uint32_t)inst->v_state == (uint32_t)VS_VDS && inst->v_togo == 0u ? 1u : 0u;
+    }
+    if (origin != 0u) {
+        inst->rcr_counter = (uint16_t)64u;
+    }
+}
+
+/* item 4 of D-138 for the two offsets (D-140, D-142, D-143, T-04-28): the horizontal registers are read at this EV_LINE; the active window starts at (HDS+1)*8 dots and ends at (HDS+HDW+2)*8 dots, each times the divider latched for the line, in u32 (at most (127+127+2)*8*4 = 8192, no overflow).
+ * EV_RCR is at the window end and does not occur on a line where that is 1365 or more; EV_VD (phase hdw_start) is at the window start, at most 1364. When EV_RCR exists the window start is before it, so the stage order VD then RCR is also the time order */
+static void schedule_offsets(struct ds_instance *inst)
+{
+    uint32_t hds = ((uint32_t)inst->vdc_reg[SLOT_HSR] >> 8u) & 0x7Fu;
+    uint32_t hdw = (uint32_t)inst->vdc_reg[SLOT_HDR] & 0x7Fu;
+    uint32_t div = (uint32_t)inst->lat_div;
+    uint32_t rcr_off = (hds + hdw + 2u) * 8u * div;
+    uint32_t vd_off = (hds + 1u) * 8u * div;
+
+    inst->rcr_off = rcr_off >= (uint32_t)DS_CONST_line_mclk ? (uint16_t)EV_OFF_NONE : (uint16_t)rcr_off;
+    if (inst->vd_pending != 0u) {
+        inst->vd_off = (uint16_t)(vd_off < (uint32_t)DS_CONST_line_mclk - 1u ? vd_off : (uint32_t)DS_CONST_line_mclk - 1u);
+    }
+}
+
+/* EV_LINE of line line_idx, the items of D-138 this plan has, in order: (2) the vertical machine, (3) the RCR counter, (4) the divider latch and the event offsets, (5) at the VBlank state entry the MWR latch and VD, (7) render and offer the record when a sink is attached (the want_pixels gate of D-164), (8) clear the dirty flags; then the line advances.
+ * Item 1 (DMA words due) and the other latches belong to plans 04-09 and later. VD of phase line_start is raised here, at this EV_LINE; phase hdw_start leaves it outstanding (vd_pending) for the EV_VD of this line. The divider is latched before the offsets are computed from it */
 static void ev_line(struct ds_instance *inst, struct ds_obs_log *obs)
 {
     uint64_t k = inst->line_idx;
+    int vblank = vertical_step(inst, k);
 
+    rcr_step(inst);
     inst->lat_div = (uint8_t)ds_vce_divider((uint32_t)inst->vce_cr);
     inst->vd_off = (uint16_t)EV_OFF_NONE;
-    inst->rcr_off = (uint16_t)EV_OFF_NONE;
     inst->vd_pending = 0u;
+    if (vblank != 0) {
+        inst->mwr_active = (uint16_t)((uint32_t)inst->vdc_reg[SLOT_MWR] & 0xFFu);
+        if (inst->vd_irq_phase == 0u) {
+            ds_vdc_flag(inst, (uint32_t)FLAG_VD);
+        } else {
+            inst->vd_pending = 1u;
+        }
+    }
+    schedule_offsets(inst);
     if (obs != NULL && obs->vid.on) { /* the want_pixels gate: the record is built and offered only when a vid sink is attached; nothing the line does to the instance depends on it */
         uint8_t rec[DS_VID_MAX_REC_BYTES];
         uint32_t n = ds_vid_render(inst, line_origin(k), rec);
@@ -101,13 +207,17 @@ void ds_vdc_advance(struct ds_instance *inst, uint64_t stamp, struct ds_obs_log 
             break;
         }
         switch ((uint32_t)inst->stage) {
-        case (uint32_t)STAGE_VD: /* no VD flag exists yet (plan 04-08): the event is retired */
+        case (uint32_t)STAGE_VD: /* the VBlank flag of phase hdw_start, gated by CR bit 3 at this instant (D-143, D-144) */
             inst->vd_pending = 0u;
             inst->vd_off = (uint16_t)EV_OFF_NONE;
+            ds_vdc_flag(inst, (uint32_t)FLAG_VD);
             inst->stage = next_stage(inst, (uint32_t)STAGE_VD);
             break;
-        case (uint32_t)STAGE_RCR: /* no RCR compare exists yet (plan 04-08): the event is retired */
+        case (uint32_t)STAGE_RCR: /* the raster flag of EVERY line, display or not: the counter equals RCR (10 bits) and CR bit 2 is set at this instant (D-142, D-144) */
             inst->rcr_off = (uint16_t)EV_OFF_NONE;
+            if ((uint32_t)inst->rcr_counter == ((uint32_t)inst->vdc_reg[SLOT_RCR] & 0x3FFu)) {
+                ds_vdc_flag(inst, (uint32_t)FLAG_RR);
+            }
             inst->stage = next_stage(inst, (uint32_t)STAGE_RCR);
             break;
         default:

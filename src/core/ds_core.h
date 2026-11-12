@@ -443,6 +443,8 @@ void ds_mpr_write(struct ds_instance *inst, uint32_t index, uint8_t value); /* t
  * ds_irq_write stores the disable bits (reg 2) or acknowledges TIQ (reg 3: any write clears the TIQ request only, the IRQ levels are inputs) after folding the timer to the stamp.
  * ds_irq_pending_query is the pure query of what is pending at the stamp, after the disable mask: bit 0 IRQ2, bit 1 IRQ1, bit 2 TIQ (the layout of the request register), 0 when nothing is deliverable. ds_irq_pending is the pure sample:
  * 0 when nothing is pending, else the logical address of the vector's low byte of the winner (TIQ $FFFA, then IRQ1 $FFF8, then IRQ2 $FFF6, H8-13); the caller applies the I flag.
+ * Since plan 04-08 the IRQ1 level is the declared stimulus level OR (vdc_status & $3F) != 0 (D-144). The VDC part reads the STORED status and ignores the stamp, so ds_irq_pending_query is valid for a FOLDED instance only: the timer part is inclusive at the stamp, the VDC part is as far as the last fold went (F-21).
+ * The fold to the stamp runs before every read of $1403 and every interrupt sample; a stop callback that calls the query at machine_time sees the VDC as of machine_time - 1, and a new test must never query at a stamp past the fold.
  */
 uint32_t ds_irq_read(const struct ds_instance *inst, uint32_t reg, uint64_t stamp);
 void ds_irq_write(struct ds_instance *inst, uint32_t reg, uint8_t value, uint64_t stamp);

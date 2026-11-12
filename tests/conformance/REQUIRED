@@ -266,3 +266,4 @@ video_fault_sweep_vce_pal
 video_vce_pal_golden
 video_hash_not_verdict
 video_judge_forms
+vdc_stat

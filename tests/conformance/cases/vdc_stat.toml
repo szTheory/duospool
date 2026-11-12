@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The VDC status register and IRQ1 seen from the guest (plan 04-08; D-138, D-139, D-142, D-143, D-144, D-169, D-170, ER-4, ER-10, F-40): the authored fixture fixtures/src/vdc_stat.s is assembled by ca65 in the gate (never committed), sets a vertical sum of 264 lines and RCR = 100, installs its own IRQ1 handler, and writes status bytes read in the handler into a DSV1 verdict block that the
+# runner judges from raw RAM. No absolute line or frame number is asserted (D-136): the waits are counted loops and the rows judge status bytes. This slice is the tracer: the RR row (the status reads $00 with CR bit 2 clear after more than two frames, the RCR match then sets bit 2 and the handler reads $04, the second read gives $00; MAN H7-4).
+# The case has no policies key, so the guest kind runs the ROM under its default policy list (zero, seeded-prng-v3 seed 1, seed 2) and the check bytes must be equal in all three: every register is 0 at power-on and every cell the checks read is written first (D-167). The literals come from the manual page H7-4, not from DuoSpool output. Evidence tier E0: no accuracy, compatibility or
+# hardware claim, and the word pass is not a support claim.
+id = "vdc_stat"
+kind = "guest"
+fixture = "authored:vdc-stat"
+request = ""
+expect = "id=17"
+meaning = "The authored vdc_stat fixture takes the VDC raster-compare interrupt as IRQ1 and reads the status in its handler: no flag with the enable clear, bit 2 with it set, and a second read of 0, 3 passing checks of class MAN, identical under three power-on policies"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 2500000
+checks = 3
