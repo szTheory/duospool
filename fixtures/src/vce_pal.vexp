@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# vce_pal.vexp - the hand-derived literal rows of the vce_pal video scene (plan 04-07; D-171, D-172, ER-10, ER-11, ER-12, ER-13, F-5, F-38).
+# scripts/fixture-build writes this file, comments dropped, as build/gate/fixtures/vce-pal.vexp.tsv; the runner kind video (tests/conformance/videokinds.c) reads only that file.
+# One source holds the literals: no expected value lives in a case file, and none comes from a run of DuoSpool, another emulator or a hash.
+# Rows are TAB separated. Four row kinds, keys closed (scripts/lib/vexp-rules.awk is the grammar):
+#   scene   NAME  case=CASE_ID  role=literal|struct|golden
+#   group   SCENE GID  form=ROWS|REL|STRUCT  class=MAN:<label>|GUEST:<model>|ASSUMED:<LED-id>  sym=order|asym|none  kills=F0,F5,...
+#   row     SCENE GID  SELECTOR  LITERAL      (STRUCT: SELECTOR check=NAME; LITERAL key=value items separated by semicolons)
+#   golden  SCENE sha256=HEX                  (one pinned stream digest of a golden scene: E0 repeatability, valid only beside a literal case of the same scene, ER-11)
+# The fixture (fixtures/src/vce_pal.s) writes VCE CR $00, waits at least 5,460 master clocks (four lines; the speed is stated in vce_pal.s), writes CR $01 and writes the 512 palette entries P(i) = (91 * i + 17) & 511.
+# Its records are header-only (no active window yet), so only the faults that act on a header declare a kill here: F0 (a perturbed literal), F4 (a duplicated line), F5 (a changed divider), F8 (two swapped lines), F9 (an origin moved by one clock).
+# F1 F2 F3 F6 F7 act on pixels and active lines and change nothing in a header-only stream.
+# Classes (ER-10, the weakest class of the inputs of a row wins): the struct and frame groups use the 1365-clock grid and the frame length, so they are ASSUMED (LED-VID-0004, LED-VID-0001).
+# The div group is MAN H6-3 (content 00h gives division ratio 4, 01h gives 3). It is judged only on records that lie wholly at least one line (1365 clocks) after the stamp of the CR write that sets them and, between two writes, at least one line before the next one,
+# so it depends neither on the grid phase nor on the tie rule; it is never judged on a record before the CR $00 write, which would rest on the power-on CR of LED-PROF-0003 (amendment A11).
+# The divline group is the join of a write stamp to the grid (the tie rule of D-138), ASSUMED LED-VID-0004.
+# The border group is GUEST pal_bijection: pure in-guest arithmetic over the values the guest wrote, 91 * 256 + 17 = 23313 = 45 * 512 + 273, so palette entry $100 holds 273.
+# It is judged on records at least one line after the last palette data write (the stamp comes from the dev log, not from the core).
+# The dirty group joins a write stamp to the grid (ASSUMED LED-VID-0004): bit 0 of line_dirty on exactly the first record after each CR write, bit 4 on exactly the first record after each palette data write.
+# F0 note (A7): F0 perturbs the first number of the first row of a group, so it proves only that the comparison is live. The border group's only kill is F0, so its liveness against a changed palette store comes from the toy vid-palette-mask
+# (it turns video_vce_pal guest_failure on this group) and not from a record fault.
+# The golden role (plan 04-07 Task 3) is a change detector beside the literal case, never a verdict (ER-11).
+scene	vce_pal	case=video_vce_pal	role=literal
+group	vce_pal	struct	form=STRUCT	class=ASSUMED:LED-VID-0004	sym=none	kills=F4,F8,F9
+row	vce_pal	struct	check=count	grid=1365
+row	vce_pal	struct	check=origins	step=1365
+row	vce_pal	struct	check=rec_bytes	header=64;version=1;max_w=682
+row	vce_pal	struct	check=values_below_512	limit=512
+group	vce_pal	frame	form=STRUCT	class=ASSUMED:LED-VID-0001	sym=none	kills=F0,F4
+row	vce_pal	frame	check=frame_lines	value=262;step=1365
+row	vce_pal	frame	check=records_per_frame	value=262
+group	vce_pal	div	form=STRUCT	class=MAN:H6-3	sym=none	kills=F0,F5
+row	vce_pal	div	check=div_table	div=4,3;crw=0,1;gap=5460
+group	vce_pal	divline	form=STRUCT	class=ASSUMED:LED-VID-0004	sym=none	kills=F0,F8
+row	vce_pal	divline	check=div_first	div=3;prev=4;crw=1
+group	vce_pal	border	form=STRUCT	class=GUEST:pal_bijection	sym=none	kills=F0
+row	vce_pal	border	check=border_after_pal	value=273
+group	vce_pal	dirty	form=STRUCT	class=ASSUMED:LED-VID-0004	sym=none	kills=F0,F4
+row	vce_pal	dirty	check=line_dirty	cr_bit=0;pal_bit=4

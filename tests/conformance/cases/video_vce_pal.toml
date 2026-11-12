@@ -1,21 +1,19 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
-# The raw video record of the tracer (plan 04-04; D-137, D-138, D-141, D-161, D-163, D-169, ER-10, ER-11, ER-13): the authored fixture fixtures/src/vce_pal.s writes VCE CR $00, waits 9,216 master clocks, writes CR $01 and writes the 512 palette entries P(i) = (91 * i + 17) & 511; the runner kind video (tests/conformance/videokinds.c) attaches a vid sink and a dev sink,
-# (plan 04-19 completed the fixture: the unlisted reads, a shift-add writer, a readback against an additive sum and the register tests follow CR $01; the writes are found by the register offset & 7, so the window mirror $0444 and $0445 writes count as palette data writes, and the toy vid-palette-mask turns this case guest_failure on the border row)
-# runs the guest to the end of its DSV1 verdict and judges the header-only line records (D-161) by the OFFSETS WRITTEN IN THAT FILE, never from a core header. Role: literal (D-172: a hash alone is never a verdict; the digest below is a change detector).
-# The classes of the rows (ER-10, the weakest class of the inputs of a row wins): STRUCT rows (count = floor((M - 1) / 1365) + 1 for the machine time M reached, origin k * 1365, frame and line from (frame * frame_lines + line) * 1365 = origin, frame_lines 262, line_mclk 1365, version 1, rec_bytes, zero reserved word, values below 512) are ASSUMED LED-VID-0004 and LED-VID-0001,
-# because every one of them uses the 1365-clock grid or the frame length; the div rows are MAN H6-3 (content 00h gives division ratio 4, 01h gives 3) and are judged only on records that lie wholly at least one line (1365 clocks) after the stamp of the CR write that sets them and, between two writes, at least one line before the next one, so they depend neither on the
-# grid phase nor on the tie rule;
-# the window between the CR $00 and CR $01 writes is at least 5,460 clocks (the case's gap item, four lines) so it holds at least one such record, and the case is harness_failure when it is empty; the first record after the CR $01 stamp (div 3) and the record before it (div 4), and the line_dirty rows (bit 0 on exactly the first record after each CR write, bit 4 on
-# exactly the first record after each palette data write),
-# are ASSUMED LED-VID-0004 (the tie rule of D-138 and the join of a write stamp to the grid); the border row is GUEST (pal_bijection: in-guest arithmetic over the values the guest wrote, 91 * 256 + 17 = 23313 = 45 * 512 + 273, so border 273) and is judged on records at least one line after the last palette data write, whose stamp is taken from the dev log.
-# The CR and palette write stamps come from the dev sink, not from the core's tables. The evidence text prints video_sha256=... E0 repeatability: the SHA-256 of the stream "duospool-video" NUL, u32 1, then the records. Evidence tier E0: no raster-accurate, pixel-accurate or hardware claim; the word pass is not a support claim.
+# The raw video record of the tracer (plan 04-04; judged by group from plan 04-07; D-137, D-138, D-141, D-161, D-163, D-169, D-171, D-172, ER-10, ER-11, ER-12, ER-13): the authored fixture fixtures/src/vce_pal.s writes VCE CR $00, waits 9,216 master clocks, writes CR $01 and writes the 512 palette entries P(i) = (91 * i + 17) & 511;
+# the runner kind video (tests/conformance/videokinds.c) attaches a vid sink and a dev sink,
+# runs the guest to the end of its DSV1 verdict and judges the header-only line records (D-161) by the OFFSETS WRITTEN IN THAT FILE, never from a core header. Role: literal (D-172: a hash alone is never a verdict; the digest in the evidence text is a change detector).
+# The literals are not in this file: they live in fixtures/src/vce_pal.vexp (hand-derived rows, the derivation in its comments), reach the runner as build/gate/fixtures/vce-pal.vexp.tsv written by scripts/fixture-build, and are judged by group (struct, frame, div, divline, border, dirty); the case outcome is the conjunction of its groups.
+# The class of each group (ER-10, the weakest class of the inputs of a row wins) is in the .vexp file and in the evidence text (video_rows counts by class and by form): the struct and frame groups use the 1365-clock grid and the frame length (ASSUMED LED-VID-0004, LED-VID-0001); the div group is MAN H6-3 and is judged only on records at least one whole line away from the CR write that sets them,
+# between the explicit CR $00 write and the CR $01 write (at least 5,460 clocks apart, harness_failure when that window is empty) and after the CR $01 write, never on records before the CR $00 write (amendment A11); the divline and dirty groups join a write stamp to the grid (ASSUMED LED-VID-0004);
+# the border group is GUEST pal_bijection (in-guest arithmetic over the values the guest wrote, 91 * 256 + 17 = 23313 = 45 * 512 + 273, so border 273), judged on records at least one line after the last palette data write. The CR and palette write stamps come from the dev sink, not from the core's tables.
+# The toy vid-palette-mask turns this case guest_failure on the border group. The evidence text prints video_sha256=... E0 repeatability: the SHA-256 of the stream "duospool-video" NUL, u32 1, then the records. Evidence tier E0: no raster-accurate, pixel-accurate or hardware claim; the word pass is not a support claim.
 id = "video_vce_pal"
 kind = "video"
 fixture = "authored:vce-pal"
 request = ""
-expect = "rom=vce-pal;id=15;role=literal;frame_lines=262;crw=0,1;div=4,3;border=273;gap=5460"
+expect = "rom=vce-pal;id=15;scene=vce_pal"
 meaning = "A guest that writes VCE CR $00, waits, writes CR $01 and writes the palette makes the core emit one header-only line record per 1,365 clocks (count, origin, frame and line by the closed form), divider 4 then 3 (MAN H6-3), line_dirty bits on the first record after each write and border 273 after the last palette write; the stream digest is printed beside, E0 repeatability"
 required = true
 control = false
