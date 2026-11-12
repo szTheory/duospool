@@ -119,10 +119,10 @@ if [ -f "$pre" ]; then
 fi
 
 # withheld claim words (ER-6): lower-case, whole words (the characters on either side are not letters, digits or underscore, so a hyphen
-# is a boundary and cycle-accurate is found by accurate). Allowed only inside double quotes on the policy line. POSIX awk only (no \b, no IGNORECASE).
+# is a boundary and cycle-accurate is found by accurate; the hyphenated Phase 4 compounds such as pixel-accurate and video-compatible are found the same way, and the three multi-word items of D-181 are listed in full, plan 04-01). Allowed only inside double quotes on a policy line. POSIX awk only (no \b, no IGNORECASE).
 cw_hits=$(awk '
   BEGIN {
-    re = "(^|[^a-z0-9_])(accurate|cycle-accurate|interrupt-accurate|pad-accurate|hardware-verified|compatible|supports tg-16|supports pc engine|boots|passes the cpu tests)([^a-z0-9_]|$)"
+    re = "(^|[^a-z0-9_])(accurate|cycle-accurate|interrupt-accurate|pad-accurate|hardware-verified|compatible|supports tg-16|supports pc engine|boots|passes the cpu tests|renders correctly|displays correctly|plays games)([^a-z0-9_]|$)"
   }
   {
     line = $0

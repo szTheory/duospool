@@ -22,6 +22,8 @@ The block-transfer cost entry, LED-CPU-0007, stays assumed. Every other claim is
 
 Withheld claim words: "accurate", "cycle-accurate", "interrupt-accurate", "pad-accurate", "hardware-verified", "compatible", "supports TG-16/PC Engine", "boots", "passes the CPU tests". None of them is used here without an evidence class, and the gate rejects each one anywhere else in this file.
 
+Withheld claim words: "pixel-accurate", "raster-accurate", "scanline-accurate", "dot-accurate", "sprite-accurate", "scroll-accurate", "colour-accurate", "timing-accurate", "DMA-accurate", "VRAM-timing-accurate", "renders correctly", "displays correctly", "plays games", "video-compatible". None of them is used here without an evidence class.
+
 ## Local gate
 
 ```
