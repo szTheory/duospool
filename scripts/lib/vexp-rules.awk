@@ -111,15 +111,18 @@ BEGIN {
   ck["rec_bytes"] = "header,version,max_w"
   ck["values_below_512"] = "limit"
   ck["div_table"] = "div,crw,gap"
-  ck["div_window"] = "div,crw,gap,judge"
+  ck["div_window"] = "div,at,crw,gap"
   ck["window"] = "crw,div,active_x,active_w,rec_bytes,clipped,index"
   ck["div_first"] = "div,prev,crw"
   ck["border_after_pal"] = "value"
   ck["line_dirty"] = "cr_bit,pal_bit"
   ck["display_lines"] = "vdw,vds,frame_lines"
   ck["width_set"] = "min_distinct"
+  ck["display_flags"] = "vdw,vds,frame_lines,skip"
+  ck["line_dirty_hv"] = "hv_bit"
+  ck["cr_change"] = "div_a,crw,hvw,div_b,w_a,w_b,x_a,x_b,margin"
   # the checks that use the 1365-clock grid, the frame length, the window origin or the join of a write stamp to the grid: their class is ASSUMED (ER-10, the weakest class of the inputs wins)
-  split("count origins frame_lines records_per_frame display_lines div_first line_dirty window", gl, " ")
+  split("count origins frame_lines records_per_frame display_lines div_first line_dirty window display_flags line_dirty_hv cr_change", gl, " ")
   for (i = 1; i in gl; i++) {
     gridck[gl[i]] = 1
   }

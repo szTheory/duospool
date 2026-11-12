@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The frame length of the profile (plan 04-09; D-136, D-139, D-161, D-171, ER-10): the vce_dot ROM is run with the request bind.lines_per_frame=263 (the 262-line default is judged by video_vce_dot); the runner kind video judges the stream by the scene vid_frame_lines: the record count by the closed form of D-137, origins strictly increasing by 1365,
+# 263 records in every complete frame with frame_lines 263 in each record, and 240 display lines in every complete frame from frame 1 on (the vertical cycle is cut by the wrap: VDS + 2 = 17 lines, VDW + 1 = 240, the sum 264 is more than the frame). Every group is ASSUMED (the grid and the frame length: LED-VID-0004, LED-VID-0001; the display count: LED-VID-0005).
+# The literals are not in this file: they live in fixtures/src/vce_dot.vexp (hand-derived rows, the derivation in its comments), reach the runner as build/gate/fixtures/vce-dot.vexp.tsv written by scripts/fixture-build, and are judged by group; the case outcome is the conjunction of its groups.
+# Role: literal (D-172). The class of each group (ER-10) is in the .vexp file and in the evidence text.
+# Evidence tier E0: no raster-accurate, pixel-accurate or hardware claim, and the word pass is not a support claim.
+id = "vid_frame_lines"
+kind = "video"
+fixture = "authored:vce-dot"
+request = "bind.lines_per_frame=263"
+expect = "rom=vce-dot;id=19;scene=vid_frame_lines"
+meaning = "With the frame length bound to 263 lines the vce_dot guest makes the core emit one line record per 1,365 clocks, 263 records per frame with origins (frame * 263 + line) * 1365 and 240 display lines per frame from the second frame on (ASSUMED frame length and grid), E0 repeatability"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+checks = 4

@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The active window table (plan 04-09; D-140, D-161, D-170 vce_dot, ER-10): the vce_dot ROM programs one setup after another and the runner kind video judges, by the scene vid_active_window, a hand-written table of window rows: HDS 2 and HDW 31 at the dividers 4 and 3 (x 24, w 256), HDS 0 and HDW 127 at divider 4 (x 8, w 333, CLIPPED), HDS 127 (w 0, header-only display lines, CLIPPED)
+# and the bit 1 of line_dirty on exactly the first record after each HSR or HDR write. Every group rests on the window origin of D-140 and the clip (ASSUMED LED-VID-0005) or on the join of a write stamp to the grid (ASSUMED LED-VID-0004). The toy vid-dot-div turns this case guest_failure.
+# The literals are not in this file: they live in fixtures/src/vce_dot.vexp (hand-derived rows, the derivation in its comments), reach the runner as build/gate/fixtures/vce-dot.vexp.tsv written by scripts/fixture-build, and are judged by group; the case outcome is the conjunction of its groups.
+# Role: literal (D-172). The class of each group (ER-10) is in the .vexp file and in the evidence text.
+# Evidence tier E0: no raster-accurate, pixel-accurate or hardware claim, and the word pass is not a support claim.
+id = "vid_active_window"
+kind = "video"
+fixture = "authored:vce-dot"
+request = ""
+expect = "rom=vce-dot;id=19;scene=vid_active_window"
+meaning = "The vce_dot guest programs window setups, a frame each: the display lines get 256 dots from HDS 2 and HDW 31 at divider 4 and 3, 333 dots clipped (CLIPPED set) from HDS 0 and HDW 127, no dot from HDS 127, and line_dirty bit 1 follows each HSR or HDR write (ASSUMED window origin), E0 repeatability"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+checks = 4

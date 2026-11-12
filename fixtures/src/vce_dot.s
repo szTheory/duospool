@@ -15,6 +15,7 @@
 
 DSV_ID = 19
 DSV_CHECKS = 4
+MIDDLY = 1                      ; the counted delay before the mid-frame writes: 6 * MIDDLY + 2 CPU cycles
 
         .include "startup.inc"
         .include "verdict.inc"
@@ -40,6 +41,14 @@ inner:  dex
         ldx #(m)
 rem:    dex
         bne rem
+        .endmacro
+
+; SETUP hsr, hdr, cr: the window registers of a setup and then its closing CR write. Clobbers A.
+        .macro SETUP hsr, hdr, cr
+        VDC_REG 10, hsr
+        VDC_REG 11, hdr
+        lda #(cr)
+        sta a:VCE_CR
         .endmacro
 
 ; FRAME: one frame of delay, HOLD 19, 84 (29,804 cycles)
@@ -75,8 +84,43 @@ ploop:  clc
         sta a:VCE_CTW_LO
         lda a:PSUM_HI
         sta a:VCE_CTW_HI
-; scene S0: the dot clock 4 (CR $00, MAN H6-3), window x 24, w 256
-        stz a:VCE_CR                    ; CR $00: division ratio 4
+; the scenes, one setup after another, each held for a frame by FRAME. Every setup is closed by a write of the VCE CR (even when the value is unchanged), so the window of that write is the span the runner judges (fixtures/src/vce_dot.vexp, STRUCT window and div_window): the records at least one line after it and two lines before the next. The CR writes of the log are, in order:
+;   c0 $00  S0 HDS 2 HDW 31, division ratio 4 (MAN H6-3)                      c1 $01  S1 the same window, division ratio 3 (MAN H6-3)
+;   c2 $02  S2 the same window, ASSUMED LED-VID-0002 division ratio 2         c3 $03  S3 the same window, ASSUMED LED-VID-0002 division ratio 2
+;   c4 $00  S4 HDS 0, HDW 127: the window would end at (8 + 1024) * 4 clocks, so it is clipped to 333 dots (D-140)
+;   c5 $00  S5 HDS 127: the window starts at (1024) * 4 clocks, beyond the line, so no dot fits and the lines are header-only
+;   c6 $00  S6 the setup of S0 again, the base of the mid-frame change            c7 $01  the mid-frame change: CR $01 and HDR $0327 (HDW 39, 320 dots) in one line at a counted instant
+; The HSR and HDR writes of the log (the data MSB write completes each): h0 HSR and h1 HDR of S0, h2 h3 of S4, h4 h5 of S5, h6 h7 of S6, h8 HDR of the mid-frame change.
+; S0: HSR $0202 and HDR $031F are programmed above, CR $00
+        stz a:VCE_CR                    ; c0: CR $00, division ratio 4
+        FRAME
+; S1: CR $01, division ratio 3 (MAN H6-3): the window ends at (24 + 256) * 3 = 840 clocks
+        lda #$01
+        sta a:VCE_CR                    ; c1
+        FRAME
+; S2 and S3: CR $02 and $03, division ratio 2 (ASSUMED LED-VID-0002): the window ends at (24 + 256) * 2 = 560 clocks
+        lda #$02
+        sta a:VCE_CR                    ; c2
+        FRAME
+        lda #$03
+        sta a:VCE_CR                    ; c3
+        FRAME
+; S4: HDS 0 (HSR $0002), HDW 127 (HDR $007F), CR $00: clipped to floor(1365 / 4) - 8 = 333 dots
+        SETUP $0002, $007F, $00         ; c4
+        FRAME
+; S5: HDS 127 (HSR $7F02), HDW 31, CR $00: the window starts beyond the line, no dot fits
+        SETUP $7F02, $031F, $00         ; c5
+        FRAME
+; S6: the setup of S0 again
+        SETUP $0202, $031F, $00         ; c6
+        FRAME
+; the mid-frame change: a counted delay places the writes inside one display line, then CR $01 (division ratio 3) and HDR $0327 (HDW = 39: 320 dots) follow within about 20 CPU cycles. The delay count was set so that both writes fall at least 250 master clocks from both boundaries of their line; the runner measures that from the stamps of the dev log and refuses the case otherwise.
+        ldx #MIDDLY
+mid:    dex
+        bne mid
+        lda #$01
+        sta a:VCE_CR                    ; c7: CR $01
+        VDC_REG 11, $0327               ; h8: HDR, HDW = 39
         FRAME
         FRAME
 ; the readbacks of what the guest programmed

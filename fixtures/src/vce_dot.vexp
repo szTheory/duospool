@@ -4,13 +4,26 @@
 # vce_dot.vexp - the hand-derived literal rows of the vce_dot video scenes (plan 04-09; D-139, D-140, D-141, D-161, D-171, D-172, ER-10, ER-11, ER-12, F-5).
 # scripts/fixture-build writes this file, comments dropped, as build/gate/fixtures/vce-dot.vexp.tsv; the runner kind video (tests/conformance/videokinds.c) reads only that file. One source holds the literals: no expected value lives in a case file, and none comes from a run of DuoSpool, another emulator or a hash.
 # The grammar is the one of vce_pal.vexp (scene, group, row, golden rows, TAB separated, keys closed, scripts/lib/vexp-rules.awk).
-# The fixture (fixtures/src/vce_dot.s) writes the vertical setup VPR $0F02, VDW 239, VCR 4 (the sum 264 lines), HSR $0202 and HDR $031F, the border palette entry $100 and then VCE CR $00; each setup is held for about a frame.
+# Three scenes judge one ROM (vce-dot, the fixture fixtures/src/vce_dot.s): video_vce_dot (dot clock encodings, the mid-frame change, the frame and the widths, 262 lines), vid_frame_lines (the 263-line binding, request bind.lines_per_frame=263) and vid_active_window (the window table of D-140 and the line_dirty bit of HSR and HDR).
+# The fixture writes the vertical setup VPR $0F02, VDW 239, VCR 4 (the sum 264 lines), HSR $0202 and HDR $031F, the border palette entry $100 and then, one setup after another, eight VCE CR writes c0 to c7 (the list is in the header of vce_dot.s); each setup is held for about a frame. The HSR and HDR writes are h0 to h8 (two data writes each).
 # The geometry derivation (D-140): HSR bits 14-8 are HDS, $0202 gives HDS = 2, so active_x = (HDS + 1) * 8 = 24 dots; HDR bits 6-0 are HDW, $031F gives HDW = 31, so active_w = (HDW + 1) * 8 = 256 dots. At division ratio 4 (MAN H6-3, content 00h) the window ends at (24 + 256) * 4 = 1120 master clocks, inside the line of 1365, so nothing is clipped.
 # rec_bytes = 64 + ((4 * 256 + 7) & ~7) = 64 + 1024 = 1088. The payload of a display line holds 256 index words (each 256, the blank index of D-157) and 256 colour words (each the border colour): until the background renderer exists every active dot is blank (frames with BB = SB = 0, the only enable state this fixture uses).
 # The border derivation (GUEST pal_bijection): the guest forms E(256) by the additive sum E(0) = 17, E(i + 1) = (E(i) + 91) & 511, which is (91 * 256 + 17) & 511 = 23313 - 45 * 512 = 273.
 # Classes (ER-10): the count, origins, frame_lines and records_per_frame rows use the 1365-clock grid and the frame length (ASSUMED LED-VID-0004, LED-VID-0001). The div group is MAN H6-3 (content 00h gives division ratio 4), judged only on records at least one whole line after the CR write and, between two writes, a line before the next.
 # The geometry group (active_x, active_w, rec_bytes, CLIPPED) depends on the window origin and the clip of D-140: ASSUMED LED-VID-0005. The border group is GUEST pal_bijection and judged a whole line after the last palette write.
 # F0 note (A7): F0 perturbs the first number of the first row of a group (the literal of every group here begins with a value of the group, not with an index), so it proves that the comparison is live; the border group's only kill is F0, so its liveness against a changed palette store comes from the toy vid-palette-mask (it turns video_vce_pal guest_failure on the same arithmetic).
+# Row derivations. Display lines are the lines of the vertical state VDW (flag ACTIVE); VDS = 15 gives 17 lines before them (D-139). A window row judges the display lines at least one line after the CR write c_j and two lines before c_(j+1) and the header-only lines among them.
+# 1. HSR $0202: HDS = 2, active_x = (2 + 1) * 8 = 24; HDR $031F: HDW = 31, active_w = (31 + 1) * 8 = 256 [MAN H7-10, H7-13: N-1 characters of 8 dots]. rec_bytes = 64 + ((4 * 256 + 7) & ~7) = 1088. At division ratio 4 (CR content 00h, MAN H6-3) the window ends at (24 + 256) * 4 = 1120 clocks, at
+# ratio 3 (01h) at 840, at ratio 2 (02h, 03h, ASSUMED LED-VID-0002) at 560: inside the line of 1365, no clip.
+# 2. HSR $0002 (HDS = 0) and HDR $007F (HDW = 127): active_x = 8, active_w = 1024. At ratio 4 the window would end at (8 + 1024) * 4 = 4128 clocks, past 1365, so it is clipped to the whole dots that fit: floor(1365 / 4) = 341 dots in the line, 341 - 8 = 333 (D-140, ASSUMED LED-VID-0005: the window origin enters the clip). rec_bytes = 64 + ((4 * 333 + 7) & ~7) = 64 + 1336 = 1400, CLIPPED set.
+# 3. HSR $7F02 (HDS = 127): the window starts at (127 + 1) * 8 * 4 = 4096 clocks, past the line: no dot fits, active_w 0, active_x 0 (D-161), rec_bytes 64, CLIPPED set; the display lines are header-only.
+# 4. The mid-frame change: HDR $0327 gives HDW = 39, active_w = 320 and rec_bytes = 64 + 1280 = 1344; with CR $01 the window ends at (24 + 320) * 3 = 1032 clocks. The CR write c7 and the HDR write h8 fall in one display line n at least 250 clocks from both its boundaries (the runner refuses the case
+# otherwise): line n keeps div 4, active_x 24, active_w 256, line n + 1 shows div 3, active_x 24, active_w 320 with line_dirty bits 0 and 1.
+# 5. The widths over the run: 0 (every line outside the display and the lines of the window beyond the line), 256, 333 and 320 from the programmed setups and 8 before the guest programs HDR (HDW = 0 gives 8 dots at power-on, D-167): five distinct values, so min_distinct is 5 (the group only proves the comparison is live; F0 is its only kill).
+# Classes (ER-10): count, origins, frame_lines, records_per_frame, display_flags use the 1365-clock grid and the frame length (ASSUMED LED-VID-0004, LED-VID-0001, LED-VID-0005). The div group is MAN H6-3 for the contents 00h and 01h (windows c0, c1, c4, c5, c6, c7) and the div2 group ASSUMED
+# LED-VID-0002 for 02h and 03h (c2, c3); the geometry groups rest on the window origin and the clip (ASSUMED LED-VID-0005), the geom2 group also on LED-VID-0002.
+# The midframe and dirty groups join write stamps to the grid (ASSUMED LED-VID-0004). The border is GUEST pal_bijection: the guest's additive sum E(256) = (91 * 256 + 17) & 511 = 23313 - 45 * 512 = 273.
+# Kills (D-172): the sweep video_fault_sweep_vce_dot and its two siblings flip each group with the faults it declares; F6 widens the window of the group's focus record, F5 changes its divider, F3 drops its first active line, F4 duplicates a line, F8 swaps two, F9 moves an origin. F0 perturbs the first number of the first row (every literal here begins with a value of the group).
 scene	video_vce_dot	case=video_vce_dot	role=literal
 group	video_vce_dot	struct	form=STRUCT	class=ASSUMED:LED-VID-0004	sym=none	kills=F4,F8,F9
 row	video_vce_dot	struct	check=count	grid=1365
@@ -20,9 +33,44 @@ row	video_vce_dot	struct	check=values_below_512	limit=512
 group	video_vce_dot	frame	form=STRUCT	class=ASSUMED:LED-VID-0001	sym=none	kills=F0,F4
 row	video_vce_dot	frame	check=frame_lines	value=262;step=1365
 row	video_vce_dot	frame	check=records_per_frame	value=262
+group	video_vce_dot	display	form=STRUCT	class=ASSUMED:LED-VID-0005	sym=none	kills=F0,F3
+row	video_vce_dot	display	check=display_flags	vdw=239;vds=15;frame_lines=262;skip=1
 group	video_vce_dot	div	form=STRUCT	class=MAN:H6-3	sym=none	kills=F0,F5
-row	video_vce_dot	div	check=div_table	div=4;crw=0;gap=5460
+row	video_vce_dot	div	check=div_window	div=4,3,4,4,4,3;at=0,1,4,5,6,7;crw=0,1,2,3,0,0,0,1;gap=300000
+group	video_vce_dot	div2	form=STRUCT	class=ASSUMED:LED-VID-0002	sym=none	kills=F0,F5
+row	video_vce_dot	div2	check=div_window	div=2,2;at=2,3;crw=0,1,2,3,0,0,0,1;gap=300000
 group	video_vce_dot	geom	form=STRUCT	class=ASSUMED:LED-VID-0005	sym=none	kills=F0,F5,F6
 row	video_vce_dot	geom	check=window	div=4;crw=0;active_x=24;active_w=256;rec_bytes=1088;clipped=0;index=256
+row	video_vce_dot	geom	check=window	div=3;crw=1;active_x=24;active_w=256;rec_bytes=1088;clipped=0;index=256
+group	video_vce_dot	geom2	form=STRUCT	class=ASSUMED:LED-VID-0002	sym=none	kills=F0,F5,F6
+row	video_vce_dot	geom2	check=window	div=2;crw=2;active_x=24;active_w=256;rec_bytes=1088;clipped=0;index=256
+row	video_vce_dot	geom2	check=window	div=2;crw=3;active_x=24;active_w=256;rec_bytes=1088;clipped=0;index=256
+group	video_vce_dot	midframe	form=STRUCT	class=ASSUMED:LED-VID-0004	sym=none	kills=F0,F3,F5,F6,F8
+row	video_vce_dot	midframe	check=cr_change	div_a=4;crw=7;hvw=8;div_b=3;w_a=256;w_b=320;x_a=24;x_b=24;margin=250
+group	video_vce_dot	widths	form=STRUCT	class=ASSUMED:LED-VID-0005	sym=none	kills=F0
+row	video_vce_dot	widths	check=width_set	min_distinct=5
+group	video_vce_dot	dirty	form=STRUCT	class=ASSUMED:LED-VID-0004	sym=none	kills=F0,F4
+row	video_vce_dot	dirty	check=line_dirty	cr_bit=0;pal_bit=4
 group	video_vce_dot	border	form=STRUCT	class=GUEST:pal_bijection	sym=none	kills=F0
 row	video_vce_dot	border	check=border_after_pal	value=273
+scene	vid_frame_lines	case=vid_frame_lines	role=literal
+group	vid_frame_lines	struct	form=STRUCT	class=ASSUMED:LED-VID-0004	sym=none	kills=F4,F8,F9
+row	vid_frame_lines	struct	check=count	grid=1365
+row	vid_frame_lines	struct	check=origins	step=1365
+row	vid_frame_lines	struct	check=rec_bytes	header=64;version=1;max_w=682
+group	vid_frame_lines	frame	form=STRUCT	class=ASSUMED:LED-VID-0001	sym=none	kills=F0,F4
+row	vid_frame_lines	frame	check=frame_lines	value=263;step=1365
+row	vid_frame_lines	frame	check=records_per_frame	value=263
+group	vid_frame_lines	display	form=STRUCT	class=ASSUMED:LED-VID-0005	sym=none	kills=F0,F3
+row	vid_frame_lines	display	check=display_flags	vdw=239;vds=15;frame_lines=263;skip=1
+scene	vid_active_window	case=vid_active_window	role=literal
+group	vid_active_window	win31	form=STRUCT	class=ASSUMED:LED-VID-0005	sym=none	kills=F0,F5,F6
+row	vid_active_window	win31	check=window	div=4;crw=0;active_x=24;active_w=256;rec_bytes=1088;clipped=0;index=256
+row	vid_active_window	win31	check=window	div=3;crw=1;active_x=24;active_w=256;rec_bytes=1088;clipped=0;index=256
+row	vid_active_window	win31	check=window	div=4;crw=6;active_x=24;active_w=256;rec_bytes=1088;clipped=0;index=256
+group	vid_active_window	clip	form=STRUCT	class=ASSUMED:LED-VID-0005	sym=none	kills=F0,F5,F6
+row	vid_active_window	clip	check=window	div=4;crw=4;active_x=8;active_w=333;rec_bytes=1400;clipped=1;index=256
+group	vid_active_window	beyond	form=STRUCT	class=ASSUMED:LED-VID-0005	sym=none	kills=F0,F5,F6
+row	vid_active_window	beyond	check=window	div=4;crw=5;active_x=0;active_w=0;rec_bytes=64;clipped=1;index=256
+group	vid_active_window	dirtyhv	form=STRUCT	class=ASSUMED:LED-VID-0004	sym=none	kills=F0,F4,F8
+row	vid_active_window	dirtyhv	check=line_dirty_hv	hv_bit=1

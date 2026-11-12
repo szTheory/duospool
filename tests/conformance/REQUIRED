@@ -280,3 +280,9 @@ vdc_irq_agree_lb
 vdc_irq_ratio
 vce_dot
 video_vce_dot
+mutate_sweep_vce_dot
+vid_frame_lines
+vid_active_window
+video_fault_sweep_vce_dot
+video_fault_sweep_vid_frame_lines
+video_fault_sweep_vid_active_window

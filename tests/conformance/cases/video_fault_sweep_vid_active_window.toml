@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The record fault sweep of the scene vid_active_window of the vce_dot ROM (plan 04-09; D-171, D-172, ER-10, ER-11, T-04-31): the runner kind video_fault_sweep (tests/conformance/videokinds.c) runs the guest of the video case once, captures the raw records and the dev log, and for every group of the
+# scene in fixtures/src/vce_dot.vexp applies each fault the group declares in kills= to a copy of the records in memory
+# (F0 perturbs the first number of the first row of the group; F3 drops the first active line, F4 duplicates a line, F5 changes a divider, F6 widens the active window by one dot, F8 swaps two adjacent lines and F9 moves an origin by one clock, all at the record the group looks at first) and requires the group to come out as a failure.
+# A group that a declared fault leaves green, or on which the fault cannot act, is VIDEO_GROUP_VACUOUS and fails the case. A group whose only kill is F0 proves only that its comparison is live (amendment A7). E0: a mechanism that shows each literal comparison live, no claim about any video, and the word pass is not a support claim.
+id = "video_fault_sweep_vid_active_window"
+kind = "video_fault_sweep"
+fixture = "authored:vce-dot"
+request = ""
+expect = "rom=vce-dot;id=19;scene=vid_active_window"
+meaning = "Every group of the vid_active_window scene turns into a failure under each record fault it declares (a divider changed, a window widened, a line duplicated or swapped, a perturbed literal), so no literal group of the scene is vacuous, E0"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+checks = 4

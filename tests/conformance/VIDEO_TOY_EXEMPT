@@ -5,3 +5,5 @@
 # A scene case that a toy EXPECT lists with no second column needs no line here.
 video_vce_pal_golden	golden change detector beside the literal case video_vce_pal, which vid-palette-mask kills
 video_vce_dot	the toy vid-dot-div (plan 04-09 Task 3) names this scene; until then no toy lists it
+vid_frame_lines	the divider toy does not change line counts or the frame length: the scene is killed by the faults F4 and F9 of its sweep
+vid_active_window	the toy vid-dot-div (plan 04-09 Task 3) names this scene; until then no toy lists it

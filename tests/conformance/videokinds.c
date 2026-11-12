@@ -50,7 +50,7 @@
 #define VK_GRID 1365u
 #define VK_DEV_CAP 16384u
 #define VK_CRW_MAX 12u
-#define VK_HV_MAX 16u /* the HSR and HDR register writes the runner records (plan 04-09) */
+#define VK_HV_MAX 32u /* the data writes (low byte, then high byte) of the HSR and HDR register writes the runner records (plan 04-09) */
 #define VK_PHYS_WIN 0x1FE400u /* the base of the VCE window; the register of an access is the offset & 7 (MAN H6-2), so $1FE408 is a mirror of CR and $1FE444 a mirror of CTW low */
 #define VK_PHYS_WIN_END 0x1FE800u
 #define VK_PHYS_VDC 0x1FE000u /* the VDC window: the register of an access is the offset & 3 (A1 and A0, MAN H8-24): 0 = AR, 2 = data LSB, 3 = data MSB */
@@ -485,12 +485,12 @@ struct vk_log {
     uint64_t t_pal[4096];
     unsigned n_pal;
     uint64_t t_pal_last;
-    uint64_t t_hv[VK_HV_MAX]; /* the stamps of the data MSB writes of HSR and HDR (the write that completes a register write), in order; the VDC window is joined by AR as the guest set it */
+    uint64_t t_hv[VK_HV_MAX]; /* the stamps of the data writes of HSR and HDR, in order, two for each register write (the low byte, then the high byte: each sets the dirty bit of its own line, so the two can fall in two lines); the VDC window is joined by AR as the guest set it */
     unsigned n_hv;
     uint64_t m; /* the machine time the run reached */
 };
 
-/* the CR writes, the palette data writes and the HSR and HDR register writes of the dev log, found by the register of the physical address (VCE window: offset & 7, MAN H6-2, mirrors included; VDC window: offset & 3, MAN H8-24, with AR as the guest last set it) and by kind (the stamps are the join points of the rows); 0 when the log is well formed. The physical writes of ST0 to ST2 are logged as DS_DEV_ST, the others as DS_DEV_WRITE */
+/* the CR writes, the palette data writes and the HSR and HDR data writes of the dev log, found by the register of the physical address (VCE window: offset & 7, MAN H6-2, mirrors included; VDC window: offset & 3, MAN H8-24, with AR as the guest last set it) and by kind (the stamps are the join points of the rows); 0 when the log is well formed. The physical writes of ST0 to ST2 are logged as DS_DEV_ST, the others as DS_DEV_WRITE */
 static int vk_scan_dev(const uint8_t *recs, uint32_t count, struct vk_log *lg)
 {
     uint32_t i;
@@ -507,7 +507,7 @@ static int vk_scan_dev(const uint8_t *recs, uint32_t count, struct vk_log *lg)
         if (phys >= (uint32_t)VK_PHYS_VDC && phys < (uint32_t)VK_PHYS_VDC_END) {
             if ((phys & 3u) == 0u) {
                 ar = (unsigned)r[12] & 0x1Fu;
-            } else if ((phys & 3u) == 3u && (ar == VK_VDC_AR_HSR || ar == VK_VDC_AR_HDR)) {
+            } else if ((phys & 3u) >= 2u && (ar == VK_VDC_AR_HSR || ar == VK_VDC_AR_HDR)) {
                 if (lg->n_hv >= VK_HV_MAX) {
                     return -1;
                 }
@@ -930,33 +930,36 @@ static int vk_s_div_table(struct vk_rc *rc)
     return vk_div_windows(rc, dv, cw, nc, (1u << nc) - 1u);
 }
 
-/* STRUCT div_window: as div_table, but only the windows of the CR writes listed in judge=J,J are judged (the others are still checked to be the writes the row lists): the contents 00h and 01h of one group are MAN H6-3, the contents 02h and 03h of another are ASSUMED LED-VID-0002 */
+/* STRUCT div_window: as div_table, but only the windows of the CR writes listed in at=J,J are judged, with the dividers div=D,D (one for each listed write); crw=V,V is the value of EVERY CR write of the log, checked first. The contents 00h and 01h of one group are MAN H6-3, the contents 02h and 03h of another are ASSUMED LED-VID-0002 */
 static int vk_s_div_window(struct vk_rc *rc)
 {
-    static const char *const keys[] = {"div", "crw", "gap", "judge"};
+    static const char *const keys[] = {"div", "at", "crw", "gap"};
     unsigned dv[VK_CRW_MAX];
+    unsigned at[VK_CRW_MAX];
     unsigned cw[VK_CRW_MAX];
-    unsigned jl[VK_CRW_MAX];
+    unsigned full[VK_CRW_MAX];
     unsigned nd = 0u;
+    unsigned na = 0u;
     unsigned nc = 0u;
-    unsigned nj = 0u;
     unsigned mask = 0u;
     unsigned j;
     uint64_t gap = 0u;
 
-    if (vk_need(rc, keys, 4u) != 0 || vk_lst(rc, "div", dv, VK_CRW_MAX, &nd) != 0 || vk_lst(rc, "crw", cw, VK_CRW_MAX, &nc) != 0 || nd != nc || vk_lst(rc, "judge", jl, VK_CRW_MAX, &nj) != 0 || vk_num(rc, "gap", &gap) != 0) {
-        return vk_bad(rc, "STRUCT div_window needs the items div=D,D, crw=V,V (the same count), gap=N and judge=J,J");
+    if (vk_need(rc, keys, 4u) != 0 || vk_lst(rc, "div", dv, VK_CRW_MAX, &nd) != 0 || vk_lst(rc, "at", at, VK_CRW_MAX, &na) != 0 || nd != na || vk_lst(rc, "crw", cw, VK_CRW_MAX, &nc) != 0 || vk_num(rc, "gap", &gap) != 0) {
+        return vk_bad(rc, "STRUCT div_window needs the items div=D,D, at=J,J (the same count), crw=V,V and gap=N");
     }
-    for (j = 0u; j < nj; j++) {
-        if (jl[j] >= nc) {
+    memset(full, 0, sizeof full);
+    for (j = 0u; j < na; j++) {
+        if (at[j] >= nc) {
             return vk_bad(rc, "STRUCT div_window judges a CR write the row does not list");
         }
-        mask |= 1u << jl[j];
+        mask |= 1u << at[j];
+        full[at[j]] = dv[j];
     }
     if (vk_crw_match(rc, cw, nc, gap) != 0) {
         return VG_HARNESS;
     }
-    return vk_div_windows(rc, dv, cw, nc, mask);
+    return vk_div_windows(rc, full, cw, nc, mask);
 }
 
 /* STRUCT window (ASSUMED LED-VID-0005, D-140, D-161): inside the window of CR write crw every display line (flag ACTIVE) carries the divider div, active_x, active_w, rec_bytes, the CLIPPED flag clipped and a payload of active_w index words equal to index and active_w colour words equal to the border of its own record, and every other line is header-only (active_w 0, active_x 0, rec_bytes 64, no CLIPPED). At least one display line must be judged */
@@ -1188,6 +1191,143 @@ static int vk_s_width_set(struct vk_rc *rc)
     return VG_PASS;
 }
 
+/* STRUCT display_flags (ASSUMED LED-VID-0005, D-143, D-171): every complete frame from frame skip on holds min(vdw + 1, frame_lines - (vds + 2)) records with the ACTIVE flag (display lines, whatever their window); the frames before skip hold the cycle the guest was still programming, and the last frame is partial */
+static int vk_s_display_flags(struct vk_rc *rc)
+{
+    static const char *const keys[] = {"vdw", "vds", "frame_lines", "skip"};
+    uint64_t vdw = 0u;
+    uint64_t vds = 0u;
+    uint64_t fl = 0u;
+    uint64_t skip = 0u;
+    uint64_t want;
+    uint64_t k;
+    uint64_t run = 0u;
+    uint64_t complete = 0u;
+    uint32_t cur;
+
+    if (vk_need(rc, keys, 4u) != 0 || vk_num(rc, "vdw", &vdw) != 0 || vk_num(rc, "vds", &vds) != 0 || vk_num(rc, "frame_lines", &fl) != 0 || vk_num(rc, "skip", &skip) != 0 || fl == 0u || fl > 1000u || vdw > 1000u || vds > 1000u) {
+        return vk_bad(rc, "STRUCT display_flags needs the items vdw=N, vds=N, frame_lines=N and skip=N");
+    }
+    want = vds + 2u >= fl ? 0u : fl - (vds + 2u);
+    if (vdw + 1u < want) {
+        want = vdw + 1u;
+    }
+    vk_focus(rc, rc->w->n / 2u);
+    cur = vk_u32(rc->w->rec[0] + VK_O_FRAME);
+    for (k = 0u; k < rc->w->n; k++) {
+        uint32_t f = vk_u32(rc->w->rec[k] + VK_O_FRAME);
+
+        if (f != cur) {
+            if ((uint64_t)cur >= skip) {
+                if (run != want) {
+                    snprintf(rc->why, rc->cap, "STRUCT display_flags: frame %u holds %llu display lines, min(VDW + 1, frame_lines - (VDS + 2)) is %llu", (unsigned)cur, (unsigned long long)run, (unsigned long long)want);
+                    return VG_FAIL;
+                }
+                complete++;
+            }
+            cur = f;
+            run = 0u;
+        }
+        if ((rc->w->rec[k][VK_O_FLAGS] & VK_FLAG_ACTIVE) != 0u) {
+            run++;
+        }
+    }
+    return complete >= 1u ? VG_PASS : vk_bad(rc, "STRUCT display_flags: the stream holds no complete frame from skip on");
+}
+
+/* STRUCT line_dirty_hv (ASSUMED LED-VID-0004, the join of a write stamp to the grid): bit hv_bit is set on exactly the first record after each data write (low byte and high byte) of HSR or HDR from the dev log and on no other record */
+static int vk_s_line_dirty_hv(struct vk_rc *rc)
+{
+    static const char *const keys[] = {"hv_bit"};
+    uint64_t hb = 0u;
+    uint64_t k;
+    unsigned j;
+
+    if (vk_need(rc, keys, 1u) != 0 || vk_num(rc, "hv_bit", &hb) != 0 || hb > 7u) {
+        return vk_bad(rc, "STRUCT line_dirty_hv needs the single item hv_bit=N (0 to 7)");
+    }
+    if (rc->lg->n_hv == 0u) {
+        return vk_bad(rc, "the dev log holds no HSR or HDR register write");
+    }
+    vk_focus(rc, vk_first_after(rc->lg->t_hv[0]) < rc->w->n ? vk_first_after(rc->lg->t_hv[0]) : rc->w->n / 2u);
+    for (k = 0u; k < rc->w->n; k++) {
+        unsigned want = 0u;
+
+        for (j = 0u; j < rc->lg->n_hv; j++) {
+            if (vk_first_after(rc->lg->t_hv[j]) == k) {
+                want = 1u;
+            }
+        }
+        if ((((unsigned)rc->w->rec[k][VK_O_LINE_DIRTY] >> (unsigned)hb) & 1u) != want) {
+            snprintf(rc->why, rc->cap, "line_dirty (ASSUMED LED-VID-0004): bit %llu is not set on exactly the first record after each HSR or HDR write (record %llu)", (unsigned long long)hb, (unsigned long long)k);
+            return VG_FAIL;
+        }
+    }
+    return VG_PASS;
+}
+
+/* STRUCT cr_change (ASSUMED LED-VID-0004, D-138 tie rule, D-141): a CR write (number crw of the log) and a write of HDR (register write number hvw of the HSR and HDR writes, two data writes each) all fall inside one display line n, at least margin master clocks from both of its boundaries (the 250-clock margin removes the tie-rule dependence: a write nearer to a boundary is a fault of the case, never judged). Then line n keeps the old setting
+ * (div_a, active_x x_a, active_w w_a), line n + 1, the first record whose origin is after the stamps and exactly one line after n, shows the new one (div_b, x_b, w_b), and carries line_dirty bits 0 (CR) and 1 (HSR and HDR) while line n carries bit 0 clear. The records are found by their own origins, never by index */
+static int vk_s_cr_change(struct vk_rc *rc)
+{
+    static const char *const keys[] = {"div_a", "crw", "hvw", "div_b", "w_a", "w_b", "x_a", "x_b", "margin"};
+    uint64_t v[9];
+    uint64_t tc;
+    uint64_t th;
+    uint64_t k;
+    uint64_t r1 = rc->w->n;
+    uint64_t o0;
+    uint64_t o1;
+    unsigned i;
+    const uint8_t *a;
+    const uint8_t *b;
+
+    for (i = 0u; i < 9u; i++) {
+        if (vk_need(rc, keys, 9u) != 0 || vk_num(rc, keys[i], &v[i]) != 0) {
+            return vk_bad(rc, "STRUCT cr_change needs the items div_a, crw, hvw, div_b, w_a, w_b, x_a, x_b and margin (decimal)");
+        }
+    }
+    if (v[1] >= (uint64_t)rc->lg->n_cr || 2u * v[2] + 1u >= (uint64_t)rc->lg->n_hv || v[8] == 0u || v[8] > 600u) {
+        return vk_bad(rc, "STRUCT cr_change names a CR or HDR write the dev log does not hold, or a margin outside 1 to 600");
+    }
+    tc = rc->lg->t_cr[v[1]];
+    th = rc->lg->t_hv[2u * v[2] + 1u]; /* the write that completes the register */
+    for (k = 0u; k < rc->w->n; k++) {
+        if (vk_u64(rc->w->rec[k] + VK_O_ORIGIN) > tc) {
+            r1 = k;
+            break;
+        }
+    }
+    if (r1 == 0u || r1 >= rc->w->n) {
+        return vk_bad(rc, "STRUCT cr_change: no record follows the CR write, or none precedes it");
+    }
+    vk_focus(rc, r1);
+    a = rc->w->rec[r1 - 1u];
+    b = rc->w->rec[r1];
+    o0 = vk_u64(a + VK_O_ORIGIN);
+    o1 = vk_u64(b + VK_O_ORIGIN);
+    if (tc < o0 + v[8] || th < o0 + v[8] || rc->lg->t_hv[2u * v[2]] < o0 + v[8] || tc + v[8] > o1 || th + v[8] > o1) {
+        snprintf(rc->why, rc->cap, "the counted instant is within %llu clocks of a line boundary (CR write %llu clocks after the origin of its line, HDR write %llu, the line is %llu long): the tie rule would decide, so the case cannot judge it", (unsigned long long)v[8], (unsigned long long)(tc - o0), (unsigned long long)(th - o0), (unsigned long long)(o1 - o0));
+        return VG_HARNESS;
+    }
+    if (o1 - o0 != (uint64_t)VK_GRID) {
+        snprintf(rc->why, rc->cap, "cr_change (ASSUMED LED-VID-0004): the record that follows the write does not start one line (%llu clocks) after the record that precedes it", (unsigned long long)VK_GRID);
+        return VG_FAIL;
+    }
+    if ((a[VK_O_FLAGS] & VK_FLAG_ACTIVE) == 0u || (b[VK_O_FLAGS] & VK_FLAG_ACTIVE) == 0u) {
+        return vk_bad(rc, "STRUCT cr_change: the counted instant is not inside the display lines");
+    }
+    if ((uint64_t)a[VK_O_DIV] != v[0] || (uint64_t)vk_u16(a + VK_O_ACTIVE_X) != v[6] || (uint64_t)vk_u16(a + VK_O_ACTIVE_W) != v[4] || ((a[VK_O_LINE_DIRTY] & 1u) != 0u)) {
+        snprintf(rc->why, rc->cap, "cr_change (ASSUMED LED-VID-0004): the line that holds the CR write does not keep div %llu, active_x %llu and active_w %llu with line_dirty bit 0 clear", (unsigned long long)v[0], (unsigned long long)v[6], (unsigned long long)v[4]);
+        return VG_FAIL;
+    }
+    if ((uint64_t)b[VK_O_DIV] != v[3] || (uint64_t)vk_u16(b + VK_O_ACTIVE_X) != v[7] || (uint64_t)vk_u16(b + VK_O_ACTIVE_W) != v[5] || (b[VK_O_LINE_DIRTY] & 3u) != 3u) {
+        snprintf(rc->why, rc->cap, "cr_change (ASSUMED LED-VID-0004): the line after the CR write does not show div %llu, active_x %llu and active_w %llu with line_dirty bits 0 and 1 set", (unsigned long long)v[3], (unsigned long long)v[7], (unsigned long long)v[5]);
+        return VG_FAIL;
+    }
+    return VG_PASS;
+}
+
 struct vk_chk {
     const char *name;
     int (*fn)(struct vk_rc *);
@@ -1208,6 +1348,9 @@ static const struct vk_chk vk_checks[] = {
     {"line_dirty", vk_s_line_dirty},
     {"display_lines", vk_s_display_lines},
     {"width_set", vk_s_width_set},
+    {"display_flags", vk_s_display_flags},
+    {"line_dirty_hv", vk_s_line_dirty_hv},
+    {"cr_change", vk_s_cr_change},
 };
 
 /* F0 (D-172): the first decimal number of a literal grows by one, so the row is made to claim something its own source does not say; 0 when the text holds a number */
