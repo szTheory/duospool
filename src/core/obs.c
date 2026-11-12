@@ -322,3 +322,38 @@ void ds_obs_dev(struct ds_obs_log *log, const struct ds_instance *inst, uint64_t
         r[i] = 0u;
     }
 }
+
+/* one whole video record (D-162, F-2): stored when it fits, else the sink becomes full for the rest of the call and the record is lost; a malformed offer (no bytes) is lost without making the sink full. The offer is counted in seq either way. stored never exceeds
+ * capacity, so the room left is computed without overflow. */
+void ds_obs_vid(struct ds_obs_log *log, const uint8_t *rec, uint32_t rec_bytes)
+{
+    struct ds_obs_vchan *ch;
+    uint32_t i;
+
+    if (log == NULL) {
+        return;
+    }
+    ch = &log->vid;
+    if (!ch->on) {
+        return;
+    }
+    ch->seq = ch->seq + UINT64_C(1);
+    if (rec_bytes == 0u || rec == NULL || ch->bytes == NULL) {
+        if (ch->lost < UINT32_MAX) {
+            ch->lost = ch->lost + 1u;
+        }
+        return;
+    }
+    if (ch->full || (uint64_t)rec_bytes > (uint64_t)ch->capacity - ch->stored || ch->count == UINT32_MAX) {
+        ch->full = 1;
+        if (ch->lost < UINT32_MAX) {
+            ch->lost = ch->lost + 1u;
+        }
+        return;
+    }
+    for (i = 0u; i < rec_bytes; i++) {
+        ch->bytes[ch->stored + (uint64_t)i] = rec[i];
+    }
+    ch->stored = ch->stored + (uint64_t)rec_bytes;
+    ch->count = ch->count + 1u;
+}

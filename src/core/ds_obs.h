@@ -111,6 +111,9 @@ void ds_obs_begin(struct ds_obs_log *log, struct ds_insn_sink *insn, struct ds_d
 void ds_obs_insn(struct ds_obs_log *log, const struct ds_instance *inst, uint32_t opcode);     /* one record, or lost++; log NULL or no insn sink does nothing */
 /* one dev record for an access at the stamp the bus computed for it, carrying the pc the bus was given (struct ds_bus pc: never read from the instance); the bus calls it after the access, so aux is the latch it left; log NULL or no dev sink does nothing */
 void ds_obs_dev(struct ds_obs_log *log, const struct ds_instance *inst, uint64_t stamp, uint32_t pc, uint32_t phys, uint32_t value, uint32_t kind, uint32_t flags);
+/* offer one whole video record of rec_bytes bytes at rec (plan 04-02; D-162, F-2): it is stored, or counted lost; the offer is counted in seq either way. A record that does not fit (or any record once one did not fit: the sticky full flag) is lost; a NULL or empty record is
+ * malformed, is counted lost and never copied, and does not make the sink full. log NULL or no vid sink does nothing. */
+void ds_obs_vid(struct ds_obs_log *log, const uint8_t *rec, uint32_t rec_bytes);
 void ds_obs_end(struct ds_obs_log *log); /* overwrite the headers with the final counts; log NULL does nothing */
 
 /* one instruction with the observer hook (cpu.c): ds_cpu_step is ds_cpu_step_obs with no log */

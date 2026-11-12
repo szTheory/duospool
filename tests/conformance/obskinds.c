@@ -18,7 +18,7 @@
  *                     because the inventory would be incomplete: the log is evidence here (D-119). E0: the inventory says which opcodes the fixtures execute, nothing about what they check.
  *   observer          (plan 03-19) the non-interference matrix: fixture = authored:NAME, until_mclk, expect = compare=verdict,machine_time,stops,digest, sinks = the configurations besides off (large, drop4, poison, cap0, cap1; large is
  *                     required: it is the log every other configuration is compared with), chunks = the run modes (whole first; chunk:N runs N calls to equal parts of the deadline; stop:K holds the stop callback at its K-th call).
- *                     In each mode the machine is run once with no sink (the reference) and once per configuration with BOTH sinks (insn and dev); every run must give the reference stop reason, machine time, steps, overshoot,
+ *                     In each mode the machine is run once with no sink (the reference) and once per configuration with ALL THREE sinks (insn, dev and, since plan 04-02, vid, whose byte capacity is the closed form of the deadline for large, the first four record sizes of the large run for drop4); every run must give the reference stop reason, machine time, steps, overshoot,
  *                     verdict RAM (the DSV1 block), digest and stop sequence (the count and an FNV-1a fold of the machine time, pc, registers and bus latch at every call of the stop callback). The sinks themselves are checked too: headers
  *                     consistent (count = min(seq, capacity), lost = seq - count, insn seq = steps), the guard bytes and the record memory past the count untouched (a poisoned header never read), the records of a limited sink the
  *                     first records of the large sink, and, in a chunked run, the logs accumulated over the chunks equal the logs of the whole run. A large sink that lost a record is harness_failure (the log is evidence here).
@@ -499,6 +499,8 @@ void kind_opcode_exercise(const struct kase *k, struct ctx *c, char *got, size_t
 
 #define OB_INSN_LARGE 262144u /* records: more than any run of the matrix executes, so a large sink never drops */
 #define OB_DEV_LARGE 4096u
+#define OB_VID_LARGE (16u * 1024u * 1024u) /* bytes: the ceiling of a large vid sink (the closed form of D-137 for the deadline is used when it is smaller, ob_matrix) */
+#define OB_VID_LINE_MAX 2792u              /* DS_VID_MAX_REC_BYTES: the longest record */
 #define OB_CHUNKS_MAX 64u
 #define OB_MODES_MAX 6u
 #define OB_CFG_MAX 6u
@@ -513,15 +515,17 @@ struct ob_cfg {
     uint32_t dcap;
     int poison;
     int large; /* 1 for the two configurations that never drop (large and poison): the kind lowers their instruction capacity to what the deadline can execute, see ob_cfg_fit */
+    uint32_t vcap; /* the byte capacity of the vid sink (plan 04-02, F-31): fixed for cap0 and cap1; for the large configurations the matrix sets it to the closed form of the deadline (the lines due times the longest record) and for drop4 to the sum of the first four record sizes of the large run (0 while no record exists) */
+    int vfour;     /* 1 for drop4: vcap is taken from the large run of the same mode */
 };
 
 static const struct ob_cfg ob_cfgs[OB_CFG_MAX] = {
-    {"off", 0, 0u, 0u, 0, 0},
-    {"large", 1, OB_INSN_LARGE, OB_DEV_LARGE, 0, 1},
-    {"drop4", 1, 4u, 4u, 0, 0},
-    {"poison", 1, OB_INSN_LARGE, OB_DEV_LARGE, 1, 1},
-    {"cap0", 1, 0u, 0u, 1, 0}, /* a non-NULL record pointer and a poisoned header with capacity 0 */
-    {"cap1", 1, 1u, 1u, 1, 0},
+    {"off", 0, 0u, 0u, 0, 0, 0u, 0},
+    {"large", 1, OB_INSN_LARGE, OB_DEV_LARGE, 0, 1, 0u, 0},
+    {"drop4", 1, 4u, 4u, 0, 0, 0u, 1},
+    {"poison", 1, OB_INSN_LARGE, OB_DEV_LARGE, 1, 1, 0u, 0},
+    {"cap0", 1, 0u, 0u, 1, 0, 0u, 0}, /* a non-NULL record pointer and a poisoned header with capacity 0 */
+    {"cap1", 1, 1u, 1u, 1, 0, 1u, 0},
 };
 
 /* a run mode: one call to the deadline (whole), N calls to equal parts of it (chunk) or one call whose stop callback holds at its K-th invocation (stop) */
@@ -576,6 +580,15 @@ struct ob_log {
     uint64_t seq;
 };
 
+/* a copy of what the vid sink held after a run (or the bytes accumulated over the calls of a chunked run): count whole records in bytes stored bytes, and the header numbers (plan 04-02) */
+struct ob_vlog {
+    unsigned char *rec;
+    uint32_t count;
+    uint32_t lost;
+    uint64_t seq;
+    uint64_t bytes;
+};
+
 /* where the program of a run comes from (plan 03-26): a built authored image (rom), or the in-process random program of an index (randprog.c); k is the case, whose request is booted over and whose irq_stim is declared to every boot */
 struct ob_src {
     const char *rom;
@@ -596,24 +609,30 @@ struct ob_out {
     uint64_t cont; /* steps that continued a block transfer: executed steps without an instruction offer to the instruction sink */
     struct ob_log ilog;
     struct ob_log dlog;
+    struct ob_vlog vlog;
 };
 
 static void ob_out_free(struct ob_out *o)
 {
     free(o->ilog.rec);
     free(o->dlog.rec);
+    free(o->vlog.rec);
     o->ilog.rec = NULL;
     o->dlog.rec = NULL;
+    o->vlog.rec = NULL;
 }
 
 /* the memory of the sinks of one run: the two sink structs and the record blocks with guard bytes either side, all poisoned or zero as the configuration says */
 struct ob_mem {
     struct ds_insn_sink *isk;
     struct ds_dev_sink *dsk;
+    struct ds_vid_sink *vsk;
     unsigned char *iblock;
     unsigned char *dblock;
+    unsigned char *vblock;
     size_t ibytes;
     size_t dbytes;
+    size_t vbytes;
     int poison;
 };
 
@@ -621,8 +640,10 @@ static void ob_mem_free(struct ob_mem *m)
 {
     free(m->isk);
     free(m->dsk);
+    free(m->vsk);
     free(m->iblock);
     free(m->dblock);
+    free(m->vblock);
     memset(m, 0, sizeof *m);
 }
 
@@ -640,20 +661,27 @@ static int ob_mem_make(struct ob_mem *m, const struct ob_cfg *cf)
     m->dbytes = (size_t)(cf->dcap != 0u ? cf->dcap : 1u) * (size_t)DS_DEV_RECORD_BYTES;
     m->isk = (struct ds_insn_sink *)calloc(1u, sizeof *m->isk);
     m->dsk = (struct ds_dev_sink *)calloc(1u, sizeof *m->dsk);
+    m->vsk = (struct ds_vid_sink *)calloc(1u, sizeof *m->vsk);
+    m->vbytes = (size_t)(cf->vcap != 0u ? cf->vcap : 1u);
     m->iblock = (unsigned char *)malloc(m->ibytes + 2u * OBS_GUARD);
     m->dblock = (unsigned char *)malloc(m->dbytes + 2u * OBS_GUARD);
-    if (m->isk == NULL || m->dsk == NULL || m->iblock == NULL || m->dblock == NULL) {
+    m->vblock = (unsigned char *)malloc(m->vbytes + 2u * OBS_GUARD);
+    if (m->isk == NULL || m->dsk == NULL || m->vsk == NULL || m->iblock == NULL || m->dblock == NULL || m->vblock == NULL) {
         ob_mem_free(m);
         return -1;
     }
     memset(m->iblock, fill, m->ibytes + 2u * OBS_GUARD);
     memset(m->dblock, fill, m->dbytes + 2u * OBS_GUARD);
+    memset(m->vblock, fill, m->vbytes + 2u * OBS_GUARD);
     memset(m->isk->header, fill, sizeof m->isk->header);
     memset(m->dsk->header, fill, sizeof m->dsk->header);
+    memset(m->vsk->header, fill, sizeof m->vsk->header);
     m->isk->records = m->iblock + OBS_GUARD;
     m->isk->capacity = cf->icap;
     m->dsk->records = m->dblock + OBS_GUARD;
     m->dsk->capacity = cf->dcap;
+    m->vsk->bytes = m->vblock + OBS_GUARD;
+    m->vsk->capacity = cf->vcap;
     return 0;
 }
 
@@ -733,6 +761,86 @@ static int ob_header_consistent(const unsigned char *header, uint32_t cap, uint6
     return (uint64_t)count == want && (uint64_t)lost == s - want;
 }
 
+/* the vid header of one call (plan 04-02; D-162, F-2, F-31): 32 bytes, the byte capacity, and for the records a walk of the stored bytes. count = whole records stored, bytes = their sum (at most the capacity), lost = seq - count, the zero word is zero; the walk reads
+ * the rec_bytes field (+16, u16) of each stored record and must land exactly on bytes after count records, each between 64 and the longest record. The offered number is returned in *seq and the stored byte count in *stored. */
+static int ob_vheader_consistent(const unsigned char *header, const unsigned char *bytes, uint32_t cap, uint64_t *seq, uint64_t *stored)
+{
+    uint32_t count = get_u32(header);
+    uint32_t lost = get_u32(header + 4);
+    uint64_t s = get_u64(header + 8);
+    uint64_t used = get_u64(header + 16);
+    uint64_t at = 0u;
+    uint32_t n;
+
+    *seq = s;
+    *stored = used;
+    if ((uint64_t)count > s || (uint64_t)lost != s - (uint64_t)count || used > (uint64_t)cap || get_u64(header + 24) != 0u || (count == 0u) != (used == 0u)) {
+        return 0;
+    }
+    for (n = 0u; n < count; n++) {
+        uint32_t rb = at + 18u <= used ? get_u16(bytes + at + 16u) : 0u;
+
+        if (rb < (uint32_t)DS_VID_REC_HEADER_BYTES || rb > (uint32_t)OB_VID_LINE_MAX || at + (uint64_t)rb > used) {
+            return 0;
+        }
+        at += (uint64_t)rb;
+    }
+    return at == used;
+}
+
+/* the whole records of a large vid log that fit a byte capacity, drop-newest with a sticky full flag: the count and the byte sum (the first record that does not fit ends the walk: a smaller later one is lost too) */
+static void ob_vfit(const struct ob_vlog *large, uint64_t cap, uint32_t *count, uint64_t *bytes)
+{
+    uint64_t used = 0u;
+    uint32_t n = 0u;
+
+    while (n < large->count) {
+        uint64_t rb = (uint64_t)get_u16(large->rec + used + 16u);
+
+        if (used + rb > cap) {
+            break;
+        }
+        used += rb;
+        n++;
+    }
+    *count = n;
+    *bytes = used;
+}
+
+/* the byte capacity of the 4-record configuration: the sizes of the first four records of the large run (fewer when it holds fewer, 0 while no record exists), F-2 */
+static uint32_t ob_vfour(const struct ob_vlog *large)
+{
+    uint32_t n = 0u;
+    uint32_t first = large->count < 4u ? large->count : 4u;
+    uint64_t used = 0u;
+
+    while (n < first) {
+        used += (uint64_t)get_u16(large->rec + used + 16u);
+        n++;
+    }
+    return (uint32_t)used;
+}
+
+/* append the bytes of one call (nbytes of them, count records) to an accumulated vid log of at most cap bytes: 0 on success */
+static int ob_vlog_append(struct ob_vlog *acc, uint32_t cap, const unsigned char *rec, uint64_t nbytes, uint32_t count)
+{
+    if (acc->rec == NULL) {
+        acc->rec = (unsigned char *)malloc((size_t)(cap != 0u ? cap : 1u));
+        if (acc->rec == NULL) {
+            return -1;
+        }
+    }
+    if (acc->bytes + nbytes > (uint64_t)cap) {
+        return -1;
+    }
+    if (nbytes > 0u) { /* a copy of zero bytes still must not get a null pointer */
+        memcpy(acc->rec + (size_t)acc->bytes, rec, (size_t)nbytes);
+    }
+    acc->bytes += nbytes;
+    acc->count += count;
+    return 0;
+}
+
 /* one run of the machine under one configuration and mode: 0 on success (checks made on c), -1 after a harness error. A whole or stop run is one ds_run call; a chunk run is o->n calls to equal parts of the deadline. */
 static int ob_exec(struct ctx *c, const struct ob_src *src, uint64_t until, const struct ob_cfg *cf, const struct ob_mode *md, struct ob_out *o)
 {
@@ -792,6 +900,7 @@ static int ob_exec(struct ctx *c, const struct ob_src *src, uint64_t until, cons
         rq.stop_ctx = &st;
         rq.insn = m.isk;
         rq.dev = m.dsk;
+        rq.vid = m.vsk;
         cont0 = st.cont;
         reason = ds_run(w, &rq, &res);
         if (reason == (uint32_t)DS_RUN_REASON_REFUSED) {
@@ -808,13 +917,18 @@ static int ob_exec(struct ctx *c, const struct ob_src *src, uint64_t until, cons
         if (cf->on && m.isk != NULL) {
             uint64_t iseq = 0u;
             uint64_t dseq = 0u;
+            uint64_t vseq = 0u;
+            uint64_t vstored = 0u;
             const unsigned char *irec = m.iblock + OBS_GUARD;
             const unsigned char *drec = m.dblock + OBS_GUARD;
+            const unsigned char *vrec = m.vblock + OBS_GUARD;
 
             snprintf(msg, sizeof msg, "the insn header of the %s sink in mode %s is not a consistent count (count = min(seq, capacity), lost = seq - count)", cf->name, md->name);
             check(c, ob_header_consistent(m.isk->header, cf->icap, &iseq), msg);
             snprintf(msg, sizeof msg, "the dev header of the %s sink in mode %s is not a consistent count (count = min(seq, capacity), lost = seq - count)", cf->name, md->name);
             check(c, ob_header_consistent(m.dsk->header, cf->dcap, &dseq), msg);
+            snprintf(msg, sizeof msg, "the vid header of the %s sink in mode %s is not a consistent count of whole records (count, lost = seq - count, bytes = their sum within the capacity, a zero word, the record walk lands on bytes)", cf->name, md->name);
+            check(c, ob_vheader_consistent(m.vsk->header, vrec, cf->vcap, &vseq, &vstored), msg);
             snprintf(msg, sizeof msg, "the insn header of the %s sink in mode %s does not count one offer per executed instruction of the call (steps that continue a block transfer are not instructions)", cf->name, md->name);
             check(c, iseq == res.steps - (st.cont - cont0), msg);
             if (md->kind == OBM_CHUNK && cf->large) { /* the large and the poisoned sink: their accumulated logs are compared in the kind */
@@ -822,6 +936,12 @@ static int ob_exec(struct ctx *c, const struct ob_src *src, uint64_t until, cons
                     harness_error(c, "the accumulated log of a chunked run overflowed or could not be allocated");
                     rc = -1;
                 }
+                if (ob_vlog_append(&o->vlog, cf->vcap, vrec, vstored, get_u32(m.vsk->header)) != 0) {
+                    harness_error(c, "the accumulated vid log of a chunked run overflowed or could not be allocated");
+                    rc = -1;
+                }
+                o->vlog.seq += vseq;
+                o->vlog.lost += get_u32(m.vsk->header + 4);
                 o->ilog.seq += iseq;
                 o->dlog.seq += dseq;
                 o->ilog.lost += get_u32(m.isk->header + 4);
@@ -832,15 +952,30 @@ static int ob_exec(struct ctx *c, const struct ob_src *src, uint64_t until, cons
     }
     if (rc == 0 && cf->on) {
         snprintf(msg, sizeof msg, "the core wrote outside the record memory of the %s sink in mode %s (guard bytes changed)", cf->name, md->name);
-        check(c, ob_guards_ok(m.iblock, m.ibytes, m.poison) && ob_guards_ok(m.dblock, m.dbytes, m.poison), msg);
+        check(c, ob_guards_ok(m.iblock, m.ibytes, m.poison) && ob_guards_ok(m.dblock, m.dbytes, m.poison) && ob_guards_ok(m.vblock, m.vbytes, m.poison), msg);
         if (md->kind != OBM_CHUNK) {
             uint32_t ic = get_u32(m.isk->header);
             uint32_t dc = get_u32(m.dsk->header);
+            uint64_t vb = get_u64(m.vsk->header + 16);
 
             snprintf(msg, sizeof msg, "the core wrote into the record memory past the count of the %s sink in mode %s", cf->name, md->name);
-            check(c, ob_tail_ok(m.iblock + OBS_GUARD, m.ibytes, (size_t)ic * DS_INSN_RECORD_BYTES, m.poison) && ob_tail_ok(m.dblock + OBS_GUARD, m.dbytes, (size_t)dc * DS_DEV_RECORD_BYTES, m.poison), msg);
+            check(c, ob_tail_ok(m.iblock + OBS_GUARD, m.ibytes, (size_t)ic * DS_INSN_RECORD_BYTES, m.poison) && ob_tail_ok(m.dblock + OBS_GUARD, m.dbytes, (size_t)dc * DS_DEV_RECORD_BYTES, m.poison)
+                      && vb <= (uint64_t)m.vbytes && ob_tail_ok(m.vblock + OBS_GUARD, m.vbytes, (size_t)vb, m.poison), msg);
             ob_log_header(&o->ilog, m.isk->header);
             ob_log_header(&o->dlog, m.dsk->header);
+            o->vlog.count = get_u32(m.vsk->header);
+            o->vlog.lost = get_u32(m.vsk->header + 4);
+            o->vlog.seq = get_u64(m.vsk->header + 8);
+            o->vlog.bytes = vb;
+            if (vb > 0u && vb <= (uint64_t)m.vbytes) {
+                o->vlog.rec = (unsigned char *)malloc((size_t)vb);
+                if (o->vlog.rec == NULL) {
+                    harness_error(c, "out of memory for the vid log copy of the observer matrix");
+                    rc = -1;
+                } else {
+                    memcpy(o->vlog.rec, m.vblock + OBS_GUARD, (size_t)vb);
+                }
+            }
             if (ic > 0u) {
                 o->ilog.rec = (unsigned char *)malloc((size_t)ic * DS_INSN_RECORD_BYTES);
             }
@@ -888,7 +1023,8 @@ static int ob_logs_equal(const struct ob_out *a, const struct ob_out *b)
 {
     return a->ilog.count == b->ilog.count && a->dlog.count == b->dlog.count && a->ilog.seq == b->ilog.seq && a->dlog.seq == b->dlog.seq
            && (a->ilog.count == 0u || (a->ilog.rec != NULL && b->ilog.rec != NULL && memcmp(a->ilog.rec, b->ilog.rec, (size_t)a->ilog.count * DS_INSN_RECORD_BYTES) == 0))
-           && (a->dlog.count == 0u || (a->dlog.rec != NULL && b->dlog.rec != NULL && memcmp(a->dlog.rec, b->dlog.rec, (size_t)a->dlog.count * DS_DEV_RECORD_BYTES) == 0));
+           && (a->dlog.count == 0u || (a->dlog.rec != NULL && b->dlog.rec != NULL && memcmp(a->dlog.rec, b->dlog.rec, (size_t)a->dlog.count * DS_DEV_RECORD_BYTES) == 0))
+           && a->vlog.count == b->vlog.count && a->vlog.seq == b->vlog.seq && a->vlog.bytes == b->vlog.bytes && (a->vlog.bytes == 0u || (a->vlog.rec != NULL && b->vlog.rec != NULL && memcmp(a->vlog.rec, b->vlog.rec, (size_t)a->vlog.bytes) == 0));
 }
 
 /* the records a limited sink holds are the first count records of the large sink of the same mode, and its counts follow from what the large sink saw offered */
@@ -902,6 +1038,16 @@ static void ob_prefix_of(struct ctx *c, const struct ob_out *large, const struct
     check(c, o->ilog.seq == large->ilog.seq && (uint64_t)o->ilog.count == want_i && (uint64_t)o->ilog.lost == large->ilog.seq - want_i, msg);
     snprintf(msg, sizeof msg, "the dev header of the %s sink in mode %s differs from the offers the large sink saw", cf->name, mode);
     check(c, o->dlog.seq == large->dlog.seq && (uint64_t)o->dlog.count == want_d && (uint64_t)o->dlog.lost == large->dlog.seq - want_d, msg);
+    {
+        uint32_t want_vc = 0u;
+        uint64_t want_vb = 0u;
+
+        ob_vfit(&large->vlog, (uint64_t)cf->vcap, &want_vc, &want_vb);
+        snprintf(msg, sizeof msg, "the vid header of the %s sink in mode %s differs from the whole records of the large sink that fit its byte capacity (drop-newest, sticky full)", cf->name, mode);
+        check(c, o->vlog.seq == large->vlog.seq && o->vlog.count == want_vc && o->vlog.bytes == want_vb && (uint64_t)o->vlog.lost == large->vlog.seq - (uint64_t)want_vc, msg);
+        snprintf(msg, sizeof msg, "the vid records of the %s sink in mode %s are not the first records of the large sink", cf->name, mode);
+        check(c, o->vlog.bytes == 0u || (large->vlog.rec != NULL && o->vlog.rec != NULL && memcmp(o->vlog.rec, large->vlog.rec, (size_t)o->vlog.bytes) == 0), msg);
+    }
     snprintf(msg, sizeof msg, "the insn records of the %s sink in mode %s are not the first records of the large sink", cf->name, mode);
     check(c, o->ilog.count == 0u || (large->ilog.rec != NULL && o->ilog.rec != NULL && memcmp(o->ilog.rec, large->ilog.rec, (size_t)o->ilog.count * DS_INSN_RECORD_BYTES) == 0), msg);
     snprintf(msg, sizeof msg, "the dev records of the %s sink in mode %s are not the first records of the large sink", cf->name, mode);
@@ -1028,7 +1174,10 @@ static void ob_matrix(struct ctx *c, const struct ob_src *src, uint64_t until, c
         if (cfg[q].large) {
             uint64_t fit = until / 6u + 16u; /* an instruction takes at least two cycles of at least three master clocks, so a deadline cannot execute more instructions than this; a large sink that still loses a record is harness_failure below */
 
+            uint64_t vfit = (until / UINT64_C(1365) + UINT64_C(3)) * (uint64_t)OB_VID_LINE_MAX; /* the closed form of D-137: at most floor((deadline - 1) / 1365) + 1 lines are due, plus the overshoot of one step, each at most the longest record */
+
             cfg[q].icap = fit < (uint64_t)OB_INSN_LARGE ? (uint32_t)fit : (uint32_t)OB_INSN_LARGE;
+            cfg[q].vcap = vfit < (uint64_t)OB_VID_LARGE ? (uint32_t)vfit : (uint32_t)OB_VID_LARGE;
         }
     }
     for (mi = 0u; mi < nmodes && !c->harness; mi++) {
@@ -1060,7 +1209,7 @@ static void ob_matrix(struct ctx *c, const struct ob_src *src, uint64_t until, c
         }
         (*runs)++;
         ob_same_as(c, &ref, &large, cfg[1].name, modes[mi].name);
-        if (large.ilog.lost != 0u || large.dlog.lost != 0u) {
+        if (large.ilog.lost != 0u || large.dlog.lost != 0u || large.vlog.lost != 0u) {
             harness_error(c, "the large sink of the observer matrix lost a record: the log is evidence here and would be incomplete");
         }
         if (modes[mi].kind == OBM_STOP) {
@@ -1071,6 +1220,9 @@ static void ob_matrix(struct ctx *c, const struct ob_src *src, uint64_t until, c
 
             if (!want[ci]) {
                 continue;
+            }
+            if (cfg[ci].vfour) {
+                cfg[ci].vcap = ob_vfour(&large.vlog); /* the byte capacity of four records, taken from the large run of this mode (F-2) */
             }
             if (ob_exec(c, src, until, &cfg[ci], &modes[mi], &o) != 0) {
                 break;
@@ -1104,6 +1256,8 @@ static void ob_matrix(struct ctx *c, const struct ob_src *src, uint64_t until, c
 
             snprintf(msg, sizeof msg, "the insn records of the %s run are not the first records of the whole run", modes[mi].name);
             check(c, large.ilog.count <= whole_large.ilog.count && (large.ilog.count == 0u || memcmp(large.ilog.rec, whole_large.ilog.rec, (size_t)large.ilog.count * DS_INSN_RECORD_BYTES) == 0), msg);
+            snprintf(msg, sizeof msg, "the vid records of the %s run are not the first records of the whole run", modes[mi].name);
+            check(c, large.vlog.bytes <= whole_large.vlog.bytes && (large.vlog.bytes == 0u || memcmp(large.vlog.rec, whole_large.vlog.rec, (size_t)large.vlog.bytes) == 0), msg);
         }
         ob_out_free(&ref);
         ob_out_free(&large);
@@ -1866,10 +2020,13 @@ void kind_trace_out_rights(const struct kase *k, struct ctx *c, char *got, size_
 }
 
 /* ---- kind vid_chan_append: the video sink channel (plan 04-02; D-162, F-2, T-04-05, T-04-07) ----
- * expect = parts=attached (more parts are listed here as they are added). Evidence class E0: the channel mechanism and the non-interference of an attached sink; no video exists yet, so no hardware claim.
+ * expect = parts=attached,append. Evidence class E0: the channel mechanism and the non-interference of an attached sink; no video exists yet, so no hardware claim.
  *   attached  fixture = authored:NAME and until_mclk: the ROM is run once with no sink (the reference) and once with a vid sink of 4096 bytes whose header and buffer are poisoned with $A5 and which has guard bytes around it. There is no producer yet,
  *             so after the run the header must read count 0, lost 0, seq 0, bytes 0 and the zero word (decoded by hand, little-endian: the poisoned header was overwritten and never read), the buffer must still hold its poison, and the
- *             run must give the reference machine time, steps and digest. */
+ *             run must give the reference machine time, steps and digest.
+ *   append    direct channel calls, no ds_run (F-2, D-162): synthetic records of 64 to 2792 bytes are offered to ds_obs_vid and the header must read the counts of the table below, written here by hand from the rule (whole records only, count = records
+ *             stored, bytes = their sum, lost = seq - count, and after the first record that does not fit every later one is lost, even a smaller one that would fit: the sticky full flag). Capacities 0 and 1 store nothing and count every offer as
+ *             lost; a NULL record or an empty one is counted lost and never copied; an absent sink and a NULL log do nothing. The stored bytes must equal the records offered and the bytes past them and the guards must still hold their poison. */
 
 #define VC_BYTES 4096u
 #define VC_GUARD 64u
@@ -1931,15 +2088,133 @@ static void vc_attached(struct ctx *c, const char *rom, const char *request, uin
     snprintf(got, gotcap, "count=%u lost=%u seq=%llu bytes=%llu", (unsigned)get_u32(vsk.header), (unsigned)get_u32(vsk.header + 4), (unsigned long long)get_u64(vsk.header + 8), (unsigned long long)get_u64(vsk.header + 16));
 }
 
+/* one append case: a byte capacity, the sizes of the records offered in order, and the counts the rule predicts (count, bytes stored, lost; seq is n) */
+#define VC_OFFERS_MAX 4u
+struct vc_case {
+    uint32_t cap;
+    unsigned n;
+    uint32_t size[VC_OFFERS_MAX];
+    uint32_t count;
+    uint32_t bytes;
+    uint32_t lost;
+    const char *what;
+};
+
+static const struct vc_case vc_cases[] = {
+    {3000u, 4u, {64u, 2792u, 2792u, 64u}, 2u, 2856u, 2u, "sticky full: the third record (2792) does not fit, the fourth (64) would fit the 144 bytes left but is lost"},
+    {3000u, 3u, {64u, 64u, 64u, 0u}, 3u, 192u, 0u, "three small records all fit"},
+    {3000u, 3u, {2792u, 64u, 64u, 0u}, 3u, 2920u, 0u, "a large record first leaves room: nothing is full yet"},
+    {128u, 3u, {64u, 64u, 64u, 0u}, 2u, 128u, 1u, "an exact fit is stored, the next record is lost"},
+    {100u, 2u, {2792u, 64u, 0u, 0u}, 0u, 0u, 2u, "the first record does not fit: the smaller second one (64 of 100 bytes) is lost too"},
+    {0u, 2u, {64u, 64u, 0u, 0u}, 0u, 0u, 2u, "capacity 0 stores nothing"},
+    {1u, 2u, {64u, 2792u, 0u, 0u}, 0u, 0u, 2u, "capacity 1 stores nothing"},
+};
+
+/* the bytes of record number i of a case: a pattern the header rule cannot produce by accident */
+static unsigned char vc_pattern(unsigned i, uint32_t j)
+{
+    return (unsigned char)(0x11u * (i + 1u) + j);
+}
+
+static void vc_append(struct ctx *c, char *got, size_t gotcap)
+{
+    unsigned t;
+    unsigned checks = 0u;
+    char msg[320];
+    unsigned char rec[DS_VID_MAX_REC_BYTES];
+    union {
+        uint64_t align;
+        unsigned char b[VC_GUARD + 3000u + VC_GUARD];
+    } mem;
+    struct ds_vid_sink vsk;
+    struct ds_obs_log log;
+
+    for (t = 0u; t < (unsigned)(sizeof vc_cases / sizeof vc_cases[0]); t++) {
+        const struct vc_case *vc = &vc_cases[t];
+        unsigned i;
+        uint32_t off = 0u;
+        int same = 1;
+        int untouched = 1;
+        uint32_t j;
+
+        memset(&mem, OBS_POISON, sizeof mem);
+        memset(&vsk, OBS_POISON, sizeof vsk);
+        vsk.bytes = mem.b + VC_GUARD;
+        vsk.capacity = vc->cap;
+        ds_obs_begin(&log, NULL, NULL, &vsk);
+        snprintf(msg, sizeof msg, "append case %u: ds_obs_begin did not overwrite the poisoned vid header with zeros", t);
+        check(c, get_u32(vsk.header) == 0u && get_u32(vsk.header + 4) == 0u && get_u64(vsk.header + 8) == 0u && get_u64(vsk.header + 16) == 0u && get_u64(vsk.header + 24) == 0u, msg);
+        for (i = 0u; i < vc->n; i++) {
+            for (j = 0u; j < vc->size[i]; j++) {
+                rec[j] = vc_pattern(i, j);
+            }
+            ds_obs_vid(&log, rec, vc->size[i]);
+        }
+        ds_obs_end(&log);
+        snprintf(msg, sizeof msg, "append case %u (%s): the header reads count %u lost %u seq %llu bytes %llu, the rule predicts count %u lost %u seq %u bytes %u", t, vc->what, (unsigned)get_u32(vsk.header), (unsigned)get_u32(vsk.header + 4),
+                 (unsigned long long)get_u64(vsk.header + 8), (unsigned long long)get_u64(vsk.header + 16), (unsigned)vc->count, (unsigned)vc->lost, vc->n, (unsigned)vc->bytes);
+        check(c, get_u32(vsk.header) == vc->count && get_u32(vsk.header + 4) == vc->lost && get_u64(vsk.header + 8) == (uint64_t)vc->n && get_u64(vsk.header + 16) == (uint64_t)vc->bytes && get_u64(vsk.header + 24) == 0u, msg);
+        for (i = 0u; i < vc->count && i < vc->n; i++) { /* the stored records are the first count offers, back to back at the front of the buffer */
+            for (j = 0u; j < vc->size[i]; j++) {
+                same = same && mem.b[VC_GUARD + off + j] == vc_pattern(i, j);
+            }
+            off += vc->size[i];
+        }
+        snprintf(msg, sizeof msg, "append case %u (%s): the stored bytes are not the first records offered, back to back", t, vc->what);
+        check(c, same && off == vc->bytes, msg);
+        for (j = 0u; j < (uint32_t)sizeof mem.b; j++) { /* the guard before the buffer and everything after the stored bytes (the rest of the capacity and the guard after it) still hold the poison */
+            if (j < VC_GUARD || j >= VC_GUARD + vc->bytes) {
+                untouched = untouched && mem.b[j] == (unsigned char)OBS_POISON;
+            }
+        }
+        snprintf(msg, sizeof msg, "append case %u (%s): the core wrote into the guard bytes or past the stored records", t, vc->what);
+        check(c, untouched, msg);
+        checks++;
+    }
+    /* a record that is NULL or empty is never copied and is counted lost; the next whole record still fits (a malformed offer is not a record that does not fit) */
+    memset(&mem, OBS_POISON, sizeof mem);
+    memset(&vsk, OBS_POISON, sizeof vsk);
+    vsk.bytes = mem.b + VC_GUARD;
+    vsk.capacity = 3000u;
+    ds_obs_begin(&log, NULL, NULL, &vsk);
+    memset(rec, 0x5A, 64u);
+    ds_obs_vid(&log, NULL, 64u);
+    ds_obs_vid(&log, rec, 0u);
+    ds_obs_vid(&log, rec, 64u);
+    ds_obs_end(&log);
+    check(c, get_u32(vsk.header) == 1u && get_u32(vsk.header + 4) == 2u && get_u64(vsk.header + 8) == 3u && get_u64(vsk.header + 16) == 64u, "a NULL record and an empty record were not counted lost, or the whole record after them was not stored");
+    /* an absent sink and a NULL log do nothing: the header of a sink that is not attached keeps its poison */
+    memset(&vsk, OBS_POISON, sizeof vsk);
+    ds_obs_begin(&log, NULL, NULL, NULL);
+    ds_obs_vid(&log, rec, 64u);
+    ds_obs_vid(NULL, rec, 64u);
+    ds_obs_end(&log);
+    {
+        unsigned k;
+        int poisoned = 1;
+
+        for (k = 0u; k < DS_VID_HEADER_BYTES; k++) {
+            poisoned = poisoned && vsk.header[k] == (unsigned char)OBS_POISON;
+        }
+        check(c, poisoned, "a call with no vid sink wrote a vid header");
+    }
+    {
+        size_t used = strlen(got);
+
+        snprintf(got + used, gotcap - used, " append_cases=%u", checks);
+    }
+}
+
 void kind_vid_chan_append(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
 {
     char rom[48];
     uint64_t until = 0u;
 
     rom[0] = '\0';
-    if (strcmp(k->val[K_EXPECT], "parts=attached") != 0 || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until == 0u || authored_name(k->val[K_FIXTURE], rom, sizeof rom) != 0) {
-        harness_error(c, "a vid_chan_append case needs fixture = authored:NAME, until_mclk and expect = parts=attached");
+    if (strcmp(k->val[K_EXPECT], "parts=attached,append") != 0 || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until == 0u || authored_name(k->val[K_FIXTURE], rom, sizeof rom) != 0) {
+        harness_error(c, "a vid_chan_append case needs fixture = authored:NAME, until_mclk and expect = parts=attached,append");
         return;
     }
     vc_attached(c, rom, k->val[K_REQUEST], until, got, gotcap);
+    vc_append(c, got, gotcap);
 }
