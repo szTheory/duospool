@@ -66,6 +66,7 @@ start, which is the critical path), and the run conclusion.
 |------------|--------|---------|-------|----------------------------|-------|
 | 2026-11-11 | 42939483070 | 0 | gate=98 | 100 | success |
 | 2026-11-11 | 43122980214 | 0 | gate=342 | 344 | success |
+| 2026-11-12 | 43275379025 | 0 | gate=853 | 856 | success |
 
 ## Failure classes the job owns
 
@@ -519,6 +520,60 @@ Slowest stages inside the gate, from the gaps between the `CHECK` lines (whole s
 - **A strict-flag gap on macOS.** Both CI-only failures would have been caught locally by a gcc strict build; `sh scripts/linux-repro` does that but is a one-off and was last run before the file existed. A tiny gcc syntax check in a container,
   with real compilation (`-fsyntax-only` misses `-Wformat-truncation`), found nothing else at the gate's `-O0`. At `-O2` (not a gate preset) gcc reports `-Wformat-truncation` in `tests/conformance/buskinds.c:110` and `digkinds.c:299`; recorded, not changed.
 - **Nothing was weakened.** No stage, control, selftest or workflow step was skipped, merged or shortened.
+
+## First Phase 4 CI run (run 43275379025, pull request 3)
+
+Authorised by the owner on 2026-11-12 (answer: "Stacked PR on the Phase 3 branch (Recommended)"): one new branch, `gsd/phase-04-vce-vdc-raw-video`, and one pull request whose base is the Phase 3
+branch (the head of pull request 2), so the diff shows only Phase 4, with fix-forward commits to the same branch. The workflow has no branch filter on `pull_request`, so it runs for a base that is not `main`
+(it did). No repository setting was changed, `main`, the Phase 2 and Phase 3 branches and their pull requests were not touched, no tag was pushed, nothing was force-pushed, nothing was merged.
+The evidence tier is E0, repeatability: the run shows that the Phase 4 gate command passes on a second machine class with a second awk and two compilers, not that any profile is accurate.
+This section supersedes the "unverified, pending owner push authorisation" statements in the Phase 4 sections above. The head that adds this section has its own run, which is not recorded here.
+
+One run, one green result, no fix-forward: the strict-flag gcc defects of Phase 3 did not recur, because `LINUX_REPRO_PARTS='gate-gcc gate-clang core-boundary-gcc' sh scripts/linux-repro` had run on the pushed tree first (all three parts passed, 88 s, emulated).
+
+| Run | Head | Job s | Conclusion | Notes |
+|-----|------|-------|------------|-------|
+| 43275379025 | `cb2ddeb` | 853 | success | queue 0 s, run 856 s; both full gates printed `CHECK RESULT PASS` with 57 stages; default awk gawk, second awk mawk (already installed, so the apt fallback did not run) |
+
+Runner image `ubuntu-24.04`, image version 20261101.360.1 (runner 2.338.2), the same as the Phase 3 run. The fixture assembler is the Ubuntu `cc65` package again; `fixture-build` and `fixtures` passed in both gate runs,
+so the fixture hash pins (taken on macOS) reproduce on the runner, including the Phase 4 video fixtures. That is repeatability across two builds of one assembler release, not an independent oracle.
+
+Step seconds (from the step timestamps; Phase 3 first green run in the last column):
+
+| Step | Seconds | Share of job | Phase 3 run |
+|------|---------|--------------|-------------|
+| Set up job, checkout (full clone), tool versions | 3 | 0 percent | 4 |
+| Install cc65 (`apt-get update` and install) | 10 | 1 percent | 8 |
+| Gate (gawk, gcc, cold build) | 339 | 40 percent | 119 |
+| Range audit (the Phase 4 range over the Phase 3 base, 79 commits) | 15 | 2 percent | 37 (334 commits) |
+| gcc build and conformance (preset `gate-gcc`) | 74 | 9 percent | 31 |
+| clang build and conformance (preset `gate-clang`) | 80 | 9 percent | 37 |
+| Second awk gate run (mawk, gcc) | 330 | 39 percent | 104 |
+
+Slowest stages inside the gate, from the gaps between the `CHECK` lines (whole seconds, a rounded estimate), gawk run then mawk run, with the Phase 3 gawk figure in brackets: `sanitizers` 172 and 170 (46), `conformance` 72.5 and 71.6 (33),
+`determinism` 61.6 and 61.8 (19). Those three stages are 306 s of the 339 s gate and 304 s of the 330 s second run (90 percent and 92 percent). Every other stage is 3.1 s or less: `video-check` 1.8 s, `build` 1.5 s cold,
+`fixture-build` 1.0 s, `fixtures` 3.0 s, `named-controls` 2.1 s, `core-boundary` 3.1 s. The job critical path is the single job, 856 s.
+
+### Efficiency review of the first Phase 4 run
+
+- **Against Phase 3:** the job went from 342 s to 853 s (2.5 times); the gate step alone from 119 s to 339 s (2.8 times). All of the growth is three stages that run the cases through the machine, and again under ASan and UBSan: `sanitizers`
+  (46 to 172 s), `conformance` (33 to 72.5 s) and `determinism` (19 to 61.6 s). The runner is about as fast as the owner's loaded development machine for these stages (local 62 to 84 s for `conformance`, 146 to 216 s for `sanitizers`).
+  The Phase 4 D-176 estimate of +35 s wall (+20 to +60) for the gate was far too low once measured on a runner.
+- **`timeout-minutes: 20` is now too tight.** 1200 s against an 856 s critical path is a margin of 1.4 times, where the Phase 2 and Phase 3 reviews asked for about 3 times and the Phase 3 run had 3.5 times. The limit only bounds a hung job,
+  but a runner that is 40 percent slower than this one would kill a healthy run and report a failure that is not a defect. Not changed here (it is a recorded decision, D-61, and this review changed no workflow file); the recommendation for the owner
+  is 30 minutes, or the parallel-job lever below, which would bring the critical path under 9 minutes and make 20 minutes safe again.
+- **The D-176 job trigger fired.** The trigger "the CI job over 600 s with lever (1) not recovering it" is met: 853 s, with lever (1) (toy executables linked against shared object libraries, commit `d831680`) applied. The `conformance` stage is also still over its 60 s
+  trigger (72.5 s). The A/B effect of lever (1) on a cold runner cannot be separated from this single run (no run exists without it, and `build` itself is 1.5 s cold, so cold compilation is not what is slow); no further lever was applied.
+- **The second awk run is 39 percent of the job and found nothing mawk-specific again.** The levers that keep the failure class and cut the critical path, in order of value: (a) run the second awk gate as a parallel second job instead of a later step: runner minutes stay
+  the same (plus about 13 s of repeated set-up) and the critical path drops from 856 s to about 520 s (the Gate, range audit, gcc and clang steps are 521 s with set-up) while the second job takes about 343 s; (b) pair the second awk run with clang (as `scripts/linux-repro` does) at the price that
+  a failure no longer says whether awk or the compiler caused it. Neither was applied: both change the workflow, which is the owner's decision, and no change was made on one green run.
+- **Sanitizers run twice.** The ASan and UBSan stage (172 s and 170 s) is 40 percent of the job in total. Its only awk-dependent part is the same conformance runner that the `conformance` stage covers, so a skip in the second run is the largest single saving (about 170 s)
+  but needs a skip mechanism, which the fail-closed rule discourages. Applying D-176 lever (2) (two policies instead of three) to the sanitize preset would save only about 4 to 5 s of 172 s and removes seed evidence, so it is not worth it.
+- **Caching: still no candidate.** Cc65 is a 10 s apt install; every long step is test execution, not a download or a build product, so a cache would have to hold results, which would hide the evidence the job exists to produce.
+- **Overlap.** The `gcc build and conformance` step (74 s) repeats the `Gate` step's `conformance` stage (`cc` on the image is gcc, and `gate-gcc` differs only by naming gcc); the `clang` step (80 s) is the only run of the conformance stage under clang. The gcc step pins the compiler if `cc` changes and
+  proved a clean strict-flag build; it stays. If the job needs to be shorter, the first candidate after the parallel second job is running the gcc and clang steps as two parallel jobs.
+- **New stage cost.** `video-check` (added in Phase 4) is 1.8 s per gate run. The Phase 4 video fixtures and cases cost in `conformance`, `sanitizers` and `determinism`, not in a stage of their own.
+- **Nothing was weakened.** No stage, control, selftest, case or workflow step was skipped, merged or shortened, and no workflow file changed for this review.
 
 ## Owner hand-off list after Phase 3 (recorded once)
 
