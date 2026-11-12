@@ -65,6 +65,7 @@ start, which is the critical path), and the run conclusion.
 | Date (UTC) | Run id | Queue s | Job s | Run wall s (critical path) | Notes |
 |------------|--------|---------|-------|----------------------------|-------|
 | 2026-11-11 | 42939483070 | 0 | gate=98 | 100 | success |
+| 2026-11-11 | 43122980214 | 0 | gate=342 | 344 | success |
 
 ## Failure classes the job owns
 
@@ -459,6 +460,65 @@ bytes). So `wla=equal` was never printed. This is an observation about one exter
 second signature byte for `BRK`) is a guess that was not checked against the WLA documentation. **No cross-assembler identity claim is made.** Nothing
 of WLA is committed and its output was discarded. It was uninstalled because, while it is on PATH, the `xasm` stage of the gate reports the BRK mismatch
 and fails; the next step is an owner choice (accept a recorded WLA exception for `BRK`, or leave the optional check unused).
+
+## First Phase 3 CI run (run 43122980214, pull request 2)
+
+Authorised by the owner on 2026-11-11 (answer: "Push as a new branch and PR (Recommended)"): one new branch, `gsd/phase-03-huc6280-cpu-bus-timer-interrupts-and-2-button-pad`,
+and one pull request into `main`, with fix-forward commits to the same branch. No repository setting was changed, `main` and the Phase 2 branch were not touched, no tag
+was pushed, nothing was force-pushed. The evidence tier is E0, repeatability: the run shows that the Phase 3 gate command passes on a second machine class with a second
+awk and two compilers, not that any profile is accurate. This section supersedes the "unverified, pending owner push authorisation" statements above for the Phase 3 gate
+as of head `cb2eb55`. The last head of the branch (the commit that adds this section) has its own run, which is not recorded here.
+
+Three runs, because the first two failed on the first hosted run of the Phase 3 code. Both failures were found only on a GitHub runner (gcc 13 on glibc, `-std=c11 -pedantic -Werror`):
+
+| Run | Head | Job s | Conclusion | Cause |
+|-----|------|-------|------------|-------|
+| 43122131107 | `2b8a7e6` | 42 | failure | `tests/conformance/reviewkinds.c` called `strtok_r`, which is POSIX and not declared in strict ISO C11 mode (implicit declaration, `-Werror`); the `build` stage failed and the stages that need the runner binary failed after it |
+| 43122733150 | `6b313f7` | 36 | failure | the same file, `-Werror=format-truncation` on a `%s` into an 8-byte buffer (the length was checked, but not where the compiler could see it) |
+| 43122980214 | `cb2eb55` | 342 | success | both fixed forward: a by-hand comma split (an empty field is now refused, which is stricter) and a `%.2s` conversion |
+
+Both fixes are in `tests/conformance/reviewkinds.c` only, no check was weakened, and the macOS gate passes with them. The apt `cc65` step and the fixture hash pins were not the problem in any run.
+
+**Fixture assembler on the runner.** `apt-get install cc65` installed Ubuntu `cc65 2.19-1`; `ca65` and `ld65` print `V2.18 - Ubuntu 2.19-1` (checked in an Ubuntu 24.04 container with the same package; the runner log prints only the package line), the same
+`V2.18` identity that the Homebrew 2.19 bottle prints on the owner's machine. `fixture-build` (21 images) and `fixtures` passed in all three runs and in both awk runs, so the hash pins in the fixture manifest,
+which were taken from the Homebrew bottle on macOS, reproduce with the Ubuntu package. That is repeatability across two builds of the same assembler release, not an independent oracle.
+The gcc and clang versions are written only to the job summary, which the API does not return, so they are not recorded here (Ubuntu 24.04 ships gcc 13 and clang 18).
+
+Awk: the default was `/usr/bin/gawk` for the first run and the `Range audit`; the second gate run used `/usr/bin/mawk` through the shim. Both full gates printed `CHECK RESULT PASS` (56 stages each). The `apt-get` fallback for the second awk did not run (mawk was already installed).
+
+Step seconds of the green run (from the step timestamps; the run was queued 0 s and the job ran 342 s, the run 344 s):
+
+| Step | Seconds | Share of job |
+|------|---------|--------------|
+| Set up job, checkout (full clone), tool versions | 4 | 1 percent |
+| Install cc65 (`apt-get update` and install) | 8 | 2 percent |
+| Gate (gawk, gcc, cold build) | 119 | 35 percent |
+| Range audit (the whole branch: 334 commits over `main`, because pull request 1 is not merged) | 37 | 11 percent |
+| gcc build and conformance (preset `gate-gcc`) | 31 | 9 percent |
+| clang build and conformance (preset `gate-clang`) | 37 | 11 percent |
+| Second awk gate run (mawk, gcc) | 104 | 30 percent |
+
+Slowest stages inside the gate, from the gaps between the `CHECK` lines (whole seconds, a rounded estimate), gawk run then mawk run: `sanitizers` 46 and 43, `conformance` 33 and 24, `determinism` 19 and 19; every other stage 2 s or less
+(`build` 1 s cold, `fixture-build` under 1 s, `inventory` 2 s, `core-boundary-negatives` 2 s). Those three stages are 98 s of the 119 s and 86 s of the 104 s. The job critical path is the single job, 344 s.
+
+### Efficiency review of the first Phase 3 run
+
+- **Against the estimate above (low 338, central 458, high 568 s):** the real job, 342 s, sits at the low end. `Install cc65` took 8 s (estimate 20), `Gate` 119 s (175), `Second awk` 104 s (135).
+  The estimate was too high by about a quarter, so its scaling factors were too pessimistic for the runner.
+- **`timeout-minutes: 20` is realistic, not too generous.** 20 minutes is 3.5 times the 344 s critical path. The Phase 2 review asked for about 3 times. The limit only bounds a hung job. Not changed. After three recorded
+  Phase 3 rows, 15 minutes (2.6 times) would still leave a margin, and that is the most that should be considered.
+- **The second awk run stays a whole-gate run.** 52 of 56 stages run awk, the run found no mawk-only difference, and it costs 104 s (30 percent of the job). The one candidate is `sanitizers` (43 s in this run), whose awk
+  work repeats `conformance`'s, but it needs a skip mechanism that the fail-closed rule discourages, and a single green run is not a reason to remove a failure class. Not changed.
+- **Sanitizers under clang as well: not yet.** The sanitizers stage runs under gcc only, in both runs, and passed. A third clang run would add about 45 s (13 percent). The CI evidence for the Phase 3 code is two failures that
+  were compiler warnings, which the clang step (which passed on its first try) did not share, so gcc is the compiler that has shown differences; no clang-only UB finding exists. The zero-minute alternative is to pair the second awk run with clang
+  (as `scripts/linux-repro` does), at the price that a failure no longer says whether awk or the compiler caused it. That is an owner choice and no workflow change was made on speculation.
+- **Caching: no candidate.** Cc65 is an 8 s apt install (a cache restore costs about as much). The compile is cheap (`build` 1 s cold). Every step over 30 s (`Gate`, `Range audit`, `gcc`, `clang`, `Second awk`) is test execution of the
+  gate itself, not a download or a build artefact, so there is nothing to cache without caching results, which would hide the evidence the job exists to produce.
+- **Overlap now over the threshold.** The `gcc build and conformance` step (31 s) repeats the `Gate` step's `conformance` stage: `cc` on the image is gcc, and the preset `gate-gcc` differs from `gate` only by naming gcc.
+  It pins the compiler if `cc` changes, and it proved a clean strict-flag build here, so it stays. Revisit if the job needs to get shorter.
+- **A strict-flag gap on macOS.** Both CI-only failures would have been caught locally by a gcc strict build; `sh scripts/linux-repro` does that but is a one-off and was last run before the file existed. A tiny gcc syntax check in a container,
+  with real compilation (`-fsyntax-only` misses `-Wformat-truncation`), found nothing else at the gate's `-O0`. At `-O2` (not a gate preset) gcc reports `-Wformat-truncation` in `tests/conformance/buskinds.c:110` and `digkinds.c:299`; recorded, not changed.
+- **Nothing was weakened.** No stage, control, selftest or workflow step was skipped, merged or shortened.
 
 ## Owner hand-off list after Phase 3 (recorded once)
 
