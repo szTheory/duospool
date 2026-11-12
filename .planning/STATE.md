@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 4
 current_phase_name: VCE/VDC Raw Video
-current_plan: 2
+current_plan: 3
 status: executing
-stopped_at: Completed 04-01-PLAN.md
-last_updated: "2026-11-12T03:51:39.992Z"
+stopped_at: Completed 04-02-PLAN.md
+last_updated: "2026-11-12T04:21:16.296Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 3 complete, transitioned to Phase 4
-state_head: 543bbd13d8461467b4435388bfcfae4ad1d66b6f
+state_head: 48bd0e73657d87ada4c973e80e3f241db14c5c7a
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 89
-  completed_plans: 73
+  completed_plans: 74
   percent: 50
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 4 (VCE/VDC Raw Video) — READY TO EXECUTE
-Current Plan: 2
+Current Plan: 3
 Total Plans in Phase: 17
 Status: Ready to execute
 Last activity: 2026-11-11 — Phase 3 complete, transitioned to Phase 4
@@ -133,6 +133,7 @@ Progress: [█████░░░░░] 50%
 | Phase 03 P32 | 190min | 3 tasks | 43 files |
 | Phase 03 P33 | 330min | 3 tasks | 30 files |
 | Phase 4 P01 | 90min | 3 tasks | 45 files |
+| Phase 04 P02 | 80min | 3 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -273,6 +274,9 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-33: WLA-DX one-off run gave 233 of 234 rows equal, BRK differs, no cross-assembler claim; tool uninstalled because the optional xasm path turns the gate red while it is on PATH
 - [Phase 4]: 04-01: no E1 candidate promoted; every literal cited by the 17 new entries was seen on its page image (ER-1, ER-2)
 - [Phase 4]: 04-01: LED-VID-0002 pcetech note reworded after re-read; its register and clock figures agree
+- [Phase 04]: A malformed vid offer (NULL or empty record) is counted lost, never copied and does not set the sticky full flag
+- [Phase 04]: The observer matrix gives the vid sink a byte capacity: closed form of the deadline for large, first four record sizes of the large run for drop4, 0 and 1 for cap0 and cap1
+- [Phase 04]: Table-driven sink checks landed in the tracer task because a run must not write through an unchecked vid pointer
 
 ### Pending Todos
 
@@ -296,6 +300,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12T03:51:33.379Z
-Stopped at: Completed 04-01-PLAN.md
+Last session: 2026-11-12T04:21:15.945Z
+Stopped at: Completed 04-02-PLAN.md
 Resume file: None
