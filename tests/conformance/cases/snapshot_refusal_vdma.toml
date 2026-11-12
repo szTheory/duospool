@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Restore domain rules of the VDMA region (plan 04-18; D-166, F-34, T-04-08): same method as snapshot_refusal_vdc. The rows: satb_pending and satb_done_valid of 2 (two of the four 0-or-1 rules that plan 04-03 added beyond the plan text; burst and vd_pending are in snapshot_refusal_beam), dma_state 3,
+# dma_done 65,537 (accept 65,536), and a transfer in progress with 0 or 9 master clocks per word (dma-word-0 is the zero divisor of the closed form, dma-word-9 is not 8, 12 or 16; 8, 12 and 16 are accepted, and any word time is accepted while idle). The time windows of satb_done_at and dma_start land with the fold (plan 04-04).
+# Evidence tier E0: the core compared with its own written domain rules, no hardware claim.
+id = "snapshot_refusal_vdma"
+kind = "snapshot_refuse"
+fixture = "authored:ds-proto"
+request = "bind.powerup_policy=seeded-prng-v2;seed=3"
+expect = "satb-pend-2=field|satb-valid-2=field|dma-state-3=field|dma-done-65537=field|dma-done-65536=accept|dma-word-0=field|dma-word-9=field|dma-word-8=accept|dma-word-12=accept|dma-word-16=accept|dma-word-9-idle=accept"
+meaning = "A snapshot whose SATB flags, DMA state, words done or word time during a transfer leaves its domain is refused as field with the instance byte-identical, so a restored transfer never has a zero divisor"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 100000

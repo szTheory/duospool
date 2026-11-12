@@ -1497,6 +1497,151 @@ static void ed_latch(uint8_t *b)
     b[sk_payload_off(RG_IOPT)] = 0x00u;
 }
 
+/*
+ * The edits of the seven Phase 4 regions (plan 04-18; D-166, F-1, F-34, T-04-08, T-04-09). The offsets are payload offsets in the stream order of the decoders, written by hand from the frame layout and not from the struct:
+ *   VCE0 3 bytes: cr 0, cta 1 (u16).  PALT 1,024 bytes.  VDC0 45 bytes: ar 0, status 1, the 20 registers from 2 (register n at 2 + 2n), read buffer 42, write latch 44.
+ *   BEAM 33 bytes: line_idx 0 (u64), stage 8, v_state 9, v_togo 10, display_k 12, rcr_counter 14, frame_lines 16, bg_y 18, mwr_active 20 (u16 each), burst 22, line_dirty 23, sprite_pend 24, vd_off 25, rcr_off 27 (u16), lat_div 29, vd_pending 30, vd_irq_phase 31, rcr_origin 32.
+ *   VDMA 25 bytes: satb_pending 0, satb_done_valid 1, satb_done_at 2 (u64), dma_state 10, dma_start 11 (u64), dma_word_mclk 19 (u16), dma_done 21 (u32).
+ * A row that sets a field to its last legal value is declared accept (the boundary pair of its refusal): the accepted snapshot must re-serialise to the same bytes.
+ */
+static void sk_put16(uint8_t *p, uint32_t v)
+{
+    p[0] = (uint8_t)(v & 0xFFu);
+    p[1] = (uint8_t)((v >> 8) & 0xFFu);
+}
+#define ED_U8(fn, rg, off, val) static void fn(uint8_t *b) { b[sk_payload_off(rg) + (off)] = (uint8_t)(val); }
+#define ED_U16(fn, rg, off, val) static void fn(uint8_t *b) { sk_put16(b + sk_payload_off(rg) + (off), (uint32_t)(val)); }
+#define ED_U32(fn, rg, off, val) static void fn(uint8_t *b) { sk_put32(b + sk_payload_off(rg) + (off), (uint32_t)(val)); }
+#define BM_AT(b, off) ((b) + sk_payload_off(RG_BEAM) + (off))
+#define VDC_REG(n) (2u + 2u * (n))
+
+ED_U16(ed_cta_200, RG_VCE0, 1u, 0x200u)
+ED_U16(ed_cta_1ff, RG_VCE0, 1u, 0x1FFu)
+ED_U8(ed_pal_odd2, RG_PALT, 1u, 2u)
+ED_U8(ed_pal_odd1, RG_PALT, 1u, 1u)
+ED_U8(ed_pal_last_ff, RG_PALT, 1023u, 0xFFu)
+ED_U8(ed_ar_32, RG_VDC0, 0u, 32u)
+ED_U8(ed_ar_31, RG_VDC0, 0u, 31u)
+ED_U8(ed_st_40, RG_VDC0, 1u, 0x40u)
+ED_U8(ed_st_3f, RG_VDC0, 1u, 0x3Fu)
+ED_U16(ed_r03, RG_VDC0, VDC_REG(3u), 1u)
+ED_U16(ed_r04, RG_VDC0, VDC_REG(4u), 1u)
+ED_U16(ed_r05, RG_VDC0, VDC_REG(5u), 0x2000u)
+ED_U16(ed_r06, RG_VDC0, VDC_REG(6u), 0x0400u)
+ED_U16(ed_r07, RG_VDC0, VDC_REG(7u), 0x0400u)
+ED_U16(ed_r08, RG_VDC0, VDC_REG(8u), 0x0200u)
+ED_U16(ed_r09, RG_VDC0, VDC_REG(9u), 0x0100u)
+ED_U16(ed_r0a, RG_VDC0, VDC_REG(10u), 0x0080u)
+ED_U16(ed_r0b, RG_VDC0, VDC_REG(11u), 0x0080u)
+ED_U16(ed_r0c, RG_VDC0, VDC_REG(12u), 0x0020u)
+ED_U16(ed_r0d, RG_VDC0, VDC_REG(13u), 0x0200u)
+ED_U16(ed_r0d_1ff, RG_VDC0, VDC_REG(13u), 0x01FFu)
+ED_U16(ed_r0e, RG_VDC0, VDC_REG(14u), 0x0100u)
+ED_U16(ed_r0f, RG_VDC0, VDC_REG(15u), 0x0020u)
+ED_U8(ed_stage_3, RG_BEAM, 8u, 3u)
+ED_U8(ed_vstate_4, RG_BEAM, 9u, 4u)
+ED_U16(ed_vtogo_513, RG_BEAM, 10u, 513u)
+ED_U16(ed_vtogo_512, RG_BEAM, 10u, 512u)
+ED_U16(ed_dk_0_vds, RG_BEAM, 12u, 0u)
+ED_U16(ed_rcr_8000, RG_BEAM, 14u, 0x8000u)
+ED_U16(ed_rcr_7fff, RG_BEAM, 14u, 0x7FFFu)
+ED_U16(ed_fl_261, RG_BEAM, 16u, 261u)
+ED_U16(ed_fl_264, RG_BEAM, 16u, 264u)
+ED_U16(ed_fl_263, RG_BEAM, 16u, 263u)
+ED_U16(ed_bgy_512, RG_BEAM, 18u, 512u)
+ED_U16(ed_bgy_511, RG_BEAM, 18u, 511u)
+ED_U16(ed_mwr_100, RG_BEAM, 20u, 0x100u)
+ED_U8(ed_burst_2, RG_BEAM, 22u, 2u)
+ED_U8(ed_dirty_40, RG_BEAM, 23u, 0x40u)
+ED_U8(ed_sprite_4, RG_BEAM, 24u, 4u)
+ED_U16(ed_vdoff_555, RG_BEAM, 25u, 1365u)
+ED_U16(ed_vdoff_554, RG_BEAM, 25u, 1364u)
+ED_U16(ed_vdoff_ffff, RG_BEAM, 25u, 0xFFFFu)
+ED_U16(ed_rcroff_555, RG_BEAM, 27u, 1365u)
+ED_U8(ed_ld_5, RG_BEAM, 29u, 5u)
+ED_U8(ed_ld_1, RG_BEAM, 29u, 1u)
+ED_U8(ed_ld_4, RG_BEAM, 29u, 4u)
+ED_U8(ed_ld_2, RG_BEAM, 29u, 2u)
+ED_U8(ed_vdpend_2, RG_BEAM, 30u, 2u)
+ED_U8(ed_vph_2, RG_BEAM, 31u, 2u)
+ED_U8(ed_vph_1, RG_BEAM, 31u, 1u)
+ED_U8(ed_rorg_2, RG_BEAM, 32u, 2u)
+ED_U8(ed_satbp_2, RG_VDMA, 0u, 2u)
+ED_U8(ed_satbv_2, RG_VDMA, 1u, 2u)
+ED_U8(ed_dst_3, RG_VDMA, 10u, 3u)
+ED_U32(ed_dd_10001, RG_VDMA, 21u, 65537u)
+ED_U32(ed_dd_10000, RG_VDMA, 21u, 65536u)
+ED_U16(ed_dw_9_idle, RG_VDMA, 19u, 9u)
+
+/* the display line is judged against the vertical state: inside VDW (v_state 1) below 512, anywhere else exactly 0xFFFF (F-1) */
+static void ed_dk_511_vdw(uint8_t *b)
+{
+    b[sk_payload_off(RG_BEAM) + 9u] = 1u;
+    sk_put16(BM_AT(b, 12u), 511u);
+}
+static void ed_dk_512_vdw(uint8_t *b)
+{
+    b[sk_payload_off(RG_BEAM) + 9u] = 1u;
+    sk_put16(BM_AT(b, 12u), 512u);
+}
+static void ed_dk_ffff_vdw(uint8_t *b)
+{
+    b[sk_payload_off(RG_BEAM) + 9u] = 1u; /* display_k stays 0xFFFF, which is not a display line inside VDW */
+}
+/* line_idx is judged against the machine time of the same stream before any multiplication; lat_div is 2 in these rows so that the divider rule is not what refuses them */
+static void ed_li_far(uint8_t *b)
+{
+    sk_put64(BM_AT(b, 0u), sk_get64(b + sk_payload_off(RG_TIME)) / UINT64_C(1365) + UINT64_C(3));
+    b[sk_payload_off(RG_BEAM) + 29u] = 2u;
+}
+static void ed_li_limit(uint8_t *b)
+{
+    sk_put64(BM_AT(b, 0u), sk_get64(b + sk_payload_off(RG_TIME)) / UINT64_C(1365) + UINT64_C(2));
+    b[sk_payload_off(RG_BEAM) + 29u] = 2u;
+}
+static void ed_li_2_63(uint8_t *b)
+{
+    sk_put64(BM_AT(b, 0u), UINT64_C(1) << 63);
+    b[sk_payload_off(RG_BEAM) + 29u] = 2u;
+}
+static void ed_li_max(uint8_t *b)
+{
+    sk_put64(BM_AT(b, 0u), UINT64_MAX);
+    b[sk_payload_off(RG_BEAM) + 29u] = 2u;
+}
+/* a divider of 0 is the state before the first line event only: after line 0 it would be a zero divisor */
+static void ed_ld_0_late(uint8_t *b)
+{
+    sk_put64(BM_AT(b, 0u), UINT64_C(5));
+    b[sk_payload_off(RG_BEAM) + 29u] = 0u;
+}
+/* a transfer in progress has 8, 12 or 16 master clocks per word, never 0 (the closed form divides by it) */
+static void ed_dma_word_0(uint8_t *b)
+{
+    b[sk_payload_off(RG_VDMA) + 10u] = 2u;
+    sk_put16(b + sk_payload_off(RG_VDMA) + 19u, 0u);
+}
+static void ed_dw_9_run(uint8_t *b)
+{
+    b[sk_payload_off(RG_VDMA) + 10u] = 1u;
+    sk_put16(b + sk_payload_off(RG_VDMA) + 19u, 9u);
+}
+static void ed_dw_8_run(uint8_t *b)
+{
+    b[sk_payload_off(RG_VDMA) + 10u] = 1u;
+    sk_put16(b + sk_payload_off(RG_VDMA) + 19u, 8u);
+}
+static void ed_dw_12_run(uint8_t *b)
+{
+    b[sk_payload_off(RG_VDMA) + 10u] = 2u;
+    sk_put16(b + sk_payload_off(RG_VDMA) + 19u, 12u);
+}
+static void ed_dw_16_run(uint8_t *b)
+{
+    b[sk_payload_off(RG_VDMA) + 10u] = 2u;
+    sk_put16(b + sk_payload_off(RG_VDMA) + 19u, 16u);
+}
+
 static const struct {
     const char *name;
     int mode;
@@ -1554,6 +1699,76 @@ static const struct {
     {"iopt-port-1", M_EDIT, ed_iopt_port1},
     {"iopt-kind-2", M_EDIT, ed_iopt_kind2},
     {"latch-any", M_EDIT, ed_latch},
+    {"cta-200", M_EDIT, ed_cta_200},
+    {"cta-1ff", M_EDIT, ed_cta_1ff},
+    {"pal-odd-2", M_EDIT, ed_pal_odd2},
+    {"pal-odd-1", M_EDIT, ed_pal_odd1},
+    {"pal-last-ff", M_EDIT, ed_pal_last_ff},
+    {"ar-32", M_EDIT, ed_ar_32},
+    {"ar-31", M_EDIT, ed_ar_31},
+    {"status-40", M_EDIT, ed_st_40},
+    {"status-3f", M_EDIT, ed_st_3f},
+    {"r03-1", M_EDIT, ed_r03},
+    {"r04-1", M_EDIT, ed_r04},
+    {"r05-mask", M_EDIT, ed_r05},
+    {"r06-mask", M_EDIT, ed_r06},
+    {"r07-mask", M_EDIT, ed_r07},
+    {"r08-mask", M_EDIT, ed_r08},
+    {"r09-mask", M_EDIT, ed_r09},
+    {"r0a-mask", M_EDIT, ed_r0a},
+    {"r0b-mask", M_EDIT, ed_r0b},
+    {"r0c-mask", M_EDIT, ed_r0c},
+    {"r0d-mask", M_EDIT, ed_r0d},
+    {"r0d-1ff", M_EDIT, ed_r0d_1ff},
+    {"r0e-mask", M_EDIT, ed_r0e},
+    {"r0f-mask", M_EDIT, ed_r0f},
+    {"stage-3", M_EDIT, ed_stage_3},
+    {"v-state-4", M_EDIT, ed_vstate_4},
+    {"v-togo-513", M_EDIT, ed_vtogo_513},
+    {"v-togo-512", M_EDIT, ed_vtogo_512},
+    {"disp-511-vdw", M_EDIT, ed_dk_511_vdw},
+    {"disp-512-vdw", M_EDIT, ed_dk_512_vdw},
+    {"disp-ffff-vdw", M_EDIT, ed_dk_ffff_vdw},
+    {"disp-0-vds", M_EDIT, ed_dk_0_vds},
+    {"rcr-8000", M_EDIT, ed_rcr_8000},
+    {"rcr-7fff", M_EDIT, ed_rcr_7fff},
+    {"frame-261", M_EDIT, ed_fl_261},
+    {"frame-264", M_EDIT, ed_fl_264},
+    {"frame-263", M_EDIT, ed_fl_263},
+    {"bg-y-512", M_EDIT, ed_bgy_512},
+    {"bg-y-511", M_EDIT, ed_bgy_511},
+    {"mwr-100", M_EDIT, ed_mwr_100},
+    {"burst-2", M_EDIT, ed_burst_2},
+    {"dirty-40", M_EDIT, ed_dirty_40},
+    {"sprite-4", M_EDIT, ed_sprite_4},
+    {"vd-pending-2", M_EDIT, ed_vdpend_2},
+    {"vd-off-1365", M_EDIT, ed_vdoff_555},
+    {"vd-off-1364", M_EDIT, ed_vdoff_554},
+    {"vd-off-ffff", M_EDIT, ed_vdoff_ffff},
+    {"rcr-off-1365", M_EDIT, ed_rcroff_555},
+    {"line-far", M_EDIT, ed_li_far},
+    {"line-limit", M_EDIT, ed_li_limit},
+    {"line-2-63", M_EDIT, ed_li_2_63},
+    {"line-max", M_EDIT, ed_li_max},
+    {"lat-div-5", M_EDIT, ed_ld_5},
+    {"lat-div-1", M_EDIT, ed_ld_1},
+    {"lat-div-0-late", M_EDIT, ed_ld_0_late},
+    {"lat-div-4", M_EDIT, ed_ld_4},
+    {"lat-div-2", M_EDIT, ed_ld_2},
+    {"vd-phase-2", M_EDIT, ed_vph_2},
+    {"vd-phase-1", M_EDIT, ed_vph_1},
+    {"rcr-origin-2", M_EDIT, ed_rorg_2},
+    {"satb-pend-2", M_EDIT, ed_satbp_2},
+    {"satb-valid-2", M_EDIT, ed_satbv_2},
+    {"dma-state-3", M_EDIT, ed_dst_3},
+    {"dma-done-65537", M_EDIT, ed_dd_10001},
+    {"dma-done-65536", M_EDIT, ed_dd_10000},
+    {"dma-word-0", M_EDIT, ed_dma_word_0},
+    {"dma-word-9", M_EDIT, ed_dw_9_run},
+    {"dma-word-8", M_EDIT, ed_dw_8_run},
+    {"dma-word-12", M_EDIT, ed_dw_12_run},
+    {"dma-word-16", M_EDIT, ed_dw_16_run},
+    {"dma-word-9-idle", M_EDIT, ed_dw_9_idle},
     {"null-buffer", M_NULL, ed_none},
     {"buffer-in-instance", M_OVERLAP, ed_none},
     {"snapshot-capacity", M_SNAP_CAPACITY, ed_none},
@@ -2018,6 +2233,8 @@ static const struct {
 } hs_ctl[] = {
     {RG_PROF, 0u, 32u},   {RG_CONT, 0u, 40u},   {RG_POWR, 0u, 16u},  {RG_TIME, 0u, 8u},     {RG_CPU0, 4u, 5u},      {RG_CPU0, 7u, 8u},     {RG_BUS0, 2u, 3u},
     {RG_TIMR, 0u, 11u},   {RG_IRQC, 0u, 3u},    {RG_IRQS, 0u, 30u},  {RG_BLKT, 0u, 11u},    {RG_IOPT, 0u, 6u},      {RG_SCHD, 0u, 48u},    {RG_SCHD, 16384u, 16392u},
+    /* plan 04-18 (D-166): every control byte of the four Phase 4 control regions, VCE0 3, VDC0 45, BEAM 33 and VDMA 25 bytes */
+    {RG_VCE0, 0u, 3u},    {RG_VDC0, 0u, 45u},   {RG_BEAM, 0u, 33u},  {RG_VDMA, 0u, 25u},
 };
 
 static void hs_flip(struct hs_env *e)
@@ -2034,6 +2251,14 @@ static void hs_flip(struct hs_env *e)
             e->edit[sk_payload_off(hs_ctl[i].rg) + at] ^= 0x01u;
             hs_try(e, e->size, HW_EITHER, idx++);
         }
+    }
+    /* plan 04-18 (D-166, F-22): the palette, by sampling, and a bit that no palette entry has: bit 1 of an odd palette byte (entries have 9 bits) is refused */
+    for (i = 0u; i < 4u; i++) {
+        static const size_t odd[4] = {1u, 3u, 511u, 1023u};
+
+        hs_fresh(e);
+        e->edit[sk_payload_off(RG_PALT) + odd[i]] ^= 0x02u;
+        hs_try(e, e->size, HW_REFUSE, idx++);
     }
 }
 
@@ -2063,6 +2288,28 @@ static void hs_data(struct hs_env *e)
         hs_fresh(e);
         e->edit[sk_payload_off(RG_BUS0) + i] ^= 0x01u;
         hs_try(e, e->size, HW_ACCEPT, idx++);
+    }
+    /* plan 04-18 (D-166, F-22): PALT, VRAM and SATB bytes by sampling, never all 65,536 VRAM bytes: the first, second and last bytes and the bytes around the middle, the low bit and the high bit (the odd palette bytes keep bit 0 only, so the high bit of an odd one is a refusal row of the flip class) */
+    {
+        static const size_t pal[4] = {0u, 2u, 1022u, 1u};
+        static const size_t vram[8] = {0u, 1u, 255u, 256u, 32767u, 32768u, 65534u, 65535u};
+        static const size_t satb[6] = {0u, 1u, 255u, 256u, 510u, 511u};
+
+        for (i = 0u; i < 8u; i++) {
+            hs_fresh(e);
+            e->edit[sk_payload_off(RG_PALT) + pal[i >> 1]] ^= (i & 1u) != 0u && (pal[i >> 1] & 1u) != 0u ? 0x01u : (i & 1u) != 0u ? 0x80u : 0x01u;
+            hs_try(e, e->size, HW_ACCEPT, idx++);
+        }
+        for (i = 0u; i < 16u; i++) {
+            hs_fresh(e);
+            e->edit[sk_payload_off(RG_VRAM) + vram[i >> 1]] ^= (i & 1u) != 0u ? 0x80u : 0x01u;
+            hs_try(e, e->size, HW_ACCEPT, idx++);
+        }
+        for (i = 0u; i < 12u; i++) {
+            hs_fresh(e);
+            e->edit[sk_payload_off(RG_SATB) + satb[i >> 1]] ^= (i & 1u) != 0u ? 0x80u : 0x01u;
+            hs_try(e, e->size, HW_ACCEPT, idx++);
+        }
     }
 }
 

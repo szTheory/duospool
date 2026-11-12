@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Restore domain rules of the BEAM region, part 1 (plan 04-18; D-166, F-1, F-34, T-04-08): same method as snapshot_refusal_vdc. The rows: stage 3, v_state 4, v_togo 513 refused and 512 accepted (VDW is 9 bits, F-1, no clamp), display_k 511 accepted and 512 refused inside VDW, 0xFFFF refused inside VDW and a display line refused outside it,
+# RCR counter 0x8000 (accept 0x7FFF), frame_lines 261 and 264 (accept 263), bg_y 512 (accept 511), mwr_active 0x100, line_dirty 0x40 and sprite_pend 4, two of the four 0-or-1 rules that plan 04-03 added beyond the plan text (burst 2 and vd_pending 2; satb_pending and satb_done_valid are in snapshot_refusal_timeline),
+# and the selections vd_irq_phase 2 (accept 1) and rcr_origin 2 against the two model rows. Evidence tier E0: the core compared with its own written domain rules, no hardware claim.
+id = "snapshot_refusal_beam"
+kind = "snapshot_refuse"
+fixture = "authored:ds-proto"
+request = "bind.powerup_policy=seeded-prng-v2;seed=3"
+expect = "stage-3=field|v-state-4=field|v-togo-513=field|v-togo-512=accept|disp-511-vdw=accept|disp-512-vdw=field|disp-ffff-vdw=field|disp-0-vds=field|rcr-8000=field|rcr-7fff=accept|frame-261=field|frame-264=field|frame-263=accept|bg-y-512=field|bg-y-511=accept|mwr-100=field|burst-2=field|dirty-40=field|sprite-4=field|vd-pending-2=field|vd-phase-2=field|vd-phase-1=accept|rcr-origin-2=field"
+meaning = "A snapshot whose beam stage, vertical state, v_togo, display line, RCR counter, frame length, BYR counter, MWR latch, a 0-or-1 flag or a model selection leaves its domain is refused as field with the instance byte-identical, and v_togo 512 and display_k 511 inside VDW are accepted"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 100000

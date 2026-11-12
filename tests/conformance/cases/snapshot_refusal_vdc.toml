@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Restore domain rules of the VCE0, PALT and VDC0 regions (plan 04-18; D-166, F-34, T-04-08): each row edits a copy of a valid snapshot of ds_proto (taken at a mid-run stop under the seeded-prng-v2 policy) with the hand-kept payload offsets of tests/conformance/snapkinds.c, and ds_restore must refuse it as field
+# while the target instance (a twin booted with another seed whose restorable members are poisoned) stays byte-identical, compared over the whole instance and member by member (validate-then-commit). The rows: colour table address 0x200 (accept 0x1FF), a palette odd byte of 2 (accept 1) and 0xFF (an entry has 9 bits), address register 32 (accept 31), status 0x40 (accept 0x3F),
+# and one bit outside the mask of each of R03 to R0F (R03 and R04 are not registers and stay 0; R0D also accepts 0x1FF). Evidence tier E0: the core compared with its own written domain rules, no hardware claim.
+id = "snapshot_refusal_vdc"
+kind = "snapshot_refuse"
+fixture = "authored:ds-proto"
+request = "bind.powerup_policy=seeded-prng-v2;seed=3"
+expect = "cta-200=field|cta-1ff=accept|pal-odd-2=field|pal-odd-1=accept|pal-last-ff=field|ar-32=field|ar-31=accept|status-40=field|status-3f=accept|r03-1=field|r04-1=field|r05-mask=field|r06-mask=field|r07-mask=field|r08-mask=field|r09-mask=field|r0a-mask=field|r0b-mask=field|r0c-mask=field|r0d-mask=field|r0d-1ff=accept|r0e-mask=field|r0f-mask=field"
+meaning = "A snapshot whose VCE colour table address, a palette byte, the VDC address register, status or a register leaves its domain is refused as field with the instance byte-identical, and the last legal value of each is accepted and re-serialises identically"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 100000

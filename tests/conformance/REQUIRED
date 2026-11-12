@@ -243,3 +243,7 @@ vid_chan_append
 poweron_v3_draw_order
 poweron_v3_domain_independence
 poweron_v3_smoke
+snapshot_refusal_vdc
+snapshot_refusal_beam
+snapshot_refusal_timeline
+snapshot_refusal_vdma
