@@ -659,12 +659,12 @@ recorded correction bump stays allowed (D-165).
 | A6 | The pair (stage, `vd_pending`) plus offsets fully encodes the next event | Integration map | a correction bump (allowed once) |
 | A7 | An `EXPECT` second column is acceptable to the owner as a gate-machinery extension (reversible, routine) | F-4 | the two stays-green toys cannot be expressed as toys |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Does the executor accept the F-1 ruling (bound 512, no clamp)?** Known: VDW is 9 bits (H7-10) and D-139 cuts at the wrap only. Unclear: whether the owner wants a clamp. Recommendation: no clamp, bound 512; the context allows it without an owner question.
-2. **Where do the `INV_VIDEO_*` codes live (F-6)?** Recommendation: `scripts/video-check`, names verbatim.
-3. **Is the first fixture plan allowed a 5-task cut of 04-03 (F-17) or a data-only `04-03a`?** Recommendation: five tasks first; `04-03a` only if the first task alone exceeds a plan.
-4. **Which palette bijection constants (F-25)?** Recommendation: the D-170 pair `$5B`, `$11` (the fixture text is the authority) and fix the D-169 sentence.
+1. **Does the executor accept the F-1 ruling (bound 512, no clamp)?** Known: VDW is 9 bits (H7-10) and D-139 cuts at the wrap only. Unclear: whether the owner wants a clamp. Recommendation: no clamp, bound 512; the context allows it without an owner question. RESOLVED: bound 512, no clamp (CONTEXT errata F-1; plan 04-03 Task 1 and Task 4).
+2. **Where do the `INV_VIDEO_*` codes live (F-6)?** Recommendation: `scripts/video-check`, names verbatim. RESOLVED: the codes are printed by `scripts/video-check` (plan 04-07 Task 2); `inventory-check` is not edited.
+3. **Is the first fixture plan allowed a 5-task cut of 04-03 (F-17) or a data-only `04-03a`?** Recommendation: five tasks first; `04-03a` only if the first task alone exceeds a plan. RESOLVED: neither; 04-03 is split three ways into 04-03 (data-only layout and bump), 04-04 (tracer) and 04-05 (hardening), renumbering later plans (04-PLAN set).
+4. **Which palette bijection constants (F-25)?** Recommendation: the D-170 pair `$5B`, `$11` (the fixture text is the authority) and fix the D-169 sentence. RESOLVED: P(i) = (91*i + 17) & 511 (the D-170 pair $5B, $11) in every fixture; the D-169 sentence with 73 and 19 is superseded (plans 04-04 onward).
 
 ## Sources
 

@@ -455,6 +455,9 @@ the loop body of the guest spin counter within the stated cost rule.
    F-22 digest_region on VRAM uses first and last bytes only.
    F-25 the palette bijection is one function, chosen by the planner and used by both D-169 and D-170. The remaining findings are advisory and are carried into plans as the research map states.
 
+6. Sizing rule (plan-check warning): the Phase 2 file caps of D-81 (under 15 files per plan, under 10 per task) are superseded for Phase 4 by D-177(d) and D-180: plans here touch 17 to 45 files, as Phase 3 plans did, because ledger, mini-root and golden cascades are many small files.
+   The binding limits are one executor's context budget and at most 4 tasks per plan; a plan that nears 60 percent of its context after Task 1 stops and splits. Plan 04-08 is split after its second task into a new plan 04-17 that is placed after it in the dependency chain (the spare plan numbers are used for it; wave numbers follow depends_on).
+
 </reconciliations>
 
 <canonical_refs>

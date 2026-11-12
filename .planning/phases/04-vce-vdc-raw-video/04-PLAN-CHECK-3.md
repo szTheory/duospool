@@ -1,0 +1,110 @@
+# Phase 4 plan check 3 (gsd-plan-checker, round 3 of 3, final)
+
+Phase: 04-vce-vdc-raw-video. Plans checked: 04-01 .. 04-17 (17 files, uncommitted). Inputs: 04-CONTEXT (D-135..D-181, ER-1..ER-13, reconciliations 5 and 6), 04-VALIDATION, 04-PLAN-CHECK-2, ROADMAP Phase 4, tests/oracle/huc6280-opcodes.tsv, src/core (constants.def, ds_core.h, cpu.c), scripts/check, scripts/conformance-run, scripts/fixture-build, tests/conformance/runner.c.
+Result: VERIFICATION PASSED with warnings. 0 blockers, 2 warnings, 6 info. All nine round-2 warnings and all applied info items are resolved (table below). The W3 cycle arithmetic re-derives correctly from the opcode table. The two new warnings are derivation gaps that fail closed at execution (a red case or harness_failure, never a false green); each is a one-line plan edit, and neither stops a faithful executor from reaching the phase goal.
+
+## Mechanical checks run
+
+- verify.plan-structure on all 17 plans: valid true, errors [], warnings []; tasks 3 (14 plans), 4 (04-03), 2 (04-08, 04-17); 50 tasks, each with Files, Action, Verify, Done. frontmatter.validate --schema plan: valid true on 17 of 17 (nothing missing, nothing invalid).
+- Waves (phase-plan-index and a script): 1:[01,02] 2:[03] 3:[04] 4:[05] 5:[06] 6:[07] 7:[08] 8:[17] 9:[09] 10:[10] 11:[11] 12:[12] 13:[13] 14:[14] 15:[15] 16:[16]; every wave equals max(depends_on)+1; no cycle, no forward or missing reference; the only same-wave pair is 04-01/04-02 and the two share no file.
+- files_modified equals the union of the task <files> lists in 17 of 17 plans (script, 0 differences, 0 duplicates). 04-17 now lists vdc_stat.toml, vdc_irq_agree_hdw.toml and vdc_irq_agree_lb.toml in both the frontmatter and the task files.
+- <automated>: 50 blocks, all on one line (round 2 had one two-line block, now fixed); no `2>/dev/null`, `|| true`, `|| echo`, backtick, /tmp or /Users path; no hard-coded count assertion.
+- Stage and selftest names: 28 distinct names used by --stage and --selftest; 24 exist in scripts/check; the other four (video-check, mutation-video-hash-only, mutation-video-group-vacuous, mutation-vexp-class-lint) are created by 04-07 Task 2 and first used by 04-07 Task 2 (04-09 onward use video-check). Every case id and CONTROL named in a verify command exists at HEAD or is listed in the files_modified of a plan in the same or an earlier wave (script, 0 findings). The cited anchors in scripts/conformance-run (filter_cases at 122, the per-toy id file at 463-476, the loop at 526-535) and scripts/check (mutation-toy-filter at 1494) are still where the plans say.
+- Numbering map paragraph: one md5 (1a0c9d60f3284e9a510fd75bbfa9e696) in all 17 plans. Standing rules identical across plans except the C-edit rule in 04-01 and 04-16 (non-C wording) and the golden-rule wording (full text in 04-08 and 04-17, short form in 04-09, 04-10, 04-11, 04-15, none elsewhere), which is per plan content.
+- 17 of 17 plans: no /private/tmp or /Users path (only the rule sentence that forbids them and the @~/.claude execution_context lines), 0 lines of 400 or more characters, 0 non-ASCII characters.
+- Per-feature includes each listed by exactly one plan: vce.inc 04-04, vdc.inc 04-06, vdma.inc 04-10, bg.inc 04-11, spr.inc 04-14, spin.inc 04-17; hucard.cfg only 04-04; check.inc, startup.inc, verdict.inc and video.inc by none. Shared fixture files are all sequential by depends_on (mmu_mpr* 04-04/04-06, vdc_stat* 04-08/04-10/04-15, vce_pal.s 04-04/04-13, vce_pal.vexp 04-07..04-10, spr_basic.vexp 04-14/04-15).
+- estimate-check --calibrated (budget 100,000, confidence low, uncalibrated, advisory): over budget 04-03 (110k), 04-04 (130k), 04-06 (105k), 04-07 (120k), 04-10 (120k), 04-11 (110k), 04-14 (110k), all seven now carrying a stop_rule; at budget 04-09, 04-15; under 04-01 90k, 04-02 85k, 04-05 95k, 04-08 75k, 04-12 95k, 04-13 90k, 04-16 80k, 04-17 85k.
+- Requirements frontmatter: 04-01 and 04-16 declare all six VID ids, so with the standing rule (ready-ids holds an id while any sibling declaring it lacks a SUMMARY) all six tick at 04-16. Coverage as in round 2: VID-01 04-12, VID-02 04-15, VID-03 04-10, VID-04 04-17, VID-05 04-09, VID-06 04-16.
+- Request grammar used by the new cases: runner.c line 267 parses model.NAME=VALUE (up to 4) and bind.NAME for any kind; model_params.def rows vd_irq_phase and rcr_origin are created by 04-03; profile_fields.def has lines_per_frame (262|263). The grammar the plan names exists.
+
+## Round 2 item status
+
+| # | Round-2 item | Status | Evidence |
+|---|---|---|---|
+| W1 | 04-08 RR delta sign | RESOLVED | 04-08 truth line 37 ("moves the RR stamp 1365 master clocks earlier (-1365 ...)"), T2 behavior line 130 ("+96 and -1365 ... VD later, RR one line earlier"), T2 action lines 135-137 ("-1365 master clocks (one line earlier)"); tolerance 21 unchanged; direction agrees with 04-17's 1,365 + 245 = 1,610 |
+| W2 | 04-17 pins and case files | RESOLVED | frontmatter lines 18-32 and T2 <files> line 162-163 list vdc_stat.toml, vdc_irq_agree.toml, vdc_irq_agree_lb.toml; T1 files list vdc_irq_agree_hdw.toml and vdc_irq_agree_lb.toml; T2 action line 179 puts both pin sides of LED-IRQ-0001, -0010, -0009 and LED-VID-0008 in one commit; verify runs --stage inventory; no other plan edits those four entries before 04-13/04-16 |
+| W3 | 04-17 loop cost and separation | RESOLVED for the loop and windows (re-derived below); one new residual, warning 1 | lines 53, 56-58, 136-149; VALIDATION A10 line 68 |
+| W4 | bound variants for check (4) | RESOLVED | 04-17 T1 line 138 and 151: vdc_irq_agree_hdw (model.vd_irq_phase=hdw_start, 341 window) and vdc_irq_agree_lb (model.rcr_origin=line_before, 1,610 window and RCR=64+k one line earlier); truth line 56 "each of the three gaps is measured in guest RAM by its own bound case" |
+| W5 | div rows rest on power-on CR; no before interval | RESOLVED in form; one numeric residual, warning 2 | 04-04 truth lines 63-64, T1 action lines 169-173 (explicit CR $00, counted delay with cycle sum from the opcode table, then CR $01; div judged only between the writes and after the CR $01 write; empty window is harness_failure); 04-07 div group lines 153-155; VALIDATION A11 line 69 |
+| W6 | 04-13 revision-plan count | RESOLVED | 04-13 T2 action line 141: "04-18, 04-19 and any further spare number; 04-17 is a planned split of 04-08, not a revision plan" |
+| W7 | 04-02 T3 multi-line automated | RESOLVED | 04-02 line 174: one line; script finds 0 multi-line blocks in 50 |
+| W8 | VALIDATION Wave 0 | RESOLVED | VALIDATION lines 71-80: video-check and the .vexp.tsv channel assigned to plan file 04-07, RODATA and vce.inc to plan file 04-04, later includes named, "there is no video.inc"; the 04-17 pass column listed before the first stays-green toy (04-11 vid-bit-order) |
+| W9 | stop rules | RESOLVED | stop_rule in 04-03 (lines 96-99, after the Task 1+2 commit), 04-04, 04-06 (89-91), 04-07, 04-10, 04-11 (83-85), 04-14 (75-77): seven of seven over-budget plans |
+| I1a | requirements_advanced vs template | RESOLVED | every plan's standing rule says the plan rule overrides the template wording and the SUMMARY puts advanced ids under requirements-advanced (04-17 line 115-117) |
+| I1b | cut-flow ticks | RESOLVED | 04-13 objective lines 70-71 (orchestrator runs mark-complete for VID-01, 03, 04, 05 after the move). Residual wording in info 5 |
+| I2 | video-check mini-root fallback | RESOLVED | 04-07 action lines 190-191 |
+| I3 | pass column and golden exemption | RESOLVED | 04-07 lines 187-189 (a pass-column line is not a kill and not a literal-role case; accepted from now on so 04-17 need not edit video-check); T3 files list VIDEO_TOY_EXEMPT and the golden scene gets its exemption line (lines 218-219) |
+| I4 | phantom vce_dot golden | RESOLVED | 04-10 line 171-172: "vce_dot has no golden scene" |
+| I5 | SK_EXPECTED_SIZE derived | RESOLVED | 04-03 line 178: 92,255 derived by hand as 25,021 + 67,178 + 7 x 8 and then compared with the build |
+| I6 | check (1) tolerance | RESOLVED | 04-17 truth line 54 and behavior line 136: 9 iterations (8 from scaling one quantised interval, 1 from the long one); re-derived below |
+| I7 | spare numbers vs stop rules | CARRIED (info 4) | rule says "next spare number"; two named spares, seven stop-rule plans |
+| I8 | checks 8b, 8f, path probe | CARRIED | no {FAILING_DIRECTIONS} or {VERIFY_PATHS} probe was supplied; per-task commands still run --stage conformance (house practice) |
+| I9 | ER-5 not named | CARRIED | substance present (E2 label, no irq_stim in video cases) |
+
+## Independent re-derivation of the W3 arithmetic
+
+Cycle counts, from tests/oracle/huc6280-opcodes.tsv (manual page images, cites H8-25 plus the instruction pages): INC ACC (1A) 2; BRA (80) 4 (a fixed count; ds_core.h line 284 says BRA and BSR are fixed counts in the table, so no taken-branch adder); CLC 2; ADC IMM 2; ADC ZP 4; STA ZP 4; LDA ZP 4; SAX 3; RTI 7. Interrupt entry 8 cycles is DS_CONST interrupt_entry_cycles (LED-CPU-0009, assumed, 8 in constants.def line 39), the plan states it as such. All values in 04-17 lines 133 and 144-147 match the table.
+
+- Loop: inc a (2) + bra (4) = 6 cycles = 18 master clocks at high speed (3 clocks per cycle, ER-3 assumed). The branch-free 24-bit increment the plan rejects sums to 2+2+3+2+3+3+2+3+4 = 24 cycles, more than the D-174 limit of 12; the plan's 6-cycle loop meets P <= 12. CONTEXT lists "the loop body of the guest spin counter within the stated cost rule" as discretion, so moving the clc/adc 24-bit widening into the handlers is within discretion and is recorded in VALIDATION A10; D-174's text still says "a 24-bit add through clc/adc" (info 1).
+- Gaps: 245/18 = 13.611, 341/18 = 18.944, 1610/18 = 89.444 iterations. With +-1.5: [12.11, 15.11], [17.44, 20.44], [87.94, 90.94]. The plan's rounded [12.1, 15.1], [17.4, 20.4], [87.9, 90.9] widen each end by at most 0.04. Disjoint, gaps between windows 2.3 and 67.5 iterations. The three gap values themselves were verified in round 2 (1120 + 245 = 1365; +96; +1365).
+- Quantisation: the sampling rule is "last cycle start, ties inclusive" (D-111), so with the inc ending at 6 clocks and the bra at 18 clocks of each iteration, the 8-bit A at a handler sample is a step function of the assert time only: A(a) = ceil((a + 3)/18) + constant. A delta over G clocks is therefore floor(G/18) or ceil(G/18): 245 gives 13 or 14, 341 gives 18 or 19, 1610 gives 89 or 90, all inside the windows (nearest margin 0.56 iterations, at 18 against 17.44). The entry wait adds no further spread. So +-1.5 holds with a real margin, provided K is exact (warning 1).
+- Check (1): 1365/18 = 75.83, so one interval is 75 or 76; 8 x 1365/18 = 606.67, so the long interval is 606 or 607; the largest difference |I8 - 8 x I1| is 7 (607 against 600), inside the stated 9; the bound 8 x (less than 1) + (less than 1) < 9 is sound. A constant error in K per handler cancels (eight handlers in I8, a factor of 8 on one handler in 8 x I1), so check (1) stays assumption-free as claimed. Checks (2) and (4) do not cancel it.
+- "81 cycles": 245 clocks = 81.67 cycles, so "under 81" is conservative by 0.67 cycle. 81 is not a multiple of 6, and need not be: the rule is an inequality. The loop has sample points 1 and 5 cycles into the 6-cycle iteration, so the wait is up to just under 5 cycles (the plan says at most 4); because entry + body + RTI is padded to a multiple of 6, the usable total is at most 72 under either figure (72 + 5 = 77 < 81.67; 78 + 4 = 82 fails). A minimal handler of 22 body cycles (sta zp 4, lda status abs 5, sta 4, lda zp 4, clc 2, adc # 2, plus one VDC penalty cycle, see warning 1) + 15 entry and RTI = 38, padded to 42, leaves about 35 cycles of room. The ambiguity in "pads the handler so its total is a multiple of 6" is settled by the K formula in the same paragraph: total means entry + body + RTI (info 3).
+- The 8-bit consecutive-sample bound (below 256 iterations = 4,608 clocks = 3.37 lines): RCR neighbours are 75.8 iterations apart and the longest planned gap is 89.4; the vblank region is covered by the RCR chain that the VD handler resumes, which the executor must still design (info 3).
+
+## Issues
+
+### Warnings (these properties should hold; neither blocks execution)
+
+1. [verification_derivation / cost of the compensating handler] Plan 04-17 Task 1 (action lines 146-149; truths lines 53, 57; behavior lines 136-140).
+   Required property: the handler cost K that the fixture adds back, the padding to a multiple of 6 cycles and the 81-cycle budget equal the cycles the model actually charges for that handler, so the line-period, frame-period and gap windows are not off by a per-handler constant.
+   Evidence: 04-17 sums only table cycles ("8 entry cycles ... + handler cycles + 7 RTI cycles from the table"). The core charges one extra CPU cycle for every bus access to the VDC and VCE windows (DS_ADDER_VDC_ACCESS = vdc_vce_penalty_cycles = 1, constants.def line 34, ledger LED-CPU-0017 assumed; cpu.c line 1080 adds bus->penalty to every instruction; ds_core.h line 287 says zero-page-mapped, block and ST accesses are included). Every RCR handler reads the status port and writes RCR (about four window accesses), the minimal handler reads status once. An executor who follows the plan gets K short by 4/6 iteration (one access: 1/6) per handler, and an actual handler length that is not a multiple of 6, so the foreground phase also drifts. Over the 100-line period check that is about 67 iterations (17 for one access) against a tolerance of 2, and over the 4-frame period about 700 iterations; the cases go red, and the executor then has to find an adder the plan never mentions while a rule says literals are never read off a run. Only check (1) is immune, as derived above. The classes of checks (2) and (4) also omit LED-CPU-0009 and LED-CPU-0017 although both enter K.
+   Example fix (non-binding): in the Widening paragraph add that every handler cycle sum counts one extra cycle per access to the $0000-$0003 window (LED-CPU-0017), state that K and the pad assume LED-CPU-0009 (8) and LED-CPU-0017 (1) and name both beside LED-VID-0001 in the class text of checks (2) and (4); pad with an odd-cycle instruction (SAX, SXY or SAY, 3 cycles) when the total is odd.
+
+2. [feasibility of the judged window] Plan 04-04 truth line 64 and Task 1 action lines 169-173 (also 04-07 div group lines 153-155).
+   Required property: the counted delay between the CR $00 and CR $01 writes is long enough that at least one record lies at least one whole line from both stamps, as the plan itself requires.
+   Evidence: the plan says "so the window holds at least one record because the delay exceeds 2,730 clocks". Records sit on the 1365-clock grid and the margin is one line from each stamp. With a margin of one line after the CR $00 write and one record that ends before the CR $01 write, an empty real interval needs a delay of 2,730 clocks, but a grid point is guaranteed inside it only if the interval is at least one line long (a delay of 4,095 clocks or more); with one record plus a one-line margin on both sides the guaranteed figure is 5,460 clocks or more. A delay just over 2,730 clocks hits an empty window in most phases. The case then reports harness_failure (fail closed, as the plan says), so nothing false can pass, but the executor is told a number that does not hold and must rediscover the bound; the delay's master-clock length also depends on the CPU speed in force (12 or 3 clocks per cycle), which the plan does not state.
+   Example fix (non-binding): require a delay of at least 5,460 master clocks (four lines) and state the speed assumed in the cycle-sum comment; keep the harness_failure on an empty window.
+
+### Info (advisory)
+
+1. [CONTEXT text] D-174 still reads "a 24-bit add through clc/adc; P <= 12 cycles" in the loop. The plan moves the widening into the handlers because the two cannot both hold branch-free; this is within the recorded discretion ("the loop body ... within the stated cost rule") and is recorded in VALIDATION A10 (the plans win on mismatch). No action; the verifier should read A10.
+2. [toy cross-rule] 04-17 Task 2 toy vid-rcr-base (RULE file beam.c) lists vdc_irq_agree and vdc_irq_agree_263, whose kind is the new vdc_irq_agree; 04-07's INV_TOY_NO_LITERAL asks for "at least one literal-role video case or guest-kind case" and 04-17 does not edit video-check. The vdc_irq_ratio pass line does not count. If video-check only counts kind guest, the plan-end gate goes red on the toy. vdc_irq (kind guest) goes red under the toy too (check 3, VD after the RCR of the last display line, breaks when the base is 63), so listing it as observed red satisfies the rule; say so, or say that kind vdc_irq_agree counts as a guest-kind case.
+3. [04-17 wording and executor load] (a) "pads the handler so its total is a multiple of 6" should say entry + body + RTI. (b) The RCR chain across the vblank and the frame wrap (every consecutive sample under 256 iterations, RCR value restarted at 64 when the counter resets) is left to the executor; it is the densest part of Task 1 (spin.inc, about 26 checks, two images, a new kind with three windows and the stamp bracketing, 8 case files, sums in comments) and 04-17 is the only plan with that load and no stop_rule; consider giving it one (after Task 1, about 60 percent). (c) T1 verify loop omits vdc_irq_agree and mutate_sweep_vdc_irq_263 (covered by --stage conformance, which runs every REQUIRED case); artifact line says "about 30 checks", behavior line "about 26".
+4. [stop rules vs spare numbers] seven stop_rule plans and two named spares (04-18, 04-19); a stop-rule split is a planned split like 04-17, but 04-13 T2 counts every spare number as a revision plan toward the D-180 trigger "more than two plans needed a revision plan". Say whether a stop-rule split counts, or the cut can fire on context pressure alone.
+5. [04-13 truth line 60] still says the plan ticks none "because every requirement is listed in requirements_advanced"; the standing rule says no tool reads that key and ticking is gated by ready-ids. Outcome is the same (ticks none); the sentence is right for the wrong reason.
+6. [carried] checks 8b, 8f and the path probe (no probe supplied); verifier re-derives digest_stream_prefix once independently; ER-5 by substance.
+
+### Structured issues
+
+```yaml
+issues:
+  - {plan: "04-17", task: 1, dimension: verification_derivation, severity: warning, required_property: "K, the pad and the 81-cycle budget equal the cycles the model charges for each handler, including the VDC/VCE window access penalty", description: "cycle sums count table cycles only; DS_ADDER_VDC_ACCESS adds 1 cycle per access to the VDC window (LED-CPU-0017), so K is short and the handler length is not a multiple of 6; checks (2) and (4) drift by tens to hundreds of iterations; check (1) is immune", fix_hint: "count one penalty cycle per $0000-$0003 access in every handler sum and name LED-CPU-0009 and LED-CPU-0017 in the classes of checks (2) and (4)"}
+  - {plan: "04-04", task: 1, dimension: verification_derivation, severity: warning, required_property: "The delay between CR $00 and CR $01 guarantees at least one judged div-4 record", description: "a delay just over 2,730 clocks leaves the grid-aligned window empty in most phases (guarantee needs 4,095 to 5,460); fails closed as harness_failure; speed in force not stated", fix_hint: "at least 5,460 master clocks and the speed assumption in the cycle-sum comment"}
+  - {plan: "04-17", task: 2, dimension: key_links_planned, severity: info, required_property: "Every toy mutating beam.c, vdc.c, vce.c or vid.c lists a case that INV_TOY_NO_LITERAL counts", description: "vid-rcr-base lists two vdc_irq_agree cases (new kind) and a pass-column line", fix_hint: "list vdc_irq as observed red, or state that kind vdc_irq_agree counts"}
+  - {plan: "04-17", dimension: scope_sanity, severity: info, required_property: "A plan whose first task carries the most analysis has a stated stop point", description: "no stop_rule on 04-17; Task 1 is spin.inc, two images, a kind, eight case files", fix_hint: "add the stop_rule after Task 1"}
+  - {plan: "04-13", task: 2, dimension: context_compliance, severity: info, required_property: "The D-180 trigger counts revision plans only", description: "a stop-rule split uses a spare number and is counted as a revision plan", fix_hint: "say whether it counts"}
+```
+
+## Dimension summary
+
+| Dimension | Result |
+|---|---|
+| 1 Requirement coverage | pass (VID-01..06 declared by 04-01 and 04-16; completing plans as in round 2) |
+| 2 Task completeness | pass (17 of 17 valid; 50 of 50 tasks have files, action, verify, done; every automated block is one line) |
+| 3 / 3b Dependencies, coupling | pass (waves and graph verified by tool and script; no undeclared same-wave coupling) |
+| 4 Key links | pass (pins mutual in one commit; includes owned by one plan) |
+| 5 Scope sanity | advisory only (seven plans over the budget, all with stop rules; info 3b) |
+| 6 Verification derivation | W3 arithmetic re-derived and correct; warnings 1 and 2 |
+| 7 / 7b Context, scope reduction | pass; D-174 loop body is discretion; no reduction wording; no deferred idea implemented |
+| 7c Tier compliance | pass |
+| 8 Nyquist | automated verify on every task; carried info |
+| 9 Data contracts | pass |
+| 10 CLAUDE.md / AGENTS.md | pass (no push, no new dependency, rights, Co-Authored-By line, GSD entry points) |
+| 11 Research resolution | pass |
+| 12 Pattern compliance | pass |
+| Verify format / path | pass |
+
+## Recommendation
+
+No blocker. The goal-critical paths are planned with literals from MAN, GUEST or ASSUMED sources, the interrupt-position arithmetic is derived from the opcode table and the windows separate the three hypotheses. Apply warnings 1 and 2 as one-sentence edits if the planner has a turn left (04-17 Widening paragraph and class text; 04-04 delay bound); otherwise the orchestrator can hand both to the executor as notes, since each fails closed. Info items need no revision.

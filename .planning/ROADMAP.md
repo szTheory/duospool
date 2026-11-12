@@ -181,7 +181,27 @@ Plans:
   3. A fixture writes the scanline and phase of raster-compare and VBlank interrupts into guest RAM. The recorded values agree with the modelled position for the profile's line count. They are labelled a modelling assumption, not a hardware claim, until a primary manual page or an owner-approved capture settles C3.
   4. All 512 9-bit palette entries round-trip through write and readback in guest RAM. A dot-clock change, including one mid-frame, shows up as changed per-line geometry in the raw record and is never normalised to a fixed width.
   5. A raw-video hash counts as a verdict only when paired with a semantic literal assertion, and that assertion is shown to fail when the renderer is deliberately broken.
-**Plans**: TBD
+**Plans**: 0/17 plans complete in 16 sequential waves, listed in execution order (context waves W1-W8 of 04-CONTEXT; the cut line is checkpoint 04-13, after which W7 would become Phase 4.1; 04-17 is a planned split of 04-08)
+
+Plans:
+- [ ] 04-01-PLAN.md - W1: evidence data: ER-1 page-image reads, cites, ledger entries and amendments, claim words (data only)
+- [ ] 04-02-PLAN.md - W1: vid sink plumbing and the fold placement in ds_cpu_step_obs, obs_begin callers, ABI-skew control
+- [ ] 04-03-PLAN.md - W2: layout and the single serial 7 to 8 / epoch 4 to 5 bump, seeded-prng-v3, restore bounds, goldens (data only)
+- [ ] 04-04-PLAN.md - W2: TRACER: guest VCE palette write to a blank scanline record to digest, end to end
+- [ ] 04-05-PLAN.md - W2: tracer hardening: chunk tokens, sink sizing, observer matrix, first toy, stale-prose cleanup
+- [ ] 04-06-PLAN.md - W3: VDC register file and VRAM interface, accessor sweep, mmu_mpr re-pins
+- [ ] 04-07-PLAN.md - W3: video judge and the video-check stage: ROWS/REL/STRUCT, fault sweep, hash-role rules, class lint
+- [ ] 04-08-PLAN.md - W4: raster timeline, status register and IRQ1 level, model_param_vdc
+- [ ] 04-17-PLAN.md - W4: IRQ position fixtures (262 and 263 lines), ratio and agree kinds, pass column, toys (split from 04-08)
+- [ ] 04-09-PLAN.md - W4: active window geometry and dot clock, mid-frame change visible in the records
+- [ ] 04-10-PLAN.md - W4: VRAM-to-SATB and VRAM-to-VRAM DMA, BURST flag, restore divisor guards
+- [ ] 04-11-PLAN.md - W5: background renderer: BAT, tiles, palette banks, border
+- [ ] 04-12-PLAN.md - W5: scroll latch, enables, burst frame, bg fixtures and toy
+- [ ] 04-13-PLAN.md - W6: Checkpoint A (cut line): full verification, timing record, owner cut-line inputs
+- [ ] 04-14-PLAN.md - W7: sprite decode and drawing
+- [ ] 04-15-PLAN.md - W7: slot limit, overflow, collision, status flags into guest RAM
+- [ ] 04-16-PLAN.md - W8: close-out: README and ledger claims, ER promotions, timing and CI-efficiency inputs, verification inputs
+
 **Research**: Needed (heavy). VBlank and RCR IRQ position (C3), dot-clock register encoding (C4), 7 MHz active width (C5), and mid-frame width change (C11). For the VDC: VRAM slot model per dot mode, DMA timing, burst mode, and sprite overflow/collision semantics. Re-read manual pp. H7-6 to H7-11 and the cited HuC6260 pages before planning. If the phase grows too large, planning may split background/IRQ from sprites/DMA into separate plans or an inserted decimal phase.
 
 ### Phase 5: PSG Raw Audio
