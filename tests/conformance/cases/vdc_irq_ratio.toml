@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
-# The assumption-free group of the vdc_irq fixture, judged alone (plan 04-17; D-173, F-4, F-43): the same authored ROM as the case vdc_irq, but only checks 1 and 2 have to pass (judge=1-2): the iterations from RCR = 100 to RCR = 108 equal 8 times those from RCR = 100 to RCR = 101 within 12 iterations, in two cycles. No constant is assumed (class GUEST: the increment of
+# The assumption-free group of the vdc_irq fixture, judged alone (plan 04-17; D-173, F-4, F-43): the same authored ROM as the case vdc_irq, but only checks 1 and 2 have to pass (judge=1-2): the iterations from RCR = 100 to RCR = 108 equal 8 times those from RCR = 100 to RCR = 101 within 9 iterations, in two cycles. No constant is assumed (class GUEST: the increment of
 # the RCR counter per scan is MAN H7-7, and the ratio needs no line length or cycle length), and the sample jitter is bounded by the interrupt wait, derived in the check rows.
 # The DSV1 block is still verified whole (magic, state, version, summary recomputed over all 16 checks, checksum, trailer), so the group is judged alone while the block stays proven. This case is the one that STAYS green under the toy vid-rcr-base (the counter base 64 moved to 63): the offset group (vdc_irq, vdc_irq_agree) goes red, the ratio does not, because a one-
 # line shift of the origin changes which line an RCR value hits and not the distance between two RCR values. Evidence tier E0: no accuracy, raster or hardware claim; the word pass is not a support claim.
@@ -10,7 +10,7 @@ kind = "guest"
 fixture = "authored:vdc-irq"
 request = ""
 expect = "id=18;judge=1-2;observe=13:policy;observe=14:policy;observe=15:policy;observe=16:policy"
-meaning = "The ratio group of the vdc_irq fixture alone: RCR = 100 to 108 takes 8 times RCR = 100 to 101 within 12 iterations in two cycles, no constant assumed (GUEST); the block is verified whole and the other checks are not judged here"
+meaning = "The ratio group of the vdc_irq fixture alone: RCR = 100 to 108 takes 8 times RCR = 100 to 101 within 9 iterations in two cycles, no constant assumed (GUEST); the block is verified whole and the other checks are not judged here"
 required = true
 control = false
 expect_outcome = "pass"
