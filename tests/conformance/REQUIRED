@@ -296,3 +296,10 @@ vdc_satb_data
 vdc_snapshot_mid_dma
 bg_basic
 video_bg_basic_solid
+video_bg_basic_asym
+video_fault_sweep_bg_basic
+video_fault_sweep_bg_basic_asym
+video_unmodelled_mode
+video_fault_sweep_unmodelled_mode
+video_bg_basic_golden
+mutate_sweep_bg_basic

@@ -18,7 +18,16 @@
 # Classes (ER-10): the structure rows use the 1365-clock grid and the frame length (ASSUMED LED-VID-0004). The index rows are MAN H7-18 (with the layout of H7-14 and H7-15): every tile is solid, so they hold for every bit order, byte order and flip; sym=order. The value rows rest on the guest's
 # palette (GUEST pal_bijection). The solid group names no pixel order anywhere (ER-12).
 # Kills (D-172): F1 shifts the dots of the focus line one dot to the right (a transition inside the x range turns the row red), F7 zeroes every non-zero index of that line; F2 (two index bits swapped) cannot act on the indices 63, 12, 243 and 0 (their two low bits are equal), so the solid groups do not declare it; F0 perturbs the first number of the first row.
+# The asymmetric scene (ER-12; ASSUMED LED-VID-0010, which names the pixel bit order and the plane byte order, and rests on the row counter of D-156, LED-VID-0009): BAT row 1 (words 32 to 35) is $3040 (the solid reference, index 63), $2044 (code $044, bank 2), $4045 (code $045, bank 4) and $4046 (code $046, bank 4). Display lines 8 to 15 show BAT row 1, tile row K - 8.
+# Code $044 is a one-pixel diagonal of pixel 1 in the low byte of CG0 word r: $0080 >> r, so under the assumed reading (bit 7 leftmost, low byte plane 0) the row r has its set dot at tile column r and the index (2 << 4) | 1 = 33 there and 0 elsewhere; a reversed bit order puts it at column 7 - r. Code
+# $045 is pixel 1 in the low byte of every CG0 word (index (4 << 4) | 1 = 65 on all 8 dots), code $046 is pixel 2 in the high byte (index 64 + 2 = 66): a swapped byte order exchanges them.
+# bitorder: line active+8 (r = 0): dots 0 to 7 are the solid 63, dot 8 is 33, dots 9 to 15 are 0; active+11 (r = 3): dot 11 is 33; active+15 (r = 7): dot 15 is 33. planes: line active+8, dots 16 to 23 are 65, dots 24 to 31 are 66 and dots 32 to 39 are the default 15 (the default tile of pixel 15, bank 0).
+# The unmodelled scene (D-158, ASSUMED LED-VID-0015: deferred, nothing about the modes is modelled): the guest writes MWR = $0001 (VM = 1) in frame 8 before its VBlank entry; the latch at that VBlank entry makes mwr_active non-zero in VM, so every record from there on carries UNMODELLED (flags bit 4).
+# Frame 7 lies wholly before the write (bit 4 clear on every record), frame 10 wholly after the latch (bit 4 set on every record), and the pixels of frame 10 are drawn as VM = 0: the row of the solid group again.
+# Kills: the flag group declares only F0 (the faults that move or drop lines leave frame 10 whole or make it a fault of the case; the comparison is live through F0 and through the toy-free negative row of frame 7); the other groups declare the faults that flip them (F3 on bitorder, whose second line
+# differs from its first; F4 and F8 insert or exchange a record of BAT row 0, which differs from BAT row 1 at the focus line; F2 on both asymmetric groups, as their indices 33, 65 and 66 have unequal low bits).
 scene	video_bg_basic_solid	case=video_bg_basic_solid	role=literal
+scene	video_bg_basic_solid	case=video_bg_basic_golden	role=golden
 group	video_bg_basic_solid	struct	form=STRUCT	class=ASSUMED:LED-VID-0004	sym=none	kills=F4,F8,F9
 row	video_bg_basic_solid	struct	check=count	grid=1365
 row	video_bg_basic_solid	struct	check=origins	step=1365
@@ -33,3 +42,20 @@ row	video_bg_basic_solid	solidval	line=active+0;x=0..31;frame=5	value=8*118,8*85
 row	video_bg_basic_solid	solidval	line=active+0;x=16..39;frame=5	value=8*114,8*17,8*358
 group	video_bg_basic_solid	border	form=STRUCT	class=GUEST:pal_bijection	sym=none	kills=F0
 row	video_bg_basic_solid	border	check=border_after_pal	value=273
+scene	video_bg_basic_asym	case=video_bg_basic_asym	role=literal
+group	video_bg_basic_asym	bitorder	form=ROWS	class=ASSUMED:LED-VID-0010	sym=asym	kills=F0,F1,F2,F3,F4,F7,F8
+row	video_bg_basic_asym	bitorder	line=active+8;x=0..15;frame=5	index=8*63,33,7*0
+row	video_bg_basic_asym	bitorder	line=active+11;x=0..15;frame=5	index=8*63,3*0,33,4*0
+row	video_bg_basic_asym	bitorder	line=active+15;x=0..15;frame=5	index=8*63,7*0,33
+group	video_bg_basic_asym	planes	form=ROWS	class=ASSUMED:LED-VID-0010	sym=asym	kills=F0,F1,F2,F4,F7,F8
+row	video_bg_basic_asym	planes	line=active+8;x=16..39;frame=5	index=8*65,8*66,8*15
+scene	video_unmodelled_mode	case=video_unmodelled_mode	role=literal
+group	video_unmodelled_mode	flag	form=STRUCT	class=ASSUMED:LED-VID-0015	sym=none	kills=F0
+row	video_unmodelled_mode	flag	check=frame_flags	want=1;frame=10;bit=4
+row	video_unmodelled_mode	flag	check=frame_flags	want=0;frame=7;bit=4
+group	video_unmodelled_mode	pix	form=ROWS	class=ASSUMED:LED-VID-0015	sym=none	kills=F0,F1,F7
+row	video_unmodelled_mode	pix	line=active+0;x=0..31;frame=10	index=8*63,8*12,8*243,8*0
+# The golden row is a change detector beside the literal scenes, never a verdict (ER-11): the digest is the SHA-256 of the canonical stream of the bg_basic guest (D-163), pinned by plan 04-11 after the literal cases video_bg_basic_solid, video_bg_basic_asym and video_unmodelled_mode passed on that
+# stream, and recomputed outside the core with shasum -a 256 over the --video-out file of video_bg_basic_solid.
+# E0 repeatability only. A later plan that changes the records repins it by its own procedure, recording the old digest, the new digest and the reason in a comment here.
+golden	video_bg_basic_solid	sha256=9903974543189138e84ab27f2df44412d716553c2d46a28f62f1daf2642c735a

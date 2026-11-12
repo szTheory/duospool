@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The golden change detector of the bg_basic scenes (plan 04-11; D-172, ER-11): the runner kind video runs the guest of video_bg_basic_solid and compares the SHA-256 of the canonical stream (D-163) with the digest pinned in the golden row of fixtures/src/bg_basic.vexp. The pinned digest is E0
+# repeatability only, valid only beside the literal cases of the same ROM, which the toy vid-palette-mask turns red, the toy vid-bit-order turns red
+# on the asymmetric group and the fault sweeps show live. A change of the stream (a later plan that changes the records) repins it by the procedure of its own plan, independently recomputed with a host tool (shasum -a 256 of the --video-out file of video_bg_basic_solid). Evidence tier E0: no accuracy, compatibility or hardware claim, and the word pass is not a support claim.
+id = "video_bg_basic_golden"
+kind = "video"
+fixture = "authored:bg-basic"
+request = ""
+expect = "rom=bg-basic;id=22;scene=video_bg_basic_solid"
+meaning = "The stream of the bg_basic guest has the digest pinned in its golden row, a change detector beside the literal cases video_bg_basic_solid and video_bg_basic_asym and never a verdict, E0 repeatability"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 6000000
+checks = 6
