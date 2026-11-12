@@ -27,6 +27,8 @@ enum { VS_VDS = 0, VS_VDW = 1, VS_VCR = 2, VS_VSW = 3 };
 enum { SLOT_CR = 5, SLOT_RCR = 6, SLOT_MWR = 9, SLOT_HSR = 10, SLOT_HDR = 11, SLOT_VPR = 12, SLOT_VDW = 13, SLOT_VCR = 14, SLOT_DCR = 15 };
 /* CR bits 7 (BB, background) and 6 (SB, sprites): both clear makes a frame burst (D-157), and DCR bit 4 repeats the SATB copy at every VBlank entry (D-150) */
 enum { CR_BB_SB = 0xC0, DCR_DSR = 0x10 };
+/* the register slot of BYR: the background row counter of this file's ev_line steps it (D-156) */
+enum { SLOT_BYR = 8 };
 /* the status flag numbers of ds_vdc_flag (D-144): RR is bit 2 and VD bit 5 */
 enum { FLAG_RR = 2, FLAG_VD = 5 };
 
@@ -150,6 +152,19 @@ static void rcr_step(struct ds_instance *inst)
     }
 }
 
+/* the background row counter bg_y (D-156), stepped at the EV_LINE of every display line after the vertical machine: the first display line (VDW, display_k 0) takes BYR as it stands, every later display line the previous value plus one modulo 512; a line that is not a display line leaves it alone. A write of either BYR byte sets it to the written value at its stamp (vdc.c), so a write during line n shows BYR + 1 on line n + 1 (MAN H7-7, ASSUMED LED-VID-0009) */
+static void bg_step(struct ds_instance *inst)
+{
+    if ((uint32_t)inst->v_state != (uint32_t)VS_VDW) {
+        return;
+    }
+    if (inst->display_k == (uint16_t)0u) {
+        inst->bg_y = (uint16_t)((uint32_t)inst->vdc_reg[SLOT_BYR] & 0x1FFu);
+    } else {
+        inst->bg_y = (uint16_t)(((uint32_t)inst->bg_y + 1u) & 0x1FFu);
+    }
+}
+
 /* item 4 of D-138 for the two offsets (D-140, D-142, D-143, T-04-28): the horizontal registers are read at this EV_LINE; the active window starts at (HDS+1)*8 dots and ends at (HDS+HDW+2)*8 dots, each times the divider latched for the line, in u32 (at most (127+127+2)*8*4 = 8192, no overflow).
  * EV_RCR is at the window end and does not occur on a line where that is 1365 or more; EV_VD (phase hdw_start) is at the window start, at most 1364. When EV_RCR exists the window start is before it, so the stage order VD then RCR is also the time order */
 static void schedule_offsets(struct ds_instance *inst)
@@ -194,6 +209,7 @@ static void ev_line(struct ds_instance *inst, struct ds_obs_log *obs)
     int vblank = vertical_step(inst, k);
 
     rcr_step(inst);
+    bg_step(inst);
     inst->lat_div = (uint8_t)ds_vce_divider((uint32_t)inst->vce_cr);
     dma_line(inst, line_origin(k) + (uint64_t)DS_CONST_line_sample_offset_mclk);
     inst->vd_off = (uint16_t)EV_OFF_NONE;

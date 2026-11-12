@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The order-insensitive background scene (plan 04-11; D-137, D-155, D-156, D-157, D-161, D-169, D-171, D-172, D-173, ER-10, ER-11, ER-12): the authored fixture fixtures/src/bg_basic.s draws solid tiles of pixel 15, 12 and 3 in banks 3, 0 and 15 and a tile of pixel 0 in bank 7 through a 32 x 32 BAT,
+# and the runner kind video (tests/conformance/videokinds.c) attaches a vid sink and a dev sink, runs the guest to the end of its DSV1 verdict and judges the line records by group,
+# with the offsets written in that file, never from a core header. Role: literal (D-172). The literals are not in this file: they live in fixtures/src/bg_basic.vexp (hand-derived rows, the derivation in its comments).
+# Class of each group (ER-10, the weakest class of the inputs of a row wins): the index rows are MAN H7-18 (VD3 to VD0 and the bank give the index, a pixel of 0 forces it to 0; the BAT and tile layout are H7-14 and H7-15) and hold for every bit order and byte order because every tile is solid; the
+# value rows add the palette lookup of the guest's own bijection (GUEST pal_bijection);
+# the border is GUEST pal_bijection; the structure rows use the grid and the frame length (ASSUMED LED-VID-0004, LED-VID-0001). The toy vid-bit-order (the bit order of a tile row reversed) must leave this case PASS: the proof of the symmetry split (D-173). The evidence text prints video_sha256=... E0
+# repeatability: no pixel-accurate or hardware claim, and the word pass is not a support claim.
+id = "video_bg_basic_solid"
+kind = "video"
+fixture = "authored:bg-basic"
+request = ""
+expect = "rom=bg-basic;id=22;scene=video_bg_basic_solid"
+meaning = "A guest that draws solid tiles through the BAT makes the core emit line records whose display line holds the indices 63, 12, 243 and 0 for the tiles of pixel 15 in bank 3, pixel 12 in bank 0, pixel 3 in bank 15 and pixel 0 in bank 7 (MAN H7-18), the palette values of those indices (GUEST) and the default tile after them, E0 repeatability"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 6000000
+checks = 6

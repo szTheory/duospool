@@ -294,3 +294,5 @@ vdc_satb
 mutate_sweep_vdc_satb
 vdc_satb_data
 vdc_snapshot_mid_dma
+bg_basic
+video_bg_basic_solid

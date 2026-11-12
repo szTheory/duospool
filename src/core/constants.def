@@ -34,6 +34,7 @@
  * vdc_oob_read                       the word a VRAM read at an out-of-range word address returns (plan 04-06; D-147, ASSUMED LED-VID-0007): 0; a write there is dropped
  * vdc_bsy_level                      the level of bit 6 (BSY) of the status read (plan 04-06; D-144, D-145, LED-VID-0015 deferred): 0, no bus-arbitration model exists, so the bit never reads busy
  * vdc_dma_dots_per_word              dot-clock periods one word of a VRAM-to-VRAM transfer or of the VRAM-to-SATB copy takes (plan 04-10; D-150, D-151, ASSUMED LED-VID-0014): 4, so a word is 4 * divider master clocks (8, 12 or 16); a modelling choice, the pages state no speed
+ * bg_off_index                      the index of every dot with BB = 0 in a frame that is not burst and that no sprite covers (plan 04-11; D-157, LED-VID-0010): 0, the reading of one community source; another reads the blank index 256 (a named disagreement, one value here and no parameter)
  * pad_settle_mclk                     master clocks of settling after a write of the latch (plan 03-29; D-115, LED-IO-0004): 0, so a read sees the level of the input schedule at its own access stamp; the read looks up the schedule this many master clocks earlier
  */
 DS_CONST(cycle_mclk_low, 12, "LED-CPU-0003")
@@ -68,3 +69,4 @@ DS_CONST(vdc_vram_words, 32768, "LED-VID-0007")
 DS_CONST(vdc_oob_read, 0, "LED-VID-0007")
 DS_CONST(vdc_bsy_level, 0, "LED-VID-0015")
 DS_CONST(vdc_dma_dots_per_word, 4, "LED-VID-0014")
+DS_CONST(bg_off_index, 0, "LED-VID-0010")

@@ -25,7 +25,7 @@
 _Static_assert((uint32_t)DS_CONST_vdc_vram_words * 2u == DS_VRAM_BYTES, "constants.def vdc_vram_words does not match the VRAM byte array");
 
 /* the register slots R00 to R13 (hexadecimal numbering); the DMA registers are SOUR, DESR, LENR and DVSSR (R10 to R13) */
-enum { VDC_MAWR = 0x00, VDC_MARR = 0x01, VDC_VWR = 0x02, VDC_CR = 0x05, VDC_DCR = 0x0F, VDC_SOUR = 0x10, VDC_DESR = 0x11, VDC_LENR = 0x12, VDC_DVSSR = 0x13, VDC_SLOTS = 20 };
+enum { VDC_MAWR = 0x00, VDC_MARR = 0x01, VDC_VWR = 0x02, VDC_CR = 0x05, VDC_BYR = 0x08, VDC_DCR = 0x0F, VDC_SOUR = 0x10, VDC_DESR = 0x11, VDC_LENR = 0x12, VDC_DVSSR = 0x13, VDC_SLOTS = 20 };
 /* the vertical state VDW (beam.c numbers it 1): the bus is not free for a transfer there unless the frame is burst; and the sizes of the two transfers */
 enum { VDC_VS_VDW = 1, SATB_WORDS = 256 };
 
@@ -232,6 +232,9 @@ void ds_vdc_write(struct ds_instance *inst, uint32_t reg, uint8_t value, uint64_
     r = msb != 0u ? ((r & 0x00FFu) | ((uint32_t)value << 8u)) : ((r & 0xFF00u) | (uint32_t)value);
     inst->vdc_reg[ar] = (uint16_t)(r & (uint32_t)vdc_mask[ar]);
     inst->line_dirty = (uint8_t)((uint32_t)inst->line_dirty | (uint32_t)vdc_dirty[ar]);
+    if (ar == (uint32_t)VDC_BYR) { /* a write of either BYR byte sets the row counter to the written 9-bit value at its stamp (D-156), so the next display line shows BYR + 1 */
+        inst->bg_y = (uint16_t)((uint32_t)inst->vdc_reg[VDC_BYR] & 0x1FFu);
+    }
     if (msb == 0u) {
         if (ar == (uint32_t)VDC_VWR) { /* VWR LSB: the write latch, never cleared */
             inst->vdc_wlatch = value;

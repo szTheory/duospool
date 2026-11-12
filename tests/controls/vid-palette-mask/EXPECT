@@ -4,3 +4,5 @@
 # Case ids that must come out guest_failure on the toy, one per line.
 vce_pal
 video_vce_pal
+bg_basic
+video_bg_basic_solid

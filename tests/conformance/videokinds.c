@@ -1328,6 +1328,45 @@ static int vk_s_cr_change(struct vk_rc *rc)
     return VG_PASS;
 }
 
+/* STRUCT frame_flags (plan 04-11): every record of the frame numbered F, a frame the stream holds whole (its records number the frame_lines its header carries), has bit B of the flags byte equal to want. The bit numbers are those of D-161 (4 is UNMODELLED). A frame the stream does not hold whole is a fault of the case, never a pass; want is compared as a number, so a perturbed want (F0) fails */
+static int vk_s_frame_flags(struct vk_rc *rc)
+{
+    static const char *const keys[] = {"want", "frame", "bit"};
+    uint64_t want = 0u;
+    uint64_t frame = 0u;
+    uint64_t bit = 0u;
+    uint64_t k;
+    uint64_t n = 0u;
+    uint64_t fl = 0u;
+    uint64_t first = VK_NOFOCUS;
+
+    if (vk_need(rc, keys, 3u) != 0 || vk_num(rc, "want", &want) != 0 || want > 255u || vk_num(rc, "frame", &frame) != 0 || frame > (uint64_t)UINT32_MAX || vk_num(rc, "bit", &bit) != 0 || bit > 7u) {
+        return vk_bad(rc, "STRUCT frame_flags needs the items want=N, frame=N and bit=N (0 to 7)");
+    }
+    for (k = 0u; k < rc->w->n; k++) {
+        if ((uint64_t)vk_u32(rc->w->rec[k] + VK_O_FRAME) == frame) {
+            if (first == VK_NOFOCUS) {
+                first = k;
+                fl = (uint64_t)vk_u16(rc->w->rec[k] + VK_O_FRAME_LINES);
+            }
+            n++;
+        }
+    }
+    if (first == VK_NOFOCUS || n != fl || fl == 0u) {
+        return vk_bad(rc, "STRUCT frame_flags: the frame is not in the stream whole");
+    }
+    vk_focus(rc, first);
+    for (k = first; k < first + n; k++) {
+        uint64_t got = (uint64_t)((rc->w->rec[k][VK_O_FLAGS] >> bit) & 1u);
+
+        if (got != want) {
+            snprintf(rc->why, rc->cap, "STRUCT frame_flags: line %llu of frame %llu has flag bit %llu equal to %llu, the row says %llu", (unsigned long long)(k - first), (unsigned long long)frame, (unsigned long long)bit, (unsigned long long)got, (unsigned long long)want);
+            return VG_FAIL;
+        }
+    }
+    return VG_PASS;
+}
+
 struct vk_chk {
     const char *name;
     int (*fn)(struct vk_rc *);
@@ -1351,6 +1390,7 @@ static const struct vk_chk vk_checks[] = {
     {"display_flags", vk_s_display_flags},
     {"line_dirty_hv", vk_s_line_dirty_hv},
     {"cr_change", vk_s_cr_change},
+    {"frame_flags", vk_s_frame_flags},
 };
 
 /* F0 (D-172): the first decimal number of a literal grows by one, so the row is made to claim something its own source does not say; 0 when the text holds a number */
@@ -1419,13 +1459,13 @@ static int vk_expand(const char *text, uint32_t *out, unsigned cap, unsigned *n)
     return *n >= 1u ? 0 : -1;
 }
 
-/* the active lines of a run: the records with an active window in the first frame that has one, in order; the count (at most cap) */
-static unsigned vk_active_lines(const struct vk_walk *w, uint64_t *out, unsigned cap)
+/* the active lines of a run: the records with an active window in the first frame that has one, or in the frame numbered pick_frame when pick is set (the optional frame=F item of a ROWS selector, plan 04-11: a guest that sets its scene up over several frames judges a later frame), in order; the count (at most cap) */
+static unsigned vk_active_lines(const struct vk_walk *w, uint64_t *out, unsigned cap, int pick, uint32_t pick_frame)
 {
     uint64_t k;
     unsigned n = 0u;
-    uint32_t frame = 0u;
-    int have = 0;
+    uint32_t frame = pick ? pick_frame : 0u;
+    int have = pick;
 
     for (k = 0u; k < w->n; k++) {
         if (vk_u16(w->rec[k] + VK_O_ACTIVE_W) == 0u) {
@@ -1434,6 +1474,9 @@ static unsigned vk_active_lines(const struct vk_walk *w, uint64_t *out, unsigned
         if (!have) {
             have = 1;
             frame = vk_u32(w->rec[k] + VK_O_FRAME);
+        }
+        if (pick && vk_u32(w->rec[k] + VK_O_FRAME) < frame) { /* a frame numbered picked: the active lines of the frames before it are skipped */
+            continue;
         }
         if (vk_u32(w->rec[k] + VK_O_FRAME) != frame || n >= cap) {
             break;
@@ -1472,6 +1515,8 @@ static int vk_rows_row(struct vk_rc *rc, const struct vx_row *r, int perturb)
     uint64_t kk = 0u;
     uint64_t x0 = 0u;
     uint64_t x1 = 0u;
+    uint64_t frame_no = 0u;
+    int have_frame = 0;
     const char *p = r->sel;
     const char *lv;
     uint32_t want[VK_MAX_DOTS];
@@ -1486,8 +1531,17 @@ static int vk_rows_row(struct vk_rc *rc, const struct vx_row *r, int perturb)
     const uint8_t *rec;
     uint32_t aw;
 
-    if (strncmp(p, "line=active+", 12u) != 0 || vk_scan_u(p + 12, &kk, &p) != 0 || strncmp(p, ";x=", 3u) != 0 || vk_scan_u(p + 3, &x0, &p) != 0 || strncmp(p, "..", 2u) != 0 || vk_scan_u(p + 2, &x1, &p) != 0 || *p != '\0') {
+    if (strncmp(p, "line=active+", 12u) != 0 || vk_scan_u(p + 12, &kk, &p) != 0 || strncmp(p, ";x=", 3u) != 0 || vk_scan_u(p + 3, &x0, &p) != 0 || strncmp(p, "..", 2u) != 0 || vk_scan_u(p + 2, &x1, &p) != 0) {
         return vk_bad(rc, "a ROWS row has the selector line=active+K;x=X0..X1");
+    }
+    if (strncmp(p, ";frame=", 7u) == 0) { /* the optional frame number (u32, as the record header holds it) */
+        have_frame = 1;
+        if (vk_scan_u(p + 7, &frame_no, &p) != 0 || frame_no > (uint64_t)UINT32_MAX) {
+            return vk_bad(rc, "a ROWS row has the selector line=active+K;x=X0..X1 with the optional item ;frame=F");
+        }
+    }
+    if (*p != '\0') {
+        return vk_bad(rc, "a ROWS row has the selector line=active+K;x=X0..X1 with the optional item ;frame=F");
     }
     if (strncmp(r->lit, "index=", 6u) == 0) {
         which = 0u;
@@ -1519,7 +1573,7 @@ static int vk_rows_row(struct vk_rc *rc, const struct vx_row *r, int perturb)
     if (perturb) {
         want[0]++; /* F0: the first expected value of the row is made wrong */
     }
-    nl = vk_active_lines(rc->w, lines, 512u);
+    nl = vk_active_lines(rc->w, lines, 512u, have_frame, (uint32_t)frame_no);
     if (kk >= (uint64_t)nl) {
         snprintf(rc->why, rc->cap, "ROWS: the run has %u active lines and the row asks for active+%llu", nl, (unsigned long long)kk);
         vk_focus(rc, rc->w->n / 2u);
@@ -1606,8 +1660,8 @@ static int vk_rel_row(struct vk_rc *rc, const struct vx_row *r, const struct vk_
     if (vk_kv_parse(lit, rc) != 0) {
         return vk_bad(rc, "the literal of a REL row is not key=value items separated by semicolons");
     }
-    na = vk_active_lines(ra->w, la, 512u);
-    nb = vk_active_lines(rb->w, lb, 512u);
+    na = vk_active_lines(ra->w, la, 512u, 0, 0u);
+    nb = vk_active_lines(rb->w, lb, 512u, 0, 0u);
     if (na == 0u || nb == 0u) {
         snprintf(rc->why, rc->cap, "REL %s: a run holds no active line (a null renderer never passes)", rel);
         return VG_FAIL;
@@ -2886,6 +2940,11 @@ static void jf_struct(struct jf_ctx *jf, const struct jf_stream *s, const struct
             jf_want(jf, name, jf_eval(jf, "STRUCT", "F0", sel, t[i].ok, &run, 1u, 1), VG_FAIL);
         }
     }
+    jf_run1(&run, s, lg); /* frame_flags: the base stream sets no flag bit, frames 0 and 1 are whole and frame 2 holds 2 of its 4 lines */
+    jf_want(jf, "STRUCT frame_flags with the right literal passes", jf_eval(jf, "STRUCT", "F0", "check=frame_flags", "want=0;frame=1;bit=4", &run, 1u, 0), VG_PASS);
+    jf_want(jf, "STRUCT frame_flags with a wrong literal fails", jf_eval(jf, "STRUCT", "F0", "check=frame_flags", "want=1;frame=1;bit=4", &run, 1u, 0), VG_FAIL);
+    jf_want(jf, "STRUCT frame_flags with F0 on the right literal fails", jf_eval(jf, "STRUCT", "F0", "check=frame_flags", "want=0;frame=1;bit=4", &run, 1u, 1), VG_FAIL);
+    jf_want(jf, "STRUCT frame_flags on a frame the stream holds in part is a fault of the case", jf_eval(jf, "STRUCT", "F0", "check=frame_flags", "want=0;frame=2;bit=4", &run, 1u, 0), VG_HARNESS);
     jf_run1(&run, skew, lg); /* a stream whose origin of record 4 is one clock off: the origins check fails and the count check does not */
     jf_want(jf, "STRUCT origins on a stream with one origin moved fails", jf_eval(jf, "STRUCT", "F0", "check=origins", "step=1365", &run, 1u, 0), VG_FAIL);
     jf_want(jf, "STRUCT count on a stream with one origin moved still passes (it counts records)", jf_eval(jf, "STRUCT", "F0", "check=count", "grid=1365", &run, 1u, 0), VG_PASS);
@@ -2901,6 +2960,9 @@ static void jf_rows(struct jf_ctx *jf, const struct jf_stream *s, const struct v
     jf_want(jf, "ROWS a value list passes", jf_eval(jf, "ROWS", "F0", "line=active+0;x=0..3", "value=104,106,101,103", &run, 1u, 0), VG_PASS);
     jf_want(jf, "ROWS COUNT*V items pass", jf_eval(jf, "ROWS", "F0", "line=active+0;x=0..3", "index=1*4,1*6,1*1,1*3", &run, 1u, 0), VG_PASS);
     jf_want(jf, "ROWS the second active line passes", jf_eval(jf, "ROWS", "F0", "line=active+1;x=0..3", "index=7,2,4,6", &run, 1u, 0), VG_PASS);
+    jf_want(jf, "ROWS the frame item selects the active lines of that frame", jf_eval(jf, "ROWS", "F0", "line=active+0;x=0..3;frame=1", "index=2,4,6,1", &run, 1u, 0), VG_PASS);
+    jf_want(jf, "ROWS the first frame is not the second frame", jf_eval(jf, "ROWS", "F0", "line=active+0;x=0..3;frame=0", "index=2,4,6,1", &run, 1u, 0), VG_FAIL);
+    jf_want(jf, "ROWS a frame the stream does not hold fails", jf_eval(jf, "ROWS", "F0", "line=active+0;x=0..3;frame=7", "index=2,4,6,1", &run, 1u, 0), VG_FAIL);
     jf_want(jf, "ROWS a partial x range passes", jf_eval(jf, "ROWS", "F0", "line=active+0;x=1..3", "index=6,1,3", &run, 1u, 0), VG_PASS);
     jf_want(jf, "ROWS a wrong index fails", jf_eval(jf, "ROWS", "F0", "line=active+0;x=0..3", "index=4,6,1,4", &run, 1u, 0), VG_FAIL);
     jf_want(jf, "ROWS a wrong value fails", jf_eval(jf, "ROWS", "F0", "line=active+0;x=0..3", "value=104,106,101,104", &run, 1u, 0), VG_FAIL);

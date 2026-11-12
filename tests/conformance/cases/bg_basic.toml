@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The background fixture seen from the guest (plan 04-11; D-156, D-157, D-158, D-169, D-170, ER-4, ER-5): the authored fixture fixtures/src/bg_basic.s is assembled by ca65 in the gate (never committed), boots on the core, sets the 256-wide window, writes the palette by the bijection P(i) = (91 * i +
+# 17) & 511, a 32 x 32 BAT and seven hand-packed tiles, reads them back and holds the background for six frames and an unmodelled mode (MWR VM = 1)
+# for four more, and writes a DSV1 verdict block that the runner judges from raw RAM. The case has no policies key, so the guest kind runs the ROM under its default policy list (zero, seeded-prng-v3 seed 1, seed 2) and the check bytes must be equal in all three: every value the guest reads, it wrote first (D-167).
+# The checks are readbacks of what the guest wrote (the BAT fields by shifts, the tiles against the ROM table, the palette against an additive sum, all GUEST); the raster is judged from the line records by the video cases video_bg_basic_solid, video_bg_basic_asym and video_unmodelled_mode.
+# Evidence tier E0: no accuracy, compatibility or hardware claim, and the word pass is not a support claim. until_mclk is a deadline above the point where the guest seals its block.
+id = "bg_basic"
+kind = "guest"
+fixture = "authored:bg-basic"
+request = ""
+expect = "id=22"
+meaning = "The authored bg_basic fixture programs the window, the palette bijection, a 32 x 32 BAT and seven tiles, reads them back with expectations formed by different arithmetic than the writer and holds the background and then an unmodelled mode for several frames, 6 passing GUEST checks, identical under three power-on policies"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 6000000
+checks = 6
