@@ -3,6 +3,8 @@
 # Sprite overflow and collision flags (D-160; VID-02, VID-04). A modelling assumption: the two pages disagree on the overflow count and no page gives the raising instant inside a line.
 # Witnesses (plan 04.1-02, E0 repeatability): TEST:video_spr_limit (the 17th sprite rows ASSUMED here, the 16 and 18 point rows MAN H7-19, the collision rows and the record flags with the IE bit clear), spr_limit (checks 6 to 8: the OR and CR status bits), vdc_stat (checks 22 to 27: OR and CR gated by their enables, set alone, cleared by the read); the toy vid-spr-limit proves
 # the slot cap live. Status stays assumed; no E1 promotion.
+# ER-2 record at the close-out (plan 04.1-03, 2026-11-12): not an E1 candidate (D-179), status stays assumed. H7-4 (more than 17 sprites, and two further OR cases the model does not implement) and H7-19 (17 or more) disagree on the count, and the 17 point is an ASSUMED row.
+# No page defines a collision per pixel or the instant of either flag, and the rule that a covering sprite dropped for lack of slots sets OR is a model reading.
 id = "LED-VID-0012"
 statement = "R1: OVERFLOW is set iff a covering sprite or sprite half is dropped for lack of slots (a 17th sets it); COLLISION follows the sprite 0 rule; both flags are raised at the end of the active window of the displayed line. A modelling assumption."
 profile = "pce-hucard-2btn"

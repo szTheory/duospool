@@ -13,17 +13,26 @@ profile, and it executes the authored fixture suite through a bounded run measur
 fresh, headless, repeatable run, and a matching hash proves repeatability only.
 
 Phase 4 (raw video from the VDC and the VCE) is complete locally for its background, interrupt, DMA, palette and dot-clock scope. Sprites
-were split off at the cut line and are Phase 4.1, which has not run. DuoSpool now executes the authored VDC/VCE diagnostic fixtures and emits a per-scanline raw video record (9-bit values and indices,
-dot-clock divisor, active window, line start in master clocks, frame line count) before any colour conversion or scaling. No sprite
-behaviour is claimed. A hash of that record is repeatability evidence (E0) and never a verdict; every expected literal in a video case
+were split off at the cut line into Phase 4.1, described in the next paragraph. DuoSpool now executes the authored VDC/VCE diagnostic fixtures and emits a per-scanline raw video record (9-bit values and indices,
+dot-clock divisor, active window, line start in master clocks, frame line count) before any colour conversion or scaling. A hash of that record is repeatability evidence (E0) and never a verdict; every expected literal in a video case
 comes from a manual page, from an in-guest computation or from a named ledger entry, and each literal group is turned red by a fault
 sweep, a mutation sweep or a toy control.
+
+Phase 4.1 (sprites) is complete locally for the authored sprite fixtures. DuoSpool draws sprites from the sprite attribute table into the
+same per-scanline raw record: both widths, three heights, flips, the palette bank, priority against the background and against other
+sprites, clipping, a per-line limit of 16 sprites (the slot count follows the display width), and the overflow and collision flags, which
+are written into the record and, through the status register, into guest RAM. Every sprite check is E0 repeatability and no sprite entry is
+supported: the sprite statements are labelled assumptions in LED-VID-0011 (decode, addressing and slots, level R2) and LED-VID-0012
+(overflow and collision, level R1), each with its page disagreement recorded. Rows taken from manual pages (origin, index, plane offsets,
+priority, the 16 and 18 sprite lines) are tagged as such in the fixtures; the leftmost-pixel bit order, flips, the CGY field value 2, the
+17th sprite, the two-slot count, the narrow-display counts and every collision row are assumptions. Withheld for sprites: overflow timing,
+collision timing, collision of transparent pixels, the sprite width modes (SM and VM other than 0) and sprite pattern addressing for CGY 2.
 
 Supported entries (evidence tier E1, documentary): LED-CPU-0001, LED-CPU-0002, LED-CPU-0005, LED-CPU-0014, LED-CPU-0016,
 LED-IRQ-0002, LED-IRQ-0004 (part a only), LED-VID-0006, LED-VID-0008, LED-VID-0009, LED-VID-0014, LED-VID-0016 and
 LED-VID-0017. Supported here means the model equals the cited manual page: a documentary comparison, not a hardware measurement.
 Each Phase 4 entry is scoped by its statement to the page-stated part only: LED-VID-0008 covers the RR, DV and VD flags, their
-enables and the clear on read (the OR and CR flags are raised by no event yet), LED-VID-0009 the next-line statements for BXR and
+enables and the clear on read (the OR and CR flags are raised by the sprite model, a labelled assumption outside the E1 statement), LED-VID-0009 the next-line statements for BXR and
 BYR, LED-VID-0014 the trigger, the length and the DCR bits of the VRAM copy (the cancel at a display start is a modelling reading), and
 LED-VID-0017 exactly the control register contents 00h and 01h.
 
