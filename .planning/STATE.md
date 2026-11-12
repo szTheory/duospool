@@ -3,17 +3,17 @@ gsd_state_version: "1.0"
 current_phase: "04.1"
 current_phase_name: VDC Sprites
 current_plan: 3
-status: executing
-stopped_at: Completed 04.1-02-PLAN.md
-last_updated: "2026-11-12T21:33:29.015Z"
+status: verifying
+stopped_at: Completed 04.1-03-PLAN.md
+last_updated: "2026-11-12T23:36:58.974Z"
 last_activity: 2026-11-12
 last_activity_desc: Phase 4 complete, transitioned to Phase 04.1
-state_head: bdb33bb7fcd50a3ae44c2eb730abbf1e8c26b7be
+state_head: 66b67f1056ad0e1a633a6dde02a3271b5025c6e0
 progress:
   total_phases: 7
   completed_phases: 4
   total_plans: 91
-  completed_plans: 90
+  completed_plans: 91
   percent: 57
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 Phase: 04.1 — VDC Sprites
 Current Plan: 3
 Total Plans in Phase: 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-12 — Phase 4 complete, transitioned to Phase 04.1
 
 Progress: [██████░░░░] 57%
@@ -149,6 +149,7 @@ Progress: [██████░░░░] 57%
 | Phase 04 P13 | 4h | 3 tasks | 22 files |
 | Phase 04.1 P01 | 57min | 4 tasks | 36 files |
 | Phase 04.1 P02 | about 1.7 h (local) | 3 tasks | 27 files |
+| Phase 04.1 P03 | about 1.9 hours | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -333,6 +334,7 @@ Recent decisions affecting current work:
 - [Phase 04.1]: The record covering counts the covering entries among the searched ones; a narrow display searches 2d + 1 entries (MAN H7-19)
 - [Phase 04.1]: COLLISION is sprite 0 against a taken entry of another SATB index, both opaque at a dot of the window; the flag is in the record with the IE bits clear and in the status only through ds_vdc_flag at the EV_RCR of the displayed line
 - [Phase 04.1]: The cap of 16 shows only where 2 * (e - 2) exceeds 16, so the 17 sprite scene runs with HDE 5 and carries the guest check the toy vid-spr-limit turns red
+- [Phase 04.1]: 04.1-03: no sprite entry promoted under ER-2 (LED-VID-0011 and 0012 stay assumed, 0015 deferred, 0008 not widened); README sprite paragraph states E0 and labelled assumptions only
 
 ### Pending Todos
 
@@ -356,6 +358,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12T21:33:28.317Z
-Stopped at: Completed 04.1-02-PLAN.md
+Last session: 2026-11-12T23:36:58.502Z
+Stopped at: Completed 04.1-03-PLAN.md
 Resume file: None
