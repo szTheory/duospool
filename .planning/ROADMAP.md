@@ -19,7 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Owner Decisions, Claim Ledger and Toolchain Spike** - Gate phase. Measured language spike, a first-profile record, and decision records for the owner to confirm. The claim ledger holds every open hardware fact (completed 2026-11-09)
 - [x] **Phase 2: Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate** - Typed accept/refuse of HuCard bytes into fresh, isolated, seeded instances. One local command and CI fail closed (completed 2026-11-10)
 - [x] **Phase 3: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad** - Authored fixtures report guest-RAM verdicts for the CPU, MMU, timer, IRQ, and SEL/CLR pad, with negative controls and resumable bounded runs (completed 2026-11-11)
-- [ ] **Phase 4: VCE/VDC Raw Video** - Per-scanline raw video and guest-recorded interrupt timing, checked against literal expectations for background, DMA, palette, and dot clock (sprites moved to Phase 04.1 at the D-180 cut)
+- [x] **Phase 4: VCE/VDC Raw Video** - Per-scanline raw video and guest-recorded interrupt timing, checked against literal expectations for background, DMA, palette, and dot clock (sprites moved to Phase 04.1 at the D-180 cut) (completed 2026-11-12)
 - [ ] **Phase 04.1: VDC Sprites** - Sprites from the SAT with the per-line limit and the overflow and collision flags written into guest RAM, checked against literal expectations (split from Phase 4 at the D-180 cut)
 - [ ] **Phase 5: PSG Raw Audio** - Timestamped PSG event log and PCM at a recorded format, checked by semantic properties. Can run in parallel with Phase 4
 - [ ] **Phase 6: Headless Runner, Installed-Consumer Proof and Staged Verification** - Separate observation artifacts, an independent consumer against the installed artifact, staged fuzzing, a benchmark, and a LibFuturo fit evaluation
@@ -182,7 +182,7 @@ Plans:
   3. A fixture writes the scanline and phase of raster-compare and VBlank interrupts into guest RAM. The recorded values agree with the modelled position for the profile's line count. They are labelled a modelling assumption, not a hardware claim, until a primary manual page or an owner-approved capture settles C3.
   4. All 512 9-bit palette entries round-trip through write and readback in guest RAM. A dot-clock change, including one mid-frame, shows up as changed per-line geometry in the raw record and is never normalised to a fixed width.
   5. A raw-video hash counts as a verdict only when paired with a semantic literal assertion, and that assertion is shown to fail when the renderer is deliberately broken.
-**Plans**: 16/16 plans executed in 15 sequential waves, listed in execution order (context waves W1-W6 of 04-CONTEXT; the D-180 cut was taken at checkpoint 04-13, so W7-W8 became Phase 04.1; 04-17 is a planned split of 04-08; 04-18 and 04-19 are stop-rule splits of 04-03 and 04-04)
+**Plans**: 16/16 plans complete in 15 sequential waves, listed in execution order (context waves W1-W6 of 04-CONTEXT; the D-180 cut was taken at checkpoint 04-13, so W7-W8 became Phase 04.1; 04-17 is a planned split of 04-08; 04-18 and 04-19 are stop-rule splits of 04-03 and 04-04)
 
 Plans:
 - [x] 04-01-PLAN.md - W1: evidence data: ER-1 page-image reads, cites, ledger entries and amendments, claim words (data only)
@@ -276,7 +276,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phases 4 and 5
 | 1. Owner Decisions, Claim Ledger and Toolchain Spike | 12/12 | Complete    | 2026-11-09 |
 | 2. Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate | 22/22 | Complete    | 2026-11-10 |
 | 3. HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad | 38/38 | Complete    | 2026-11-11 |
-| 4. VCE/VDC Raw Video | 16/16 | In Progress | - |
+| 4. VCE/VDC Raw Video | 16/16 | Complete    | 2026-11-12 |
 | 04.1. VDC Sprites | 0/3 | Not started | - |
 | 5. PSG Raw Audio | 0/TBD | Not started | - |
 | 6. Headless Runner, Installed-Consumer Proof and Staged Verification | 0/TBD | Not started | - |

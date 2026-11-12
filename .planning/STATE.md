@@ -1,20 +1,20 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 4
-current_phase_name: VCE/VDC Raw Video
-current_plan: 17
+current_phase: "04.1"
+current_phase_name: VDC Sprites
+current_plan: Not started
 status: executing
-stopped_at: Completed 04-13-PLAN.md
-last_updated: "2026-11-12T16:12:04.129Z"
-last_activity: 2026-11-11
-last_activity_desc: Phase 3 complete, transitioned to Phase 4
-state_head: 676e4a41e4b87c17265a10492563d41d57b6c6e8
+stopped_at: Phase 4 complete, ready to execute Phase 04.1
+last_updated: "2026-11-12T17:42:44.103Z"
+last_activity: 2026-11-12
+last_activity_desc: Phase 4 complete, transitioned to Phase 04.1
+state_head: 5ccd69784869345d88b0c14c9b5576928ca567f3
 progress:
-  total_phases: 6
-  completed_phases: 3
+  total_phases: 7
+  completed_phases: 4
   total_plans: 91
   completed_plans: 88
-  percent: 50
+  percent: 57
 ---
 
 # Project State
@@ -24,22 +24,22 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-09)
 
 **Core value:** For every hardware/content profile DuoSpool claims to support, a fresh, deterministic, headless run can reproduce the machine's behavior and show the evidence (guest progress, machine time, raw video, raw audio) that backs the claim.
-**Current focus:** Phase 3 — HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad
+**Current focus:** Phase 04.1 - VDC Sprites (Phase 4 complete locally, sprites split off at the D-180 cut)
 
 ## Current Position
 
-Phase: 4 (VCE/VDC Raw Video) — READY TO EXECUTE
-Current Plan: 17
-Total Plans in Phase: 19
+Phase: 04.1 — VDC Sprites
+Current Plan: Not started
+Total Plans in Phase: 3
 Status: Ready to execute
-Last activity: 2026-11-11 — Phase 3 complete, transitioned to Phase 4
+Last activity: 2026-11-12 — Phase 4 complete, transitioned to Phase 04.1
 
-Progress: [█████░░░░░] 50%
+Progress: [██████░░░░] 57%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 72
+- Total plans completed: 88
 - Average duration: -
 - Total execution time: 0.0 hours
 
@@ -50,6 +50,7 @@ Progress: [█████░░░░░] 50%
 | 1 | 12 | - | - |
 | 2 | 22 | - | - |
 | 3 | 38 | - | - |
+| 4 | 16 | - | - |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -347,5 +348,5 @@ Items acknowledged and deferred at milestone close, most recent first:
 ## Session Continuity
 
 Last session: 2026-11-12T16:12:03.728Z
-Stopped at: Completed 04-13-PLAN.md
+Stopped at: Phase 4 complete, ready to execute Phase 04.1
 Resume file: None
