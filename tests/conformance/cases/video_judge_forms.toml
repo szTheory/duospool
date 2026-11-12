@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The forms of the video judge on hand-built records (plan 04-07; D-171, D-172, ER-7, ER-13, T-04-24, T-04-26): the runner kind video_judge_forms (tests/conformance/videokinds.c) builds records from the layout of D-161 written in that file (test code, not a renderer, with no core, no emulator and no hash behind an expected
+# value) and parses its rows with the parser of the .vexp.tsv reader.
+# ROWS: index and value lists (plain and COUNT*V items), a second active line, a wrong index and a wrong value fail, dots outside the active window fail, the non-vacuity rule (fewer than 3 distinct values) is a fault of the case. REL: each relation id (scroll_x_shift, scroll_y_shift, palette_subst, blank_is_border,
+# dot_width_scale) on two named runs, the pair that has it passes and the pair that lacks it fails.
+# STRUCT: each closed check with its right literal, a wrong literal and F0. The null renderers (no record, all border, all index 0) never pass a form and a sink that was never written is a fault of the harness. The sweep flips a ROWS group under F0 F1 F2 F3 F4 F7 F8, reports a group left green by a declared fault as vacuous,
+# and F6 keeps the stream well formed. E0; the rows are test data of the kind and no statement about a video.
+id = "video_judge_forms"
+kind = "video_judge_forms"
+fixture = "none"
+request = ""
+expect = "forms=rows,rel,struct,null,sweep"
+meaning = "The judge evaluates ROWS, REL and STRUCT rows on hand-built records: a right literal passes, a wrong one fails, a vacuous ROWS literal is refused, the null renderers never pass and the record faults flip the groups that declare them, E0"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

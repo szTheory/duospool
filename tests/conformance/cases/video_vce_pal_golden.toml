@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The golden change detector of the vce_pal scene (plan 04-07; D-172, ER-11, T-04-25): the runner kind video (tests/conformance/videokinds.c) runs the guest of video_vce_pal and compares the SHA-256 of the canonical stream (D-163) with the digest pinned in the golden row of fixtures/src/vce_pal.vexp. The pinned digest is E0
+# repeatability only, valid only beside the literal case video_vce_pal of the same scene, which the toy vid-palette-mask
+# turns red and the fault sweep video_fault_sweep_vce_pal shows live. A golden scene with no literal scene is refused as video-hash-only, a harness_failure (statically INV_VIDEO_HASH_ONLY in scripts/video-check; the case runs the refusal in process on a copy of the rows whose literal scene row is made a struct-role row).
+# A change of the stream changes the digest: the plan that changes the records (04-08, 04-09 and later) repins it by the procedure of its own plan, independently recomputed with a host tool (shasum -a 256 of build/gate/video/video_vce_pal.dsvr, written by --video-out). Evidence tier E0: no accuracy, compatibility or hardware claim, and the word pass is not a support claim.
+id = "video_vce_pal_golden"
+kind = "video"
+fixture = "authored:vce-pal"
+request = ""
+expect = "rom=vce-pal;id=15;scene=vce_pal"
+meaning = "The stream of the vce_pal guest has the digest pinned in its golden row, a change detector beside the literal case video_vce_pal and never a verdict; the same case pointed at a scene with no literal case is refused video-hash-only, E0 repeatability"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+checks = 32

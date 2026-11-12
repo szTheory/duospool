@@ -359,6 +359,8 @@ static const char *vx_row_parse(struct vx_file *f, char **fld, unsigned nf)
     return NULL;
 }
 
+static const char *vx_resolve(struct vx_file *f);
+
 /* the file build/gate/fixtures/ROM.vexp.tsv into f (cleared first); NULL on success. A missing file is a fault of the harness, never an empty scene list: the video kind is judged by these rows only */
 static const char *vx_load(const char *rom, struct vx_file *f)
 {
@@ -367,7 +369,6 @@ static const char *vx_load(const char *rom, struct vx_file *f)
     char *line;
     unsigned nrows = 0u;
     const char *err = NULL;
-    unsigned i;
 
     memset(f, 0, sizeof *f);
     snprintf(path, sizeof path, "build/gate/fixtures/%s.vexp.tsv", rom);
@@ -402,8 +403,16 @@ static const char *vx_load(const char *rom, struct vx_file *f)
     if (err != NULL) {
         return err;
     }
+    return vx_resolve(f);
+}
+
+/* every row names a group and every group a scene; the group index of each row is set. NULL on success */
+static const char *vx_resolve(struct vx_file *f)
+{
+    unsigned i;
+
     if (f->ns == 0u) {
-        return "vexp-malformed: the built vexp rows hold no scene row";
+        return "vexp-malformed: the vexp rows hold no scene row";
     }
     for (i = 0u; i < f->nr; i++) { /* every row names a group, every group a scene */
         unsigned g;
@@ -977,6 +986,77 @@ static int vk_s_line_dirty(struct vk_rc *rc)
     return VG_PASS;
 }
 
+/* STRUCT display_lines (ASSUMED LED-VID-0005, D-143): every frame but the last has min(vdw + 1, frame_lines - (vds + 2)) records with an active window */
+static int vk_s_display_lines(struct vk_rc *rc)
+{
+    static const char *const keys[] = {"vdw", "vds", "frame_lines"};
+    uint64_t vdw = 0u;
+    uint64_t vds = 0u;
+    uint64_t fl = 0u;
+    uint64_t want;
+    uint64_t k;
+    uint64_t run = 0u;
+    uint64_t complete = 0u;
+    uint32_t cur;
+
+    if (vk_need(rc, keys, 3u) != 0 || vk_num(rc, "vdw", &vdw) != 0 || vk_num(rc, "vds", &vds) != 0 || vk_num(rc, "frame_lines", &fl) != 0 || fl == 0u || fl > 1000u || vdw > 1000u || vds > 1000u) {
+        return vk_bad(rc, "STRUCT display_lines needs the items vdw=N, vds=N and frame_lines=N");
+    }
+    want = vds + 2u >= fl ? 0u : fl - (vds + 2u);
+    if (vdw + 1u < want) {
+        want = vdw + 1u;
+    }
+    vk_focus(rc, rc->w->n / 2u);
+    cur = vk_u32(rc->w->rec[0] + VK_O_FRAME);
+    for (k = 0u; k < rc->w->n; k++) {
+        uint32_t f = vk_u32(rc->w->rec[k] + VK_O_FRAME);
+
+        if (f != cur) {
+            if (run != want) {
+                snprintf(rc->why, rc->cap, "STRUCT display_lines: frame %u holds %llu active lines, min(VDW + 1, frame_lines - (VDS + 2)) is %llu", (unsigned)cur, (unsigned long long)run, (unsigned long long)want);
+                return VG_FAIL;
+            }
+            complete++;
+            cur = f;
+            run = 0u;
+        }
+        if (vk_u16(rc->w->rec[k] + VK_O_ACTIVE_W) > 0u) {
+            run++;
+        }
+    }
+    return complete >= 1u ? VG_PASS : vk_bad(rc, "STRUCT display_lines: the stream holds no complete frame");
+}
+
+/* STRUCT width_set: the set of active widths over the run has at least min_distinct elements (a mid-frame change of the window shows as a second width) */
+static int vk_s_width_set(struct vk_rc *rc)
+{
+    static const char *const keys[] = {"min_distinct"};
+    uint64_t want = 0u;
+    uint32_t seen[16];
+    unsigned ns = 0u;
+    uint64_t k;
+
+    if (vk_need(rc, keys, 1u) != 0 || vk_num(rc, "min_distinct", &want) != 0 || want == 0u || want > 16u) {
+        return vk_bad(rc, "STRUCT width_set needs the single item min_distinct=N (1 to 16)");
+    }
+    vk_focus(rc, rc->w->n / 2u);
+    for (k = 0u; k < rc->w->n; k++) {
+        uint32_t aw = vk_u16(rc->w->rec[k] + VK_O_ACTIVE_W);
+        unsigned j;
+
+        for (j = 0u; j < ns && seen[j] != aw; j++) {
+        }
+        if (j == ns && ns < 16u) {
+            seen[ns++] = aw;
+        }
+    }
+    if ((uint64_t)ns < want) {
+        snprintf(rc->why, rc->cap, "STRUCT width_set: the run holds %u distinct active widths, at least %llu are expected", ns, (unsigned long long)want);
+        return VG_FAIL;
+    }
+    return VG_PASS;
+}
+
 struct vk_chk {
     const char *name;
     int (*fn)(struct vk_rc *);
@@ -993,6 +1073,8 @@ static const struct vk_chk vk_checks[] = {
     {"div_first", vk_s_div_first},
     {"border_after_pal", vk_s_border},
     {"line_dirty", vk_s_line_dirty},
+    {"display_lines", vk_s_display_lines},
+    {"width_set", vk_s_width_set},
 };
 
 /* F0 (D-172): the first decimal number of a literal grows by one, so the row is made to claim something its own source does not say; 0 when the text holds a number */
@@ -1024,6 +1106,373 @@ static int vk_perturb(char *lit, size_t cap)
     return n > 0 && (size_t)n < cap - i ? 0 : -1;
 }
 
+/* ---- ROWS (D-171): the dots X0 to X1 of the K-th active line, a list of palette addresses (index) or of colour values (value) ---- */
+
+/* the list of items V or COUNT*V separated by commas into out (at most cap values, each below 65536), the count in *n; 0 on success */
+static int vk_expand(const char *text, uint32_t *out, unsigned cap, unsigned *n)
+{
+    char buf[VX_LIT];
+    char *rest = buf;
+    char *item;
+
+    *n = 0u;
+    if (strlen(text) >= sizeof buf) {
+        return -1;
+    }
+    memcpy(buf, text, strlen(text) + 1u);
+    while ((item = pk_next_item(&rest, ',')) != NULL) {
+        uint64_t rep = 1u;
+        uint64_t val = 0u;
+        uint64_t r;
+        char *star = strchr(item, '*');
+
+        if (star != NULL) {
+            *star = '\0';
+            if (strlen(item) == 0u || strlen(item) > 5u || strspn(item, "0123456789") != strlen(item) || parse_u64(item, &rep) != 0 || rep == 0u || rep > (uint64_t)cap) {
+                return -1;
+            }
+            item = star + 1;
+        }
+        if (strlen(item) == 0u || strlen(item) > 5u || strspn(item, "0123456789") != strlen(item) || parse_u64(item, &val) != 0 || val > 65535u || rep > (uint64_t)(cap - *n)) {
+            return -1;
+        }
+        for (r = 0u; r < rep; r++) {
+            out[(*n)++] = (uint32_t)val;
+        }
+    }
+    return *n >= 1u ? 0 : -1;
+}
+
+/* the active lines of a run: the records with an active window in the first frame that has one, in order; the count (at most cap) */
+static unsigned vk_active_lines(const struct vk_walk *w, uint64_t *out, unsigned cap)
+{
+    uint64_t k;
+    unsigned n = 0u;
+    uint32_t frame = 0u;
+    int have = 0;
+
+    for (k = 0u; k < w->n; k++) {
+        if (vk_u16(w->rec[k] + VK_O_ACTIVE_W) == 0u) {
+            continue;
+        }
+        if (!have) {
+            have = 1;
+            frame = vk_u32(w->rec[k] + VK_O_FRAME);
+        }
+        if (vk_u32(w->rec[k] + VK_O_FRAME) != frame || n >= cap) {
+            break;
+        }
+        out[n++] = k;
+    }
+    return n;
+}
+
+/* the index (which = 0) or the colour value (which = 1) of dot j of a record */
+static uint32_t vk_dot(const uint8_t *rec, uint32_t j, int which)
+{
+    uint32_t aw = vk_u16(rec + VK_O_ACTIVE_W);
+
+    return vk_u16(rec + VK_HDR + (which != 0 ? 2u * aw : 0u) + 2u * j);
+}
+
+/* the value after the prefix, or NULL, and the number it starts with (up to 9 digits), the end of the digits in *end */
+static int vk_scan_u(const char *p, uint64_t *out, const char **end)
+{
+    size_t n = strspn(p, "0123456789");
+
+    if (n == 0u || n > 9u) {
+        return -1;
+    }
+    *out = 0u;
+    while (n-- > 0u) {
+        *out = *out * 10u + (uint64_t)(*p++ - '0');
+    }
+    *end = p;
+    return 0;
+}
+
+static int vk_rows_row(struct vk_rc *rc, const struct vx_row *r, int perturb)
+{
+    uint64_t kk = 0u;
+    uint64_t x0 = 0u;
+    uint64_t x1 = 0u;
+    const char *p = r->sel;
+    const char *lv;
+    uint32_t want[VK_MAX_DOTS];
+    uint32_t dseen[8];
+    unsigned nw = 0u;
+    unsigned ndist = 0u;
+    unsigned ntr = 0u;
+    unsigned j;
+    unsigned which;
+    uint64_t lines[512];
+    unsigned nl;
+    const uint8_t *rec;
+    uint32_t aw;
+
+    if (strncmp(p, "line=active+", 12u) != 0 || vk_scan_u(p + 12, &kk, &p) != 0 || strncmp(p, ";x=", 3u) != 0 || vk_scan_u(p + 3, &x0, &p) != 0 || strncmp(p, "..", 2u) != 0 || vk_scan_u(p + 2, &x1, &p) != 0 || *p != '\0') {
+        return vk_bad(rc, "a ROWS row has the selector line=active+K;x=X0..X1");
+    }
+    if (strncmp(r->lit, "index=", 6u) == 0) {
+        which = 0u;
+        lv = r->lit + 6;
+    } else if (strncmp(r->lit, "value=", 6u) == 0) {
+        which = 1u;
+        lv = r->lit + 6;
+    } else {
+        return vk_bad(rc, "a ROWS row has the literal index=LIST or value=LIST");
+    }
+    if (vk_expand(lv, want, VK_MAX_DOTS, &nw) != 0 || x1 < x0 || x1 >= (uint64_t)VK_MAX_DOTS || (uint64_t)nw != x1 - x0 + 1u) {
+        return vk_bad(rc, "a ROWS literal is a list of V or COUNT*V items with one value for each dot of its x range");
+    }
+    for (j = 0u; j < nw; j++) { /* the non-vacuity of D-171: at least 3 distinct values and a transition, or an all-border or one-colour expectation would pass a null renderer */
+        unsigned m;
+
+        for (m = 0u; m < ndist && dseen[m] != want[j]; m++) {
+        }
+        if (m == ndist && ndist < 8u) {
+            dseen[ndist++] = want[j];
+        }
+        if (j > 0u && want[j] != want[j - 1u]) {
+            ntr++;
+        }
+    }
+    if (ndist < 3u || ntr < 1u) {
+        return vk_bad(rc, "VIDEO_ROWS_VACUOUS: a ROWS literal needs at least 3 distinct values and one transition");
+    }
+    if (perturb) {
+        want[0]++; /* F0: the first expected value of the row is made wrong */
+    }
+    nl = vk_active_lines(rc->w, lines, 512u);
+    if (kk >= (uint64_t)nl) {
+        snprintf(rc->why, rc->cap, "ROWS: the run has %u active lines and the row asks for active+%llu", nl, (unsigned long long)kk);
+        vk_focus(rc, rc->w->n / 2u);
+        return VG_FAIL;
+    }
+    vk_focus(rc, lines[kk]);
+    rec = rc->w->rec[lines[kk]];
+    aw = vk_u16(rec + VK_O_ACTIVE_W);
+    if (x1 >= (uint64_t)aw) {
+        snprintf(rc->why, rc->cap, "ROWS: the dots %llu to %llu are not all inside the active window of active+%llu (width %u)", (unsigned long long)x0, (unsigned long long)x1, (unsigned long long)kk, (unsigned)aw);
+        return VG_FAIL;
+    }
+    for (j = 0u; j < nw; j++) {
+        if (vk_dot(rec, (uint32_t)x0 + j, (int)which) != want[j]) {
+            snprintf(rc->why, rc->cap, "ROWS: dot %llu of active+%llu has the %s %u, the row says %u", (unsigned long long)x0 + j, (unsigned long long)kk, which == 0u ? "index" : "value", (unsigned)vk_dot(rec, (uint32_t)x0 + j, (int)which), (unsigned)want[j]);
+            return VG_FAIL;
+        }
+    }
+    return VG_PASS;
+}
+
+/* ---- REL (D-171): a relation between two named runs, A the reference and B the variant ---- */
+
+static const struct vk_run *vk_run_named(const struct vk_run *runs, unsigned nruns, const char *name)
+{
+    unsigned i;
+
+    for (i = 0u; i < nruns; i++) {
+        if (strcmp(runs[i].name, name) == 0) {
+            return &runs[i];
+        }
+    }
+    return NULL;
+}
+
+/* two rows of two runs differ at some dot (index or value) */
+static int vk_row_differs(const uint8_t *ra, uint32_t xa, const uint8_t *rb, uint32_t xb)
+{
+    return vk_dot(ra, xa, 0) != vk_dot(rb, xb, 0) || vk_dot(ra, xa, 1) != vk_dot(rb, xb, 1);
+}
+
+static int vk_fail_rel(struct vk_rc *rc, const char *rel, const char *what)
+{
+    snprintf(rc->why, rc->cap, "REL %s: %s", rel, what);
+    return VG_FAIL;
+}
+
+static int vk_rel_row(struct vk_rc *rc, const struct vx_row *r, const struct vk_run *runs, unsigned nruns, int perturb)
+{
+    char lit[VX_LIT + 8u];
+    char rel[24];
+    char names[72];
+    char *comma;
+    const struct vk_run *ra;
+    const struct vk_run *rb;
+    uint64_t la[512];
+    uint64_t lb[512];
+    unsigned na;
+    unsigned nb;
+    unsigned i;
+    uint64_t v1 = 0u;
+    uint64_t v2 = 0u;
+    int sel;
+
+    if (vk_kv_parse(r->sel, rc) != 0 || rc->nkv != 2u || strcmp(rc->kv[0].k, "rel") != 0 || strcmp(rc->kv[1].k, "runs") != 0 || strlen(rc->kv[0].v) >= sizeof rel) {
+        return vk_bad(rc, "a REL row has the selector rel=NAME;runs=A,B");
+    }
+    memcpy(rel, rc->kv[0].v, strlen(rc->kv[0].v) + 1u);
+    memcpy(names, rc->kv[1].v, strlen(rc->kv[1].v) + 1u);
+    comma = strchr(names, ',');
+    if (comma == NULL) {
+        return vk_bad(rc, "a REL row names two runs: runs=A,B");
+    }
+    *comma = '\0';
+    ra = vk_run_named(runs, nruns, names);
+    rb = vk_run_named(runs, nruns, comma + 1);
+    if (ra == NULL || rb == NULL) {
+        return vk_bad(rc, "a REL row names a run that the case does not have");
+    }
+    memcpy(lit, r->lit, strlen(r->lit) + 1u);
+    if (perturb && vk_perturb(lit, sizeof lit) != 0) {
+        return vk_bad(rc, "the literal of a REL row holds no number to perturb");
+    }
+    if (vk_kv_parse(lit, rc) != 0) {
+        return vk_bad(rc, "the literal of a REL row is not key=value items separated by semicolons");
+    }
+    na = vk_active_lines(ra->w, la, 512u);
+    nb = vk_active_lines(rb->w, lb, 512u);
+    if (na == 0u || nb == 0u) {
+        snprintf(rc->why, rc->cap, "REL %s: a run holds no active line (a null renderer never passes)", rel);
+        return VG_FAIL;
+    }
+    vk_focus(rc, lb[0]);
+    sel = strcmp(rel, "scroll_x_shift") == 0 ? 1 : strcmp(rel, "scroll_y_shift") == 0 ? 2 : strcmp(rel, "palette_subst") == 0 ? 3 : strcmp(rel, "blank_is_border") == 0 ? 4 : strcmp(rel, "dot_width_scale") == 0 ? 5 : 0;
+    if (sel == 1) { /* B shows the row of A moved left by dx dots: B[x] = A[x + dx] for every dot that stays inside */
+        static const char *const keys[] = {"dx"};
+        unsigned observable = 0u;
+
+        if (vk_need(rc, keys, 1u) != 0 || vk_num(rc, "dx", &v1) != 0 || v1 == 0u || na != nb) {
+            return vk_bad(rc, "REL scroll_x_shift needs dx=N (at least 1) and runs with the same number of active lines");
+        }
+        for (i = 0u; i < na; i++) {
+            uint32_t aw = vk_u16(ra->w->rec[la[i]] + VK_O_ACTIVE_W);
+            uint32_t x;
+
+            if (vk_u16(rb->w->rec[lb[i]] + VK_O_ACTIVE_W) != aw || v1 >= (uint64_t)aw) {
+                snprintf(rc->why, rc->cap, "REL scroll_x_shift: active line %u has another width in B than in A, or dx is not below the width", i);
+                return VG_FAIL;
+            }
+            for (x = 0u; x + (uint32_t)v1 < aw; x++) {
+                if (vk_row_differs(rb->w->rec[lb[i]], x, ra->w->rec[la[i]], x + (uint32_t)v1)) {
+                    snprintf(rc->why, rc->cap, "REL scroll_x_shift: dot %u of active line %u in B is not dot %u of A", x, i, x + (unsigned)v1);
+                    return VG_FAIL;
+                }
+                if (vk_row_differs(ra->w->rec[la[i]], x + (uint32_t)v1, ra->w->rec[la[i]], x)) {
+                    observable = 1u;
+                }
+            }
+        }
+        return observable ? VG_PASS : vk_bad(rc, "REL scroll_x_shift: run A is constant along x, so a shift cannot be observed");
+    }
+    if (sel == 2) { /* B line L shows A line L + dy */
+        static const char *const keys[] = {"dy"};
+        unsigned observable = 0u;
+
+        if (vk_need(rc, keys, 1u) != 0 || vk_num(rc, "dy", &v1) != 0 || v1 == 0u || na != nb || v1 >= (uint64_t)na) {
+            return vk_bad(rc, "REL scroll_y_shift needs dy=N (at least 1, below the active lines) and runs with the same number of active lines");
+        }
+        for (i = 0u; i + (unsigned)v1 < na; i++) {
+            uint32_t aw = vk_u16(rb->w->rec[lb[i]] + VK_O_ACTIVE_W);
+            uint32_t x;
+
+            if (vk_u16(ra->w->rec[la[i + (unsigned)v1]] + VK_O_ACTIVE_W) != aw) {
+                snprintf(rc->why, rc->cap, "REL scroll_y_shift: active line %u of B has another width than active line %u of A", i, i + (unsigned)v1);
+                return VG_FAIL;
+            }
+            for (x = 0u; x < aw; x++) {
+                if (vk_row_differs(rb->w->rec[lb[i]], x, ra->w->rec[la[i + (unsigned)v1]], x)) {
+                    snprintf(rc->why, rc->cap, "REL scroll_y_shift: dot %u of active line %u in B is not that of active line %u in A", x, i, i + (unsigned)v1);
+                    return VG_FAIL;
+                }
+                if (vk_row_differs(ra->w->rec[la[i + (unsigned)v1]], x, ra->w->rec[la[i]], x)) {
+                    observable = 1u;
+                }
+            }
+        }
+        return observable ? VG_PASS : vk_bad(rc, "REL scroll_y_shift: the lines of run A are all alike, so a shift cannot be observed");
+    }
+    if (sel == 3) { /* B is A with the colour value from replaced by to, every index unchanged */
+        static const char *const keys[] = {"from", "to"};
+        unsigned hit = 0u;
+
+        if (vk_need(rc, keys, 2u) != 0 || vk_num(rc, "from", &v1) != 0 || vk_num(rc, "to", &v2) != 0 || na != nb || v1 == v2) {
+            return vk_bad(rc, "REL palette_subst needs from=V and to=W (different) and runs with the same number of active lines");
+        }
+        for (i = 0u; i < na; i++) {
+            uint32_t aw = vk_u16(ra->w->rec[la[i]] + VK_O_ACTIVE_W);
+            uint32_t x;
+
+            if (vk_u16(rb->w->rec[lb[i]] + VK_O_ACTIVE_W) != aw) {
+                return vk_fail_rel(rc, "palette_subst", "a line has another width in B than in A");
+            }
+            for (x = 0u; x < aw; x++) {
+                uint32_t ca = vk_dot(ra->w->rec[la[i]], x, 1);
+                uint32_t cb = vk_dot(rb->w->rec[lb[i]], x, 1);
+
+                if (vk_dot(ra->w->rec[la[i]], x, 0) != vk_dot(rb->w->rec[lb[i]], x, 0) || cb != (ca == (uint32_t)v1 ? (uint32_t)v2 : ca)) {
+                    return vk_fail_rel(rc, "palette_subst", "a dot of B is not that of A with the colour replaced (or an index changed)");
+                }
+                if (ca == (uint32_t)v1) {
+                    hit = 1u;
+                }
+            }
+        }
+        return hit ? VG_PASS : vk_bad(rc, "REL palette_subst: run A holds no dot of the colour from, so the substitution cannot be observed");
+    }
+    if (sel == 4) { /* B is blank: every active dot has the index and shows the border; A is not blank */
+        static const char *const keys[] = {"index"};
+        unsigned shown = 0u;
+
+        if (vk_need(rc, keys, 1u) != 0 || vk_num(rc, "index", &v1) != 0) {
+            return vk_bad(rc, "REL blank_is_border needs the single item index=N");
+        }
+        for (i = 0u; i < nb; i++) {
+            uint32_t aw = vk_u16(rb->w->rec[lb[i]] + VK_O_ACTIVE_W);
+            uint32_t x;
+
+            for (x = 0u; x < aw; x++) {
+                if ((uint64_t)vk_dot(rb->w->rec[lb[i]], x, 0) != v1 || vk_dot(rb->w->rec[lb[i]], x, 1) != vk_u16(rb->w->rec[lb[i]] + VK_O_BORDER)) {
+                    return vk_fail_rel(rc, "blank_is_border", "a dot of B does not have the blank index and the border colour");
+                }
+            }
+        }
+        for (i = 0u; i < na; i++) {
+            uint32_t aw = vk_u16(ra->w->rec[la[i]] + VK_O_ACTIVE_W);
+            uint32_t x;
+
+            for (x = 0u; x < aw; x++) {
+                if (vk_dot(ra->w->rec[la[i]], x, 1) != vk_u16(ra->w->rec[la[i]] + VK_O_BORDER)) {
+                    shown = 1u;
+                }
+            }
+        }
+        return shown ? VG_PASS : vk_bad(rc, "REL blank_is_border: run A shows nothing but the border, so a blank cannot be told from it");
+    }
+    if (sel == 5) { /* the width in master clocks (active_w * div) is the same, the divider differs: the window is a count of dots at another dot clock */
+        static const char *const keys[] = {"lines"};
+        unsigned pairs = na < nb ? na : nb;
+
+        if (vk_need(rc, keys, 1u) != 0 || vk_num(rc, "lines", &v1) != 0 || v1 == 0u) {
+            return vk_bad(rc, "REL dot_width_scale needs the single item lines=N (at least 1)");
+        }
+        if ((uint64_t)pairs < v1) {
+            snprintf(rc->why, rc->cap, "REL dot_width_scale: the runs have %u corresponding active lines, the row wants %llu", pairs, (unsigned long long)v1);
+            return VG_FAIL;
+        }
+        for (i = 0u; i < pairs; i++) {
+            uint64_t ca = (uint64_t)vk_u16(ra->w->rec[la[i]] + VK_O_ACTIVE_W) * (uint64_t)ra->w->rec[la[i]][VK_O_DIV];
+            uint64_t cb = (uint64_t)vk_u16(rb->w->rec[lb[i]] + VK_O_ACTIVE_W) * (uint64_t)rb->w->rec[lb[i]][VK_O_DIV];
+
+            if (ca != cb || ra->w->rec[la[i]][VK_O_DIV] == rb->w->rec[lb[i]][VK_O_DIV]) {
+                return vk_fail_rel(rc, "dot_width_scale", "a line of B does not span the same master clocks as in A, or has the same divider");
+            }
+        }
+        return VG_PASS;
+    }
+    return vk_bad(rc, "a REL row names a relation that is not in the closed list");
+}
+
 /* one row on the runs of a case: the verdict, the text of a failure and the record it looked at first. perturb is F0 (the literal of this row is changed before it is read) */
 static int vk_eval_row(const struct vx_group *g, const struct vx_row *r, const struct vk_run *runs, unsigned nruns, int perturb, uint64_t *focus, char *why, size_t cap)
 {
@@ -1042,9 +1491,15 @@ static int vk_eval_row(const struct vx_group *g, const struct vx_row *r, const s
     }
     rc.w = runs[nruns - 1u].w; /* the run a fault is applied to is the last one (the variant of a REL pair) */
     rc.lg = runs[nruns - 1u].lg;
-    if (g->form != VX_FORM_STRUCT) {
-        snprintf(why, cap, "the %s form of group %s is not judged by this version of the runner", g->form == VX_FORM_ROWS ? "ROWS" : "REL", g->gid);
-        return VG_HARNESS;
+    if (g->form == VX_FORM_ROWS) {
+        v = vk_rows_row(&rc, r, perturb);
+        *focus = rc.focus;
+        return v;
+    }
+    if (g->form == VX_FORM_REL) {
+        v = vk_rel_row(&rc, r, runs, nruns, perturb);
+        *focus = rc.focus;
+        return v;
     }
     if (vk_kv_parse(r->sel, &rc) != 0 || rc.nkv != 1u || strcmp(rc.kv[0].k, "check") != 0) {
         snprintf(why, cap, "a STRUCT row of group %s has a selector other than check=NAME", g->gid);
@@ -1147,6 +1602,12 @@ static uint8_t *vk_stream(const uint8_t *vbuf, uint64_t vbytes)
 }
 
 /* ---- the capture of a video run: the boot, the run to the end of the DSV1 verdict with a vid and a dev sink, the records walked and the dev log scanned ---- */
+
+/* a vid sink that was never written: no record and no offered record although lines were due by the closed form of the machine time the run reached. A missing sink is a fault of the harness, never a pass (D-172) */
+static int vk_sink_missing(uint32_t count, uint64_t seq, uint64_t m)
+{
+    return count == 0u && seq == 0u && vk_count_closed_form(m) >= 1u;
+}
 
 struct vk_cap {
     struct vk_expect e;
@@ -1254,6 +1715,10 @@ static int vk_capture(const struct kase *k, struct ctx *c, struct vk_cap *cp, ch
         harness_error(c, "a sink of the video case lost a record or its header is inconsistent: the stream would be incomplete evidence (D-162)");
         return -1;
     }
+    if (vk_sink_missing(cp->vcount, vk_u64(cp->vsk->header + 8), res.machine_time)) {
+        harness_error(c, "the vid sink holds no record and was offered none although lines were due: a missing sink is a fault of the harness, never a pass (D-172)");
+        return -1;
+    }
     if ((uint64_t)cp->vcount > cp->lines_due) {
         check(c, 0, "STRUCT count: the vid sink holds more records than the lines due at the deadline plus one");
         return -1;
@@ -1271,6 +1736,8 @@ static int vk_capture(const struct kase *k, struct ctx *c, struct vk_cap *cp, ch
     cp->lg.m = res.machine_time;
     return 0;
 }
+
+static int vk_golden_judge(struct ctx *c, const struct vx_file *f, const char *scene, const char *hex);
 
 void kind_video(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
 {
@@ -1295,7 +1762,39 @@ void kind_video(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
         goto done;
     }
     if (cp.vx->sc[si].role == VX_ROLE_GOLDEN) {
-        harness_error(c, "the golden role is not judged by this version of the runner");
+        uint8_t gdig[DS_SHA256_BYTES];
+        char ghex[2u * DS_SHA256_BYTES + 1u];
+        char gdet[700];
+        uint8_t *gstream = vk_stream(cp.vbuf, cp.vbytes);
+        struct vx_file *own = (struct vx_file *)calloc(1u, sizeof *own);
+        struct ctx sub;
+        unsigned s2;
+
+        if (gstream == NULL || own == NULL) {
+            free(gstream);
+            free(own);
+            harness_error(c, "out of memory for the golden role");
+            goto done;
+        }
+        ds_sha256(gstream, (size_t)(19u + cp.vbytes), gdig);
+        free(gstream);
+        vk_hex(gdig, ghex);
+        (void)vk_golden_judge(c, cp.vx, cp.e.scene, ghex);
+        /* the in-process sub-check of ER-11: the same case pointed at a scene with no literal case (the literal rows of the scene made struct-role rows in a copy) is refused as video-hash-only, a harness_failure */
+        memcpy(own, cp.vx, sizeof *own);
+        for (s2 = 0u; s2 < own->ns; s2++) {
+            if (strcmp(own->sc[s2].name, cp.e.scene) == 0 && own->sc[s2].role == VX_ROLE_LITERAL) {
+                own->sc[s2].role = VX_ROLE_STRUCT;
+            }
+        }
+        memset(&sub, 0, sizeof sub);
+        (void)vk_golden_judge(&sub, own, cp.e.scene, ghex);
+        free(own);
+        check(c, sub.harness && !sub.failed && strncmp(sub.why, "video-hash-only", 15u) == 0, "a golden scene with no literal scene was not refused as video-hash-only (ER-11)");
+        snprintf(gdet, sizeof gdet, "video_sha256=%s E0 repeatability (a change detector, never a verdict, ER-11)\nvideo_golden: the digest is compared with the pinned digest of the scene; it is valid only beside a literal case of the same scene (video_vce_pal for vce_pal); a golden scene with no literal scene is refused video-hash-only\nvideo_records=%llu video_bytes=%llu machine_time=%llu\n", ghex,
+                 (unsigned long long)cp.w.n, (unsigned long long)cp.vbytes, (unsigned long long)cp.lg.m);
+        set_evidence_detail(gdet);
+        snprintf(got + strlen(got), gotcap - strlen(got), " records=%llu", (unsigned long long)cp.w.n);
         goto done;
     }
     {
@@ -1378,6 +1877,928 @@ done:
     vk_cap_free(&cp);
 }
 
+
+/* ---- the record faults F0 to F9 (D-172) and the sweep ---- */
+
+#define VK_RUNS_MAX 4u
+
+static const char *const vk_fault_name[10] = {"F0 perturb one of the group's own literals", "F1 shift pixels +1 in x", "F2 swap two bits of an index", "F3 drop the first active line", "F4 duplicate a line", "F5 change the divider", "F6 widen the active window by one dot", "F7 zero every non-zero index", "F8 swap two adjacent lines", "F9 move an origin by one clock"};
+
+static void vk_put16(uint8_t *p, uint32_t v)
+{
+    p[0] = (uint8_t)(v & 0xFFu);
+    p[1] = (uint8_t)((v >> 8) & 0xFFu);
+}
+
+static void vk_put64(uint8_t *p, uint64_t v)
+{
+    unsigned i;
+
+    for (i = 0u; i < 8u; i++) {
+        p[i] = (uint8_t)((v >> (8u * i)) & 0xFFu);
+    }
+}
+
+/* the first record at or after from with an active window; w->n when there is none */
+static uint64_t vk_next_active(const struct vk_walk *w, uint64_t from)
+{
+    uint64_t k;
+
+    for (k = from; k < w->n; k++) {
+        if (vk_u16(w->rec[k] + VK_O_ACTIVE_W) > 0u) {
+            return k;
+        }
+    }
+    return w->n;
+}
+
+/*
+ * One fault of D-172 applied to a copy of the captured records, at the record the group looks at (focus, the record of its first row). src is never changed: a changed record is a copy in scr[0] (the pointer of the copy replaces the original in dst) and a dropped, duplicated or swapped line changes only the pointer array dst (capacity src->n + 1). Returns 0 when the fault was applied
+ * and -1 when it cannot act on this stream (for example a pixel fault on a record with no active window): such a fault flips nothing, so a group that declares it is vacuous (VIDEO_GROUP_VACUOUS), never silently green. F0 is a fault of the literal and is applied by the row evaluator (perturb), not here.
+ *   F1 dot x of the first active record at or after the focus takes dot x - 1 (dot 0 stays), index and colour       F2 bits 0 and 1 of every index of that record are swapped       F3 that record is dropped       F4 a copy of the record before the focus is inserted at the focus
+ *   F5 the divider of the focus record changes (4 to 3, any other value to 4)       F6 the window of the focus record is one dot wider (index 0, the border colour)       F7 every index of the first active record at or after the focus is 0       F8 the focus record and the one before it swap (the first two when the focus is 0)       F9 the origin of the focus record grows by one clock
+ */
+static int vk_fault_apply(const struct vk_walk *src, struct vk_walk *dst, unsigned f, uint64_t focus, uint8_t (*scr)[VK_MAX_REC])
+{
+    uint64_t n = src->n;
+    uint64_t p;
+    const uint8_t *rec;
+    uint32_t aw;
+    uint32_t j;
+
+    if (n == 0u || focus >= n || f == 0u || f > 9u) {
+        return -1;
+    }
+    memcpy((void *)dst->rec, (const void *)src->rec, (size_t)n * sizeof *src->rec);
+    dst->n = n;
+    dst->ok = 1;
+    switch (f) {
+    case 1u:
+    case 2u:
+    case 7u:
+        p = vk_next_active(src, focus);
+        if (p >= n) {
+            return -1;
+        }
+        rec = src->rec[p];
+        aw = vk_u16(rec + VK_O_ACTIVE_W);
+        memcpy(scr[0], rec, (size_t)vk_u16(rec + VK_O_REC_BYTES));
+        for (j = 0u; j < aw; j++) {
+            uint32_t jj = f == 1u ? aw - 1u - j : j; /* F1 walks from the right so that each dot takes the one on its left */
+
+            if (f == 1u) {
+                if (jj > 0u) {
+                    vk_put16(scr[0] + VK_HDR + 2u * jj, vk_u16(rec + VK_HDR + 2u * (jj - 1u)));
+                    vk_put16(scr[0] + VK_HDR + 2u * aw + 2u * jj, vk_u16(rec + VK_HDR + 2u * aw + 2u * (jj - 1u)));
+                }
+            } else if (f == 2u) {
+                uint32_t v = vk_u16(rec + VK_HDR + 2u * jj);
+
+                if (((v >> 1) ^ v) & 1u) {
+                    v ^= 3u;
+                }
+                vk_put16(scr[0] + VK_HDR + 2u * jj, v);
+            } else {
+                vk_put16(scr[0] + VK_HDR + 2u * jj, 0u);
+            }
+        }
+        dst->rec[p] = scr[0];
+        return 0;
+    case 3u:
+        p = vk_next_active(src, focus);
+        if (p >= n) {
+            return -1;
+        }
+        memmove((void *)(dst->rec + p), (const void *)(dst->rec + p + 1u), (size_t)(n - p - 1u) * sizeof *dst->rec);
+        dst->n = n - 1u;
+        return 0;
+    case 4u:
+        memmove((void *)(dst->rec + focus + 1u), (const void *)(dst->rec + focus), (size_t)(n - focus) * sizeof *dst->rec);
+        dst->rec[focus] = src->rec[focus == 0u ? 0u : focus - 1u];
+        dst->n = n + 1u;
+        return 0;
+    case 5u:
+    case 9u:
+        rec = src->rec[focus];
+        memcpy(scr[0], rec, (size_t)vk_u16(rec + VK_O_REC_BYTES));
+        if (f == 5u) {
+            scr[0][VK_O_DIV] = (uint8_t)(rec[VK_O_DIV] == 4u ? 3u : 4u);
+        } else {
+            vk_put64(scr[0] + VK_O_ORIGIN, vk_u64(rec + VK_O_ORIGIN) + 1u);
+        }
+        dst->rec[focus] = scr[0];
+        return 0;
+    case 6u:
+        rec = src->rec[focus];
+        aw = vk_u16(rec + VK_O_ACTIVE_W);
+        if (aw >= VK_MAX_DOTS) {
+            return -1;
+        }
+        memset(scr[0], 0, VK_MAX_REC);
+        memcpy(scr[0], rec, VK_HDR);
+        for (j = 0u; j < aw; j++) {
+            vk_put16(scr[0] + VK_HDR + 2u * j, vk_u16(rec + VK_HDR + 2u * j));
+            vk_put16(scr[0] + VK_HDR + 2u * (aw + 1u) + 2u * j, vk_u16(rec + VK_HDR + 2u * aw + 2u * j));
+        }
+        vk_put16(scr[0] + VK_HDR + 2u * aw, 0u);
+        vk_put16(scr[0] + VK_HDR + 2u * (aw + 1u) + 2u * aw, vk_u16(rec + VK_O_BORDER));
+        vk_put16(scr[0] + VK_O_ACTIVE_W, aw + 1u);
+        vk_put16(scr[0] + VK_O_REC_BYTES, VK_HDR + ((4u * (aw + 1u) + 7u) & ~7u));
+        dst->rec[focus] = scr[0];
+        return 0;
+    default: /* F8 */
+        if (n < 2u) {
+            return -1;
+        }
+        p = focus == 0u ? 1u : focus;
+        dst->rec[p] = src->rec[p - 1u];
+        dst->rec[p - 1u] = src->rec[p];
+        return 0;
+    }
+}
+
+/* the result of the sweep of one group */
+struct vk_sweep {
+    unsigned declared; /* faults the group declares in kills= */
+    unsigned flipped;  /* of them, turned into a failure */
+    unsigned vacuous;  /* of them, left the group green or could not act (VIDEO_GROUP_VACUOUS) */
+    unsigned harness;  /* of them, gave a fault of the case instead of a verdict */
+    int baseline;      /* the verdict of the group on the unfaulted run (it must pass for a sweep to mean anything) */
+    char first[200];   /* the text of the first vacuous or harness fault, or of the failed baseline */
+    char line[96]; /* one line for the evidence text: the faults that flipped it */
+};
+
+/*
+ * The sweep of one group of the scene on the runs of a case (D-172): the group must pass unfaulted; then each fault of its kills= is applied (F0 to the literal of its first row, the others to a copy of the LAST run at the record the group looks at first) and the group must come out as a failure. A group that a declared fault leaves green, or on which the fault cannot act, is vacuous.
+ * dstrec is a pointer array of at least n + 1 records and scr two record images.
+ */
+static void vk_sweep_group(const struct vx_file *f, unsigned gi, const struct vk_run *runs, unsigned nruns, const uint8_t **dstrec, uint8_t (*scr)[VK_MAX_REC], struct vk_sweep *sw)
+{
+    unsigned bit;
+    uint64_t focus = VK_NOFOCUS;
+    uint64_t fo2;
+    char why[240];
+    size_t used = 0u;
+
+    memset(sw, 0, sizeof *sw);
+    sw->baseline = vk_eval_group(f, gi, runs, nruns, 0, &focus, why, sizeof why);
+    if (sw->baseline != VG_PASS) {
+        snprintf(sw->first, sizeof sw->first, "the group %s does not pass unfaulted (%s)", f->gr[gi].gid, why);
+        return;
+    }
+    if (focus == VK_NOFOCUS || focus >= runs[nruns - 1u].w->n) {
+        focus = runs[nruns - 1u].w->n / 2u;
+    }
+    for (bit = 0u; bit < 10u; bit++) {
+        struct vk_run fr[VK_RUNS_MAX];
+        struct vk_walk fw;
+        unsigned i;
+        int applied = 0;
+        int v;
+
+        if ((f->gr[gi].kills & (1u << bit)) == 0u) {
+            continue;
+        }
+        sw->declared++;
+        for (i = 0u; i < nruns && i < VK_RUNS_MAX; i++) {
+            fr[i] = runs[i];
+        }
+        fw.rec = dstrec;
+        fw.n = 0u;
+        fw.ok = 0;
+        if (bit == 0u) {
+            v = vk_eval_group(f, gi, runs, nruns, 1, &fo2, why, sizeof why);
+            applied = 1;
+        } else if (vk_fault_apply(runs[nruns - 1u].w, &fw, bit, focus, scr) == 0) {
+            fr[nruns - 1u].w = &fw;
+            v = vk_eval_group(f, gi, fr, nruns, 0, &fo2, why, sizeof why);
+            applied = 1;
+        } else {
+            v = VG_PASS;
+        }
+        if (applied && v == VG_FAIL) {
+            sw->flipped++;
+            if (used + 4u < sizeof sw->line) {
+                used += (size_t)snprintf(sw->line + used, sizeof sw->line - used, "%sF%u", used == 0u ? "" : ",", bit);
+            }
+        } else if (applied && v == VG_HARNESS) {
+            sw->harness++;
+            if (sw->first[0] == '\0') {
+                snprintf(sw->first, sizeof sw->first, "%s on group %s gave a fault of the case (%s)", vk_fault_name[bit], f->gr[gi].gid, why);
+            }
+        } else {
+            sw->vacuous++;
+            if (sw->first[0] == '\0') {
+                snprintf(sw->first, sizeof sw->first, "VIDEO_GROUP_VACUOUS: %s does not flip group %s%s", vk_fault_name[bit], f->gr[gi].gid, applied ? "" : " (it cannot act on this stream)");
+            }
+        }
+    }
+}
+
+/* the stream of D-163 of a walk (the records of the walk, in its order, behind the header); a heap block of 19 + bytes, its length in *len, NULL when out of memory */
+static uint8_t *vk_stream_of_walk(const struct vk_walk *w, uint64_t *len)
+{
+    uint64_t total = 0u;
+    uint64_t k;
+    uint8_t *stream;
+    uint64_t off = 19u;
+
+    for (k = 0u; k < w->n; k++) {
+        total += (uint64_t)vk_u16(w->rec[k] + VK_O_REC_BYTES);
+    }
+    stream = (uint8_t *)malloc((size_t)(19u + total));
+    if (stream == NULL) {
+        return NULL;
+    }
+    memcpy(stream, "duospool-video", 14u);
+    stream[14] = 0u;
+    stream[15] = 1u;
+    stream[16] = 0u;
+    stream[17] = 0u;
+    stream[18] = 0u;
+    for (k = 0u; k < w->n; k++) {
+        uint32_t rb = vk_u16(w->rec[k] + VK_O_REC_BYTES);
+
+        memcpy(stream + off, w->rec[k], (size_t)rb);
+        off += (uint64_t)rb;
+    }
+    *len = off;
+    return stream;
+}
+
+/* the golden role (ER-11, D-172): a stream digest is a change detector and never a verdict, so it is judged only beside a literal scene of the same NAME. No literal scene row of that name is refused as video-hash-only, a harness_failure, before the digest is looked at; the digest then
+ * must equal the pinned digest of the scene (one assertion). Returns 1 when the digest was compared */
+static int vk_golden_judge(struct ctx *c, const struct vx_file *f, const char *scene, const char *hex)
+{
+    unsigned i;
+    int lit = 0;
+    const struct vx_golden *gd = NULL;
+
+    for (i = 0u; i < f->ns; i++) {
+        if (strcmp(f->sc[i].name, scene) == 0 && f->sc[i].role == VX_ROLE_LITERAL) {
+            lit = 1;
+        }
+    }
+    if (!lit) {
+        harness_error(c, "video-hash-only: a golden scene is valid only beside a literal case of the same scene (a digest alone is not a verdict, ER-11)");
+        return 0;
+    }
+    for (i = 0u; i < f->nd; i++) {
+        if (strcmp(f->gd[i].scene, scene) == 0) {
+            gd = &f->gd[i];
+        }
+    }
+    if (gd == NULL) {
+        harness_error(c, "the vexp rows hold no golden row for the scene");
+        return 0;
+    }
+    check(c, strcmp(gd->sha, hex) == 0, "golden: the stream digest differs from the pinned golden digest (a change detector, E0 repeatability; the literal case of the scene decides what is right, ER-11)");
+    return 1;
+}
+
+/* the groups of a scene on one run: the number of groups judged, and 1 in *bad when one failed or is a fault of the case (scratch contexts of the judge-forms and the hash-not-verdict kinds read the verdict) */
+static unsigned vk_scene_groups(const struct vx_file *f, const char *scene, const struct vk_run *runs, unsigned nruns, unsigned *bad)
+{
+    unsigned gi;
+    unsigned n = 0u;
+
+    *bad = 0u;
+    for (gi = 0u; gi < f->ng; gi++) {
+        char why[240];
+        uint64_t fo;
+
+        if (strcmp(f->gr[gi].scene, scene) != 0) {
+            continue;
+        }
+        n++;
+        if (vk_eval_group(f, gi, runs, nruns, 0, &fo, why, sizeof why) != VG_PASS) {
+            (*bad)++;
+        }
+    }
+    return n;
+}
+
+/* the scene has a scene row of the role literal or struct: the sweep and the hash-not-verdict kind need the literal groups of the scene */
+static int vk_scene_has_literal(const struct vx_file *f, const char *scene)
+{
+    unsigned i;
+
+    for (i = 0u; i < f->ns; i++) {
+        if (strcmp(f->sc[i].name, scene) == 0 && (f->sc[i].role == VX_ROLE_LITERAL || f->sc[i].role == VX_ROLE_STRUCT)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/*
+ * kind video_fault_sweep (D-172, ER-11): run the guest once, capture the records, then for every group of the scene apply every fault the group declares in kills= to the captured records in memory and require the group to flip (see vk_sweep_group). A group that no declared fault flips is a failure naming VIDEO_GROUP_VACUOUS; a group that
+ * does not pass unfaulted, or a fault that gives a fault of the case, is reported. expect is that of the video kind (rom=NAME;id=N;scene=NAME). E0: the sweep shows that each literal comparison is live against these record faults, a mechanism and not a claim about any video.
+ */
+void kind_video_fault_sweep(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    struct vk_cap cp;
+    const uint8_t **dstrec = NULL;
+    uint8_t (*scr)[VK_MAX_REC] = NULL;
+    unsigned gi;
+    unsigned ngroups = 0u;
+    unsigned declared = 0u;
+    unsigned flipped = 0u;
+    char detail[2048];
+    size_t used = 0u;
+
+    if (vk_capture(k, c, &cp, got, gotcap) != 0) {
+        goto done;
+    }
+    if (!vk_scene_has_literal(cp.vx, cp.e.scene)) {
+        harness_error(c, "the scene of a fault sweep needs a literal or struct scene row");
+        goto done;
+    }
+    dstrec = (const uint8_t **)calloc((size_t)cp.w.n + 2u, sizeof *dstrec);
+    scr = (uint8_t(*)[VK_MAX_REC])calloc(2u, VK_MAX_REC);
+    if (dstrec == NULL || scr == NULL) {
+        harness_error(c, "out of memory for the fault sweep");
+        goto done;
+    }
+    detail[0] = '\0';
+    for (gi = 0u; gi < cp.vx->ng; gi++) {
+        struct vk_run run;
+        struct vk_sweep sw;
+        char msg[320];
+        char gline[320];
+
+        if (strcmp(cp.vx->gr[gi].scene, cp.e.scene) != 0) {
+            continue;
+        }
+        run.name = "main";
+        run.w = &cp.w;
+        run.lg = &cp.lg;
+        vk_sweep_group(cp.vx, gi, &run, 1u, dstrec, scr, &sw);
+        ngroups++;
+        declared += sw.declared;
+        flipped += sw.flipped;
+        if (sw.baseline != VG_PASS) {
+            snprintf(msg, sizeof msg, "sweep: %s", sw.first);
+            check(c, 0, msg);
+        } else if (sw.harness > 0u) {
+            snprintf(msg, sizeof msg, "sweep: %s", sw.first);
+            harness_error(c, msg);
+            goto done;
+        } else {
+            snprintf(msg, sizeof msg, "sweep: %s", sw.vacuous > 0u ? sw.first : "every declared fault flips the group");
+            check(c, sw.vacuous == 0u && sw.declared >= 1u, msg);
+        }
+        snprintf(gline, sizeof gline, "video_sweep %s declared=%u flipped=%u vacuous=%u flips=%s\n", cp.vx->gr[gi].gid, sw.declared, sw.flipped, sw.vacuous, sw.line[0] != '\0' ? sw.line : "-");
+        if (used + strlen(gline) + 1u < sizeof detail) {
+            memcpy(detail + used, gline, strlen(gline) + 1u);
+            used += strlen(gline);
+        }
+    }
+    if (ngroups == 0u) {
+        harness_error(c, "the scene of the fault sweep has no group");
+        goto done;
+    }
+    {
+        char head[200];
+
+        snprintf(head, sizeof head, "video_sweep: groups=%u declared=%u flipped=%u (E0: each literal comparison shown live against the record faults it declares, ER-11, D-172)\n", ngroups, declared, flipped);
+        if (strlen(head) + used + 1u <= sizeof detail) {
+            memmove(detail + strlen(head), detail, used + 1u);
+            memcpy(detail, head, strlen(head));
+        }
+        set_evidence_detail(detail);
+    }
+    snprintf(got + strlen(got), gotcap - strlen(got), " groups=%u flipped=%u/%u", ngroups, flipped, declared);
+done:
+    free((void *)dstrec);
+    free(scr);
+    vk_cap_free(&cp);
+}
+
+/*
+ * kind video_hash_not_verdict (ER-11, D-172, T-04-25): a video hash is a change detector and never a verdict. The guest runs once; then an F5-faulted copy of the captured records (the divider of the record the div group looks at is changed) is hashed in memory. The faulted stream (1) passes a golden computed for that faulted stream,
+ * the very comparison the golden role makes, (2) fails the golden of the unfaulted stream, so a golden does detect a change, and (3) fails the literal div group of the scene, so a passing golden proves nothing about the content. expect is that of the video kind; the scene must hold a group with the id div and one golden row.
+ */
+void kind_video_hash_not_verdict(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    struct vk_cap cp;
+    const uint8_t **dstrec = NULL;
+    uint8_t (*scr)[VK_MAX_REC] = NULL;
+    struct vk_run run;
+    struct vk_walk fw;
+    struct vx_file *own = NULL;
+    uint8_t digest[DS_SHA256_BYTES];
+    char hex_ok[2u * DS_SHA256_BYTES + 1u];
+    char hex_f[2u * DS_SHA256_BYTES + 1u];
+    uint8_t *stream = NULL;
+    uint64_t slen = 0u;
+    uint64_t focus = VK_NOFOCUS;
+    unsigned gi;
+    unsigned div_gi = 0u;
+    int have_div = 0;
+    char why[240];
+    struct ctx sub;
+
+    if (vk_capture(k, c, &cp, got, gotcap) != 0) {
+        goto done;
+    }
+    for (gi = 0u; gi < cp.vx->ng; gi++) {
+        if (strcmp(cp.vx->gr[gi].scene, cp.e.scene) == 0 && strcmp(cp.vx->gr[gi].gid, "div") == 0) {
+            div_gi = gi;
+            have_div = 1;
+        }
+    }
+    if (!have_div || !vk_scene_has_literal(cp.vx, cp.e.scene)) {
+        harness_error(c, "the scene of video_hash_not_verdict needs a literal scene row and a group with the id div");
+        goto done;
+    }
+    run.name = "main";
+    run.w = &cp.w;
+    run.lg = &cp.lg;
+    check(c, vk_eval_group(cp.vx, div_gi, &run, 1u, 0, &focus, why, sizeof why) == VG_PASS, "the div group does not pass on the unfaulted stream: the case has nothing to show");
+    dstrec = (const uint8_t **)calloc((size_t)cp.w.n + 2u, sizeof *dstrec);
+    scr = (uint8_t(*)[VK_MAX_REC])calloc(2u, VK_MAX_REC);
+    own = (struct vx_file *)calloc(1u, sizeof *own);
+    if (dstrec == NULL || scr == NULL || own == NULL) {
+        harness_error(c, "out of memory for video_hash_not_verdict");
+        goto done;
+    }
+    fw.rec = dstrec;
+    fw.n = 0u;
+    fw.ok = 0;
+    if (focus == VK_NOFOCUS || vk_fault_apply(&cp.w, &fw, 5u, focus, scr) != 0) {
+        harness_error(c, "the F5 fault could not be applied to the stream");
+        goto done;
+    }
+    /* the digest of the unfaulted stream and of the faulted one */
+    stream = vk_stream_of_walk(&cp.w, &slen);
+    if (stream == NULL) {
+        harness_error(c, "out of memory for the video stream");
+        goto done;
+    }
+    ds_sha256(stream, (size_t)slen, digest);
+    free(stream);
+    vk_hex(digest, hex_ok);
+    stream = vk_stream_of_walk(&fw, &slen);
+    if (stream == NULL) {
+        harness_error(c, "out of memory for the video stream");
+        goto done;
+    }
+    ds_sha256(stream, (size_t)slen, digest);
+    free(stream);
+    stream = NULL;
+    vk_hex(digest, hex_f);
+    check(c, strcmp(hex_ok, hex_f) != 0, "the F5-faulted stream has the digest of the unfaulted one: the fault changed nothing");
+    /* (1) the faulted stream passes a golden computed for it: a copy of the rows whose golden digest for the scene is that of the faulted stream */
+    memcpy(own, cp.vx, sizeof *own);
+    for (gi = 0u; gi < own->nd; gi++) {
+        if (strcmp(own->gd[gi].scene, cp.e.scene) == 0) {
+            memcpy(own->gd[gi].sha, hex_f, sizeof own->gd[gi].sha);
+        }
+    }
+    memset(&sub, 0, sizeof sub);
+    check(c, vk_golden_judge(&sub, own, cp.e.scene, hex_f) == 1 && !sub.failed && !sub.harness && sub.n == 1u, "the faulted stream does not pass a golden computed for that faulted stream");
+    /* (2) it fails the golden of the unfaulted stream */
+    memcpy(own->gd[0].sha, hex_ok, sizeof own->gd[0].sha);
+    memset(&sub, 0, sizeof sub);
+    (void)vk_golden_judge(&sub, own, cp.e.scene, hex_f);
+    check(c, sub.failed && !sub.harness, "the faulted stream passes the golden of the unfaulted stream: a golden would not detect the change");
+    /* (3) and it fails the literal div group, which the golden of the faulted stream cannot know */
+    run.w = &fw;
+    check(c, vk_eval_group(cp.vx, div_gi, &run, 1u, 0, &focus, why, sizeof why) == VG_FAIL, "the F5-faulted stream passes the literal div group: the literal is not live against a changed divider");
+    {
+        char detail[600];
+
+        snprintf(detail, sizeof detail, "video_hash_not_verdict: unfaulted video_sha256=%s, F5-faulted video_sha256=%s\nthe faulted stream passes its own golden (E0 repeatability), fails the golden of the unfaulted stream and fails the literal group div: a hash is a change detector, never a verdict (ER-11)\n", hex_ok, hex_f);
+        set_evidence_detail(detail);
+    }
+done:
+    free(stream);
+    free((void *)dstrec);
+    free(scr);
+    free(own);
+    vk_cap_free(&cp);
+}
+
+/* ---- kind video_judge_forms (D-171, D-172): the forms of the judge on hand-built records ---- */
+
+/*
+ * The records of this kind are built by TEST CODE from the layout of D-161 written in this file: no renderer, no core, no emulator and no hash produces an expected value (ER-7, ER-13). The rows are parsed by the same parser that reads a .vexp.tsv file, so the grammar of the file is exercised too. One scene and one group per check, the verdict of the group compared with the verdict wanted:
+ *   ROWS    index and value lists (plain and COUNT*V items), a second active line, a wrong index, a wrong value, dots outside the active window, a line that does not exist, the non-vacuity rule of D-171 (fewer than 3 distinct values, no transition: a fault of the case) and F0 on the first row
+ *   REL     each relation id (scroll_x_shift, scroll_y_shift, palette_subst, blank_is_border, dot_width_scale) on two named runs: a pair that has the relation passes, a pair that does not fails, and F0 on the literal fails the pair that has it
+ *   STRUCT  each closed check (count, origins, frame_lines, records_per_frame, rec_bytes, values_below_512, div_table, div_first, border_after_pal, line_dirty, display_lines, width_set): the literal that is right passes and a literal (or a stream) that is wrong fails
+ *   null renderers: a run with no record, a run of all-border dots and a run of all index 0 never pass any form (D-172); a sink that was never written is a fault of the harness
+ *   sweep   the faults F0 F1 F2 F3 F4 F7 F8 flip a ROWS group that declares them, a STRUCT group that declares a pixel fault is reported vacuous, and F6 widens a record by one dot and keeps the stream well formed
+ * Class of every row: ASSUMED (the rows are test data of this kind, not a statement about a video). E0.
+ */
+
+#define JF_MAXREC 16u
+#define JF_RECBYTES 128u
+
+struct jf_stream {
+    uint8_t buf[JF_MAXREC * JF_RECBYTES];
+    const uint8_t *rec[JF_MAXREC + 2u];
+    struct vk_walk w;
+    unsigned used;
+};
+
+struct jf_line {
+    uint32_t aw;
+    uint32_t border;
+    uint32_t div;
+    uint32_t dirty;
+    uint32_t idx[8];
+    uint32_t col[8];
+};
+
+static void jf_init(struct jf_stream *s)
+{
+    memset(s, 0, sizeof *s);
+    s->w.rec = s->rec;
+    s->w.ok = 1;
+}
+
+static void jf_add(struct jf_stream *s, uint64_t origin, uint32_t frame, uint32_t line, uint32_t fl, const struct jf_line *l)
+{
+    uint8_t *p = s->buf + s->used;
+    uint32_t rb = VK_HDR + ((4u * l->aw + 7u) & ~7u);
+    uint32_t j;
+
+    memset(p, 0, rb);
+    vk_put64(p + VK_O_ORIGIN, origin);
+    vk_put16(p + VK_O_FRAME, frame & 0xFFFFu);
+    vk_put16(p + VK_O_FRAME + 2, frame >> 16);
+    vk_put16(p + VK_O_LINE, line);
+    vk_put16(p + VK_O_FRAME_LINES, fl);
+    vk_put16(p + VK_O_REC_BYTES, rb);
+    vk_put16(p + VK_O_LINE_MCLK, VK_GRID);
+    p[VK_O_DIV] = (uint8_t)l->div;
+    vk_put16(p + VK_O_ACTIVE_W, l->aw);
+    vk_put16(p + VK_O_BORDER, l->border);
+    p[VK_O_LINE_DIRTY] = (uint8_t)l->dirty;
+    p[VK_O_VERSION] = 1u;
+    for (j = 0u; j < l->aw; j++) {
+        vk_put16(p + VK_HDR + 2u * j, l->idx[j]);
+        vk_put16(p + VK_HDR + 2u * l->aw + 2u * j, l->col[j]);
+    }
+    s->rec[s->w.n] = p;
+    s->w.n++;
+    s->used += rb;
+}
+
+/* the base stream of the STRUCT checks: 10 lines, frame_lines 4 (frames 0 and 1 complete, frame 2 holds 2 lines), lines 1 and 2 of each frame active with 4 dots (index (3k + 2x) % 7 + 1, colour 100 + index), border 5, divider 4 before record 8 and 3 from it, line_dirty bit 0 on records 1 and 8 and bit 4 on record 2.
+ * variant 1 moves the origin of record 4 by one clock; variant 2 gives every active dot the index idxv (a null renderer: 256 is all-border, 0 is all index 0) and the colour 5 of the border and of palette entry 0 */
+static void jf_base(struct jf_stream *s, int variant, uint32_t idxv)
+{
+    uint32_t k;
+
+    jf_init(s);
+    for (k = 0u; k < 10u; k++) {
+        struct jf_line l;
+        uint32_t x;
+
+        memset(&l, 0, sizeof l);
+        l.border = 5u;
+        l.div = k < 8u ? 4u : 3u;
+        l.dirty = k == 1u || k == 8u ? 1u : k == 2u ? 16u : 0u;
+        if (k % 4u == 1u || k % 4u == 2u) {
+            l.aw = 4u;
+            for (x = 0u; x < 4u; x++) {
+                l.idx[x] = variant == 2 ? idxv : (3u * k + 2u * x) % 7u + 1u;
+                l.col[x] = variant == 2 ? 5u : 100u + l.idx[x];
+            }
+        }
+        jf_add(s, (uint64_t)k * VK_GRID + (variant == 1 && k == 4u ? 1u : 0u), k / 4u, k % 4u, 4u, &l);
+    }
+}
+
+/* the dev log of the base stream: CR writes $00 at 100 and $01 at 9655, one palette write at 2000, the machine time 9 * 1365 + 1 */
+static void jf_log(struct vk_log *lg)
+{
+    memset(lg, 0, sizeof *lg);
+    lg->n_cr = 2u;
+    lg->t_cr[0] = 100u;
+    lg->v_cr[0] = 0u;
+    lg->t_cr[1] = 9655u;
+    lg->v_cr[1] = 1u;
+    lg->n_pal = 1u;
+    lg->t_pal[0] = 2000u;
+    lg->t_pal_last = 2000u;
+    lg->m = 9u * (uint64_t)VK_GRID + 1u;
+}
+
+/* a stream of 3 active lines (records 0 to 2 of frame 0) of the given width, divider and border with the index rows idx and the colours col */
+static void jf_rows_stream(struct jf_stream *s, uint32_t aw, uint32_t div, uint32_t border, const uint32_t idx[3][8], const uint32_t col[3][8])
+{
+    uint32_t k;
+
+    jf_init(s);
+    for (k = 0u; k < 3u; k++) {
+        struct jf_line l;
+        uint32_t x;
+
+        memset(&l, 0, sizeof l);
+        l.aw = aw;
+        l.div = div;
+        l.border = border;
+        for (x = 0u; x < aw; x++) {
+            l.idx[x] = idx[k][x];
+            l.col[x] = col[k][x];
+        }
+        jf_add(s, (uint64_t)k * VK_GRID, 0u, k, 4u, &l);
+    }
+}
+
+/* the rows of one scene of one group from their text, parsed by the parser of the .vexp.tsv reader; 0 on success */
+static int jf_parse(struct vx_file *f, const char *form, const char *cls, const char *kills, const char *sel, const char *lit)
+{
+    char text[3][480];
+    char *fld[8];
+    unsigned i;
+    unsigned nf;
+    const char *err;
+
+    memset(f, 0, sizeof *f);
+    snprintf(text[0], sizeof text[0], "scene\tjf\tcase=jf_case\trole=literal");
+    snprintf(text[1], sizeof text[1], "group\tjf\tg\tform=%s\tclass=%s\tsym=none\tkills=%s", form, cls, kills);
+    snprintf(text[2], sizeof text[2], "row\tjf\tg\t%s\t%s", sel, lit);
+    for (i = 0u; i < 3u; i++) {
+        nf = vx_split(text[i], fld, 8u);
+        err = nf > 8u ? "too many fields" : vx_row_parse(f, fld, nf);
+        if (err != NULL) {
+            return -1;
+        }
+    }
+    return vx_resolve(f) == NULL ? 0 : -1;
+}
+
+struct jf_ctx {
+    struct vx_file *vx;
+    struct ctx *c;
+    unsigned checks;
+    char failed[1500]; /* the text of every check that failed, one per line, for the evidence file */
+};
+
+/* one row on the runs: the verdict of its group (F0 when perturb) */
+static int jf_eval(struct jf_ctx *jf, const char *form, const char *kills, const char *sel, const char *lit, const struct vk_run *runs, unsigned nruns, int perturb)
+{
+    char why[240];
+    uint64_t fo;
+
+    if (jf_parse(jf->vx, form, "ASSUMED:LED-VID-0004", kills, sel, lit) != 0) {
+        return VG_HARNESS + 1;
+    }
+    return vk_eval_group(jf->vx, 0u, runs, nruns, perturb, &fo, why, sizeof why);
+}
+
+static void jf_want(struct jf_ctx *jf, const char *name, int got, int want)
+{
+    char msg[200];
+
+    snprintf(msg, sizeof msg, "judge forms: %s (verdict %d, wanted %d)", name, got, want);
+    check(jf->c, got == want, msg);
+    jf->checks++;
+    if (got != want && strlen(jf->failed) + strlen(msg) + 2u < sizeof jf->failed) {
+        strcat(jf->failed, msg);
+        strcat(jf->failed, "\n");
+    }
+}
+
+static void jf_run1(struct vk_run *r, const struct jf_stream *s, const struct vk_log *lg)
+{
+    r->name = "main";
+    r->w = &s->w;
+    r->lg = lg;
+}
+
+/* the STRUCT checks on the base stream: the right literal passes, the wrong one fails */
+static void jf_struct(struct jf_ctx *jf, const struct jf_stream *s, const struct jf_stream *skew, const struct vk_log *lg)
+{
+    static const struct {
+        const char *check;
+        const char *ok;
+        const char *bad;
+    } t[] = {
+        {"count", "grid=1365", "grid=1366"},
+        {"origins", "step=1365", "step=1366"},
+        {"frame_lines", "value=4;step=1365", "value=5;step=1365"},
+        {"records_per_frame", "value=4", "value=5"},
+        {"rec_bytes", "header=64;version=1;max_w=682", "header=65;version=1;max_w=682"},
+        {"values_below_512", "limit=512", "limit=2"},
+        {"div_table", "div=4,3;crw=0,1;gap=5460", "div=4,4;crw=0,1;gap=5460"},
+        {"div_first", "div=3;prev=4;crw=1", "div=3;prev=3;crw=1"},
+        {"border_after_pal", "value=5", "value=6"},
+        {"line_dirty", "cr_bit=0;pal_bit=4", "cr_bit=1;pal_bit=4"},
+        {"display_lines", "vds=0;vdw=1;frame_lines=4", "vds=0;vdw=0;frame_lines=4"},
+        {"width_set", "min_distinct=2", "min_distinct=3"},
+    };
+    struct vk_run run;
+    unsigned i;
+
+    jf_run1(&run, s, lg);
+    for (i = 0u; i < (unsigned)(sizeof t / sizeof t[0]); i++) {
+        char sel[48];
+        char name[80];
+
+        snprintf(sel, sizeof sel, "check=%s", t[i].check);
+        snprintf(name, sizeof name, "STRUCT %s with the right literal passes", t[i].check);
+        jf_want(jf, name, jf_eval(jf, "STRUCT", "F0", sel, t[i].ok, &run, 1u, 0), VG_PASS);
+        snprintf(name, sizeof name, "STRUCT %s with a wrong literal fails", t[i].check);
+        jf_want(jf, name, jf_eval(jf, "STRUCT", "F0", sel, t[i].bad, &run, 1u, 0), VG_FAIL);
+        if (strcmp(t[i].check, "values_below_512") != 0) { /* F0 raises the limit 512 to 513, which every value below 512 still satisfies: this check is live through its wrong literal above, not through F0 */
+            snprintf(name, sizeof name, "STRUCT %s with F0 on the right literal fails", t[i].check);
+            jf_want(jf, name, jf_eval(jf, "STRUCT", "F0", sel, t[i].ok, &run, 1u, 1), VG_FAIL);
+        }
+    }
+    jf_run1(&run, skew, lg); /* a stream whose origin of record 4 is one clock off: the origins check fails and the count check does not */
+    jf_want(jf, "STRUCT origins on a stream with one origin moved fails", jf_eval(jf, "STRUCT", "F0", "check=origins", "step=1365", &run, 1u, 0), VG_FAIL);
+    jf_want(jf, "STRUCT count on a stream with one origin moved still passes (it counts records)", jf_eval(jf, "STRUCT", "F0", "check=count", "grid=1365", &run, 1u, 0), VG_PASS);
+}
+
+/* the ROWS forms on the base stream (active+0 is record 1, active+1 is record 2) */
+static void jf_rows(struct jf_ctx *jf, const struct jf_stream *s, const struct vk_log *lg)
+{
+    struct vk_run run;
+
+    jf_run1(&run, s, lg);
+    jf_want(jf, "ROWS an index list passes", jf_eval(jf, "ROWS", "F0", "line=active+0;x=0..3", "index=4,6,1,3", &run, 1u, 0), VG_PASS);
+    jf_want(jf, "ROWS a value list passes", jf_eval(jf, "ROWS", "F0", "line=active+0;x=0..3", "value=104,106,101,103", &run, 1u, 0), VG_PASS);
+    jf_want(jf, "ROWS COUNT*V items pass", jf_eval(jf, "ROWS", "F0", "line=active+0;x=0..3", "index=1*4,1*6,1*1,1*3", &run, 1u, 0), VG_PASS);
+    jf_want(jf, "ROWS the second active line passes", jf_eval(jf, "ROWS", "F0", "line=active+1;x=0..3", "index=7,2,4,6", &run, 1u, 0), VG_PASS);
+    jf_want(jf, "ROWS a partial x range passes", jf_eval(jf, "ROWS", "F0", "line=active+0;x=1..3", "index=6,1,3", &run, 1u, 0), VG_PASS);
+    jf_want(jf, "ROWS a wrong index fails", jf_eval(jf, "ROWS", "F0", "line=active+0;x=0..3", "index=4,6,1,4", &run, 1u, 0), VG_FAIL);
+    jf_want(jf, "ROWS a wrong value fails", jf_eval(jf, "ROWS", "F0", "line=active+0;x=0..3", "value=104,106,101,104", &run, 1u, 0), VG_FAIL);
+    jf_want(jf, "ROWS dots outside the active window fail", jf_eval(jf, "ROWS", "F0", "line=active+0;x=2..5", "index=1,3,5,7", &run, 1u, 0), VG_FAIL);
+    jf_want(jf, "ROWS a line that does not exist fails", jf_eval(jf, "ROWS", "F0", "line=active+9;x=0..3", "index=4,6,1,3", &run, 1u, 0), VG_FAIL);
+    jf_want(jf, "ROWS F0 on the first expected value fails", jf_eval(jf, "ROWS", "F0", "line=active+0;x=0..3", "index=4,6,1,3", &run, 1u, 1), VG_FAIL);
+    jf_want(jf, "ROWS one distinct value is a fault of the case (D-171 non-vacuity)", jf_eval(jf, "ROWS", "F0", "line=active+0;x=0..3", "index=4,4,4,4", &run, 1u, 0), VG_HARNESS);
+    jf_want(jf, "ROWS two distinct values are a fault of the case (D-171 non-vacuity)", jf_eval(jf, "ROWS", "F0", "line=active+0;x=0..3", "index=4,4,6,6", &run, 1u, 0), VG_HARNESS);
+    jf_want(jf, "ROWS a list of the wrong length is a fault of the case", jf_eval(jf, "ROWS", "F0", "line=active+0;x=0..3", "index=4,6,1", &run, 1u, 0), VG_HARNESS);
+}
+
+/* the five relations on pairs of runs of three active lines: the pair that has the relation passes, the pair that does not fails */
+static void jf_rel(struct jf_ctx *jf, const struct vk_log *lg)
+{
+    static const uint32_t ia[3][8] = {{1, 2, 3, 4, 5, 6}, {2, 3, 4, 5, 6, 7}, {3, 4, 5, 6, 7, 8}};
+    static const uint32_t ca[3][8] = {{201, 202, 203, 204, 205, 206}, {202, 203, 204, 205, 206, 207}, {203, 204, 205, 206, 207, 208}};
+    static const uint32_t ib_x[3][8] = {{2, 3, 4, 5, 6, 9}, {3, 4, 5, 6, 7, 9}, {4, 5, 6, 7, 8, 9}};
+    static const uint32_t cb_x[3][8] = {{202, 203, 204, 205, 206, 209}, {203, 204, 205, 206, 207, 209}, {204, 205, 206, 207, 208, 209}};
+    static const uint32_t ib_y[3][8] = {{2, 3, 4, 5, 6, 7}, {3, 4, 5, 6, 7, 8}, {3, 4, 5, 6, 7, 8}};
+    static const uint32_t cb_y[3][8] = {{202, 203, 204, 205, 206, 207}, {203, 204, 205, 206, 207, 208}, {203, 204, 205, 206, 207, 208}};
+    static const uint32_t cb_p[3][8] = {{201, 202, 300, 204, 205, 206}, {202, 300, 204, 205, 206, 207}, {300, 204, 205, 206, 207, 208}};
+    static const uint32_t ib_b[3][8] = {{256, 256, 256, 256, 256, 256}, {256, 256, 256, 256, 256, 256}, {256, 256, 256, 256, 256, 256}};
+    static const uint32_t cb_b[3][8] = {{7, 7, 7, 7, 7, 7}, {7, 7, 7, 7, 7, 7}, {7, 7, 7, 7, 7, 7}};
+    static const uint32_t ib_b2[3][8] = {{256, 256, 256, 256, 256, 256}, {256, 256, 256, 256, 256, 1}, {256, 256, 256, 256, 256, 256}};
+    static const uint32_t ib_w[3][8] = {{1, 2, 3, 4, 5, 6, 7, 8}, {2, 3, 4, 5, 6, 7, 8, 9}, {3, 4, 5, 6, 7, 8, 9, 1}};
+    static const uint32_t cb_w[3][8] = {{1, 2, 3, 4, 5, 6, 7, 8}, {2, 3, 4, 5, 6, 7, 8, 9}, {3, 4, 5, 6, 7, 8, 9, 1}};
+    struct jf_stream a;
+    struct jf_stream b;
+    struct vk_run runs[2];
+
+    jf_rows_stream(&a, 6u, 4u, 7u, ia, ca);
+    runs[0].name = "a";
+    runs[0].w = &a.w;
+    runs[0].lg = lg;
+    runs[1].name = "b";
+    runs[1].w = &b.w;
+    runs[1].lg = lg;
+    jf_rows_stream(&b, 6u, 4u, 7u, ib_x, cb_x);
+    jf_want(jf, "REL scroll_x_shift on a pair shifted by one dot passes", jf_eval(jf, "REL", "F0", "rel=scroll_x_shift;runs=a,b", "dx=1", runs, 2u, 0), VG_PASS);
+    jf_want(jf, "REL scroll_x_shift with F0 on dx fails the pair", jf_eval(jf, "REL", "F0", "rel=scroll_x_shift;runs=a,b", "dx=1", runs, 2u, 1), VG_FAIL);
+    jf_rows_stream(&b, 6u, 4u, 7u, ia, ca);
+    jf_want(jf, "REL scroll_x_shift on a pair with no shift fails", jf_eval(jf, "REL", "F0", "rel=scroll_x_shift;runs=a,b", "dx=1", runs, 2u, 0), VG_FAIL);
+    jf_rows_stream(&b, 6u, 4u, 7u, ib_y, cb_y);
+    jf_want(jf, "REL scroll_y_shift on a pair shifted by one line passes", jf_eval(jf, "REL", "F0", "rel=scroll_y_shift;runs=a,b", "dy=1", runs, 2u, 0), VG_PASS);
+    jf_rows_stream(&b, 6u, 4u, 7u, ia, ca);
+    jf_want(jf, "REL scroll_y_shift on a pair with no shift fails", jf_eval(jf, "REL", "F0", "rel=scroll_y_shift;runs=a,b", "dy=1", runs, 2u, 0), VG_FAIL);
+    jf_rows_stream(&b, 6u, 4u, 7u, ia, cb_p);
+    jf_want(jf, "REL palette_subst on a pair with one colour replaced passes", jf_eval(jf, "REL", "F0", "rel=palette_subst;runs=a,b", "from=203;to=300", runs, 2u, 0), VG_PASS);
+    jf_rows_stream(&b, 6u, 4u, 7u, ia, ca);
+    jf_want(jf, "REL palette_subst on a pair with no replacement fails", jf_eval(jf, "REL", "F0", "rel=palette_subst;runs=a,b", "from=203;to=300", runs, 2u, 0), VG_FAIL);
+    jf_rows_stream(&b, 6u, 4u, 7u, ib_b, cb_b);
+    jf_want(jf, "REL blank_is_border on a blank run passes", jf_eval(jf, "REL", "F0", "rel=blank_is_border;runs=a,b", "index=256", runs, 2u, 0), VG_PASS);
+    jf_rows_stream(&b, 6u, 4u, 7u, ib_b2, cb_b);
+    jf_want(jf, "REL blank_is_border on a run with one dot that is not blank fails", jf_eval(jf, "REL", "F0", "rel=blank_is_border;runs=a,b", "index=256", runs, 2u, 0), VG_FAIL);
+    jf_rows_stream(&b, 8u, 3u, 7u, ib_w, cb_w);
+    jf_want(jf, "REL dot_width_scale on widths 6 at divider 4 and 8 at divider 3 passes", jf_eval(jf, "REL", "F0", "rel=dot_width_scale;runs=a,b", "lines=3", runs, 2u, 0), VG_PASS);
+    jf_want(jf, "REL dot_width_scale with F0 on lines fails the pair", jf_eval(jf, "REL", "F0", "rel=dot_width_scale;runs=a,b", "lines=3", runs, 2u, 1), VG_FAIL);
+    jf_rows_stream(&b, 7u, 3u, 7u, ib_w, cb_w);
+    jf_want(jf, "REL dot_width_scale on widths 6 at divider 4 and 7 at divider 3 fails", jf_eval(jf, "REL", "F0", "rel=dot_width_scale;runs=a,b", "lines=3", runs, 2u, 0), VG_FAIL);
+    jf_init(&b); /* a run with no record: no relation holds */
+    jf_want(jf, "REL a run with no record fails", jf_eval(jf, "REL", "F0", "rel=scroll_x_shift;runs=a,b", "dx=1", runs, 2u, 0), VG_FAIL);
+    jf_rows_stream(&b, 6u, 4u, 7u, ia, ca);
+    jf_want(jf, "REL a run that the case does not have is a fault of the case", jf_eval(jf, "REL", "F0", "rel=scroll_x_shift;runs=a,c", "dx=1", runs, 2u, 0), VG_HARNESS);
+}
+
+/* the null renderers: no record, all border, all index 0 never pass a form (D-172) */
+static void jf_null(struct jf_ctx *jf, const struct vk_log *lg)
+{
+    struct jf_stream none;
+    struct jf_stream border;
+    struct jf_stream zero;
+    struct vk_run run;
+
+    jf_init(&none);
+    jf_base(&border, 2, 256u);
+    jf_base(&zero, 2, 0u);
+    jf_run1(&run, &none, lg);
+    jf_want(jf, "null renderer: a run with no record fails a ROWS row", jf_eval(jf, "ROWS", "F0", "line=active+0;x=0..3", "index=4,6,1,3", &run, 1u, 0), VG_FAIL);
+    jf_want(jf, "null renderer: a run with no record fails a STRUCT row", jf_eval(jf, "STRUCT", "F0", "check=count", "grid=1365", &run, 1u, 0), VG_FAIL);
+    jf_run1(&run, &border, lg);
+    jf_want(jf, "null renderer: an all-border run fails a ROWS index row", jf_eval(jf, "ROWS", "F0", "line=active+0;x=0..3", "index=4,6,1,3", &run, 1u, 0), VG_FAIL);
+    jf_want(jf, "null renderer: an all-border run fails a ROWS value row", jf_eval(jf, "ROWS", "F0", "line=active+0;x=0..3", "value=104,106,101,103", &run, 1u, 0), VG_FAIL);
+    jf_run1(&run, &zero, lg);
+    jf_want(jf, "null renderer: an all-index-0 run fails a ROWS index row", jf_eval(jf, "ROWS", "F0", "line=active+0;x=0..3", "index=4,6,1,3", &run, 1u, 0), VG_FAIL);
+    jf_want(jf, "null renderer: an all-index-0 run fails a ROWS value row", jf_eval(jf, "ROWS", "F0", "line=active+0;x=0..3", "value=104,106,101,103", &run, 1u, 0), VG_FAIL);
+    jf_want(jf, "a sink that was never written is a fault of the harness", vk_sink_missing(0u, 0u, 12286u) == 1 && vk_sink_missing(10u, 10u, 12286u) == 0 && vk_sink_missing(0u, 0u, 0u) == 0, 1);
+}
+
+/* the sweep of the faults on hand-built records: a ROWS group that declares F0 F1 F2 F3 F4 F7 F8 is flipped by each; a STRUCT group that declares a pixel fault is vacuous; F6 widens a record by one dot and the stream stays well formed */
+static void jf_sweep(struct jf_ctx *jf, const struct jf_stream *s, const struct vk_log *lg)
+{
+    struct vk_run run;
+    struct vk_sweep sw;
+    const uint8_t *dst[JF_MAXREC + 2u];
+    uint8_t scr[2][VK_MAX_REC];
+    struct vk_walk fw;
+    uint64_t slen = 0u;
+    uint8_t *stream;
+    uint64_t total = 0u;
+    uint64_t k;
+
+    jf_run1(&run, s, lg);
+    if (jf_parse(jf->vx, "ROWS", "ASSUMED:LED-VID-0010", "F0,F1,F2,F3,F4,F7,F8", "line=active+1;x=0..3", "index=7,2,4,6") != 0) {
+        harness_error(jf->c, "the sweep group of video_judge_forms did not parse");
+        return;
+    }
+    vk_sweep_group(jf->vx, 0u, &run, 1u, dst, scr, &sw);
+    jf_want(jf, "sweep: a ROWS group is flipped by every fault F0 F1 F2 F3 F4 F7 F8 it declares", sw.baseline == VG_PASS && sw.declared == 7u && sw.flipped == 7u && sw.vacuous == 0u && sw.harness == 0u, 1);
+    if (jf_parse(jf->vx, "STRUCT", "ASSUMED:LED-VID-0004", "F1,F4", "check=count", "grid=1365") != 0) {
+        harness_error(jf->c, "the vacuous group of video_judge_forms did not parse");
+        return;
+    }
+    vk_sweep_group(jf->vx, 0u, &run, 1u, dst, scr, &sw);
+    jf_want(jf, "sweep: a group that a declared fault (F1 on a count row) leaves green is vacuous", sw.baseline == VG_PASS && sw.declared == 2u && sw.vacuous == 1u && sw.flipped == 1u, 1);
+    fw.rec = dst;
+    fw.n = 0u;
+    fw.ok = 0;
+    jf_want(jf, "sweep: F6 widens the record by one dot", vk_fault_apply(&s->w, &fw, 6u, 1u, scr) == 0 && vk_u16(fw.rec[1] + VK_O_ACTIVE_W) == 5u && vk_u16(fw.rec[1] + VK_O_REC_BYTES) == 88u && fw.n == s->w.n, 1);
+    stream = vk_stream_of_walk(&fw, &slen);
+    for (k = 0u; k < fw.n; k++) {
+        total += (uint64_t)vk_u16(fw.rec[k] + VK_O_REC_BYTES);
+    }
+    jf_want(jf, "sweep: the widened stream keeps the records back to back (stream length 19 + the sum of rec_bytes)", stream != NULL && slen == 19u + total, 1);
+    free(stream);
+    {
+        struct jf_stream ho;
+        struct jf_line hl;
+
+        jf_init(&ho);
+        memset(&hl, 0, sizeof hl);
+        hl.div = 4u;
+        jf_add(&ho, 0u, 0u, 0u, 4u, &hl);
+        jf_add(&ho, (uint64_t)VK_GRID, 0u, 1u, 4u, &hl);
+        jf_want(jf, "sweep: a pixel fault cannot act on header-only records (F1 finds no active window)", vk_fault_apply(&ho.w, &fw, 1u, 0u, scr) == -1, 1);
+    }
+}
+
+void kind_video_judge_forms(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    struct jf_ctx jf;
+    struct jf_stream base;
+    struct jf_stream skew;
+    struct vk_log lg;
+    struct vk_run run;
+    unsigned bad = 0u;
+
+    (void)k;
+    jf.vx = (struct vx_file *)calloc(1u, sizeof *jf.vx);
+    jf.c = c;
+    jf.checks = 0u;
+    jf.failed[0] = '\0';
+    if (jf.vx == NULL) {
+        harness_error(c, "out of memory for video_judge_forms");
+        return;
+    }
+    jf_log(&lg);
+    jf_base(&base, 0, 0u);
+    jf_base(&skew, 1, 0u);
+    jf_struct(&jf, &base, &skew, &lg);
+    jf_rows(&jf, &base, &lg);
+    jf_rel(&jf, &lg);
+    jf_null(&jf, &lg);
+    jf_sweep(&jf, &base, &lg);
+    /* a whole scene on the base stream through the parser of the file: every STRUCT group passes (the groups are ASSUMED test data) */
+    jf_run1(&run, &base, &lg);
+    if (jf_parse(jf.vx, "STRUCT", "ASSUMED:LED-VID-0004", "F4", "check=count", "grid=1365") == 0) {
+        jf_want(&jf, "a scene parsed from text passes through vk_scene_groups", vk_scene_groups(jf.vx, "jf", &run, 1u, &bad) == 1u && bad == 0u, 1);
+    }
+    snprintf(got, gotcap, "forms checks=%u", jf.checks);
+    if (jf.failed[0] != '\0') {
+        set_evidence_detail(jf.failed);
+    }
+    free(jf.vx);
+}
 
 /* ---- --video-out and kind video_out_rights (plan 04-05; D-162, D-163, T-04-17, T-04-19) ----
  * The runner writes the video stream of a case only for `--video-out CASE_ID`, only for a case of kind video whose fixture is an authored image listed in build/gate/fixtures-authored.used (written by scripts/fixture-build in the same gate run) or a synthetic recipe, only to build/gate/video/ID.dsvr (the canonical stream of D-163) and ID.tsv (one row per line, pixels as run-length groups), paths

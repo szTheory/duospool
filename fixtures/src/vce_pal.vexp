@@ -21,8 +21,10 @@
 # The dirty group joins a write stamp to the grid (ASSUMED LED-VID-0004): bit 0 of line_dirty on exactly the first record after each CR write, bit 4 on exactly the first record after each palette data write.
 # F0 note (A7): F0 perturbs the first number of the first row of a group, so it proves only that the comparison is live. The border group's only kill is F0, so its liveness against a changed palette store comes from the toy vid-palette-mask
 # (it turns video_vce_pal guest_failure on this group) and not from a record fault.
-# The golden role (plan 04-07 Task 3) is a change detector beside the literal case, never a verdict (ER-11).
+# The golden scene row and the golden row are a change detector beside the literal case video_vce_pal, never a verdict (ER-11): the pinned digest is the SHA-256 of the canonical stream of the vce_pal guest (D-163), measured on the first run and recomputed outside the core with a host tool (shasum -a 256 of build/gate/video/video_vce_pal.dsvr),
+# E0 repeatability only. It is valid only beside the literal case of the same scene (the runner refuses video-hash-only and scripts/video-check says INV_VIDEO_HASH_ONLY otherwise). A change of the stream (a later plan that changes the records) repins it by the procedure of that plan.
 scene	vce_pal	case=video_vce_pal	role=literal
+scene	vce_pal	case=video_vce_pal_golden	role=golden
 group	vce_pal	struct	form=STRUCT	class=ASSUMED:LED-VID-0004	sym=none	kills=F4,F8,F9
 row	vce_pal	struct	check=count	grid=1365
 row	vce_pal	struct	check=origins	step=1365
@@ -39,3 +41,4 @@ group	vce_pal	border	form=STRUCT	class=GUEST:pal_bijection	sym=none	kills=F0
 row	vce_pal	border	check=border_after_pal	value=273
 group	vce_pal	dirty	form=STRUCT	class=ASSUMED:LED-VID-0004	sym=none	kills=F0,F4
 row	vce_pal	dirty	check=line_dirty	cr_bit=0;pal_bit=4
+golden	vce_pal	sha256=6c510913928bfa8703e0f5006bba728f894ccf9ce910ede9b7fcef50afd09c55

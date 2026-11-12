@@ -262,3 +262,7 @@ vdc_vram
 mutate_sweep_vdc_reg
 vdc_vram_sweep
 vdc_regmask
+video_fault_sweep_vce_pal
+video_vce_pal_golden
+video_hash_not_verdict
+video_judge_forms

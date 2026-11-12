@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The record fault sweep of the vce_pal scene (plan 04-07; D-171, D-172, ER-10, ER-11, T-04-26): the runner kind video_fault_sweep (tests/conformance/videokinds.c) runs the guest of the video case once, captures the raw records and the dev log, and for every group of the scene vce_pal in fixtures/src/vce_pal.vexp applies each
+# fault the group declares in kills= to a copy of the records in memory
+# (F0 perturbs the first number of the first row of the group; F4 duplicates a line, F5 changes a divider, F8 swaps two adjacent lines and F9 moves an origin by one clock, all at the record the group looks at first) and requires the group to come out as a failure. A group that a declared fault leaves green, or on which the
+# fault cannot act, is VIDEO_GROUP_VACUOUS and fails the case.
+# A group whose only kill is F0 (border) proves only that its comparison is live; its liveness against a changed palette store comes from the toy vid-palette-mask (amendment A7). Pixel faults (F1 F2 F3 F6 F7) change nothing in header-only records and no group of this scene declares them. E0: a mechanism that shows each literal
+# comparison live, no claim about any video, and the word pass is not a support claim.
+id = "video_fault_sweep_vce_pal"
+kind = "video_fault_sweep"
+fixture = "authored:vce-pal"
+request = ""
+expect = "rom=vce-pal;id=15;scene=vce_pal"
+meaning = "Every group of the vce_pal scene turns into a failure under each record fault it declares (a duplicated line, a changed divider, two swapped lines, an origin moved by one clock, a perturbed literal), so no literal group of the scene is vacuous, E0"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+checks = 32

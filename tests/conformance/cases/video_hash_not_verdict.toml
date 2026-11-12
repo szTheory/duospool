@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# A video hash is a change detector, never a verdict (plan 04-07; D-172, ER-11, T-04-25; the mechanism of ROADMAP success criterion 5): the runner kind video_hash_not_verdict (tests/conformance/videokinds.c) runs the vce_pal guest once and hashes, in memory, an F5-faulted copy of the captured records (the divider of the record
+# the div group looks at is changed). The faulted stream (1) passes a golden computed for the faulted stream, the comparison the golden role makes,
+# (2) fails the golden of the unfaulted stream, so a golden does detect a change, and (3) fails the literal div group of the scene (MAN H6-3), which the golden of the faulted stream cannot know: so a passing golden proves nothing about the content. E0 repeatability and a mechanism; no accuracy or hardware claim, and the word pass is not a support claim.
+id = "video_hash_not_verdict"
+kind = "video_hash_not_verdict"
+fixture = "authored:vce-pal"
+request = ""
+expect = "rom=vce-pal;id=15;scene=vce_pal"
+meaning = "A vce_pal stream with a changed divider passes a golden digest computed for it, fails the golden of the unfaulted stream and fails the literal div group, so a matching hash is a change detector and never a verdict, E0"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+checks = 32
