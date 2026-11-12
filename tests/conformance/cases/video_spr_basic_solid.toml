@@ -12,7 +12,7 @@ kind = "video"
 fixture = "authored:spr-basic"
 request = ""
 expect = "rom=spr-basic;id=25;scene=video_spr_basic_solid"
-meaning = "A guest that copies a sprite attribute table into the SATB by DMA makes the core emit line records whose display line 20 holds a 16 dot run of the sprite index 303 (palette 2, pixel 15) at the dots 40 to 55 between the transparent background and a solid background tile (MAN H7-24, H7-13, H7-21), the palette values of those indices (GUEST) and the border, E0 repeatability"
+meaning = "A guest that copies a sprite attribute table into the SATB by DMA makes the core emit line records holding the sprite indices (256 + 16 * palette + pixel) at the SATB coordinates for both widths, three heights and several palette banks, SPBG 0 and 1 over an opaque background, a transparent pixel and the lower SATB entry winning an overlap (MAN H7-20, H7-21, H7-24), E0 repeatability"
 required = true
 control = false
 expect_outcome = "pass"

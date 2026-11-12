@@ -10,7 +10,7 @@ source = "fixtures/src/spr_basic.s"
 recipe = "spr-basic: ca65 --cpu huc6280 -D ROMBANKS=32 -I fixtures/lib -o build/gate/fx/spr-basic.o fixtures/src/spr_basic.s; ld65 -C fixtures/lib/hucard.cfg -D ROMBANKS=32 -o build/gate/fixtures/spr-basic.pce build/gate/fx/spr-basic.o"
 toolchain = "cc65 V2.19 (ca65 prints V2.18; identity by encoding-matrix bytes, plan 03-08), Homebrew bottle 2.19 locally, hashed by sha256sum or shasum -a 256"
 size = 262144
-sha256 = "a2f32434a525e33f207a4eae229fa868e1fb6a90be3c172d4a545c969da45e46"
+sha256 = "bcc0c11b1cf177226a6741b8d2f724b741d3249464987cf749403823355d9f51"
 licence = "0BSD"
 notices = "none: assembled at gate time from the project-owned sources fixtures/src/spr_basic.s and fixtures/lib/*.inc and hucard.cfg (0BSD); no HuC, PCEAS or cc65 library or startup code, no emulator code, no game content"
 redistribution = "generated-not-committed"

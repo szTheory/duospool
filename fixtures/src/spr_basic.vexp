@@ -3,22 +3,39 @@
 #
 # spr_basic.vexp - the hand-derived literal rows of the spr_basic video scenes (plan 04.1-01; D-155, D-159, D-160, D-161, D-169, D-171, D-172, ER-10, ER-11, ER-12, F-13).
 # scripts/fixture-build writes this file, comments dropped, as build/gate/fixtures/spr-basic.vexp.tsv; the runner kind video (tests/conformance/videokinds.c) reads only that file. One source holds the literals: no expected value lives in a case file, and none comes from a run of DuoSpool, another emulator or a hash.
-# The grammar is the one of bg_basic.vexp (scripts/lib/vexp-rules.awk). The fixture (fixtures/src/spr_basic.s) writes the vertical setup (VPR $0F02, VDW 239, VCR 4), HSR $0202 and HDR $031F (HDS 2, HDW 31: active_x 24, active_w 256 dots), MWR 0 (a 32 x 32 BAT), BXR = BYR = 0, the palette P(i) = (91 * i + 17) & 511, a BAT of the transparent tile (code $040, pixel 0 everywhere)
-# with one solid tile of pixel 15 (code $041, bank 0)
-# at BAT row 2 column 7, one solid 16 x 16 sprite pattern of pixel 15 at VRAM word $2000 (PC $100), and the 256 SATB words at VRAM word $1000, copied by the SATB DMA of the first vertical blanking after the DVSSR write; then CR = $00C0 (BB and SB set) for six frames.
-# The frames: the numbers below were read from the guest's own sequence (the counted delays of spr_basic.s) on one run, as a calibration and never as a literal: the SATB is copied at the first vertical blanking after the DVSSR write (frame 2) and CR = $00C0 is written once in frame 3, so frames 4 to 9 (the last frame of the run) hold the same scene. The rows use ;held=5, the
-# author's mark that a neighbouring frame holds the same values.
-# Display line K of a frame is the K-th record with an active window (line=active+K); with BYR = 0 the display line K shows virtual row K, so BAT row K / 8 (D-156). The dots of the window are numbered from 0 (BXR = 0): dot i is virtual column i, BAT column i / 8.
-# The sprite (MAN H7-20: word 0 Y bits 9-0, word 1 X bits 9-0, word 2 pattern code, word 3 palette bits 3-0; H7-13 and H7-21: the sprite coordinates (32, 64) are the display top-left): sprite 0 has Y = 84, X = 72, PC = $100 (pattern at word $100 * 32 = $2000, H7-21: PC bits 10-1 are address bits 15-6), palette 2, SPBG 0. It covers the display lines Y - 64 = 20 to 35 (a 16 x 16
-# sprite) and the dots X - 32 = 40 to 55.
-# The pattern is solid pixel 15: all four planes SG0 to SG3 are $FFFF in every row (H7-24: SG0 at the 64-word aligned address, SG1 at +16, SG2 at +32, SG3 at +48), so VD3 to VD0 = 1111 whatever the bit order (ER-12). The index of a sprite dot is VD8 = 1, VD7 to VD4 = the palette, VD3 to VD0 = the pixel (H7-24): 256 + 2 * 16 + 15 = 303.
-# Line 20, dots 38 to 58: the BAT row 2 (display lines 16 to 23) holds the transparent tile in columns 4 to 6 (dots 32 to 55) and the solid tile of pixel 15 in column 7 (dots 56 to 63), whose index is (0 << 4) | 15 = 15 (H7-18). So dots 38 and 39 are the transparent background (index 0, VD3 to VD0 all 0 forces VD7 to VD4 to 0, H7-18), dots 40 to 55 are the sprite (SPBG 0 and a
-# transparent background dot: the sprite is shown, H7-21), 303,
-# and dots 56 to 58 are the background tile, 15 (the sprite does not reach them). Three distinct values and transitions: the non-vacuity rule of D-171.
-# The values (GUEST pal_bijection, ER-10: the weaker of MAN and GUEST): P(i) = (91 * i + 17) & 511 for every index i, written by the guest and read back against an additive sum (checks 5 and 6): P(0) = 17; P(15) = 1365 + 17 = 1382 = 2 * 512 + 358 = 358; P(303) = 27573 + 17 = 27590 = 53 * 512 + 454 = 454.
+# The grammar is the one of bg_basic.vexp (scripts/lib/vexp-rules.awk). The fixture (fixtures/src/spr_basic.s) writes the vertical setup (VPR $0F02, VDW 239, VCR 4), HSR $0202 and HDR $031F (HDS 2, HDW 31: active_x 24, active_w 256 dots), MWR 0 (a 32 x 32 BAT), BXR = BYR = 0, the palette P(i) = (91 * i + 17) & 511, the BAT, the sprite patterns and the 256 SATB source words at
+# VRAM word $1000 copied by the SATB DMA of the first vertical blanking after the DVSSR write, then CR = $00C0 (BB and SB set) for six frames.
+# The frames: the number FRAME below was read from the guest's own sequence (the counted delays of spr_basic.s) on one run, as a calibration and never as a literal: the SATB is copied before CR = $00C0 is written once, so every frame from FRAME on holds the same scene (the rows of the solid scene use ;held=5, the author's mark that a neighbouring frame holds the same values;
+# the ASSUMED rows use ;frame=5).
+# Display line K of a frame is the K-th record with an active window (line=active+K); with BYR = 0 the display line K shows virtual row K, so BAT row K / 8 (D-156). The dots of the window are numbered from 0 (BXR = 0): dot i is virtual column i, BAT column i / 8. The background (H7-14, H7-18): the transparent tile (code $040, pixel 0, index 0 whatever the bank) everywhere,
+# except the solid tile of pixel 15 (code $041, bank 0, index 15) at BAT row 2 column 7 (dots 56 to 63, lines 16 to 23)
+# and in the whole of BAT column 22 (dots 176 to 183 of every display line): a stripe of opaque background, index 15.
+# The sprites (MAN H7-20: word 0 Y bits 9-0, word 1 X bits 9-0, word 2 pattern code, word 3 attributes; H7-13 and H7-21: the sprite coordinates (32, 64) are the display top-left, so a sprite covers the display lines Y - 64 to Y - 64 + height - 1 and the dots X - 32 to X - 32 + width - 1). The pattern code is the VRAM word address >> 5 (H7-21), a pattern cell is four planes of
+# 16 words, SGk at +16k (H7-24), a 32-wide sprite is the two cells at base and base + $40 (H7-22), a 32-high stack is the cells at base and base + $80 and a 64-high stack four cells at +$80 (H7-23).
+# The index of a sprite dot is VD8 = 1, VD7 to VD4 = the palette, VD3 to VD0 = SG3 to SG0 (H7-24): 256 + 16 * palette + pixel; a pixel of 0 is transparent (VD3 to VD0 all 0 forces VD7 to VD4 to 0, H7-24). SPBG 0 puts the sprite behind the background, SPBG 1 in front of it (H7-21); a sprite pixel replaces a background dot when SPBG is 1 or the background dot is transparent;
+# priority among sprites follows the SATB address (H7-19, H7-20: the lower entry wins).
+# The solid scene (ER-12: every cell is solid, so no bit order, byte order or flip changes it; MAN):
+#   S0 entry 0: 16 x 16, pixel 15, palette 2 (index 303): lines 20 to 35, dots 40 to 55.   S1 entry 1: 32 x 16, cells pixel 12 then 3, palette 5 (indices 348 then 339): lines 20 to 35, dots 100 to 131.
+#   S2 entry 2: 16 x 32 (CGY 1), pixel 10, palette 7 (index 378): lines 60 to 91, dots 140 to 155.   S3 entry 3: 16 x 64 (CGY 3), pixel 5, palette 9 (index 405): lines 36 to 99, dots 200 to 215.
+#   S4 entry 4: pixel 15, palette 4, SPBG 0 (index 335): lines 100 to 115, dots 172 to 187, over the stripe at dots 176 to 183.   S5 entry 5: pixel 15, palette 6, SPBG 1 (index 367): lines 140 to 155, dots 164 to 179, over the stripe at dots 176 to 179.
+#   S6 entry 6: palette 11 (index 447) at dots 40 to 55 and S7 entry 7: palette 12 (index 463) at dots 48 to 63, both pixel 15, lines 130 to 145: the dots 48 to 55 belong to both and entry 6 wins.   S8 entry 8: 32 x 16, cells pixel 15 then 0, palette 8, SPBG 1 (index 399): lines 180 to 195, dots 160 to 191 (the right cell is transparent over the stripe).
+# The values (GUEST pal_bijection, ER-10: the weaker of MAN and GUEST): P(i) = (91 * i + 17) & 511 for every index i, written by the guest and read back against an additive sum (checks 5 and 6): P(0) = 17; P(15) = 1365 + 17 = 1382 = 2 * 512 + 358 = 358; P(303) = 27573 + 17 = 27590 = 53 * 512 + 454 = 454; P(348) = 31668 + 17 = 31685 = 61 * 512 + 453 = 453; P(339) = 30849 + 17 =
+# 30866 = 60 * 512 + 146 = 146.
 # The border (GUEST pal_bijection): palette entry $100 is P(256) = 23296 + 17 = 23313 = 45 * 512 + 273 = 273, and the header field border carries it on every record, judged a whole line after the last palette data write.
-# Classes (ER-10): the structure rows use the 1365-clock grid and the frame length (ASSUMED LED-VID-0004). The index rows are MAN H7-24 (with the origin H7-13, the code and attribute layout H7-20 and the priority H7-21): the pattern is solid, so they hold for every bit order, byte order and flip; sym=order. The value rows rest on the guest's palette (GUEST pal_bijection).
-# Kills (D-172): F1 shifts the dots of the focus line one dot to the right (a transition inside the x range turns the row red), F7 zeroes every non-zero index of that line; F0 perturbs the first number of the first row. F2 (two index bits swapped) is not declared by these groups: it is left to the groups whose indices have unequal low bits.
+# Classes (ER-10): the structure rows use the 1365-clock grid and the frame length (ASSUMED LED-VID-0004). Group spx (MAN H7-24): the origin, the index formula, the plane offsets, the cell order of a pair and the heights 32 and 64 as extents (the cells of a stack are the same pixel, so their vertical order is not read here). Group spbg (MAN H7-21): SPBG 0 and 1 over an opaque
+# background and a pixel 0 over SPBG 1. Group sord (MAN H7-20): the entry order.
+# Kills (D-172): F1 shifts the dots of the focus line one dot to the right (a transition inside the x range turns the row red), F7 zeroes every non-zero index of that line, F0 perturbs the first number of the first row. F2 (two index bits swapped) cannot act on the first row of the solid groups (their first indices 303, 15, 335 and 447 have equal low bits), so they do not
+# declare it; the asymmetric groups use the indices 273, 274, 275 and declare F0, F1, F2 and F7. The border group's only kill is F0 (its liveness against the palette store belongs to the toy vid-palette-mask).
+# The asymmetric scene (ER-12; ASSUMED LED-VID-0011, which names the pixel bit order inside a pattern row, the flips, the CGY field 2 drawn as 64 lines high with its cells stacked top to bottom, and the clipping at the window edges; none of them is printed by a page held): the pattern cell spr_asym has SG0 = a diagonal (bit 15 - r of row r) and SG1 = $FF00 in every row, so
+# under the assumed reading (the leftmost pixel is bit 15)
+# the pixel of row r column c is (c == r ? 1 : 0) | (c < 8 ? 2 : 0): row 0 is 3 2 2 2 2 2 2 2 then 8 transparent dots, row 3 is 2 2 2 3 2 2 2 2 then 8 transparent, row 8 is 2 2 2 2 2 2 2 2 1 then 7 transparent, row 9 is eight 2s, 0, 1 and six 0s. With palette 1 the indices are 273 (pixel 1), 274 (pixel 2) and 275 (pixel 3).
+#   A0 entry 9: no flip, lines 200 to 215, dots 8 to 23. A1 entry 10: X flip, dots 40 to 55: the dot t shows the source column 15 - t. A2 entry 11: Y flip, dots 72 to 87: display row j shows the source row 15 - j. A3 entry 12: both, dots 104 to 119. A8 entry 17: the pair of S1 (cells pixel 12 then 3, palette 5) with X flip, lines 150 to 165, dots 100 to 131: the cells swap, so
+# the dots show 339 then 348.
+#   A4 entry 13: CGY field 2 (drawn as 64 lines high, vid_cgy2_as), palette 3, cells pixel 1, 2, 4 and 8 from the top (indices 305, 306, 308 and 312), lines 100 to 163, dots 188 to 203. A5 entry 14: the cell with X flip at X = 24, so the dots -8 to 7: the dots 0 to 7 show the source columns 7 down to 0; A6 entry 15: no flip at X = 280, dots 248 to 263: the dots 248 to 255 show
+# the columns 0 to 7;
+#   A7 entry 16: at Y = 56, lines -8 to 7: the display line k shows the row k + 8. Rows are chosen where two non-zero pixel values and the transparent dots show (the non-vacuity rule of D-171).
+# Derived rows (display row j of the source pattern; px(r, c) as above): A0 row 0 is [275, 274 x 7, 0 x 8], row 9 is [274 x 8, 0, 273, 0 x 6]. A1 row 0 mirrored: [0 x 8, 274 x 7, 275], row 9: [0 x 6, 273, 0, 274 x 8]. A2 row 0 is the source row 15, [274 x 8, 0 x 7, 273], row 9 the source row 6, [274 x 6, 275, 274, 0 x 8]. A3 row 0 is the source row 15 mirrored, [273, 0 x 7,
+# 274 x 8], row 9 the source row 6 mirrored, [0 x 8, 274, 275, 274 x 6].
 scene	video_spr_basic_solid	case=video_spr_basic_solid	role=literal
 group	video_spr_basic_solid	struct	form=STRUCT	class=ASSUMED:LED-VID-0004	sym=none	kills=F4,F8,F9
 row	video_spr_basic_solid	struct	check=count	grid=1365
@@ -27,7 +44,44 @@ row	video_spr_basic_solid	struct	check=rec_bytes	header=64;version=1;max_w=682
 row	video_spr_basic_solid	struct	check=values_below_512	limit=512
 group	video_spr_basic_solid	spx	form=ROWS	class=MAN:H7-24	sym=order	kills=F0,F1,F7
 row	video_spr_basic_solid	spx	line=active+20;x=38..58;held=5	index=2*0,16*303,3*15
+row	video_spr_basic_solid	spx	line=active+20;x=96..135;held=5	index=4*0,16*348,16*339,4*0
+row	video_spr_basic_solid	spx	line=active+59;x=136..219;held=5	index=40*0,8*15,16*0,16*405,4*0
+row	video_spr_basic_solid	spx	line=active+60;x=136..219;held=5	index=4*0,16*378,20*0,8*15,16*0,16*405,4*0
+row	video_spr_basic_solid	spx	line=active+91;x=136..219;held=5	index=4*0,16*378,20*0,8*15,16*0,16*405,4*0
+row	video_spr_basic_solid	spx	line=active+92;x=136..219;held=5	index=40*0,8*15,16*0,16*405,4*0
+row	video_spr_basic_solid	spx	line=active+35;x=96..219;held=5	index=4*0,16*348,16*339,44*0,8*15,36*0
+row	video_spr_basic_solid	spx	line=active+36;x=96..219;held=5	index=80*0,8*15,16*0,16*405,4*0
+row	video_spr_basic_solid	spx	line=active+99;x=172..219;held=5	index=4*0,8*15,16*0,16*405,4*0
+group	video_spr_basic_solid	spbg	form=ROWS	class=MAN:H7-21	sym=order	kills=F0,F1,F7
+row	video_spr_basic_solid	spbg	line=active+100;x=168..187;held=5	index=4*0,4*335,8*15,4*335
+row	video_spr_basic_solid	spbg	line=active+140;x=160..187;held=5	index=4*0,16*367,4*15,4*0
+row	video_spr_basic_solid	spbg	line=active+180;x=156..195;held=5	index=4*0,16*399,8*15,12*0
+group	video_spr_basic_solid	sord	form=ROWS	class=MAN:H7-20	sym=order	kills=F0,F1,F7
+row	video_spr_basic_solid	sord	line=active+130;x=36..67;held=5	index=4*0,16*447,8*463,4*0
 group	video_spr_basic_solid	spxval	form=ROWS	class=GUEST:pal_bijection	sym=order	kills=F0,F1
 row	video_spr_basic_solid	spxval	line=active+20;x=38..58;held=5	value=2*17,16*454,3*358
+row	video_spr_basic_solid	spxval	line=active+20;x=96..135;held=5	value=4*17,16*453,16*146,4*17
 group	video_spr_basic_solid	border	form=STRUCT	class=GUEST:pal_bijection	sym=none	kills=F0
 row	video_spr_basic_solid	border	check=border_after_pal	value=273
+scene	video_spr_basic_asym	case=video_spr_basic_asym	role=literal
+group	video_spr_basic_asym	bitorder	form=ROWS	class=ASSUMED:LED-VID-0011	sym=asym	kills=F0,F1,F2,F7
+row	video_spr_basic_asym	bitorder	line=active+200;x=6..25;frame=5	index=2*0,275,7*274,10*0
+row	video_spr_basic_asym	bitorder	line=active+209;x=6..25;frame=5	index=2*0,8*274,0,273,8*0
+group	video_spr_basic_asym	flips	form=ROWS	class=ASSUMED:LED-VID-0011	sym=asym	kills=F0,F1,F2,F7
+row	video_spr_basic_asym	flips	line=active+200;x=38..57;frame=5	index=10*0,7*274,275,2*0
+row	video_spr_basic_asym	flips	line=active+209;x=38..57;frame=5	index=8*0,273,0,8*274,2*0
+row	video_spr_basic_asym	flips	line=active+200;x=70..89;frame=5	index=2*0,8*274,7*0,273,2*0
+row	video_spr_basic_asym	flips	line=active+209;x=70..89;frame=5	index=2*0,6*274,275,274,10*0
+row	video_spr_basic_asym	flips	line=active+200;x=102..121;frame=5	index=2*0,273,7*0,8*274,2*0
+row	video_spr_basic_asym	flips	line=active+209;x=102..121;frame=5	index=10*0,274,275,6*274,2*0
+row	video_spr_basic_asym	flips	line=active+150;x=96..135;frame=5	index=4*0,16*339,16*348,4*0
+group	video_spr_basic_asym	cgy2	form=ROWS	class=ASSUMED:LED-VID-0011	sym=asym	kills=F0,F1,F2,F7
+row	video_spr_basic_asym	cgy2	line=active+100;x=176..207;frame=5	index=8*15,4*335,16*305,4*0
+row	video_spr_basic_asym	cgy2	line=active+116;x=176..207;frame=5	index=8*15,4*0,16*306,4*0
+row	video_spr_basic_asym	cgy2	line=active+132;x=176..207;frame=5	index=8*15,4*0,16*308,4*0
+row	video_spr_basic_asym	cgy2	line=active+163;x=176..207;frame=5	index=8*15,4*0,16*312,4*0
+group	video_spr_basic_asym	clip	form=ROWS	class=ASSUMED:LED-VID-0011	sym=asym	kills=F0,F1,F2,F7
+row	video_spr_basic_asym	clip	line=active+63;x=0..11;frame=5	index=4*274,275,3*274,4*0
+row	video_spr_basic_asym	clip	line=active+63;x=244..255;frame=5	index=4*0,3*274,275,4*274
+row	video_spr_basic_asym	clip	line=active+0;x=38..57;frame=5	index=2*0,8*274,273,9*0
+row	video_spr_basic_asym	clip	line=active+1;x=38..57;frame=5	index=2*0,8*274,0,273,8*0

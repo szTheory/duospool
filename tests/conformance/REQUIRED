@@ -324,3 +324,6 @@ chunk_equiv_random32_video
 spr_basic
 video_spr_basic_solid
 video_fault_sweep_spr_basic
+mutate_sweep_spr_basic
+video_spr_basic_asym
+video_fault_sweep_spr_basic_asym
