@@ -1,16 +1,16 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
-# Seed entry for research conflict C5 (7 MHz active width). A modelling assumption, not an established hardware fact.
+# Seed entry for research conflict C5 (7 MHz active width), amended by plan 04-01 (D-140, D-179): no fixed width, the window is (HDW+1)*8 dots from the registers, 320 and 341 are host crops. A modelling assumption, not an established hardware fact.
 id = "LED-VID-0003"
-statement = "DuoSpool models the active line in the 7 MHz class as 320 pixels wide for planning only; the width is not established."
+statement = "DuoSpool models the active window as (HDW+1)*8 dots starting (HDS+1)*8 dots into the line, from the programmed registers; no fixed width exists, and 320 and 341 are host crop figures. A modelling assumption, not an established hardware fact."
 profile = "pce-hucard-2btn"
 status = "assumed"
-sources = ["REPORT|pcetech.txt|display table gives 320 (SUMMARY C5)", "CODE|Geargrafx|k_huc6260_line_width table (SUMMARY C5)", "CODE|Mednafen|overscan comments give 341 and 341.3 (SUMMARY C5)", "UNKNOWN|active width|unresolved (SUMMARY C5)"]
+sources = ["REPORT|pcetech.txt|display table gives 320 (SUMMARY C5)", "CODE|Geargrafx|k_huc6260_line_width table (SUMMARY C5)", "CODE|Mednafen|overscan comments give 341 and 341.3 (SUMMARY C5)", "FACT|H7-10 H7-13|HDW bits 6-0 is N-1 characters and a character is 8 dots; no page held states a pixel width", "UNKNOWN|active width|unresolved (SUMMARY C5)"]
 evidence = []
-disagreement = "320 pixels (pcetech display table) versus 341 and 341.3 in Mednafen overscan comments and the Geargrafx line width table; unresolved"
+disagreement = "320 pixels (pcetech display table) versus 341 and 341.3 in Mednafen overscan comments and the Geargrafx line width table; unresolved. This model asserts no width: 320 is what a program that sets HDW = 39 gets, and 341 and 342 are host crop figures"
 pinning_test = "PENDING:4"
-updated = "2026-11-09"
-assumption = "Raw video records the full line plus the active-window coordinates; no fixed width is asserted by the core. Listed in unresolved_behaviours of the profile."
+updated = "2026-11-11"
+assumption = "Raw video records the full line plus the active window (active_x and active_w in dots, from the registers and the divider); the core asserts no fixed width. The pin is vid_active_window (set by the plan that lands it). Listed in unresolved_behaviours of the profile."
 revisit_phase = 4
 withheld = ["any claim that a frame is W x H pixels"]
 origin = "SUMMARY C5"

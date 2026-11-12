@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# VRAM to SATB transfer (D-150; VID-03). E1 candidate scoped to size, trigger and start (ER-2); assumed until a closing plan promotes it. The duration and the copy instant are modelling choices.
+id = "LED-VID-0013"
+statement = "VL1: the VRAM-SATB transfer moves 256 words, is triggered by the DVSSR high-byte write, starts at the next vertical blanking and repeats each blanking while DCR DSR is set; DS is set 1024 dots x divider after the copy. E1 candidate: only the size, trigger and start equal the manual."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|H7-11 H7-12|256 words at the beginning of vertical blanking, triggered by the DVSSR high byte, a set register starts at the following period, DCR DSR repeat bit 4 and DSC bit 0", "CODE|Mednafen and Geargrafx|copy at vertical blanking entry with a modelled duration"]
+evidence = []
+disagreement = "the duration differs between sources (four lines or 4 hsyncs) and so does the trigger byte; no page held states a duration"
+pinning_test = "PENDING:4"
+updated = "2026-11-11"
+assumption = "The 1,024-dot duration and the copy instant (vertical blanking entry) are modelling choices behind named constants; the renderer reads SATB live after the copy."
+revisit_phase = 4
+withheld = ["any SATB DMA duration claim"]
+origin = "04-CONTEXT D-150"

@@ -7,8 +7,9 @@
 # The core sets the reset facts at reset (cpu.c) and leaves A, X, Y, S, the flags other than I, MPR0 to MPR6, the timer reload and counter at 0 under zero and seeded-prng-v1; seeded-prng-v2 draws them; io_buffer and mpr_latch are 0 under all three.
 # The in-guest rows that read a reset fact are listed as E0 evidence (irq_ctl_pre check 2 and spd_speed check 1, E2, read one too), and every required fixture runs under zero and two v2 seeds (D-127).
 # Page images read on 2026-11-11 by the plan 03-34 executor (hardware manual scratch copy, sha256 40a32e5d..., never committed): H8-18, H8-20.
+# Amended by plan 04-01 (D-167, D-179): every VDC and VCE register, the read buffer, the latches, the status, the beam and the DMA state are 0 under every policy, so a drawn control value cannot raise IRQ1 in a fixture that knows nothing of the VDC.
 id = "LED-PROF-0003"
-statement = "DuoSpool sets I, clears D and T, selects low speed, sets MPR7 to $00, stops the timer, clears the disable register and TIQ at reset under every policy; A, X, Y, S, the other flags, MPR0 to MPR6, the timer reload and counter are 0 under zero and seeded-prng-v1 and drawn under seeded-prng-v2; io_buffer and mpr_latch are 0 under every policy. Modelling assumption."
+statement = "DuoSpool sets I, clears D and T, selects low speed, sets MPR7 to $00, stops the timer, clears the disable register and TIQ at reset under every policy; A, X, Y, S, other flags, MPR0 to MPR6, timer reload and counter are 0 under zero and seeded-prng-v1 and drawn under seeded-prng-v2; io_buffer, mpr_latch and all VDC and VCE state are 0 under every policy. Modelling assumption."
 profile = "pce-hucard-2btn"
 status = "assumed"
 sources = ["FACT|H8-18|gsd-executor image read 2026-11-11: reset sets I, resets D and T, MPR7 00, stops timer, clears disable and TIQ, low speed", "FACT|H8-20|gsd-executor image read 2026-11-11: after reset reload and downcounter are invalid", "REPORT|research/PITFALLS.md|other MPRs random at power-up (pcetech); not re-read", "UNKNOWN|A, X, Y, S, flags, latches|no page; own constants"]

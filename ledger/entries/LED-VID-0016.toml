@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# VCE window, registers and colour table (D-152, D-153, D-154; VID-05). E1 candidate scoped to the H6-2 to H6-5 facts (ER-2); assumed until a closing plan promotes it. Unlisted reads, high-byte bits, wrap and halves are outside the E1 part.
+id = "LED-VID-0016"
+statement = "VL0: the VCE window decodes offset & 7 and holds CR, CTA and a 512 x 9-bit colour table read and written through CTW and CTR; CTA increments after the high byte; unlisted reads give $FF, a CTR high byte is ORed with $FE and CR bits 7 and 2 do nothing. E1 candidate: only the H6-2 to H6-5 facts equal the manual."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|H6-2 H6-3 H6-4 H6-5|CR CTA CTW CTR by pins A1 A2, 9-bit G R B fields, 512 x 9 table in two 256-address halves, CTA incremented after the high byte of data", "REPORT|pcetech.txt|unlisted reads, high-byte read bits and the window mirror, community"]
+evidence = []
+disagreement = "the manual shades the unused data bits while pcetech reports a tested read value and the bus may float; no page held gives unlisted read values, the CTA wrap or independent halves"
+pinning_test = "PENDING:4"
+updated = "2026-11-11"
+assumption = "Reads of unlisted addresses ($FF), the upper bits of a CTR high read, the wrap at $1FF and independent halves are modelling choices; the CR byte keeps all 8 bits, of which only bits 1:0 select the divider."
+revisit_phase = 4
+withheld = ["upper-bit reads", "colour accuracy"]
+origin = "04-CONTEXT D-152"

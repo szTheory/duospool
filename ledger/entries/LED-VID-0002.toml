@@ -1,16 +1,16 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
-# Seed entry for research conflict C4 (VCE dot-clock encoding). A modelling assumption, not an established hardware fact.
+# Seed entry for research conflict C4 (VCE dot-clock encoding), amended by plan 04-01 (D-141, D-179): narrowed to the encodings 10 and 11 and the per-line latch, with the first-hand H6-3 page replacing the second-hand source. A modelling assumption, not an established hardware fact.
 id = "LED-VID-0002"
-statement = "DuoSpool models the VCE as selecting the dot clock from the low two bits of its control register: 0 = master/4, 1 = master/3, 2 and 3 = master/2; the encoding is not established."
+statement = "DuoSpool models the VCE as selecting the dot clock from CR bits 1:0 with the encodings 10 and 11 as master/2 and with the divider latched per line; the contents 00h and 01h (master/4 and master/3) are LED-VID-0017. The encodings 10 and 11 are not established."
 profile = "pce-hucard-2btn"
 status = "assumed"
-sources = ["FACT|HuC6260 manual page read|documents only /4 and /3; second-hand (SUMMARY C4, C19)", "CODE|several emulators|implement /2 as well (SUMMARY C4)", "REPORT|pcetech.txt|register section says 7 and 5 MHz, internally inconsistent (SUMMARY C4)", "UNKNOWN|register encoding|not established (SUMMARY C4)"]
+sources = ["FACT|H6-3|image read 2026-11-11: only contents 00h (ratio 4) and 01h (ratio 3) are given", "CODE|MAME, Geargrafx, Mednafen|bit 1 selects master/2 (SUMMARY C4)", "REPORT|pcetech.txt|D1 = 10 MHz, D0 = 7 or 5 MHz (rounded); clock section 10.8, 7.16, 5.36 MHz; re-read 2026-11-11, they agree", "UNKNOWN|register encoding|encodings 10 and 11 not established (SUMMARY C4)"]
 evidence = []
-disagreement = "the manual page read documents only master/4 and master/3 while several codebases implement master/2; the pcetech register section gives 7 and 5 MHz and is internally inconsistent"
+disagreement = "the manual gives only contents 00h and 01h while several codebases use master/2 when bit 1 is set; pcetech agrees (D1 gives 10 MHz, D0 only picks 7 or 5 MHz when D1 is clear) and is a hedged report; its old note as internally inconsistent did not survive a re-read (rounded figures); two emulators change the clock inside a line (C11), this model from the next line"
 pinning_test = "PENDING:4"
-updated = "2026-11-09"
-assumption = "Three enumerated modes are modelled (5.37, 7.16 and 10.74 MHz); the master/2 encoding is a placeholder to re-check against the HuC6260 page before the first VCE fixture. Listed in unresolved_behaviours of the profile."
+updated = "2026-11-11"
+assumption = "Only the encodings 10 and 11 as master/2 and the per-line latch are assumed; the contents 00h and 01h are page facts carried by LED-VID-0017. The pin is vce_dot (set by the plan that lands it). Listed in unresolved_behaviours of the profile."
 revisit_phase = 4
-withheld = ["any claim about the encoding of mode 2 or 3", "mid-frame mode-change correctness (SUMMARY C11)"]
+withheld = ["any claim about the encoding of mode 2 or 3", "mid-frame mode-change correctness (SUMMARY C11)", "the /2 timing"]
 origin = "SUMMARY C4"

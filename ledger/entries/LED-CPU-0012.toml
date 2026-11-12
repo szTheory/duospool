@@ -2,8 +2,9 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 # Unmapped reads, ignored writes and the stubs of the hardware-page windows that have no device yet (D-104; CPU-02). Modelling choices: the manual allocates the chip enables (H8-9, H8-24) and states no value for a read of a block or window that holds no device. Not a hardware measurement.
 # Checks 1 to 5, 20, 23 to 26, 43 and 44 of the mmu_mpr fixture name this entry; the constants are DS_UNMAPPED_READ, DS_VDC_STUB_READ and DS_VCE_STUB_READ (src/core/ds_core.h, constants.def).
+# Amended by plan 04-01 (D-178, D-179): the stub clause for the VDC and VCE windows is superseded by plans 04-04 (VCE) and 04-06 (VDC); mmu_mpr checks 23 to 26 are rewritten there.
 id = "LED-CPU-0012"
-statement = "DuoSpool models a read of an unmapped bank or of the empty window 0x1800-0x1FFF as 0xFF with no side effect, a write to a HuCard or unmapped bank as ignored, and, until the devices exist, the VDC window as a stub reading 0x00, the VCE window as a stub reading 0xFF and the I/O window as open bus; writes to the VDC and VCE windows are dropped. Modelling assumption."
+statement = "DuoSpool models a read of an unmapped bank or of the empty window 0x1800-0x1FFF as 0xFF with no side effect, a write to a HuCard or unmapped bank as ignored and the I/O window as open bus. SUPERSEDED: the VDC and VCE stub clauses by plans 04-06 (VDC, D-146) and 04-04 (VCE, D-152). Modelling assumption."
 profile = "pce-hucard-2btn"
 status = "assumed"
 sources = ["FACT|H8-9 H8-24|chip enables for six windows, 1FF800-1FFFFF reserved, no page gives a read value; images read by the plan 03-20 executor 2026-11-11", "REPORT|research/SUMMARY.md|unmapped reads return FF, from community sources (not re-read)", "UNKNOWN|the manual|no page states a read value of an unused block, an empty window or a missing device"]

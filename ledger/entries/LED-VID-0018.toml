@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# The raw video record DSVR v1 (D-161, D-163; VID-06). A project definition, not a hardware claim (ER-13). A hash of the stream is E0 repeatability evidence and never a verdict (ER-11).
+id = "LED-VID-0018"
+statement = "The vid record (DSVR v1) is a project definition: one record per line holding 9-bit values and indices before colour conversion, with the header fields of D-161; it asserts no width, and a hash of the stream is E0 repeatability evidence only."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["UNKNOWN|record format|a project definition; no source describes it"]
+evidence = []
+disagreement = "none: this is a definition and no source is compared"
+pinning_test = "PENDING:4"
+updated = "2026-11-11"
+assumption = "The field names, sizes and order are project choices recorded in the core header and the run record; the runner parses records with its own offsets and expected values never come from DuoSpool output."
+revisit_phase = 4
+withheld = ["aspect", "overscan", "visible area", "colour accuracy", "frame size"]
+origin = "04-CONTEXT D-161"

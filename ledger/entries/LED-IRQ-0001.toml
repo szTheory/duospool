@@ -1,16 +1,16 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
-# Seed entry for research conflict C3 (VBlank and RCR IRQ position). A modelling assumption, not an established hardware fact.
+# Seed entry for research conflict C3 (VBlank and RCR IRQ position), amended by plan 04-01 (D-143, D-179): VD at vd_irq_phase, no forced VD, RR at the end of the active window, alternatives named. A modelling assumption, not an established hardware fact.
 id = "LED-IRQ-0001"
-statement = "DuoSpool models the VBlank IRQ as raised on the first line after the active display area and the RCR IRQ at the end of the HDW period; the hardware position is not established."
+statement = "DuoSpool models the VD flag as raised at vd_irq_phase (line_start by default) on the first line after the display window, with no forced VD, and RR at the end of the active window of the line whose counter matches RCR; the hardware positions are not established. A modelling assumption."
 profile = "pce-hucard-2btn"
 status = "assumed"
-sources = ["REPORT|pcetech.txt|VBlank on first line after active area (SUMMARY C3)", "CODE|MAME|VBlank at HDW start after VDW ends, RCR near HDW end (SUMMARY C3)", "CODE|Mednafen|RCR 4 VDC clocks before HDW end (SUMMARY C3)", "REPORT|Covell|says Mednafen VSync IRQ fires late (SUMMARY C3)", "UNKNOWN|hardware IRQ position|not established (SUMMARY C3)"]
+sources = ["REPORT|pcetech.txt|VBlank on first line after active area (SUMMARY C3)", "CODE|MAME|VBlank at HDW start after VDW ends, RCR near HDW end (SUMMARY C3)", "CODE|Mednafen|RCR 4 VDC clocks before HDW end (SUMMARY C3)", "REPORT|Covell|says Mednafen VSync IRQ fires late (SUMMARY C3)", "FACT|H7-4|VD: vertical blanking has started; no instant", "UNKNOWN|hardware IRQ position|not established"]
 evidence = []
-disagreement = "VBlank on the first line after the active area (pcetech) versus MAME and Mednafen sub-line placements of VBlank and RCR; Covell reports Mednafen VSync fires late; hardware position unknown"
+disagreement = "VBlank on the first line after the active area (pcetech) versus MAME at the HDW start of that line, Geargrafx in the HDS event and Mednafen differently; RCR near the HDW end in MAME and 4 dots earlier in Mednafen; Covell reports Mednafen VSync fires late; hardware position unknown; the alternatives are the model rows vd_irq_phase and rcr_origin"
 pinning_test = "PENDING:4"
-updated = "2026-11-09"
-assumption = "Fixtures record the IRQ scanline and phase into guest RAM; the core uses the stated placeholder and no literal line number is asserted. Listed in unresolved_behaviours of the profile."
+updated = "2026-11-11"
+assumption = "Placeholder rules: VD at vd_irq_phase (line_start default, hdw_start alternative), no forced VD, RR at the end of the active window (LED-IRQ-0010). Fixtures record the guest-measured position and no literal line number is asserted. The pin becomes vdc_irq in the plan that lands it; still assumed. Listed in unresolved_behaviours of the profile."
 revisit_phase = 4
 withheld = ["any literal IRQ line claim", "any IRQ phase claim", "any raster accurate wording"]
 origin = "SUMMARY C3"

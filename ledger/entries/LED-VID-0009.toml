@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# Scroll and mode latches (D-156; VID-01). E1 candidate for the next-line statements only (ER-2); assumed until a closing plan promotes it. H7-9 is listed because it gives the SCREEN and CM validity (research finding F-12).
+id = "LED-VID-0009"
+statement = "R1: BXR is taken as of the line start; a BYR write during display shows from the next line as BYR_new+1; MWR SCREEN is valid at vertical blanking entry and CM from the next line. E1 candidate: only the next-line statements equal the manual; the first display line showing BYR is a modelling reading."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|H7-7 H7-8 H7-9|BXR valid with the next scanning line, BYR update shows with the next line as BYR+1, VM and SM and SCREEN valid at the beginning of vertical blanking, CM with the next line"]
+evidence = []
+disagreement = "the sub-line latch offset differs (Geargrafx about 12 dots into the line); no page held gives a latch instant inside a line"
+pinning_test = "PENDING:4"
+updated = "2026-11-11"
+assumption = "'BYR on the first display line equals BYR' is on no page (H7-7 says only that a mid-display update shows from the next line as BYR+1), so it stays outside the E1 part. Writes are judged at least 250 master clocks from both line boundaries."
+revisit_phase = 4
+withheld = ["latch position inside the line", "scroll-accurate"]
+origin = "04-CONTEXT D-156"
