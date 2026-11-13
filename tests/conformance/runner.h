@@ -434,6 +434,12 @@ void kind_psg_dev_join(const struct kase *k, struct ctx *c, char *got, size_t go
 void kind_snapshot_restore_audio(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_aud_poweron_policy_diff(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_psg_fold(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+/* plan 05-04 Task 3 (audiokinds.c): the --audio-out CASE_ID option (the --video-out shape: audio_out_id its value, audiokinds_arg parses it, audio_out_main runs the request, exit 0 or 2), kind audio_out_rights (the rule judged without writing a file) and kind pcm_cadence (the per-frame sample counts) */
+extern const char *audio_out_id;
+int audiokinds_arg(int argc, char **argv, int *a);
+int audio_out_main(void);
+void kind_audio_out_rights(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_pcm_cadence(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_model_param_vdc(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-08: the VD and RR status-read stamps of the vdc_stat guest under the default and the two bound model rows (D-143, D-168) */
 void kind_vdc_irq_agree(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-17: the guest-recorded RCR to VD and VD to RCR = 64 intervals against the dev log read stamps and the hand-derived literals of the case (D-174, ER-3, ER-10) */
 void kind_vdc_advance_pure(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-10: the DMA closed form against a naive per-clock model over seeded random stamp partitions that cross display starts (D-151, D-175) */

@@ -15,6 +15,7 @@
 #        conformance-run snapshot-host-hash EVIDENCE_DIR
 #        conformance-run trace-out-check BD
 #        conformance-run video-out-check BD
+#        conformance-run audio-out-check BD
 #        conformance-run supervise --ids FILE --out FILE [--wall N] -- CMD ARGS...
 # run mode (D-60, D-85): everything lives under build/NAME (default gate, the build directory of the preset NAME). The steps are
 #   (the runner also gets --records DIR/records, made empty on every run, and --golden-dir tests/conformance/golden: see plan 14, D-84b, D-86; and --inputs DIR/inputs.tsv, plan 03-27)
@@ -81,7 +82,8 @@ LC_ALL=C; export LC_ALL
 here=$(cd "$(dirname "$0")" && pwd)
 
 usage() {
-  echo "usage: conformance-run run [--preset NAME] | sanitize | fixtures [--only NAME] | control DIR | control-signal DIR SIG | filter-cases CASES_TSV IDS_FILE OUT_TSV | toy-expect EXPECT OUT_BASE [REQUIRED] | toy-verdict RESULTS RED_IDS PASS_IDS | snapshot-host-hash EVIDENCE_DIR | trace-out-check BD | video-out-check BD | supervise --ids FILE --out FILE [--wall N] -- CMD ARGS..." >&2
+  echo "usage: conformance-run run [--preset NAME] | sanitize | fixtures [--only NAME] | control DIR | control-signal DIR SIG | filter-cases CASES_TSV IDS_FILE OUT_TSV | toy-expect EXPECT OUT_BASE [REQUIRED] | toy-verdict RESULTS RED_IDS PASS_IDS | snapshot-host-hash EVIDENCE_DIR | trace-out-check BD | video-out-check BD |\
+ audio-out-check BD | supervise --ids FILE --out FILE [--wall N] -- CMD ARGS..." >&2
   exit 2
 }
 
@@ -206,7 +208,7 @@ run_mode() {
   mkdir -p "$bd" || { echo "HARNESS_ERROR cannot create $bd" >&2; exit 2; }
   rm -rf "$bd/exclude-ids.txt" "$bd/cases.tsv" "$bd/ids.txt" "$bd/results.txt" "$bd/evidence" "$bd/records" "$bd/r1.tsv" "$bd/rules-fields.txt" "$bd/oracle.tsv" "$bd/oracle.err" "$bd/bankclass.tsv" "$bd/bankclass.err" "$bd/inputs.tsv" "$bd/inputs.err"
   # the traces of an earlier explicit --trace-out run (plan 03-19; D-120): the cases write none, and trace_out_check below requires the directory to be absent until it makes it itself (the gate mode only: the sanitize mode makes none)
-  if [ "$mode" != sanitize ]; then rm -rf build/gate/traces build/gate/video; fi # the video dir of an earlier explicit --video-out run is removed the same way (plan 04-05)
+  if [ "$mode" != sanitize ]; then rm -rf build/gate/traces build/gate/video build/gate/audio; fi # the video dir of an earlier explicit --video-out run is removed the same way (plan 04-05), and the audio dir of --audio-out (plan 05-04)
 
   flatten_cases "$bd"
   flatten_inputs "$bd"
@@ -316,6 +318,7 @@ run_mode() {
   fi
   trace_out_check "$bd"
   video_out_check "$bd"
+  audio_out_check "$bd"
   controls_mode "$preset" "$bd"
   echo "STATUS conformance ok n=$n"
   exit 0
@@ -440,6 +443,74 @@ video_out_check() {
     fi
   done
   echo "VIDEO_OUT $vo_id dsvr tsv ok"
+}
+
+# audio_out_check BD (plan 05-04; D-199, T-05-16, F-85; the video_out_check shape): the runner writes the audio streams only on an explicit --audio-out. The cases that just ran must have left no build/gate/audio; then the explicit request for the authored audio case audio_tone_sel0 must print exactly three lines (the .dspe stream:
+# record count, size, sha256; the .dspa stream: frame count, size, sha256; the .tsv: rows, size, sha256), the three files must exist with the size and the SHA-256 that a host tool measures (the printed values are not trusted), the streams must hold at least one record and one frame with the sizes of D-199 (17 + 24 per record, 33 + 8 per frame), and
+# the host SHA-256 of both must equal the psg_sha256 and pcm_sha256 the case printed in its evidence file (the external recomputation). Five refused requests (an id with a slash and dot-dot, an upper-case id, a case whose fixture is none, a case that is not an audio case, no such case) must exit 2 and add no file. Any fault is exit 1 with an AUDIO_OUT_ code.
+audio_out_check() {
+  ao_bd=$1
+  ao_dir=build/gate/audio
+  ao_id=audio_tone_sel0
+  if [ -e "$ao_dir" ]; then
+    echo "AUDIO_OUT_UNREQUESTED the cases created $ao_dir without --audio-out"
+    exit 1
+  fi
+  mkdir -p "$ao_dir" || { echo "HARNESS_ERROR cannot create $ao_dir" >&2; exit 2; }
+  pick_sha_tool
+  if "$ao_bd/ds_runner" --cases "$ao_bd/cases.tsv" --audio-out "$ao_id" > "$ao_bd/audio-out.txt" 2> "$ao_bd/audio-out.err"; then ao_r=0; else ao_r=$?; fi
+  if [ "$ao_r" -ne 0 ]; then
+    cat "$ao_bd/audio-out.err"
+    echo "AUDIO_OUT_FAILED the explicit --audio-out $ao_id exited $ao_r"
+    exit 1
+  fi
+  if [ "$(wc -l < "$ao_bd/audio-out.txt" | tr -d ' ')" -ne 3 ]; then
+    echo "AUDIO_OUT_STDOUT the audio request printed other than its three summary lines"
+    exit 1
+  fi
+  ao_ok=1
+  for ao_kind in dspe:records dspa:frames tsv:rows; do
+    ao_ext=${ao_kind%%:*}
+    ao_lab=${ao_kind#*:}
+    ao_line=$(grep "^AUDIO $ao_id $ao_ext $ao_lab=" "$ao_bd/audio-out.txt" || true)
+    ao_n=$(printf '%s\n' "$ao_line" | sed -n 's/^AUDIO [a-z0-9_]* [a-z]* [a-z]*=\([0-9][0-9]*\) bytes=[0-9][0-9]* sha256=[0-9a-f]\{64\}$/\1/p')
+    ao_b=$(printf '%s\n' "$ao_line" | sed -n 's/^.* bytes=\([0-9][0-9]*\) sha256=.*$/\1/p')
+    ao_s=$(printf '%s\n' "$ao_line" | sed -n 's/^.* sha256=\([0-9a-f]\{64\}\)$/\1/p')
+    if [ -z "$ao_n" ] || [ -z "$ao_b" ] || [ -z "$ao_s" ] || [ ! -f "$ao_dir/$ao_id.$ao_ext" ]; then
+      echo "AUDIO_OUT_SHAPE the summary line or the file $ao_id.$ao_ext is missing or malformed"
+      exit 1
+    fi
+    ao_hb=$(wc -c < "$ao_dir/$ao_id.$ao_ext" | tr -d ' ')
+    ao_hs=$($sha_tool "$ao_dir/$ao_id.$ao_ext" | awk '{ print $1 }')
+    if [ "$ao_hb" != "$ao_b" ] || [ "$ao_hs" != "$ao_s" ]; then
+      echo "AUDIO_OUT_MISMATCH the printed size or sha256 of $ao_id.$ao_ext differs from the host tools"
+      exit 1
+    fi
+    case $ao_ext in
+      dspe) ao_e_n=$ao_n; ao_e_sha=$ao_hs; [ "$ao_b" -eq $(( 17 + 24 * ao_n )) ] || ao_ok=0 ;;
+      dspa) ao_p_n=$ao_n; ao_p_sha=$ao_hs; [ "$ao_b" -eq $(( 33 + 8 * ao_n )) ] || ao_ok=0 ;;
+      *) : ;;
+    esac
+  done
+  if [ "$ao_ok" -ne 1 ] || [ "$ao_e_n" -lt 1 ] || [ "$ao_p_n" -lt 1 ]; then
+    echo "AUDIO_OUT_EMPTY the streams of $ao_id hold no record or no frame, or their sizes are not 17 + 24 per record and 33 + 8 per frame: a writer that records nothing is dead, not a pass"
+    exit 1
+  fi
+  # the external recomputation: the host SHA-256 of both written streams equals the pcm_sha256 and psg_sha256 the audio case printed in its evidence file
+  ao_case_p=$(sed -n 's/^pcm_sha256=\([0-9a-f]\{64\}\) psg_sha256=[0-9a-f]\{64\} .*$/\1/p' "$ao_bd/evidence/$ao_id.txt" | head -n 1)
+  ao_case_e=$(sed -n 's/^pcm_sha256=[0-9a-f]\{64\} psg_sha256=\([0-9a-f]\{64\}\) .*$/\1/p' "$ao_bd/evidence/$ao_id.txt" | head -n 1)
+  if [ -z "$ao_case_p" ] || [ "$ao_case_p" != "$ao_p_sha" ] || [ -z "$ao_case_e" ] || [ "$ao_case_e" != "$ao_e_sha" ]; then
+    echo "AUDIO_OUT_DIGEST the host SHA-256 of $ao_id.dspa or .dspe is not the pcm_sha256 or psg_sha256 of the evidence file of the case $ao_id"
+    exit 1
+  fi
+  for ao_bad in '../x' 'Audio_tone_sel0' run_refuse_memory_invalid psg_tone no_such_case; do
+    if "$ao_bd/ds_runner" --cases "$ao_bd/cases.tsv" --audio-out "$ao_bad" > /dev/null 2> /dev/null; then ao_r=0; else ao_r=$?; fi
+    if [ "$ao_r" -ne 2 ] || [ "$(ls "$ao_dir" | wc -l | tr -d ' ')" -ne 3 ]; then
+      echo "AUDIO_OUT_REFUSAL a refused request '$ao_bad' did not exit 2 or left a file"
+      exit 1
+    fi
+  done
+  echo "AUDIO_OUT $ao_id dspe dspa tsv ok"
 }
 
 # sanitize_compiler BD (D-55): choose the compiler of the sanitize preset and export it as CC. Darwin: /usr/bin/clang, because Homebrew
@@ -971,6 +1042,7 @@ case $1 in
   toy-expect) shift; { [ $# -eq 2 ] || [ $# -eq 3 ]; } || usage; toy_expect "$@"; exit 0 ;; # plan 04-17: the EXPECT of a toy split into its id lists
   toy-verdict) shift; [ $# -eq 3 ] || usage; if toy_verdict "$1" "$2" "$3"; then exit 0; else exit 1; fi ;; # plan 04-17: the verdict of a toy run against its id lists
   snapshot-host-hash) shift; [ $# -eq 1 ] || usage; snapshot_host_hash "$1"; exit 0 ;;
+  audio-out-check) shift; [ $# -eq 1 ] || usage; audio_out_check "$1"; exit 0 ;; # the entry of the audio --audio-out step (plan 05-04), run from the repository root against a built gate directory
   video-out-check) shift; [ $# -eq 1 ] || usage; video_out_check "$1"; exit 0 ;; # the entry of the video --video-out step (plan 04-05), run from the repository root against a built gate directory
   trace-out-check) shift; [ $# -eq 1 ] || usage; trace_out_check "$1"; exit 0 ;; # the entry the selftest trace-out-empty drives with a shim runner in a scratch directory
   supervise) shift ;;

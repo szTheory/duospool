@@ -1048,6 +1048,8 @@ static const struct {
     {"snapshot_restore_audio", kind_snapshot_restore_audio, 0},
     {"aud_poweron_policy_diff", kind_aud_poweron_policy_diff, 0},
     {"psg_fold", kind_psg_fold, 0},
+    {"audio_out_rights", kind_audio_out_rights, 0},
+    {"pcm_cadence", kind_pcm_cadence, 0},
     {"video_out_rights", kind_video_out_rights, 0},
     {"video_fault_sweep", kind_video_fault_sweep, 0},
     {"video_hash_not_verdict", kind_video_hash_not_verdict, 0},
@@ -1284,18 +1286,19 @@ int main(int argc, char **argv)
             oracle_path = argv[++a];
         } else if (strcmp(argv[a], "--bank-oracle") == 0 && a + 1 < argc) {
             bank_oracle_path = argv[++a];
-        } else if (cpukinds_arg(argc, argv, &a) || obskinds_arg(argc, argv, &a) || videokinds_arg(argc, argv, &a) || inputkinds_arg(argc, argv, &a)) {
+        } else if (cpukinds_arg(argc, argv, &a) || obskinds_arg(argc, argv, &a) || videokinds_arg(argc, argv, &a) || audiokinds_arg(argc, argv, &a) || inputkinds_arg(argc, argv, &a)) {
             continue;
         } else {
             cases_path = NULL;
             break;
         }
     }
-    if (cases_path == NULL || (evdir == NULL && !list_fx && trace_out_id == NULL && video_out_id == NULL)) {
+    if (cases_path == NULL || (evdir == NULL && !list_fx && trace_out_id == NULL && video_out_id == NULL && audio_out_id == NULL)) {
         emit_err("usage: ds_runner --cases FILE --evidence-dir DIR [--profile-tsv FILE] [--rules-fields FILE]\n"
                         "                 [--oracle FILE] [--bank-oracle FILE] [--opcode-tsv FILE] [--inputs FILE] [--exclude-ids FILE] [--only ID] [--marker-seed N] [--records DIR] [--golden-dir DIR]\n"
                         "       ds_runner --cases FILE --trace-out CASE_ID   (writes build/gate/traces/CASE_ID.insn and .dev for an authored or synthetic case)\n"
                         "       ds_runner --cases FILE --video-out CASE_ID   (writes build/gate/video/CASE_ID.dsvr and .tsv for a video case of an authored or synthetic fixture)\n"
+                        "       ds_runner --cases FILE --audio-out CASE_ID   (writes build/gate/audio/CASE_ID.dspe, .dspa and .tsv for an audio case of an authored or synthetic fixture)\n"
                         "       ds_runner --sweep-lengths | --spec | --emit RECIPE | --hash RECIPE\n");
         return 2;
     }
@@ -1322,6 +1325,9 @@ int main(int argc, char **argv)
     }
     if (video_out_id != NULL) {
         return video_out_main();
+    }
+    if (audio_out_id != NULL) {
+        return audio_out_main();
     }
     if (exclude_path != NULL) {
         char *xt = read_file(exclude_path);

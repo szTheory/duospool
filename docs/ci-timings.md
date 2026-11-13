@@ -1195,3 +1195,25 @@ Stage seconds over 5 s, from the gate's own clock (sum 328): `sanitizers` 142, `
 
 CI levers (D-215, D-226): lever (a), `nproc` and the CPU model in the tool-versions step of both work jobs, is the separate revertible commit `9619efe`; the owner says yes or no at publish time. Lever (b), a third parallel clang job, is dropped (it conflicts with `rule-job-gate` and needs cc65 and `fixture-build`), and lever (c) stays rejected.
 Without lever (b) the CI critical path is the measured two-leg path of the first Phase 4.1 run, 562 s (`gate-mawk` 555 s, the D-176 job trigger is 600 s per job). The Phase 5 estimate of D-214 (+25 to +50 s) puts it at about 587 to 612 s, so the job trigger may fire for `gate-mawk`; this is recorded against the measured run and is re-measured on the first Phase 5 CI run.
+
+## Phase 5 plan 05-04: fold cost (local runs, not CI runs)
+
+CI for Phase 5: unverified: no push is authorised (D-64). This section makes no CI claim; every run is E0 repeatability, and no time here is a pass or fail criterion (D-214, F-79).
+The run is the local warm gate on the same machine as the 05-01 baseline (Apple M5 Pro, 18 cores, macOS, BWK awk, Apple clang, cmake) on 2026-11-13, after the three task commits of plan 05-04 (the PSG synthesis, DSPE and DSPA emission, the audio judge, the D-200 proof set, `--audio-out`, `pcm_cadence` and two toys; 358 conformance cases).
+The machine was not quiet: other work held the load average between 11 and 23, so this run is recorded beside the baseline and is not judged against it (a run at a much higher load is never judged alone).
+
+| Run | What | Result | Wall s | User CPU s | System s | Load average (1 min) |
+|-----|------|--------|--------|------------|----------|----------------------|
+| 05-01 baseline | `sh scripts/check --timing` at `9619efe` | PASS, 57 stages | 328.2 | 270.0 | 48.0 | 5.7 at start, 9.1 at end |
+| 05-03 | `sh scripts/check` at `4515695` (the noise fold in every step) | PASS | 665 | 429.0 | | 22 to 31 |
+| 05-04 | `sh scripts/check --timing` after Task 3 | PASS, 57 stages | 657.5 | 501.2 | 114.4 | 22.5 at start, 11.9 at end |
+
+Stage seconds over 5 s of the 05-04 run, from the gate's own clock (sum 657): `sanitizers` 247, `conformance` 143, `determinism` 94, `video-check` 17, `audit-synthetic` 16, `inventory` 15, `rights-tree` 13, `rights-negatives` 11, `protocol-negatives` 8, `named-controls` 7.
+The conformance stage alone, run in the same hour at a load of 11 to 15: 97.1 s user CPU, 108.5 s wall (358 cases); after Task 2 (355 cases) 87.8 s, and at the 05-03 tree 74.6 s at a load of about 15 (344 cases). The 14 new cases carry most of the growth: the observer matrix on psg_tone (36 runs), the random chunk programs with the audio sinks (192 runs) and the two toys.
+
+The per-step PSG fold cost: the fold of 05-03 (noise counters, closed-form channel catch-up) runs in every step with or without a sink; plan 05-04 adds only the sample loop, which runs when a pcm sink is attached and visits at most span / 192 + 1 instants per step (at most 4, D-195), each a const sample of six channels.
+With every sink attached, chunk_equiv_random32_audio (32 random programs, 6 runs each to 600,000 master clocks, both audio sinks on every call) took 2.39 s user CPU in the runner, about 0.6 microseconds per step all in (the CPU step, the VDC fold, the PSG fold and the sinks), measured at a load of 10 to 13.
+Staging trigger status: the conformance stage is not moved; cut trigger (3) of D-217 needs a quiet re-run before it can be judged (501.2 s against the 337.5 s threshold, at a load two to three times that of the baseline); 05-05 or 05-08 re-measures on a quiet machine.
+
+RF-12 and D-227 (the insn sink of opcode_exercise): psg_tone relies on `OX_SINK_RECORDS` 1,048,576. It waits at the power-up low speed (12 master clocks per cycle) in DEX and BNE loops of 3 cycles per instruction on average, and reaches its DSV1 done state at machine time 678,936, under two frames of 262 lines (357,630 master clocks each),
+in under 20,000 instructions (about 13,500 in its counted delays, from the loop structure of fixtures/src/psg_tone.s, and the rest in 16,114 cycles of startup and checks at 3 or more cycles each). A 4-cycle wait loop executes about 7,450 instructions per 262-line frame at the low speed, so the sink has room for about 140 frames of waiting; psg_tone uses under 2.

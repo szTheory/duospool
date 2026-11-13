@@ -358,3 +358,6 @@ psg_fold
 chunk_equiv_audio_psg_tone
 chunk_equiv_random32_audio
 observer_psg_tone
+audio_out_rights
+pcm_cadence
+mutate_sweep_psg_tone

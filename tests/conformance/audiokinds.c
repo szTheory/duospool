@@ -2085,3 +2085,468 @@ out:
     free(insn);
     free(snap);
 }
+
+/* ---- --audio-out and kind audio_out_rights (plan 05-04 Task 3; D-199, F-85, T-05-16; the --video-out shape) ----
+ * The runner writes the audio streams of a case only for `--audio-out CASE_ID`, only for a case of kind audio whose fixture is an authored image listed in build/gate/fixtures-authored.used or a synthetic recipe, only to build/gate/audio/ID.dspe and ID.dspa (the canonical streams of D-199)
+ * and ID.tsv, paths the runner builds itself from an id of the form [a-z0-9_]+; stdout is exactly three lines of ids, counts, sizes and SHA-256 values, never sample data. The run is the zero-policy run of the case (the same image, request, deadline and DSV1 stop), so the streams are the
+ * streams the case judged, and scripts/conformance-run recomputes both digests with a host tool against the pcm_sha256 and psg_sha256 of the case's evidence file. The .tsv holds one header row, then E rows (one per DSPE record: stamp, pc, reg, value, chan, effect, wave_idx, post),
+ * F rows (one per video frame of lines x 1365 master clocks with any sample in the stream: the frame, its first stream index and its sample count) and P rows (run-length groups of identical frames: first index, count, L, R). Evidence tier E0. */
+
+#define AO_DIR "build/gate/audio/"
+#define AO_ID_MAX 64u
+
+const char *audio_out_id;
+
+int audiokinds_arg(int argc, char **argv, int *a)
+{
+    if (strcmp(argv[*a], "--audio-out") == 0 && *a + 1 < argc) {
+        audio_out_id = argv[*a + 1];
+        *a += 1;
+        return 1;
+    }
+    return 0;
+}
+
+enum { AO_OK = 0, AO_BAD_ID = 1, AO_NO_CASE = 2, AO_NOT_PERMITTED = 3, AO_NOT_AUDIO = 4, AO_NO_DEADLINE = 5, AO_FAILED = 6 };
+
+static const char *ao_reason(int r)
+{
+    switch (r) {
+    case AO_BAD_ID:
+        return "the id is not of the form [a-z0-9_]+ with at most 64 characters";
+    case AO_NO_CASE:
+        return "no case carries that id";
+    case AO_NOT_PERMITTED:
+        return "the fixture of the case is neither an authored image listed in build/gate/fixtures-authored.used nor a synthetic recipe";
+    case AO_NOT_AUDIO:
+        return "the case is not an audio case";
+    case AO_NO_DEADLINE:
+        return "the case has no until_mclk to run to";
+    default:
+        return "the audio streams could not be produced";
+    }
+}
+
+static int ao_id_valid(const char *id)
+{
+    size_t n = strlen(id);
+
+    return n >= 1u && n <= AO_ID_MAX && strspn(id, "abcdefghijklmnopqrstuvwxyz0123456789_") == n;
+}
+
+/* the three paths the runner derives from a valid id: 0 on success */
+static int ao_paths(const char *id, char *e, char *p, char *t, size_t cap)
+{
+    int a;
+    int b;
+    int d;
+
+    if (!ao_id_valid(id)) {
+        return -1;
+    }
+    a = snprintf(e, cap, AO_DIR "%s.dspe", id);
+    b = snprintf(p, cap, AO_DIR "%s.dspa", id);
+    d = snprintf(t, cap, AO_DIR "%s.tsv", id);
+    return a > 0 && b > 0 && d > 0 && (size_t)a < cap && (size_t)b < cap && (size_t)d < cap ? 0 : -1;
+}
+
+/* the checks before any file is opened: the id, the case, its fixture (authored and listed, or synthetic), its kind and its deadline */
+static int ao_request(const char *id, const struct kase **kout, uint64_t *until)
+{
+    size_t i;
+
+    if (!ao_id_valid(id)) {
+        return AO_BAD_ID;
+    }
+    for (i = 0u; i < case_count(); i++) {
+        const struct kase *k = case_get(i);
+
+        if (strcmp(k->val[K_ID], id) == 0) {
+            if (!k->has[K_FIXTURE] || !output_fixture_permitted(k->val[K_FIXTURE])) {
+                return AO_NOT_PERMITTED;
+            }
+            if (!k->has[K_KIND] || strcmp(k->val[K_KIND], "audio") != 0) {
+                return AO_NOT_AUDIO;
+            }
+            if (!k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], until) != 0 || *until == 0u) {
+                return AO_NO_DEADLINE;
+            }
+            *kout = k;
+            return AO_OK;
+        }
+    }
+    return AO_NO_CASE;
+}
+
+/* the frame length in master clocks of the profile binding of the run: lines_per_frame (262 or 263) x 1365 (ASSUMED LED-VID-0001, LED-VID-0004) */
+static uint64_t ao_frame_mclk(const struct ds_instance *inst)
+{
+    return (strcmp(inst->profile.field[DS_FIELD_lines_per_frame].value, "263") == 0 ? 263u : 262u) * 1365u;
+}
+
+/* the sample count of video frame k of length lf over the stream indices [0, n) from first: the samples s with k x lf <= s x 192 < (k + 1) x lf, clipped to the stream (D-187) */
+static uint64_t ao_frame_count(uint64_t first, uint64_t n, uint64_t lf, uint64_t k, uint64_t *start)
+{
+    uint64_t a = (k * lf) / 192u + ((k * lf) % 192u != 0u ? 1u : 0u);
+    uint64_t b = ((k + 1u) * lf) / 192u + (((k + 1u) * lf) % 192u != 0u ? 1u : 0u);
+
+    a = a < first ? first : a;
+    b = b > first + n ? first + n : b;
+    *start = a - first;
+    return b > a ? b - a : 0u;
+}
+
+static int ao_write_tsv(const char *path, const struct au_cap *cp, uint64_t lf, uint64_t *rows)
+{
+    FILE *fp = fopen(path, "wb");
+    uint32_t i;
+    uint64_t k;
+    int ok = fp != NULL;
+
+    *rows = 0u;
+    if (fp == NULL) {
+        return -1;
+    }
+    ok = ok && fprintf(fp, "row\tstamp_or_frame\tpc_or_first\treg_or_count\tvalue_or_l\tchan_or_r\teffect\twave_idx\tpost\n") > 0;
+    for (i = 0u; i < cp->ecount && ok; i++) {
+        const uint8_t *r = cp->erec + (size_t)i * AU_E_REC;
+
+        ok = fprintf(fp, "E\t%llu\t%u\t%u\t%u\t%u\t%u\t%u\t%u\n", (unsigned long long)au_u64(r + AU_E_STAMP), (unsigned)au_u16(r + AU_E_PC), (unsigned)r[AU_E_REG], (unsigned)r[AU_E_VALUE], (unsigned)r[AU_E_CHAN], (unsigned)r[AU_E_EFFECT], (unsigned)r[AU_E_WIDX],
+                     (unsigned)au_u16(r + AU_E_POST)) > 0;
+        (*rows)++;
+    }
+    for (k = (cp->first * 192u) / lf; ok && cp->fcount > 0u; k++) {
+        uint64_t start = 0u;
+        uint64_t n = ao_frame_count(cp->first, cp->fcount, lf, k, &start);
+
+        if (n == 0u) {
+            break;
+        }
+        ok = fprintf(fp, "F\t%llu\t%llu\t%llu\n", (unsigned long long)k, (unsigned long long)start, (unsigned long long)n) > 0;
+        (*rows)++;
+    }
+    for (i = 0u; i < cp->fcount && ok;) {
+        uint32_t j = i + 1u;
+
+        while (j < cp->fcount && memcmp(cp->frames + (size_t)j * AU_F_BYTES, cp->frames + (size_t)i * AU_F_BYTES, AU_F_BYTES) == 0) {
+            j++;
+        }
+        ok = fprintf(fp, "P\t%u\t%u\t%u\t%u\n", (unsigned)i, (unsigned)(j - i), (unsigned)au_sample(cp, i, 1), (unsigned)au_sample(cp, i, 2)) > 0;
+        (*rows)++;
+        i = j;
+    }
+    if (fclose(fp) != 0) {
+        ok = 0;
+    }
+    return ok ? 0 : -1;
+}
+
+static void ao_print(const char *id, const char *what, const char *label, uint64_t n, const uint8_t *bytes, size_t len)
+{
+    uint8_t digest[DS_SHA256_BYTES];
+    char hex[2u * DS_SHA256_BYTES + 1u];
+
+    ds_sha256(bytes, len, digest);
+    au_hex(digest, hex);
+    emit_out("AUDIO %s %s %s=%llu bytes=%llu sha256=%s\n", id, what, label, (unsigned long long)n, (unsigned long long)len, hex);
+}
+
+static int ao_write(const char *path, const uint8_t *bytes, size_t len)
+{
+    FILE *fp = fopen(path, "wb");
+
+    if (fp == NULL) {
+        return -1;
+    }
+    if (fwrite(bytes, 1u, len, fp) != len) {
+        fclose(fp);
+        return -1;
+    }
+    return fclose(fp) == 0 ? 0 : -1;
+}
+
+/* the whole request: validate, run the case's image (the zero policy, the case's request and deadline, the DSV1 stop) with the audio sinks, write the three files; 0 or an AO_ code (nothing is opened before the request is permitted) */
+static int ao_do(const char *id)
+{
+    const struct kase *k = NULL;
+    uint64_t until = 0u;
+    char epath[128];
+    char ppath[128];
+    char tpath[128];
+    char req[600];
+    struct au_expect e;
+    struct booted b;
+    const struct ds_instance *ci = NULL;
+    struct au_cap cp;
+    struct ds_run_result res;
+    struct ctx sc;
+    uint8_t *es = NULL;
+    uint8_t *ps = NULL;
+    size_t el = 0u;
+    size_t pl = 0u;
+    uint64_t rows = 0u;
+    int r = ao_request(id, &k, &until);
+
+    if (r != AO_OK) {
+        return r;
+    }
+    if (ao_paths(id, epath, ppath, tpath, sizeof epath) != 0) {
+        return AO_BAD_ID;
+    }
+    if (!k->has[K_EXPECT] || au_parse(k->val[K_EXPECT], &e) != 0 || vd_policy_request(0u, k->has[K_REQUEST] ? k->val[K_REQUEST] : "", req, sizeof req) != 0) {
+        return AO_FAILED;
+    }
+    if (boot_built_rom(e.rom, req, &b, &ci) != NULL) {
+        return AO_FAILED;
+    }
+    memset(&cp, 0, sizeof cp);
+    memset(&sc, 0, sizeof sc);
+    if (au_run(&sc, (struct ds_instance *)(void *)b.mem, until, 1, au_pcm_capacity(ci->machine_time, until), &cp, &res) != 0) {
+        r = AO_FAILED;
+    } else {
+        es = au_psg_stream(&cp, &el);
+        ps = au_pcm_stream(&cp, &pl);
+        if (es == NULL || ps == NULL || ao_write(epath, es, el) != 0 || ao_write(ppath, ps, pl) != 0 || ao_write_tsv(tpath, &cp, ao_frame_mclk(ci), &rows) != 0) {
+            r = AO_FAILED;
+        } else {
+            char *text = read_file(tpath);
+
+            if (text == NULL) {
+                r = AO_FAILED;
+            } else {
+                ao_print(id, "dspe", "records", cp.ecount, es, el);
+                ao_print(id, "dspa", "frames", cp.fcount, ps, pl);
+                ao_print(id, "tsv", "rows", rows, (const uint8_t *)text, strlen(text));
+                free(text);
+            }
+        }
+    }
+    free(es);
+    free(ps);
+    au_cap_free(&cp);
+    release_boot(&b);
+    return r;
+}
+
+int audio_out_main(void)
+{
+    int r = ao_do(audio_out_id);
+
+    if (r != AO_OK) {
+        emit_err("HARNESS --audio-out refused: %s\n", ao_reason(r));
+        return 2;
+    }
+    return 0;
+}
+
+static int ao_file_exists(const char *path)
+{
+    FILE *fp = fopen(path, "rb");
+
+    if (fp == NULL) {
+        return 0;
+    }
+    fclose(fp);
+    return 1;
+}
+
+/*
+ * kind audio_out_rights (the video_out_rights rows, cloned): expect is a list of items separated by ';', each value at most 40 characters, at least one of each of the five kinds:
+ *   allow_fixture=KEY  the fixture key is permitted (authored and listed, or a synthetic recipe)      deny_fixture=KEY  it is not (an unlisted authored image, none, a path, a commercial name)
+ *   allow_case=ID      the request for the case passes every check before a file is opened, and the paths are build/gate/audio/ID.dspe, .dspa and .tsv with no further slash
+ *   deny_case=ID       the request is refused (a fixture not permitted, a case that is not an audio case, or no such case) and no file appears        bad_id=ID  the id is refused with no path built and no file at any naive join
+ * Nothing is written by this kind: the writing of an allowed request is the --audio-out run of scripts/conformance-run, whose digests it recomputes with a host tool. E0: the rule is a literal one of this plan (T-05-16).
+ */
+void kind_audio_out_rights(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    char list[PK_LIST_MAX];
+    char *rest = list;
+    char *item;
+    unsigned classes = 0u;
+    unsigned n = 0u;
+    char msg[160];
+
+    if (pk_copy_text(k->val[K_EXPECT], list, sizeof list) != 0) {
+        harness_error(c, "the audio_out_rights expect list is too long");
+        return;
+    }
+    while ((item = pk_next_item(&rest, ';')) != NULL) {
+        char *eq = strchr(item, '=');
+        const char *v;
+        char epath[128];
+        char ppath[128];
+        char tpath[128];
+
+        if (eq == NULL || strlen(eq + 1) > 40u) {
+            harness_error(c, "an audio_out_rights item is KEY=VALUE with a value of at most 40 characters");
+            return;
+        }
+        *eq = '\0';
+        v = eq + 1;
+        n++;
+        if (strcmp(item, "allow_fixture") == 0) {
+            classes |= 1u;
+            snprintf(msg, sizeof msg, "the fixture key %.40s is refused but is authored and listed or a synthetic recipe", v);
+            check(c, output_fixture_permitted(v), msg);
+        } else if (strcmp(item, "deny_fixture") == 0) {
+            classes |= 2u;
+            snprintf(msg, sizeof msg, "the fixture key %.40s is permitted but is neither authored and listed nor a synthetic recipe", v);
+            check(c, !output_fixture_permitted(v), msg);
+        } else if (strcmp(item, "allow_case") == 0) {
+            const struct kase *kk = NULL;
+            uint64_t until = 0u;
+            size_t dl = strlen(AO_DIR);
+            int ok;
+
+            classes |= 4u;
+            snprintf(msg, sizeof msg, "the audio request for case %.40s is refused before any file is opened", v);
+            check(c, ao_request(v, &kk, &until) == AO_OK, msg);
+            ok = ao_paths(v, epath, ppath, tpath, sizeof epath) == 0 && strncmp(epath, AO_DIR, dl) == 0 && strncmp(ppath, AO_DIR, dl) == 0 && strncmp(tpath, AO_DIR, dl) == 0 && strchr(epath + dl, '/') == NULL && strchr(ppath + dl, '/') == NULL &&
+                 strchr(tpath + dl, '/') == NULL && strstr(epath, "..") == NULL && strstr(ppath, "..") == NULL && strstr(tpath, "..") == NULL;
+            snprintf(msg, sizeof msg, "the paths of case %.40s are not directly under build/gate/audio/", v);
+            check(c, ok, msg);
+        } else if (strcmp(item, "deny_case") == 0) {
+            int before;
+            int r1;
+
+            classes |= 8u;
+            snprintf(epath, sizeof epath, AO_DIR "%.40s.dspe", v);
+            snprintf(ppath, sizeof ppath, AO_DIR "%.40s.dspa", v);
+            snprintf(tpath, sizeof tpath, AO_DIR "%.40s.tsv", v);
+            before = ao_file_exists(epath) || ao_file_exists(ppath) || ao_file_exists(tpath);
+            r1 = ao_do(v);
+            snprintf(msg, sizeof msg, "the audio request for case %.40s was not refused with the not-permitted, not-audio or no-such-case reason", v);
+            check(c, r1 == AO_NOT_PERMITTED || r1 == AO_NOT_AUDIO || r1 == AO_NO_CASE, msg);
+            snprintf(msg, sizeof msg, "a refused audio request for case %.40s left a file", v);
+            check(c, before || (!ao_file_exists(epath) && !ao_file_exists(ppath) && !ao_file_exists(tpath)), msg);
+        } else if (strcmp(item, "bad_id") == 0) {
+            char epath2[128];
+            int before;
+
+            classes |= 16u;
+            snprintf(epath, sizeof epath, AO_DIR "%.40s.dspe", v);
+            snprintf(epath2, sizeof epath2, "%.40s.dspe", v);
+            snprintf(ppath, sizeof ppath, AO_DIR "%.40s.dspa", v);
+            snprintf(tpath, sizeof tpath, AO_DIR "%.40s.tsv", v);
+            before = ao_file_exists(epath) || ao_file_exists(epath2) || ao_file_exists(ppath) || ao_file_exists(tpath);
+            snprintf(msg, sizeof msg, "the id '%.40s' was accepted or a path was built for it", v);
+            check(c, !ao_id_valid(v) && ao_paths(v, epath, ppath, tpath, sizeof epath) != 0 && ao_do(v) == AO_BAD_ID, msg);
+            snprintf(epath, sizeof epath, AO_DIR "%.40s.dspe", v);
+            snprintf(msg, sizeof msg, "a refused id '%.40s' left a file at a naive join of the id", v);
+            check(c, before || (!ao_file_exists(epath) && !ao_file_exists(epath2) && !ao_file_exists(ppath) && !ao_file_exists(tpath)), msg);
+        } else {
+            harness_error(c, "an audio_out_rights item is allow_fixture, deny_fixture, allow_case, deny_case or bad_id");
+            return;
+        }
+    }
+    if (classes != 31u) {
+        harness_error(c, "an audio_out_rights case needs at least one item of each of the five kinds");
+        return;
+    }
+    snprintf(got, gotcap, "items=%u", n);
+}
+
+/* ---- pcm_cadence (plan 05-04 Task 3; D-187, D-201, criterion 2; ASSUMED:LED-VID-0001 + LED-AUD-0014) ----
+ * The ROM of the case is run frame by frame (calls to the deadlines k x L, L = lines x 1365) for 32 frames of 262 lines and, on a second boot bound to 263 lines, 64 frames; the stream must hold ceil(M / 192) - ceil(T0 / 192) frames for the run's M, every call's first and seq must chain,
+ * and the frames partitioned at k x L (the samples s with k L <= 192 s < (k + 1) L) must count as the literals below, written by hand from the grid (count(k) = ceil((k + 1) L / 192) - ceil(k L / 192); RESEARCH section 3), each in {floor, ceil} of L / 192. */
+static const uint32_t pc_262[32] = {1863u, 1863u, 1862u, 1863u, 1863u, 1862u, 1863u, 1863u, 1862u, 1863u, 1863u, 1862u, 1863u, 1863u, 1862u, 1863u,
+                                    1863u, 1862u, 1863u, 1863u, 1862u, 1863u, 1863u, 1862u, 1863u, 1863u, 1862u, 1863u, 1863u, 1862u, 1863u, 1862u};
+static const uint32_t pc_262_starts[9] = {0u, 1863u, 3726u, 5588u, 7451u, 9314u, 11176u, 13039u, 14902u};
+static const uint32_t pc_263[8] = {1870u, 1870u, 1870u, 1870u, 1869u, 1870u, 1870u, 1870u};
+#define PC_262_SUM 59605u
+#define PC_263_SUM 119665u
+
+/* run frames frames of the case's ROM under request in calls to k x L; the per-frame counts from the stream into counts (at most frames); 0 on success, -1 after a harness error */
+static int pc_run(struct ctx *c, const char *rom, const char *request, unsigned frames, uint32_t *counts, uint64_t *total, uint64_t *mclk, int *chain_ok)
+{
+    struct booted b;
+    const struct ds_instance *ci = NULL;
+    struct au_cap cp;
+    struct ds_run_result res;
+    uint64_t lf;
+    unsigned f;
+    const char *err = boot_built_rom(rom, request, &b, &ci);
+
+    if (err != NULL) {
+        harness_error(c, err);
+        return -1;
+    }
+    memset(&cp, 0, sizeof cp);
+    lf = ao_frame_mclk(ci);
+    for (f = 1u; f <= frames; f++) {
+        if (au_run(c, (struct ds_instance *)(void *)b.mem, lf * f, 0, au_pcm_capacity(0u, lf * frames), &cp, &res) != 0) {
+            au_cap_free(&cp);
+            release_boot(&b);
+            return -1;
+        }
+    }
+    *total = cp.fcount;
+    *mclk = cp.machine_time;
+    *chain_ok = !cp.chain_bad && cp.first == 0u && cp.calls == frames;
+    for (f = 0u; f < frames; f++) {
+        uint64_t start = 0u;
+
+        counts[f] = (uint32_t)ao_frame_count(cp.first, cp.fcount, lf, f, &start);
+    }
+    au_cap_free(&cp);
+    release_boot(&b);
+    return 0;
+}
+
+void kind_pcm_cadence(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    char rom[48];
+    char runs[48];
+    const char *req = k->has[K_REQUEST] ? k->val[K_REQUEST] : "";
+    char req263[600];
+    uint32_t cnt[64];
+    uint64_t total = 0u;
+    uint64_t mclk = 0u;
+    uint64_t sum = 0u;
+    int chain = 0;
+    unsigned f;
+    char msg[240];
+
+    if (au_rom_expect(k, rom, sizeof rom, "runs", runs, sizeof runs) != 0 || strcmp(runs, "262x32,263x64") != 0 || vd_compose_request(req, "bind.lines_per_frame=263", req263, sizeof req263) != 0) {
+        harness_error(c, "a pcm_cadence case needs expect = rom=NAME;runs=262x32,263x64");
+        return;
+    }
+    if (pc_run(c, rom, req, 32u, cnt, &total, &mclk, &chain) != 0) {
+        return;
+    }
+    note_run(c, mclk, (uint32_t)DS_RUN_REASON_UNTIL);
+    snprintf(msg, sizeof msg, "262 lines: the stream holds %llu frames after a run to %llu, the closed form ceil(M / 192) - ceil(0 / 192) is %llu, or the calls' first and seq do not chain", (unsigned long long)total, (unsigned long long)mclk, (unsigned long long)(mclk / 192u + (mclk % 192u != 0u ? 1u : 0u)));
+    check(c, chain && total == mclk / 192u + (mclk % 192u != 0u ? 1u : 0u), msg);
+    for (f = 0u; f < 32u; f++) {
+        uint64_t start = 0u;
+
+        snprintf(msg, sizeof msg, "262 lines: frame %u holds %u samples, the literal is %u (each count is floor or ceil of 357630 / 192)", f, (unsigned)cnt[f], (unsigned)pc_262[f]);
+        check(c, cnt[f] == pc_262[f] && (cnt[f] == 357630u / 192u || cnt[f] == 357630u / 192u + 1u), msg);
+        if (f < 9u) {
+            (void)ao_frame_count(0u, total, 357630u, f, &start);
+            snprintf(msg, sizeof msg, "262 lines: frame %u starts at sample %llu, the literal is %u", f, (unsigned long long)start, (unsigned)pc_262_starts[f]);
+            check(c, start == pc_262_starts[f], msg);
+        }
+        sum += cnt[f];
+    }
+    snprintf(msg, sizeof msg, "262 lines: the 32 frames hold %llu samples, the literal is 59605 (21 x 1863 + 11 x 1862)", (unsigned long long)sum);
+    check(c, sum == PC_262_SUM, msg);
+    if (pc_run(c, rom, req263, 64u, cnt, &total, &mclk, &chain) != 0) {
+        return;
+    }
+    snprintf(msg, sizeof msg, "263 lines: the stream holds %llu frames after a run to %llu, not the closed form, or the calls do not chain", (unsigned long long)total, (unsigned long long)mclk);
+    check(c, chain && total == mclk / 192u + (mclk % 192u != 0u ? 1u : 0u), msg);
+    sum = 0u;
+    for (f = 0u; f < 64u; f++) {
+        if (f < 8u) {
+            snprintf(msg, sizeof msg, "263 lines: frame %u holds %u samples, the literal is %u", f, (unsigned)cnt[f], (unsigned)pc_263[f]);
+            check(c, cnt[f] == pc_263[f], msg);
+        }
+        snprintf(msg, sizeof msg, "263 lines: frame %u holds %u samples, not floor or ceil of 358995 / 192", f, (unsigned)cnt[f]);
+        check(c, cnt[f] == 358995u / 192u || cnt[f] == 358995u / 192u + 1u, msg);
+        sum += cnt[f];
+    }
+    snprintf(msg, sizeof msg, "263 lines: the 64 frames hold %llu samples, the literal is 119665 (49 x 1870 + 15 x 1869)", (unsigned long long)sum);
+    check(c, sum == PC_263_SUM, msg);
+    snprintf(got, gotcap, "frames262=32 frames263=64 sum262=%u sum263=%llu", (unsigned)PC_262_SUM, (unsigned long long)sum);
+}

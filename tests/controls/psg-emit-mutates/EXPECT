@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Case ids that must come out guest_failure on the toy, one per line. Audio cases only (F-72); an E0 toy with no literal group (D-210).
+aud_noninterference
+observer_psg_tone

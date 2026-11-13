@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The rights rule of --audio-out (plan 05-04; D-199, T-05-16, F-85; video_out_rights row for row): kind audio_out_rights (audiokinds.c) judges, without writing a file, that an audio request is permitted only for an audio case whose fixture is an authored image listed in
+# build/gate/fixtures-authored.used or a synthetic recipe, that its three paths lie directly under build/gate/audio/, that a refused request (a fixture that is not permitted, a case that is not an audio case, no such case) leaves no file, and that an id with a slash, dot-dot or a
+# character outside [a-z0-9_] builds no path. The writing itself is the --audio-out step of scripts/conformance-run, which recomputes both digests with a host tool. Evidence tier E0; no hardware claim.
+id = "audio_out_rights"
+kind = "audio_out_rights"
+fixture = "none"
+request = ""
+expect = "allow_fixture=authored:psg-tone;allow_fixture=plain-256k;deny_fixture=authored:ghost-rom;deny_fixture=none;deny_fixture=/etc/passwd;deny_fixture=commercial:title;allow_case=audio_tone_sel0;deny_case=run_refuse_memory_invalid;deny_case=psg_tone;deny_case=no_such_case;bad_id=../x;bad_id=a/b;bad_id=Audio_tone_sel0;bad_id=audio.tone;bad_id=;bad_id=audio_tone_sel0/../x"
+meaning = "An audio request is refused unless the case is an audio case whose fixture is an authored image listed in the gate's authored list or a synthetic recipe, and an id with a slash, dot-dot or any character outside [a-z0-9_] builds no path and writes no file"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

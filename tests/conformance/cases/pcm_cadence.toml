@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The non-integer sample cadence per video frame (plan 05-04; D-187, D-201, ROADMAP criterion 2; ASSUMED:LED-VID-0001 + LED-AUD-0014): kind pcm_cadence (audiokinds.c) runs psg_tone frame by frame (calls to the deadlines k x L, L = lines x 1365) for 32 frames of 262 lines and, bound to
+# 263 lines, 64 frames. The stream must hold ceil(M / 192) - ceil(T0 / 192) frames, the calls' first and seq must chain, and the samples partitioned at k x L must count as the hand literals of the kind: 262 lines frames 0..31 1863 1863 1862 ... (21 x 1863 + 11 x 1862 = 59,605), frame starts
+# 0, 1863, 3726, 5588, 7451, 9314, 11176, 13039, 14902; 263 lines frames 0..7 1870 1870 1870 1870 1869 1870 1870 1870 and 119,665 over 64 frames; each count floor or ceil of L / 192. A definition of the grid, E0; no rate or timing claim.
+id = "pcm_cadence"
+kind = "pcm_cadence"
+fixture = "authored:psg-tone"
+request = ""
+expect = "rom=psg-tone;runs=262x32,263x64"
+meaning = "Run frame by frame, psg_tone's DSPA stream holds ceil(M / 192) frames with a chained first frame, and its samples per 262-line frame follow 1863 1863 1862 ... (59,605 per 32 frames) and per 263-line frame 1870 ... 1869 ... (119,665 per 64 frames), each floor or ceil of L / 192 (E0)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
