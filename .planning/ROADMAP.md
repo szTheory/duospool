@@ -232,12 +232,12 @@ Plans:
   2. PCM is emitted at a defined, recorded sample rate and format before any host resampling. The per-frame sample count is reported, so a non-integer cadence is visible.
   3. Audio checks assert semantic properties: a channel period that matches the programmed frequency under the current clock assumption, the expected waveform content, and silence where a channel is off. A deliberately mis-programmed fixture (wrong frequency or a silent channel) fails them. "Buffer is nonzero" is never accepted.
   4. Noise output is identical across repeated fresh runs under the same power-on policy. The PSG clock and revision are profile parameters whose ledger status stays open, and no PSG pitch or timing correctness claim is made until C1 is settled.
-**Plans**: 2/10 plans executed in 9 waves (context waves W1-W9 of 05-CONTEXT; 05-01 and 05-02 are parallel-safe in W1; 05-04 is the tracer; the D-217 cut line is at checkpoint 05-08, where 05-09 moves to an inserted Phase 5.1 if a trigger fires; 05-11..05-15 are reserved for stop-rule splits and 05-16 onward for revision plans)
+**Plans**: 3/10 plans executed in 9 waves (context waves W1-W9 of 05-CONTEXT; 05-01 and 05-02 are parallel-safe in W1; 05-04 is the tracer; the D-217 cut line is at checkpoint 05-08, where 05-09 moves to an inserted Phase 5.1 if a trigger fires; 05-11..05-15 are reserved for stop-rule splits and 05-16 onward for revision plans)
 
 Plans:
 - [x] 05-01-PLAN.md - W1: evidence data: ER-1 image reads and the P8 label rules, 12 new and 6 amended ledger entries, withheld words, 05-HANDBOOK.md, CI lever (a), the local gate baseline (no C)
 - [x] 05-02-PLAN.md - W1: psg and pcm sink plumbing with no producer, ds_obs_begin once, the IN-03 call-overlap refusal, OX_ROMS_MAX 48, the inert fold at both call sites
-- [ ] 05-03-PLAN.md - W2: the complete PSG layout and the one serial 9 / epoch 6 / text 8 bump, 15 PSG constants rows, restore domain, noise counters, register decode and counters, seeded-prng-v4 (policy 5), golden compaction and CROWS_MAX
+- [x] 05-03-PLAN.md - W2: the complete PSG layout and the one serial 9 / epoch 6 / text 8 bump, 15 PSG constants rows, restore domain, noise counters, register decode and counters, seeded-prng-v4 (policy 5), golden compaction and CROWS_MAX
 - [ ] 05-04-PLAN.md - W3: TRACER: select-0 writes to DSPE records and DSPA samples judged by hand literals, the d = 3 negative, the D-200 proof set, --audio-out, pcm_cadence, two toys, the fold cost
 - [ ] 05-05-PLAN.md - W4: the audio judge: full .aexp grammar, REL and STRUCT, AF0..AF9 sweep, audio-check stage 58 with KINDCLASS, DISPUTED, the arithmetic lint and RULES, the golden role
 - [ ] 05-06-PLAN.md - W5: six channels: pan-pair scenes with solo phases, event rows for every register, attenuation and silence rows, the in-ROM twin, psg_vol_table, two toys
@@ -291,5 +291,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phases 4 and 5
 | 3. HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad | 38/38 | Complete    | 2026-11-11 |
 | 4. VCE/VDC Raw Video | 16/16 | Complete    | 2026-11-12 |
 | 04.1. VDC Sprites | 3/3 | Complete    | 2026-11-12 |
-| 5. PSG Raw Audio | 2/10 | In Progress | - |
+| 5. PSG Raw Audio | 3/10 | In Progress | - |
 | 6. Headless Runner, Installed-Consumer Proof and Staged Verification | 0/TBD | Not started | - |

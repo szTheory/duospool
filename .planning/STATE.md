@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 5
 current_phase_name: PSG Raw Audio
-current_plan: 3
+current_plan: 4
 status: executing
-stopped_at: Completed 05-02-PLAN.md
-last_updated: "2026-11-13T06:57:42.460Z"
+stopped_at: Completed 05-03-PLAN.md
+last_updated: "2026-11-13T15:11:15.134Z"
 last_activity: 2026-11-12
 last_activity_desc: Phase 04.1 complete, transitioned to Phase 5
-state_head: 4b3e09dbe0eae610b700e9042fdb4e15a41c5277
+state_head: 4515695de1b2d483b959b89b3169f0e4e8e35e06
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 101
-  completed_plans: 93
+  completed_plans: 94
   percent: 71
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 5 (PSG Raw Audio) — READY TO EXECUTE
-Current Plan: 3
+Current Plan: 4
 Total Plans in Phase: 10
 Status: Ready to execute
 Last activity: 2026-11-12 — Phase 04.1 complete, transitioned to Phase 5
@@ -153,6 +153,7 @@ Progress: [███████░░░] 71%
 | Phase 04.1 P03 | about 1.9 hours | 3 tasks | 7 files |
 | Phase 5 P01 | 45 min | 3 tasks | 45 files |
 | Phase 05 P02 | 50 min | 2 tasks | 20 files |
+| Phase 05 P03 | 220 min | 3 tasks | 46 files |
 
 ## Accumulated Context
 
@@ -344,6 +345,9 @@ Recent decisions affecting current work:
 - [Phase 05]: 05-02: IN-03 is step 0 of ds_obs_sinks_check through one helper ds_obs_overlaps_instance (no fourth ranges_overlap copy)
 - [Phase 05]: 05-02: a result that overlaps the instance is never written; REFUSED as the return value is the only report
 - [Phase 05]: 05-02: pcm reuses struct ds_obs_chan; chan_slot's drop-newest rule is the F-2 sticky full rule for one-size frames
+- [Phase 05]: 05-03: the closed-form channel catch-up landed in Task 2 with the restore domain, so a restored running channel is folded and rebased like the noise counters
+- [Phase 05]: 05-03: the D-203 hostile rows landed with the rules (R4) in two new cases, snapshot_refusal_psg and snapshot_refusal_psgt, because the 400-character line rule leaves no room in snapshot_refusal_fields
+- [Phase 05]: 05-03: a counter starts at offset (stamp - B) + d x Fe - stamp mod d (next event (w - w mod d) + d x Fe); stored distances are offsets from B = machine_time - 1
 
 ### Pending Todos
 
@@ -367,6 +371,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-13T06:57:42.142Z
-Stopped at: Completed 05-02-PLAN.md
+Last session: 2026-11-13T15:11:14.560Z
+Stopped at: Completed 05-03-PLAN.md
 Resume file: None
