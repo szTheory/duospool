@@ -61,6 +61,8 @@ jobs:
             clang --version | sed -n 1p
             for t in gawk mawk awk; do command -v "$t" || echo "$t: absent"; done
             readlink -f "$(command -v awk)"
+            echo "nproc: $(nproc)"
+            sed -n '/^model name/{p;q;}' /proc/cpuinfo
           } >> "$GITHUB_STEP_SUMMARY"
       # The fixture assembler (ca65 and ld65 from cc65) comes from the Ubuntu archive with apt signature checking. The gate's preflight stage
       # fails closed without it. Package identity is not trusted by version string: the encoding-matrix bytes and the manifest hash pins are
@@ -101,6 +103,8 @@ jobs:
             clang --version | sed -n 1p
             for t in gawk mawk awk; do command -v "$t" || echo "$t: absent"; done
             readlink -f "$(command -v awk)"
+            echo "nproc: $(nproc)"
+            sed -n '/^model name/{p;q;}' /proc/cpuinfo
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Install cc65
         run: |
