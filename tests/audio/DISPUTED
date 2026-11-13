@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# tests/audio/DISPUTED - the disputed points of ER-15 (plan 05-05): POINT, a TAB, the ledger id that carries the modelling assumption, a TAB and the comma-separated markers. A MAN group with a row on one of them is AUDIO_DISPUTED_POINT (scripts/audio-check): such rows are ASSUMED only.
+# A row carries a marker when its literal has the item mark=MARKER, or when audio-check finds it in the row: f=0, flf=0, nf=0 (nfc=0), an item reg=RA..RF, an R0 value with select 6 or 7, or a P8-10 sum of exactly 15 from r1, al, r5 and the side (except the R1/R5 byte-zero clause).
+attenuation sum exactly 15	LED-AUD-0008	sum=15
+F = 0	LED-AUD-0007	f=0
+FLF = 0	LED-AUD-0007	flf=0
+NFc = 0	LED-AUD-0007	nfc=0
+R0 select 6 or 7	LED-AUD-0004	sel=6,sel=7
+reg $A..$F	LED-AUD-0003	reg=RA,reg=RB,reg=RC,reg=RD,reg=RE,reg=RF
+R6 while chON 1 DDA 0	LED-AUD-0004	held
+the key-on counter	LED-AUD-0004	keyon
+the D/A latch loaded with chON 0	LED-AUD-0004	latch_off
+an LFO sum leaving 12 bits	LED-AUD-0011	lfo_wrap

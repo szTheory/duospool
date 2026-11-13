@@ -1,0 +1,107 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# tests/audio/RULES - the rule map of ER-17 (plan 05-05; D-216 R3): one line per clause of LED-AUD-0001..0014, of D-182..D-194, D-196, D-197, D-220 and of the adopted rulings D-219, RF-4 and RF-5. Fields, TAB separated: CLAUSE, SOURCE, STATUS, NEED, TEXT.
+# STATUS row: NEED lists the kinds of tests/audio/KINDCLASS (comma separated) of which at least one group in a fixtures/src/*.aexp must declare a kill other than AF0, or names case:ID, a REQUIRED conformance case; scripts/audio-check fails AUDIO_RULE_NO_ROW otherwise.
+# STATUS limit: NEED names the limit (R3: a named limit with its reason in TEXT). STATUS later:05-NN: the plan whose rows cover the clause (NEED the kinds it is expected to use); that plan moves the line to row when its rows land. The 05-04 tracer clauses (6F step, 32-word cycle, order, chON 0 silence, DSPE decode) are row.
+aud01-a	LED-AUD-0001	row	period	every PSG counter ticks at master/d with d the bound psg_tick_divisor: the tone_sel0 period groups at d = 6 (documentary under the bound divisor, ER-14)
+aud01-b	LED-AUD-0001	row	case:audio_tone_sel0_d3	d = 3 doubles every PSG frequency: the period groups of tone_sel0 are red under bind.psg_tick_divisor=3 (expect_red, D-211)
+aud01-c	LED-AUD-0001	limit	no-measurement	no hardware measurement exists: C1 stays open and no pitch, frequency or timing claim is made (ER-14)
+aud02-a	LED-AUD-0002	row	ev_decode	channels are numbered by the R0 select value 0 to 5 (the DSPE chan of R2..R6 writes)
+aud02-b	LED-AUD-0002	later:05-07	two_level,run_grid	noise is on select 4 and 5
+aud02-c	LED-AUD-0002	later:05-09	lfo_static,lfo_needs_sel1	select 1 modulates select 0 through the LFO
+aud03-a	LED-AUD-0003	row	ev_decode	A3-A0 0 to 9 select R0 to R9 (the reg and the decoded fields of each DSPE record)
+aud03-b	LED-AUD-0003	later:05-06	ev_edge	A3-A0 $A to $F have no target (NO_TARGET; a disputed point, ASSUMED rows only)
+aud03-c	LED-AUD-0003	later:05-06	ev_decode,ev_edge	R0 bits 2-0 pick channel 0 to 5; 6 and 7 pick none (select 6 and 7 are disputed, ASSUMED rows only)
+aud03-d	LED-AUD-0003	row	ev_decode	stored masks R4 $DF and R6 $1F (the post field of the decoded R4 and R6 records)
+aud03-e	LED-AUD-0003	later:05-06	ev_decode	stored masks R0 $07, R3 $0F, R7 $9F, R9 $83 and $FF for the others (the mask probe)
+aud03-f	LED-AUD-0003	row	ev_decode	R2 and R3 form the 12-bit F (post $0000 after R2, $0100 after R3)
+aud03-g	LED-AUD-0003	later:05-06	ev_decode	R1, R8 and R9 ignore R0 (the global chan $FE at any select)
+aud03-h	LED-AUD-0003	later:05-06	ev_decode	R7 exists for select 4 and 5 only
+aud04-a	LED-AUD-0004	later:05-06	ev_edge	reg = window offset & $0F (a 16-byte mirror)
+aud04-b	LED-AUD-0004	later:05-06	ev_edge	R2-R7 writes are dropped at select 6 and 7
+aud04-c	LED-AUD-0004	row	case:psg_dev_join	reads return io_buffer with no penalty and produce no DSPE record
+aud04-d	LED-AUD-0004	later:05-06	ev_edge	R6 with chON 1 and DDA 0 stores with no increment (held, a disputed point)
+aud04-e	LED-AUD-0004	later:05-07	cycle_phase	key-on keeps widx; a counter restarts at (w - w mod d) + its period on key-on (the key-on counter, a disputed point)
+aud04-f	LED-AUD-0004	later:05-07	cycle_phase	a counter restarts at (w - w mod d) + its period on DDA 1 -> 0
+aud04-g	LED-AUD-0004	later:05-09	lfo_dynamic	a counter restarts on TRG 1 -> 0 of an uncoupled select 1
+aud04-h	LED-AUD-0004	later:05-07	dda_hold,dda_order	R6 with DDA 1 loads the latch at any chON (the latch with chON 0 is a disputed point)
+aud05-a	LED-AUD-0005	row	ev_decode	with chON 0 and DDA 0 an R6 write stores the word at the address counter and increments it (WAVE_STORE, wave_idx steps)
+aud05-b	LED-AUD-0005	row	ev_decode	DDA 1 resets the address counter to 0 (IDX_RESET, wave_idx 0)
+aud05-c	LED-AUD-0005	later:05-07	dda_hold,dda_ram_kept	with DDA 1 an R6 write goes to the D/A and is held until the next write, wave RAM unchanged
+aud05-d	LED-AUD-0005	row	silent	with chON 0 the channel output is off (silent_pre of tone_sel0)
+aud06-a	LED-AUD-0006	row	period	a channel cycle is 192 x F master clocks for F >= 1 with psg_tick_divisor 6 (the 6F step, the 32-word cycle)
+aud06-b	LED-AUD-0006	later:05-07	run_grid,noise_ratio	a noise clock of 384 x NFc for NFc >= 1
+aud06-c	LED-AUD-0006	later:05-09	lfo_dynamic	an LFO-coupled select-1 step of 6 x F2 x FLF
+aud07-a	LED-AUD-0007	limit	disputed-zero	F = 0 as 4096, FLF = 0 as 256 and NFc = 0 as a noise clock of 32 ticks are disputed points (ER-15): ASSUMED rows only, no MAN row is owed; psg_decode and psg_lfo_trg cover the stores
+aud07-b	LED-AUD-0007	later:05-09	lfo_static	the modulated select-0 value masked to 12 bits with 0 read as 4096 (the LFO wrap is a disputed point)
+aud08-a	LED-AUD-0008	row	silent	a side is silent when chON is 0
+aud08-b	LED-AUD-0008	later:05-06	silent	a side is silent when R1 or R5 is $00 (the byte-zero clause of P8-10)
+aud08-c	LED-AUD-0008	later:05-06	silent	a side is silent when the P8-10 sum is 16 or more (15 is a disputed point)
+aud08-d	LED-AUD-0008	later:05-06	atten_order	the level strictly decreases per one-step decrease of the R1, R4 and R5 fields
+aud09-a	LED-AUD-0009	row	cycle_order	each channel is an unsigned 5-bit level, the wave word when chON 1, DDA 0 and NE 0 (the plateaus rank as the words)
+aud09-b	LED-AUD-0009	later:05-07	dda_hold,two_level	the level is the latch in DDA mode and the noise level under NE
+aud09-c	LED-AUD-0009	later:05-06	levels_exact	scaled per side by VOL[att] for att < 30 and 0 above (the Q15 curve is ASSUMED)
+aud09-d	LED-AUD-0009	later:05-06	levels_exact,period	summed linearly over six channels into unsigned L and R, no DC removal or filter
+aud09-e	LED-AUD-0009	limit	huc6280-only	HuC6280 only, not HuC6280A: no HuC6280A profile exists in Phase 5
+aud10-a	LED-AUD-0010	later:05-07	two_level	each noise channel outputs level 31 or 0 (the bit shifted out of an 18-bit LFSR)
+aud10-b	LED-AUD-0010	later:05-07	noise_seq	new bit 17 = XOR of bits 0, 1, 11, 12, 17 (psg_lfsr_taps 137219), reset to 1 under every policy
+aud10-c	LED-AUD-0010	later:05-07	run_grid,noise_ratio	the LFSR clocks at its noise clock whatever NE and chON are
+aud10-d	LED-AUD-0010	later:05-07	two_level	the noise replaces the wave when NE is 1
+aud11-a	LED-AUD-0011	later:05-09	lfo_static,lfo_needs_sel1	modulation applies while LF CTL != 0 and select 0 and 1 have chON 1
+aud11-b	LED-AUD-0011	later:05-09	lfo_static	select 0 uses (F0 + $1000 + (w << s) - (16 << s)) & $FFF, s 0, 2, 4
+aud11-c	LED-AUD-0011	later:05-09	lfo_static	TRG 1 holds w at wave[1][0] whatever widx[1] is and freezes the select-1 counter
+aud11-d	LED-AUD-0011	later:05-09	lfo_dynamic	TRG 0 lets select 1 step every d x F1e x FLFe (one combined counter)
+aud12-a	LED-AUD-0012	row	period	counters tick at k x d master clocks (the period groups at d = 6; the tick phase 0 is ASSUMED)
+aud12-b	LED-AUD-0012	later:05-07	cycle_phase	R2, R3 and R7 writes apply at the next reload
+aud12-c	LED-AUD-0012	later:05-07	cycle_phase	a counter is frozen while chON 0 or DDA 1 (select 1 also while TRG 1)
+aud12-d	LED-AUD-0012	later:05-07	two_level	the select 4 and 5 wave counters run under NE 1
+aud12-e	LED-AUD-0012	later:05-06	atten_order	volume writes act at their stamp
+aud12-f	LED-AUD-0012	row	case:psg_fold	ties: select 1, select 0 to 5, noise, sample, then a write (an event at a write stamp is processed before the write; the order itself is ASSUMED and no MAN row judges it)
+aud13-a	LED-AUD-0013	row	case:psg_dev_join	one 24-byte little-endian DSPE record per CPU write to the PSG window, joined 1:1 to the dev log
+aud13-b	LED-AUD-0013	row	ev_value,ev_decode	the record fields stamp, pc, reg, value, sel, chan, effect, wave_idx, post and version 1 as D-196 fixes (a project definition, ER-19)
+aud13-c	LED-AUD-0013	limit	hash-e0	a hash of the DSPE stream is E0 repeatability evidence only (ER-20)
+aud14-a	LED-AUD-0014	row	case:pcm_cadence	point samples at s x 192 master clocks (psg_mclk_per_sample, psg_sample_phase_mclk 0): ceil(M / 192) frames
+aud14-b	LED-AUD-0014	row	silent	frames of 2 x u32 little-endian unsigned, L then R, 0 = nothing contributes (a format definition, ER-19)
+aud14-c	LED-AUD-0014	limit	no-filter	no filtering, resampling or DC removal: a definition of the stream, nothing to judge beyond the frames
+aud14-d	LED-AUD-0014	row	case:psg_fold	events before the sample at one instant
+aud14-e	LED-AUD-0014	limit	hash-e0	a hash of the DSPA stream is E0 only (ER-20)
+d182-a	D-182	row	period	a step is 6F master clocks and a cycle 192F at d = 6 (C1 documentary under the bound divisor)
+d182-b	D-182	limit	no-measurement	P8-9 fOUT and H8-23 CLKP = OSC1/3 are E1 documentary, not a measurement (ER-14)
+d183-a	D-183	row	case:audio_tone_sel0_d3	psg_tick_divisor d (3 or 6, OPEN) divides every PSG counter; every audio case binds 6 except the d = 3 expect_red case
+d184-a	D-184	row	period	step d x Fe and cycle 32 x d x Fe (Fe = F)
+d184-b	D-184	limit	disputed-zero	Fe = 4096 for F = 0, FLFe = 256 for FLF = 0 and 32 ticks for NFc = 0 are disputed points (ER-15), ASSUMED rows only
+d184-c	D-184	later:05-07	run_grid,noise_ratio	noise d x 64 x NFc with NFc = 31 - (R7 & $1F)
+d184-d	D-184	later:05-09	lfo_dynamic	coupled select-1 step d x F1e x FLFe
+d184-e	D-184	later:05-09	lfo_static	F0' = (F0 + $1000 + (w << s) - (16 << s)) & $FFF, 0 -> 4096, s = 2((R9 & 3) - 1)
+d185-a	D-185	later:05-07	cycle_phase	key-on next = (w - w mod d) + d x Fe with the index unchanged; R2, R3 and R7 apply at the next reload; frozen while chON 0 or DDA 1
+d185-b	D-185	row	case:psg_wave_ptr	NE keeps the wave counter running; a counter starts at key-on on the tick grid, freezes at chON 0 and restarts on a DDA release (C level)
+d185-c	D-185	row	case:psg_fold	the tie order select 1, select 0..5, noise, sample, then the write (ASSUMED; no MAN row judges it)
+d186-a	D-186	row	case:chunk_equiv_audio_psg_tone	the fold runs at window-2 writes and at step end, never at reads: the streams do not depend on where the calls stop
+d187-a	D-187	row	case:pcm_cadence	sample s at s x 192 master clocks; ceil(M / 192) samples after a run to M (a definition, LED-AUD-0014)
+d188-a	D-188	row	ev_value	the window $1FE800-$1FEBFF logs one record per write in program order with its stamp and value
+d188-b	D-188	later:05-06	ev_edge	reg = offset & $0F and $A..$F NO_TARGET (the mirror and the undecoded registers)
+d188-c	D-188	row	case:psg_dev_join	reads are unchanged and log nothing
+d189-a	D-189	row	ev_decode	psg_select = R0 & 7; R2..R6 go to the selected channel
+d189-b	D-189	later:05-06	ev_edge	R2..R6 are dropped at select 6 or 7
+d189-c	D-189	later:05-06	ev_decode	R7 only at select 4 or 5; R1, R8 and R9 ignore R0
+d190-a	D-190	row	ev_decode	R4 with DDA 1 sets widx 0; R6 with chON 0 and DDA 0 stores and increments
+d190-b	D-190	later:05-07	dda_hold	R6 with DDA 1 loads the latch
+d190-c	D-190	later:05-06	ev_edge	R6 with chON 1 and DDA 0 stores with no increment (psg_wave_write_when_on 1)
+d191-a	D-191	row	silent	output gating: chON 0 gives 0
+d191-b	D-191	row	cycle_order	chON 1 with DDA 0 and NE 0 gives wave[widx]
+d191-c	D-191	later:05-07	dda_hold,dda_order	DDA 1 gives the latch
+d191-d	D-191	later:05-07	two_level	NE at select 4 or 5 gives the noise level
+d192-a	D-192	later:05-09	lfo_static,lfo_dynamic	the LFO acts while CTL != 0 with select 0 and 1 on (amended by D-219, D-231)
+d193-a	D-193	later:05-07	noise_seq,two_level	two 18-bit LFSRs, output bit 0 as 31 or 0, reset 1 under every policy, clocking from time 0; period 131,071
+d194-a	D-194	later:05-06	levels_exact	att = 2(15 - MAL) + (31 - AL) + 2(15 - LAL); contribution level x VOL[att]; L and R plain unsigned sums
+d194-b	D-194	later:05-06	silent	silent at att >= 30 (S >= 15; the sum 15 is disputed, MAN rows sit at S >= 16)
+d196-a	D-196	row	ev_value,ev_decode	DSPE v1: one 24-byte record per window-2 write with the effect bits of psg_effects.def (a definition, ER-19)
+d197-a	D-197	row	case:pcm_cadence	DSPA v1: frames of u32 L and u32 R under the header count, lost, seq, first, sample_mclk, frame_bytes 8, version 1, format 1
+d220-a	D-220	later:05-07	cycle_phase	the restart edge DDA 1 -> 0 is a constant with ledger LED-AUD-0004 and carries no MAN row (an ASSUMED row)
+d220-b	D-220	later:05-09	lfo_dynamic	the restart edge TRG 1 -> 0 of an uncoupled select 1 carries no MAN row (an ASSUMED row)
+d219-a	D-219	later:05-09	lfo_static,lfo_needs_sel1	modulation is active while LF CTL != 0 and select 0 and 1 are on
+d219-b	D-219	later:05-09	lfo_static	TRG 1 holds wave[1][0] - 16 and freezes select 1; lfo_static rows judge a TRG = 1 run
+d219-c	D-219	later:05-09	lfo_dynamic	TRG 0 lets select 1 step
+rf4-a	RF-4	later:05-09	lfo_static	LF TRG 1 resets the select-1 wave counter to 0 and halts modulation at the address-0 data (P8-6)
+rf5-a	RF-5	later:05-07	cycle_phase	restart edges beyond key-on (DDA 1 -> 0, TRG 1 -> 0) are ledger constants (LED-AUD-0004)

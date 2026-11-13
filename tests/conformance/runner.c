@@ -1043,6 +1043,7 @@ static const struct {
     {"guest", kind_guest, 0},
     {"video", kind_video, 0},
     {"audio", kind_audio, 0},
+    {"audio_fault_sweep", kind_audio_fault_sweep, 0},
     {"aud_noninterference", kind_aud_noninterference, 0},
     {"psg_dev_join", kind_psg_dev_join, 0},
     {"snapshot_restore_audio", kind_snapshot_restore_audio, 0},

@@ -1133,7 +1133,8 @@ static unsigned au_rank(const uint64_t *a, unsigned n, uint64_t v)
     return r;
 }
 
-static int au_rows_row(const struct au_cap *cp, const struct ax_group *g, const struct au_sel *s, const struct au_lit *l, char *why, size_t cap)
+/* perturb (AF0 of D-209, the first row of a group only): the judge reads a perturbed literal (silent: every sample 1; period: d + 1; cycle_order: the first two words swapped), so a live comparison must fail */
+static int au_rows_row(const struct au_cap *cp, const struct ax_group *g, const struct au_sel *s, const struct au_lit *l, int perturb, char *why, size_t cap)
 {
     uint64_t i0 = 0u;
     uint64_t i1 = 0u;
@@ -1144,9 +1145,11 @@ static int au_rows_row(const struct au_cap *cp, const struct ax_group *g, const 
         return w;
     }
     if (g->kind == AK_SILENT) {
+        uint32_t want = perturb ? 1u : 0u;
+
         for (i = i0; i < i1; i++) {
-            if (au_sample(cp, i, s->side) != 0u) {
-                snprintf(why, cap, "sample %llu of the window [%llu, %llu) reads %u on side %c, not 0", (unsigned long long)i, (unsigned long long)i0, (unsigned long long)i1, (unsigned)au_sample(cp, i, s->side), s->side == 1 ? 'L' : 'R');
+            if (au_sample(cp, i, s->side) != want) {
+                snprintf(why, cap, "sample %llu of the window [%llu, %llu) reads %u on side %c, not %u", (unsigned long long)i, (unsigned long long)i0, (unsigned long long)i1, (unsigned)au_sample(cp, i, s->side), s->side == 1 ? 'L' : 'R', (unsigned)want);
                 return AU_FAIL;
             }
         }
@@ -1163,6 +1166,7 @@ static int au_rows_row(const struct au_cap *cp, const struct ax_group *g, const 
             snprintf(why, cap, "aexp-malformed: a period row needs k (1 to 4095) and d");
             return AU_HARNESS;
         }
+        d += perturb ? 1u : 0u;
         n = au_crossings(cp, i0, i1, s->side, cx, AU_CROSS_MAX);
         if ((uint64_t)n < k + 1u) {
             snprintf(why, cap, "%u rising crossings in the window [%llu, %llu), fewer than k + 1 = %llu", n, (unsigned long long)i0, (unsigned long long)i1, (unsigned long long)(k + 1u));
@@ -1184,6 +1188,12 @@ static int au_rows_row(const struct au_cap *cp, const struct ax_group *g, const 
         if (au_lit_get(l, "words") == NULL || au_numlist(au_lit_get(l, "words"), words, AU_WORDS_MAX, &nw) != 0 || nw < 2u) {
             snprintf(why, cap, "aexp-malformed: a cycle_order row needs words= (2 to 64 numbers)");
             return AU_HARNESS;
+        }
+        if (perturb) {
+            uint64_t t = words[0];
+
+            words[0] = words[1] != words[0] ? words[1] : words[0] + 1u;
+            words[1] = t;
         }
         if (au_crossings(cp, i0, i1, s->side, cx, 2u) < 2u) {
             snprintf(why, cap, "fewer than two rising crossings in the window [%llu, %llu): no whole cycle to order", (unsigned long long)i0, (unsigned long long)i1);
@@ -1221,7 +1231,8 @@ static int au_rows_row(const struct au_cap *cp, const struct ax_group *g, const 
     }
 }
 
-static int au_ev_row(const struct au_cap *cp, const struct ax_group *g, const struct au_sel *s, const struct au_lit *l, char *why, size_t cap)
+/* perturb (AF0): ev_value reads the first value + 1, ev_decode the post + 1 */
+static int au_ev_row(const struct au_cap *cp, const struct ax_group *g, const struct au_sel *s, const struct au_lit *l, int perturb, char *why, size_t cap)
 {
     uint32_t ai;
     uint64_t at;
@@ -1252,6 +1263,9 @@ static int au_ev_row(const struct au_cap *cp, const struct ax_group *g, const st
         if (v1 != NULL) {
             nv = 1u;
         }
+        if (perturb) {
+            vals[0] = (vals[0] + 1u) & 0xFFu;
+        }
         for (j = 0u; j < nv; j++) {
             const uint8_t *r;
 
@@ -1281,6 +1295,7 @@ static int au_ev_row(const struct au_cap *cp, const struct ax_group *g, const st
                 return AU_HARNESS;
             }
         }
+        want[3] += perturb ? 1u : 0u;
         if (at >= (uint64_t)cp->ecount) {
             snprintf(why, cap, "record %llu is past the %u DSPE records", (unsigned long long)at, (unsigned)cp->ecount);
             return AU_FAIL;
@@ -1305,8 +1320,8 @@ static int au_ev_row(const struct au_cap *cp, const struct ax_group *g, const st
     }
 }
 
-/* one group of the scene on a capture: AU_PASS when every row passes; why holds the first failing row's reason (or the last row's) */
-static int au_eval_group(const struct ax_file *f, unsigned gi, const struct au_cap *cp, char *why, size_t cap)
+/* one group of the scene on a capture: AU_PASS when every row passes; why holds the first failing row's reason (or the last row's). perturb set: the first row reads a perturbed literal (AF0) */
+static int au_eval_group(const struct ax_file *f, unsigned gi, const struct au_cap *cp, int perturb, char *why, size_t cap)
 {
     const struct ax_group *g = &f->gr[gi];
     unsigned r;
@@ -1334,7 +1349,7 @@ static int au_eval_group(const struct ax_file *f, unsigned gi, const struct au_c
             snprintf(why, cap, "row %u: %s", nrow, err);
             return AU_HARNESS;
         }
-        v = g->form == AX_FORM_EV ? au_ev_row(cp, g, &s, &l, rwhy, sizeof rwhy) : au_rows_row(cp, g, &s, &l, rwhy, sizeof rwhy);
+        v = g->form == AX_FORM_EV ? au_ev_row(cp, g, &s, &l, perturb && nrow == 1u, rwhy, sizeof rwhy) : au_rows_row(cp, g, &s, &l, perturb && nrow == 1u, rwhy, sizeof rwhy);
         if (v == AU_HARNESS) {
             snprintf(why, cap, "row %u: %s", nrow, rwhy);
             return AU_HARNESS;
@@ -1468,7 +1483,7 @@ void kind_audio(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
         for (r = 0u; r < e.nred; r++) {
             listed = listed || strcmp(e.red[r], g->gid) == 0;
         }
-        verdicts[gi] = au_eval_group(f, gi, &cap0, why, sizeof why);
+        verdicts[gi] = au_eval_group(f, gi, &cap0, 0, why, sizeof why);
         if (verdicts[gi] == AU_HARNESS) {
             char msg[420];
 
@@ -1540,6 +1555,326 @@ void kind_audio(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
 done:
     au_cap_free(&cap0);
     au_cap_free(&cap1);
+    free(f);
+}
+
+/* ---- the fault sweep of D-209 (plan 05-05): AF0..AF9 applied in memory to copies of the captured streams of one run ---- */
+
+#define AU_AF_N 10u
+#define AU_AF6_LEVEL 12345u /* the constant non-silent value of AF6 */
+
+/* a deep copy of the DSPE records and DSPA frames of src into dst, with room for the samples AF4 inserts; 0 on success (the dev records are not copied: no judge reads them) */
+static int au_cap_copy(const struct au_cap *src, struct au_cap *dst)
+{
+    size_t fcap = (size_t)src->fcount + (size_t)src->fcount / 32u + 2u;
+    size_t ecap = (size_t)src->ecount + 1u;
+
+    *dst = *src;
+    dst->drec = NULL;
+    dst->dcount = 0u;
+    dst->dcap = 0u;
+    dst->erec = (uint8_t *)malloc(ecap * (size_t)AU_E_REC);
+    dst->frames = (uint8_t *)malloc(fcap * (size_t)AU_F_BYTES);
+    if (dst->erec == NULL || dst->frames == NULL) {
+        au_cap_free(dst);
+        return -1;
+    }
+    if (src->ecount > 0u) {
+        memcpy(dst->erec, src->erec, (size_t)src->ecount * (size_t)AU_E_REC);
+    }
+    if (src->fcount > 0u) {
+        memcpy(dst->frames, src->frames, (size_t)src->fcount * (size_t)AU_F_BYTES);
+    }
+    dst->ecap = (uint32_t)ecap;
+    dst->fcap = (uint32_t)fcap;
+    return 0;
+}
+
+/* where the faults of a group act: the window [i0, i1) of its first windowed row (the whole stream when it has none) and the event record of its first row (the start anchor, the anchor plus ev=+K, or the end anchor; UINT32_MAX for none) */
+struct au_target {
+    int has_win;
+    uint64_t i0;
+    uint64_t i1;
+    uint32_t ev;
+};
+
+static void au_target_of(const struct ax_file *f, unsigned gi, const struct au_cap *cp, struct au_target *t)
+{
+    unsigned r;
+    int first = 1;
+
+    memset(t, 0, sizeof *t);
+    t->ev = UINT32_MAX;
+    for (r = 0u; r < f->nr; r++) {
+        struct au_sel s;
+        char why[200];
+        uint64_t i0 = 0u;
+        uint64_t i1 = 0u;
+
+        if (f->rw[r].group != gi || au_sel_parse(f->rw[r].sel, &s) != NULL) {
+            continue;
+        }
+        if (first) {
+            uint32_t ai = s.a.set ? au_find(cp, &s.a) : s.e.set ? au_find(cp, &s.e) : UINT32_MAX;
+
+            if (ai != UINT32_MAX && (uint64_t)ai + (s.has_ev ? s.ev_off : 0u) < (uint64_t)cp->ecount) {
+                t->ev = (uint32_t)((uint64_t)ai + (s.has_ev ? s.ev_off : 0u));
+            }
+            first = 0;
+        }
+        if (!t->has_win && s.side != 0 && s.from_kind != 0 && s.to_kind != 0 && !s.has_ev && au_window(cp, &s, &i0, &i1, why, sizeof why) == AU_PASS) {
+            t->has_win = 1;
+            t->i0 = i0;
+            t->i1 = i1;
+        }
+    }
+    if (!t->has_win) {
+        t->i0 = 0u;
+        t->i1 = cp->fcount;
+    }
+}
+
+static void au_put_frame(struct au_cap *x, uint64_t i, uint32_t l, uint32_t r)
+{
+    au_put32(x->frames + (size_t)i * AU_F_BYTES, l);
+    au_put32(x->frames + (size_t)i * AU_F_BYTES + 4u, r);
+}
+
+/* apply fault AFaf of D-209 to the copy x (AF0 changes no stream: the judge reads a perturbed literal instead) */
+static void au_fault(struct au_cap *x, unsigned af, const struct au_target *t)
+{
+    uint64_t i0 = t->i0 < x->fcount ? t->i0 : x->fcount;
+    uint64_t i1 = t->i1 < x->fcount ? t->i1 : x->fcount;
+    uint64_t i;
+
+    if (af == 1u) { /* AF1: the PCM one sample later against the log */
+        x->first += 1u;
+    } else if (af == 2u && i1 > i0) { /* AF2: drop one sample mid-window */
+        uint64_t m = i0 + (i1 - i0) / 2u;
+
+        memmove(x->frames + (size_t)m * AU_F_BYTES, x->frames + (size_t)(m + 1u) * AU_F_BYTES, (size_t)(x->fcount - m - 1u) * AU_F_BYTES);
+        x->fcount--;
+    } else if (af == 3u) { /* AF3: swap L and R */
+        for (i = 0u; i < x->fcount; i++) {
+            au_put_frame(x, i, au_sample(x, i, 2), au_sample(x, i, 1));
+        }
+    } else if (af == 4u) { /* AF4: duplicate every 32nd sample of the window */
+        for (i = i1; i > i0; i--) {
+            uint64_t j = i - 1u;
+
+            if ((j - i0) % 32u == 31u && x->fcount < x->fcap) {
+                memmove(x->frames + (size_t)(j + 1u) * AU_F_BYTES, x->frames + (size_t)j * AU_F_BYTES, (size_t)(x->fcount - j) * AU_F_BYTES);
+                x->fcount++;
+            }
+        }
+    } else if (af == 5u || af == 6u) { /* AF5: zero the window; AF6: a constant non-silent window */
+        for (i = i0; i < i1; i++) {
+            au_put_frame(x, i, af == 5u ? 0u : AU_AF6_LEVEL, af == 5u ? 0u : AU_AF6_LEVEL);
+        }
+    } else if (af == 7u) { /* AF7: reverse each whole 32-sample cycle of the window */
+        uint64_t b;
+
+        for (b = i0; b + 32u <= i1; b += 32u) {
+            for (i = 0u; i < 16u; i++) {
+                uint32_t l = au_sample(x, b + i, 1);
+                uint32_t r = au_sample(x, b + i, 2);
+
+                au_put_frame(x, b + i, au_sample(x, b + 31u - i, 1), au_sample(x, b + 31u - i, 2));
+                au_put_frame(x, b + 31u - i, l, r);
+            }
+        }
+    } else if (af == 8u && x->ecount > 0u) { /* AF8: drop one event record (the group's own, else the middle one) */
+        uint32_t d = t->ev < x->ecount ? t->ev : x->ecount / 2u;
+
+        memmove(x->erec + (size_t)d * AU_E_REC, x->erec + (size_t)(d + 1u) * AU_E_REC, (size_t)(x->ecount - d - 1u) * AU_E_REC);
+        x->ecount--;
+    } else if (af == 9u) { /* AF9: relabel one event's channel k -> k + 1 mod 6 (the first channel record from the group's own) */
+        uint32_t e;
+
+        for (e = t->ev < x->ecount ? t->ev : 0u; e < x->ecount; e++) {
+            uint8_t *r = x->erec + (size_t)e * AU_E_REC;
+
+            if (r[AU_E_CHAN] <= 5u) {
+                r[AU_E_CHAN] = (uint8_t)((r[AU_E_CHAN] + 1u) % 6u);
+                break;
+            }
+        }
+    }
+}
+
+static void au_mask_text(unsigned mask, char *out, size_t cap)
+{
+    unsigned af;
+    size_t n = 0u;
+
+    out[0] = '\0';
+    for (af = 0u; af < AU_AF_N; af++) {
+        if ((mask & (1u << af)) != 0u && n + 5u < cap) {
+            n += (size_t)snprintf(out + n, cap - n, "%sAF%u", n > 0u ? "," : "", af);
+        }
+    }
+    if (n == 0u && cap > 1u) {
+        out[0] = '-';
+        out[1] = '\0';
+    }
+}
+
+static unsigned au_popcount(unsigned m)
+{
+    unsigned n = 0u;
+
+    while (m != 0u) {
+        n += m & 1u;
+        m >>= 1;
+    }
+    return n;
+}
+
+/* the observed kill set of group gi on the capture cp: bit af set when the group does not pass under AFaf; -1 when out of memory */
+static int au_kill_set(const struct ax_file *f, unsigned gi, const struct au_cap *cp, unsigned *flips)
+{
+    struct au_target t;
+    unsigned af;
+
+    *flips = 0u;
+    au_target_of(f, gi, cp, &t);
+    for (af = 0u; af < AU_AF_N; af++) {
+        struct au_cap x;
+        char why[320];
+
+        if (au_cap_copy(cp, &x) != 0) {
+            return -1;
+        }
+        au_fault(&x, af, &t);
+        if (au_eval_group(f, gi, &x, af == 0u, why, sizeof why) != AU_PASS) {
+            *flips |= 1u << af;
+        }
+        au_cap_free(&x);
+    }
+    return 0;
+}
+
+void kind_audio_fault_sweep(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    struct au_expect e;
+    struct ax_file *f = NULL;
+    struct au_cap cap0;
+    char req[600];
+    char detail[4096];
+    size_t used = 0u;
+    uint64_t until = 0u;
+    unsigned si;
+    unsigned gi;
+    unsigned ngroups = 0u;
+    unsigned ndecl = 0u;
+    unsigned nflip = 0u;
+
+    memset(&cap0, 0, sizeof cap0);
+    if (!k->has[K_EXPECT] || au_parse(k->val[K_EXPECT], &e) != 0 || e.nred != 0u || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until == 0u) {
+        harness_error(c, "an audio_fault_sweep case needs until_mclk and expect = rom=NAME;id=N;checks=N;scene=NAME (every item once, no expect_red)");
+        return;
+    }
+    if (k->has[K_IRQ_STIM] || k->has[K_INPUT]) {
+        harness_error(c, "an audio_fault_sweep case declares no irq_stim and no input");
+        return;
+    }
+    f = (struct ax_file *)calloc(1u, sizeof *f);
+    if (f == NULL) {
+        harness_error(c, "out of memory for the aexp rows");
+        return;
+    }
+    {
+        const char *err = ax_load(e.rom, f);
+
+        if (err != NULL) {
+            harness_error(c, err);
+            goto done;
+        }
+    }
+    for (si = 0u; si < f->ns && strcmp(f->sc[si].name, e.scene) != 0; si++) {
+    }
+    if (si == f->ns || f->sc[si].role != AX_ROLE_LITERAL) {
+        harness_error(c, "the scene of a fault sweep must be a literal scene of the aexp rows (D-209)");
+        goto done;
+    }
+    if (vd_policy_request(0u, k->has[K_REQUEST] ? k->val[K_REQUEST] : "", req, sizeof req) != 0) {
+        harness_error(c, "the request of the audio_fault_sweep case is too long");
+        goto done;
+    }
+    if (au_capture(c, e.rom, req, until, &e, &cap0, 1, got, gotcap) != 0) {
+        goto done;
+    }
+    if (cap0.smclk != f->sample_mclk) {
+        harness_error(c, "the aexp header sample_mclk does not equal the DSPA header's sample_mclk (D-207)");
+        goto done;
+    }
+    detail[0] = '\0';
+    for (gi = 0u; gi < f->ng; gi++) {
+        const struct ax_group *g = &f->gr[gi];
+        char why[320];
+        char msg[440];
+        char line[300];
+        char dtxt[64];
+        char ftxt[64];
+        char mtxt[64];
+        unsigned flips = 0u;
+        int base;
+
+        if (strcmp(g->scene, e.scene) != 0) {
+            continue;
+        }
+        base = au_eval_group(f, gi, &cap0, 0, why, sizeof why);
+        if (base == AU_HARNESS) {
+            snprintf(msg, sizeof msg, "group %.31s: %.360s", g->gid, why);
+            harness_error(c, msg);
+            goto done;
+        }
+        ngroups++;
+        if (base != AU_PASS) {
+            snprintf(msg, sizeof msg, "group %.31s fails on the unfaulted streams, so no fault can show it live: %.300s", g->gid, why);
+            check(c, 0, msg);
+            continue;
+        }
+        if (au_kill_set(f, gi, &cap0, &flips) != 0) {
+            harness_error(c, "out of memory for the faulted copies of the streams");
+            goto done;
+        }
+        ndecl += au_popcount(g->kills);
+        nflip += au_popcount(g->kills & flips);
+        au_mask_text(g->kills, dtxt, sizeof dtxt);
+        au_mask_text(flips, ftxt, sizeof ftxt);
+        au_mask_text(g->kills & ~flips, mtxt, sizeof mtxt);
+        snprintf(msg, sizeof msg, "group %.31s: the declared kill(s) %s do not flip it (declared %s, observed %s; D-209)", g->gid, mtxt, dtxt, ftxt);
+        check(c, (g->kills & ~flips) == 0u, msg);
+        snprintf(msg, sizeof msg, "group %.31s: no declared fault flips it (declared %s): a vacuous group (D-209)", g->gid, dtxt);
+        check(c, (g->kills & flips) != 0u, msg);
+        snprintf(line, sizeof line, "audio_sweep %.31s %s declared=%s observed=%s missing=%s\n", g->gid, g->cls, dtxt, ftxt, mtxt);
+        if (used + strlen(line) + 1u < sizeof detail) {
+            memcpy(detail + used, line, strlen(line) + 1u);
+            used += strlen(line);
+        }
+    }
+    if (ngroups == 0u) {
+        harness_error(c, "the scene of the fault sweep has no group");
+        goto done;
+    }
+    {
+        char head[300];
+
+        snprintf(head, sizeof head, "audio_sweep: groups=%u declared=%u flipped=%u (E0: each literal group shown live on in-memory faults AF0..AF9 of the captured streams of one run, D-209; observed= is the kill matrix of all ten faults)\n", ngroups, ndecl, nflip);
+        if (strlen(head) + used + 1u <= sizeof detail) {
+            memmove(detail + strlen(head), detail, used + 1u);
+            memcpy(detail, head, strlen(head));
+        }
+        set_evidence_detail(detail);
+    }
+    {
+        size_t gl = strlen(got);
+
+        snprintf(got + gl, gotcap - gl, " groups=%u flipped=%u/%u", ngroups, nflip, ndecl);
+    }
+done:
+    au_cap_free(&cap0);
     free(f);
 }
 

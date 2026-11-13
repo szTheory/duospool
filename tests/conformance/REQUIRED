@@ -350,6 +350,7 @@ psg_restore_divisor
 psg_tone
 audio_tone_sel0
 audio_tone_sel0_d3
+audio_fault_sweep_tone_sel0
 aud_noninterference
 psg_dev_join
 snapshot_restore_audio

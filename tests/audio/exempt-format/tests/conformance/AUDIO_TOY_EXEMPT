@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# exempt-format: a line without a reason.
+audio_t

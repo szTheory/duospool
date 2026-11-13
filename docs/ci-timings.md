@@ -1217,3 +1217,8 @@ Staging trigger status: the conformance stage is not moved; cut trigger (3) of D
 
 RF-12 and D-227 (the insn sink of opcode_exercise): psg_tone relies on `OX_SINK_RECORDS` 1,048,576. It waits at the power-up low speed (12 master clocks per cycle) in DEX and BNE loops of 3 cycles per instruction on average, and reaches its DSV1 done state at machine time 678,936, under two frames of 262 lines (357,630 master clocks each),
 in under 20,000 instructions (about 13,500 in its counted delays, from the loop structure of fixtures/src/psg_tone.s, and the rest in 16,114 cycles of startup and checks at 3 or more cycles each). A 4-cycle wait loop executes about 7,450 instructions per 262-line frame at the low speed, so the sink has room for about 140 frames of waiting; psg_tone uses under 2.
+
+## Phase 5 plan 05-05: the audio-check stage
+
+`audio-check` is the 58th stage (C-1, F-51, PR-18): static, registered right after `video-check` and before the build.
+It runs `scripts/audio-check` on this repository, the negative mini-roots of `tests/audio` (one per code, plus `ok-audio` and `ok-inventory`), the generated lex controls of `ac_gen_limits` (with `ok-size-cap`, a valid file of exactly 32,768 bytes) and the exit-2 control of a 32,769-byte `.aexp` (D-230, D-232).

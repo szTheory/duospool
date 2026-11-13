@@ -1,0 +1,4 @@
+tag=rule-toy
+file=src/core/psg.c
+anchor=x
+replace=y

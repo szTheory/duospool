@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# tests/audio/KINDCLASS - the maximum class of every audio row kind (plan 05-05; D-208, ER-17, F-73e): KIND, a TAB, the ceiling, a TAB and the form the kind takes. scripts/audio-check reads it (AEXP_CLASS_INFLATED) and the runner kind audio knows the same kinds (tests/conformance/audiokinds.c).
+# Ceiling rule (a page-set rule): a group's MAN labels must be a subset of the ceiling's labels (a narrower set is fine); GUEST only where the ceiling is GUEST or MAN; ASSUMED always; DEF (a definition, ER-19) only where the ceiling is DEF.
+# P8-10 is in the period and live sets for the S = 4 rows of 05-06, and P8-2 in the same set for r7_ignored (plan check 1 warning 4). Each later plan checks its rows against these sets with audio-check before its commit; a row a set does not admit is a recorded deviation, never a silent widening.
+ev_value	GUEST:program	EV
+ev_decode	MAN:P8-2+P8-3+P8-4+P8-6	EV
+ev_edge	ASSUMED	EV
+period	MAN:P8-9+P8-10+H8-23	ROWS
+period_ratio	MAN:P8-9	REL
+cycle_order	MAN:P8-4+P8-5	ROWS
+cycle_phase	ASSUMED	ROWS
+cycle_linear	ASSUMED	ROWS
+levels_exact	ASSUMED	ROWS
+silent	MAN:P8-4+P8-10	ROWS
+live	MAN:P8-4+P8-5+P8-9+P8-10+H8-23	ROWS
+same	MAN:P8-2+P8-4+P8-6+P8-9	REL
+atten_order	MAN:P8-3+P8-4+P8-10	REL
+atten_equal	ASSUMED	REL
+dda_hold	MAN:P8-4+P8-5	ROWS
+dda_order	MAN:P8-4+P8-5	ROWS
+dda_ram_kept	MAN:P8-4+P8-5	ROWS
+dda_equals_wave	ASSUMED	REL
+dda_level_exact	ASSUMED	ROWS
+two_level	MAN:P8-2+P8-6+P8-9+H8-23	ROWS
+run_grid	MAN:P8-2+P8-6+P8-9+H8-23	ROWS
+noise_ratio	MAN:P8-2+P8-6+P8-9+H8-23	REL
+run_min	ASSUMED	ROWS
+noise_seq	ASSUMED	ROWS
+lfo_static	MAN:P8-6+P8-7+P8-8+P8-9+H8-23	ROWS
+lfo_needs_sel1	MAN:P8-6+P8-7+P8-8+P8-9+H8-23	REL
+lfo_dynamic	MAN:P8-6+P8-7+P8-8+P8-9+H8-23	ROWS
+count	ASSUMED	STRUCT
+header	DEF	STRUCT
