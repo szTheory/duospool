@@ -148,7 +148,7 @@ Window: physical $1FE800-$1FEBFF; reg = offset & $0F for every access (D-188). "
 | 6 | R6 WAVE DATA | per ch | 4-0 data | $1F (word or latch) | wave RAM zero (v4: drawn) | DDA 1: dda = v; chON 0 DDA 0: wave[widx] = v, widx + 1; chON 1 DDA 0: wave[widx] = v, no increment | MAN P8-4, P8-5; latch at chON 0 inferred, write-while-on ASSUMED LED-AUD-0004 |
 | 7 | R7 NE/NOISE FRQ | select 4, 5 only | 7 NE, 4-0 NFRQ | $9F | 0 | dropped at select 0..3, 6, 7; NFc = 31 - (v & $1F); next noise reload | MAN P8-6, P8-9; NFc 0 as 32 ticks ASSUMED LED-AUD-0007 |
 | 8 | R8 LFO FRQ | global | 7-0 FLF | $FF | 0 | next select-1 reload | MAN P8-6, P8-9; FLF 0 as 256 ASSUMED |
-| 9 | R9 LF TRG/CTL | global | 7 TRG, 1-0 CTL | $83 | 0 | TRG 1: widx[1] = 0, select 1 frozen (RF-4, RF-5) | MAN P8-6, P8-8; hold-while-1 ASSUMED LED-AUD-0011 |
+| 9 | R9 LF TRG/CTL | global | 7 TRG, 1-0 CTL | $83 | 0 | TRG 1: widx[1] = 0 at the write, select 1 frozen; later R6 writes advance widx[1] (D-231) (RF-4, RF-5) | MAN P8-6, P8-8; hold-while-1 ASSUMED LED-AUD-0011 |
 | A-F | none | - | - | - | - | logged with NO_TARGET, io_buffer set, nothing stored | MAN P8-2 (shaded) |
 
 Reads: unchanged (io_buffer, not folded, not logged; D-188, LED-CPU-0013). Mirror: offset & $0F over the whole $400 window (H8-24 decodes A3-A0; the mirror is the D-146-style inference). Power-on: every register, select, latch, widx and rem 0 under every policy; nrem 1; LFSR `psg_lfsr_reset` 1 (D-204).
@@ -271,7 +271,7 @@ In `ds_psg_write`, offsets are relative to E' = w + 1: a frozen -> running trans
 | PSGW | 192 | psg_wave[192], byte ch x 32 + i |
 | PSGT | 40 | psg_rem[6] u32, psg_nrem[2] u32, psg_lfsr[2] u32 |
 
-Pass-1 checks, every failure `snapshot.field` (12), nothing written until pass 2: select <= 7; every freq <= $FFF; ctl & $20 = 0; widx <= 31; dda <= 31; noise & $60 = 0; lfo_ctl & $7C = 0; every wave byte <= 31; every LFSR in 1..$3FFFF; DDA set => widx = 0; lfo_ctl bit 7 => widx[1] = 0;
+Pass-1 checks, every failure `snapshot.field` (12), nothing written until pass 2: select <= 7; every freq <= $FFF; ctl & $20 = 0; widx <= 31; dda <= 31; noise & $60 = 0; lfo_ctl & $7C = 0; every wave byte <= 31; every LFSR in 1..$3FFFF; DDA set => widx = 0; (lfo_ctl bit 7 => widx[1] = 0 is dropped by D-231: R6 writes under TRG 1 advance widx[1]);
 rem[i] = 0 exactly when channel i is frozen (chON 0, DDA 1, or i = 1 with TRG 1), else 1 <= rem[i] <= 24,576 (6,291,456 for i = 1); 1 <= nrem <= 11,904; every running counter on the grid: (machine_time + r - 1) mod d = 0 (written so machine_time 0 cannot underflow). The PSGT decoder reads the PSG0 values from the walker context (the `dec_beam` reads `v->time` precedent).
 Hostile corpus: flip every control field; per-region perturbation of PSG0, PSGW, PSGT; out-of-range r; r off the grid; LFSR 0 and $40000; the restore stops of D-200.
 
