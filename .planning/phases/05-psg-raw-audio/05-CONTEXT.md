@@ -469,6 +469,7 @@ Community and prior art (evidence class E4 at best, agreement is not correctness
 - **D-227 (RF-12, RF-13).** Long audio ROMs must not overflow the `opcode_exercise` instruction sink (plan 05-04 states the sink size it relies on); the `.aexp` selector grammar has an end anchor so silence windows do not depend on cycle counts.
 - **D-228 (corrects D-224, planner flag 3).** seeded-prng-v4 takes the next enum value, policy 5, with no gap; the hostile snapshot row that Phase 4 aimed at policy 5 moves to policy 6 (`policy-6=field`) and stays red because 6 is unassigned. D-224's "v4 is policy 6" is read that way. Constants
   count: D-220 adds two rows, so 15 PSG rows and 49 in total are accepted with the record bound at 191 of 192 (planner flag 2).
+- **D-229 (corrects D-216, plan-check blocker 8).** The stop rule is "about 80 percent of the context budget", as the standing executor brief calibrated it after the two Phase 4 early-stop splits; D-216's 60 percent is superseded. Plans 05-03 and 05-04 still expect a split (reserved 05-11, 05-12); a sixth split in the phase stops the run and goes to the orchestrator for a plan revision.
 </errata>
 
 <specifics>
