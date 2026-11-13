@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 5
 current_phase_name: PSG Raw Audio
-current_plan: 6
+current_plan: 7
 status: executing
-stopped_at: Completed 05-05-PLAN.md
-last_updated: "2026-11-13T17:31:33.303Z"
+stopped_at: Completed 05-06-PLAN.md (Tasks 1, 2, 3a; Task 3b split to 05-12 pending a D-230 decision)
+last_updated: "2026-11-13T18:44:37.623Z"
 last_activity: 2026-11-12
 last_activity_desc: Phase 04.1 complete, transitioned to Phase 5
-state_head: 2c9dfa02d561b24a87497b950244a37ce40a0c3f
+state_head: d5427e28a1790f8204f68260c2d01d71ca4f6688
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 101
-  completed_plans: 96
+  completed_plans: 97
   percent: 71
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 5 (PSG Raw Audio) — READY TO EXECUTE
-Current Plan: 6
+Current Plan: 7
 Total Plans in Phase: 10
 Status: Ready to execute
 Last activity: 2026-11-12 — Phase 04.1 complete, transitioned to Phase 5
@@ -156,6 +156,7 @@ Progress: [███████░░░] 71%
 | Phase 05 P03 | 220 min | 3 tasks | 46 files |
 | Phase 05 P04 | 3h10m | 3 tasks | 41 files |
 | Phase 05 P05 | 130 min | 3 tasks | 74 files |
+| Phase 05 P06 | 135 min | 3 tasks | 35 files |
 
 ## Accumulated Context
 
@@ -358,6 +359,9 @@ Recent decisions affecting current work:
 - [Phase 05]: 05-05: disputed points are found in the row or marked by the author with the literal item mark=MARKER (held, keyon, latch_off, lfo_wrap need the mark)
 - [Phase 05]: 05-05: golden digests live in a golden row (golden SCENE pcm_sha256= psg_sha256=); header groups take class DEF:<ledger ids> (ER-19)
 - [Phase 05]: 05-05: kinds judged by a later plan are parsed and refused as harness_failure when judged, never a pass
+- [Phase 05]: 05-06: every pan, attenuation and twin anchor carries val= (toy psg-chsel-mask moves the R4 $00 writes of (b) at selects 4 and 5 to selects 0 and 1, which would shift a plain nth count)
+- [Phase 05]: 05-06: side pairs of one literal share a group of two rows and group ids are short (D-230 budget); the twin red list is 7 merged groups
+- [Phase 05]: 05-06: Task 3b (event rows, mask probe, ev_edge) split to 05-12: psg_tone.aexp holds 32,406 of 32,768 bytes; 05-12 needs a D-230 decision (cap or relocation) first
 
 ### Pending Todos
 
@@ -381,6 +385,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-13T17:31:32.045Z
-Stopped at: Completed 05-05-PLAN.md
+Last session: 2026-11-13T18:44:36.907Z
+Stopped at: Completed 05-06-PLAN.md (Tasks 1, 2, 3a; Task 3b split to 05-12 pending a D-230 decision)
 Resume file: None
