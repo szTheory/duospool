@@ -476,6 +476,9 @@ Community and prior art (evidence class E4 at best, agreement is not correctness
   state is legal and restorable (index 0..31). The held modulation value is wave[1][0] - 16 whatever the index is [MAN img P8-6 text: the data of address 0]. The refusal row for "TRG with non-zero index" is removed and an accepted row for it is added in 05-03; 05-09 keeps its restore stop between TRG
   1 and 0 and expects it to be accepted.
 - **D-232 (plan-check 3 warning).** The D-230 oversized-`.aexp` control is an exit-2 control checked with the `pf_empty_path_control` pattern (expect exit 2, never exit 1); the `run_controls` copy of the z7d selftest keeps its exit 0 / exit 1 expectations for the other controls.
+- **D-233 (amends D-230, orchestrator, after plan 05-06).** The `.aexp` reader cap rises from 32768 to 49152 bytes per file, because the event rows of `psg_tone` (plan 05-06 Task 3b, run as plan 05-12) need about 4.3 KB on top of a file already at 32,406 bytes. The cap stays one named constant
+  (`AEXP_MAX_BYTES` in the audio-check reader) with a control that a file one byte over it is refused (harness error, exit 2, fail closed) and a control that a file of exactly the cap size passes. The `.vexp` cap of 16384 is unchanged. Plans keep one comment line per group; the rise is not licence
+  to grow comments. The reason is recorded, not a weakening: the cap is a bound on hand-written literal files, and both its controls are kept and retargeted.
 </errata>
 
 <specifics>
