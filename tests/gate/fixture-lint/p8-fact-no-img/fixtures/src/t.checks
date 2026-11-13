@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# fixture-lint control mini-root: a supported entry names P8-11 in a FACT source and cites.txt has no P8-11 row; only the P8 label rule (islabel) sees it (plan 05-01, F-74)
+id=1
+checks=1
+1	one	MAN:P8-9	period formula page

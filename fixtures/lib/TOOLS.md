@@ -60,4 +60,10 @@ Two more manuals are cited from Phase 4 on (plan 04-01, ER-1, ER-9). Both were d
 - HuC6260 CMOS Video Color Encoder Manual (label H6-n is PDF page n+2, 7 pages: cover, contents, H6-1 to H6-5): https://raw.githubusercontent.com/MiSTer-devel/TurboGrafx16_MiSTer/master/docs/HuC6260%20-%20CMOS%20Video%20Color%20Encoder%20Manual.pdf ; 315186 bytes ; sha256 `c6f0d83a75898f3c1513ee5c152e9ce82bac689978e338974a59b9c4db39bd92` ; read 2026-11-11 ; pages H6-1 to H6-5.
   The contents page lists the sync generator at H6-6, which is not in this copy, so nothing about sync timing is cited from the HuC6260 manual (04-CONTEXT writer note 4).
 
+One more manual is cited from Phase 5 on (plan 05-01, ER-1, ER-9). It was downloaded from the same MiSTer docs folder into a scratch directory outside the repository, matched against the byte count and SHA-256 below, rendered at 150 dpi and read as images on 2026-11-13 (verifier gsd-executor; the per-page facts are the `P8-` rows of
+`fixtures/lib/cites.txt`). No page text and no page image is committed.
+
+- HuC6280 CMOS Programmable Sound Generator Manual (label P8-n is PDF page n+2): https://raw.githubusercontent.com/MiSTer-devel/TurboGrafx16_MiSTer/master/docs/HuC6280%20-%20CMOS%20Programmable%20Sound%20Generator%20Manual.pdf ; 934252 bytes ; sha256 `2f463fd388cd64bc1bef79d259cf456c2c6d4bd8aaba25918b71f2443af6c04b` ; 14 PDF pages ; read 2026-11-13 ; pages P8-2 to P8-10 and P8-12
+  (P8-1 and P8-11 are not used by any decision).
+
 Whether the hosting mirror may redistribute these documents is not settled here; this repository does not redistribute them.

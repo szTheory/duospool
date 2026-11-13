@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# fixture-lint control mini-root: a P8 page with an img row is accepted in a MAN class and in a FACT source of a supported entry (plan 05-01)
+id=1
+checks=1
+1	one	MAN:P8-9	period formula page
