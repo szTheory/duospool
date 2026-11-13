@@ -2327,9 +2327,10 @@ void kind_vid_chan_append(const struct kase *k, struct ctx *c, char *got, size_t
  * expect = parts=attached,append. Evidence class E0: the channel mechanism and the non-interference of an attached sink, no hardware claim. The layouts are definitions (LED-AUD-0013, LED-AUD-0014); no PSG record or PCM frame has a producer in the core yet.
  *   attached  fixture = authored:NAME and until_mclk: the ROM is run once with no sink (the reference) and once with only the psg (or only the pcm) sink, header and buffer poisoned with $A5 and guard bytes around it. The header after the run must be overwritten
  *             (the pcm header reads frame_bytes 8, version 1, format 1), lost 0, seq = count, count within the capacity; the buffer past the stored records and the guards keep their poison; and the run keeps the reference machine time, steps and digest.
- *             The count itself is not asserted: it is 0 until plan 05-04 adds the producer, and these checks hold before and after it.
+ *             The count itself is not asserted here (since plan 05-04 the pcm count is the closed form ceil(M / 192) of the run, judged by the audio cases); the pcm header reads first 0 (the boot time is 0) and sample_mclk 192 (plan 05-04, PR-4).
  *   append    direct channel calls, no ds_run: records (24 bytes) or frames (8 bytes) are offered with capacities 0, 1, 4 and 64 and the header must read the counts of the table below, written here by hand from the rule (drop-newest in whole records, the first count
- *             offers stored back to back, lost = seq - count, once full every later offer is lost); ds_obs_begin overwrites a poisoned header; pcm frames are read back at hand-written byte offsets (L at +0, R at +4, u32 little-endian); an absent sink and a NULL log do nothing. */
+ *             offers stored back to back, lost = seq - count, once full every later offer is lost); ds_obs_begin overwrites a poisoned header; pcm frames are read back at hand-written byte offsets (L at +0, R at +4, u32 little-endian); an absent sink and a NULL log do nothing.
+ *             The pcm header field first is ceil(T0 / 192) for T0 = 0, 1, 191, 192, 193 (0, 1, 1, 1, 2) and sample_mclk 192, at the start and at the end of a call (plan 05-04, PR-4). */
 
 #define AC_GUARD 64u
 #define AC_LARGE 64u
@@ -2398,8 +2399,8 @@ static void ac_attached(struct ctx *c, const char *rom, const char *request, uin
     (void)ds_run((struct ds_instance *)(void *)b1.mem, &rq, &r1);
     note_run(c, r1.machine_time, r1.reason);
     check(c, r0.reason == (uint32_t)DS_RUN_REASON_UNTIL && r1.reason == (uint32_t)DS_RUN_REASON_UNTIL && r1.refusal == (uint32_t)DS_RUNREF_NONE, "a run with an audio sink was refused or did not reach its deadline");
-    check(c, get_u32(h + 4) == 0u && (uint64_t)get_u32(h) == get_u64(h + 8) && get_u32(h) <= cap && (!pcm || ac_pcm_fixed_ok(h)),
-          "the audio sink header after the run does not read lost 0, seq = count within the capacity (and for pcm frame_bytes 8, version 1, format 1): a poisoned header must be overwritten by a run that carries only this sink");
+    check(c, get_u32(h + 4) == 0u && (uint64_t)get_u32(h) == get_u64(h + 8) && get_u32(h) <= cap && (!pcm || (ac_pcm_fixed_ok(h) && get_u64(h + 16) == 0u && get_u32(h + 24) == 192u)),
+          "the audio sink header after the run does not read lost 0, seq = count within the capacity (and for pcm frame_bytes 8, version 1, format 1, first 0 for the boot time 0 and sample_mclk 192): a poisoned header must be overwritten by a run that carries only this sink");
     used_bytes = (size_t)(get_u32(h) <= cap ? get_u32(h) : cap) * unit;
     for (j = 0u; j < sizeof mem.b; j++) {
         if (j >= AC_GUARD && j < AC_GUARD + used_bytes) {
@@ -2512,8 +2513,8 @@ static void ac_append(struct ctx *c, int pcm, char *got, size_t gotcap)
             orq.psg = &psk;
         }
         ds_obs_begin(&log, &orq, UINT64_C(0));
-        /* the poisoned header must read all zero, except the pcm constants frame_bytes 8, version 1 and format 1; first and sample_mclk read 0 until plan 05-04 sets them (PR-4) */
-        zeroed = get_u32(h) == 0u && get_u32(h + 4) == 0u && get_u64(h + 8) == 0u && (!pcm || (get_u64(h + 16) == 0u && get_u32(h + 24) == 0u && ac_pcm_fixed_ok(h)));
+        /* the poisoned header must read all zero, except the pcm constants frame_bytes 8, version 1 and format 1, and since plan 05-04 sample_mclk 192 with first = ceil(0 / 192) = 0 (PR-4) */
+        zeroed = get_u32(h) == 0u && get_u32(h + 4) == 0u && get_u64(h + 8) == 0u && (!pcm || (get_u64(h + 16) == 0u && get_u32(h + 24) == 192u && ac_pcm_fixed_ok(h)));
         snprintf(msg, sizeof msg, "append case %u: ds_obs_begin did not overwrite the poisoned %s header", t, pcm ? "pcm" : "psg");
         check(c, zeroed, msg);
         for (i = 0u; i < ac->n; i++) {
@@ -2529,8 +2530,8 @@ static void ac_append(struct ctx *c, int pcm, char *got, size_t gotcap)
         ds_obs_end(&log);
         snprintf(msg, sizeof msg, "append case %u (%s): the %s header reads count %u lost %u seq %llu, the rule predicts count %u lost %u seq %u", t, ac->what, pcm ? "pcm" : "psg", (unsigned)get_u32(h), (unsigned)get_u32(h + 4), (unsigned long long)get_u64(h + 8),
                  (unsigned)ac->count, (unsigned)ac->lost, ac->n);
-        /* first and sample_mclk stay 0 until plan 05-04 (PR-4) */
-        check(c, get_u32(h) == ac->count && get_u32(h + 4) == ac->lost && get_u64(h + 8) == (uint64_t)ac->n && (!pcm || (get_u64(h + 16) == 0u && get_u32(h + 24) == 0u && ac_pcm_fixed_ok(h))), msg);
+        /* first = ceil(0 / 192) = 0 and sample_mclk 192 at the end of the call as at its start (plan 05-04, PR-4) */
+        check(c, get_u32(h) == ac->count && get_u32(h + 4) == ac->lost && get_u64(h + 8) == (uint64_t)ac->n && (!pcm || (get_u64(h + 16) == 0u && get_u32(h + 24) == 192u && ac_pcm_fixed_ok(h))), msg);
         snprintf(msg, sizeof msg, "append case %u (%s): the stored %s are not the first offers, whole and back to back", t, ac->what, pcm ? "frames (L then R, u32 little-endian)" : "records");
         check(c, ac_stored_ok(mem.b + AC_GUARD, pcm, ac->count), msg);
         for (j = 0u; j < (uint32_t)sizeof mem.b; j++) {
@@ -2541,6 +2542,27 @@ static void ac_append(struct ctx *c, int pcm, char *got, size_t gotcap)
         snprintf(msg, sizeof msg, "append case %u (%s): the core wrote into the guard bytes or past the stored %s", t, ac->what, pcm ? "frames" : "records");
         check(c, untouched, msg);
         checks++;
+    }
+    /* the pcm header field first is ceil(T0 / 192) of the machine time T0 given to ds_obs_begin, at the start and at the end of the call (plan 05-04, PR-4; D-187): T0 = 0, 1, 191, 192, 193 give 0, 1, 1, 1, 2, written here by hand from the grid */
+    if (pcm) {
+        static const uint64_t t0s[5] = {0u, 1u, 191u, 192u, 193u};
+        static const uint64_t firsts[5] = {0u, 1u, 1u, 1u, 2u};
+
+        for (t = 0u; t < 5u; t++) {
+            int begin_ok;
+
+            memset(&fsk, OBS_POISON, sizeof fsk);
+            fsk.frames = mem.b + AC_GUARD;
+            fsk.capacity = 4u;
+            memset(&orq, 0, sizeof orq);
+            orq.pcm = &fsk;
+            ds_obs_begin(&log, &orq, t0s[t]);
+            begin_ok = get_u64(h + 16) == firsts[t] && get_u32(h + 24) == 192u;
+            ds_obs_end(&log);
+            snprintf(msg, sizeof msg, "pcm first: T0 = %llu gives first %llu and sample_mclk %u after the call, the grid gives first %llu and sample_mclk 192 at the start and at the end", (unsigned long long)t0s[t], (unsigned long long)get_u64(h + 16), (unsigned)get_u32(h + 24),
+                     (unsigned long long)firsts[t]);
+            check(c, begin_ok && get_u64(h + 16) == firsts[t] && get_u32(h + 24) == 192u && get_u32(h) == 0u && get_u64(h + 8) == 0u, msg);
+        }
     }
     /* an absent sink and a NULL log do nothing: the header of a sink that is not attached keeps its poison */
     memset(&psk, OBS_POISON, sizeof psk);

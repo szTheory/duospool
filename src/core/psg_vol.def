@@ -1,0 +1,38 @@
+/* SPDX-License-Identifier: MIT OR Apache-2.0 */
+/* SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors */
+/*
+ * psg_vol.def - the volume curve of the PSG synthesis (plan 05-04; D-194, D-205, PR-8), ledger LED-AUD-0009 (assumed; the manual gives 1.5 dB per attenuation step, P8-3 and P8-4, but no level table). A separate table, not a constants row (D-205).
+ * VOL[a] = round-half-up(32768 x 10^(-3a/40)) for a = 0..29: the Q15 gain of an attenuation of a steps of 1.5 dB. The integer rule that defines each row without a float: VOL[a] is the unique v with (2v - 1)^40 x 10^(3a) <= 2^640 < (2v + 1)^40 x 10^(3a); no tie exists.
+ * The rows were derived outside the repository and are recorded in the phase handbook (section 5); no row comes from a DuoSpool run. VOL is indexed only below 30 = psg_silence_att (constants.def, LED-AUD-0008): an attenuation of 30 or more contributes 0.
+ * One X-macro row per attenuation: DS_PSG_VOL(a, value)
+ */
+DS_PSG_VOL(0, 32768)
+DS_PSG_VOL(1, 27571)
+DS_PSG_VOL(2, 23198)
+DS_PSG_VOL(3, 19519)
+DS_PSG_VOL(4, 16423)
+DS_PSG_VOL(5, 13818)
+DS_PSG_VOL(6, 11627)
+DS_PSG_VOL(7, 9783)
+DS_PSG_VOL(8, 8231)
+DS_PSG_VOL(9, 6925)
+DS_PSG_VOL(10, 5827)
+DS_PSG_VOL(11, 4903)
+DS_PSG_VOL(12, 4125)
+DS_PSG_VOL(13, 3471)
+DS_PSG_VOL(14, 2920)
+DS_PSG_VOL(15, 2457)
+DS_PSG_VOL(16, 2068)
+DS_PSG_VOL(17, 1740)
+DS_PSG_VOL(18, 1464)
+DS_PSG_VOL(19, 1232)
+DS_PSG_VOL(20, 1036)
+DS_PSG_VOL(21, 872)
+DS_PSG_VOL(22, 734)
+DS_PSG_VOL(23, 617)
+DS_PSG_VOL(24, 519)
+DS_PSG_VOL(25, 437)
+DS_PSG_VOL(26, 368)
+DS_PSG_VOL(27, 309)
+DS_PSG_VOL(28, 260)
+DS_PSG_VOL(29, 219)

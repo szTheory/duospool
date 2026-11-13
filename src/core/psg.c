@@ -3,7 +3,8 @@
 /*
  * psg.c - the PSG (plans 05-02, 05-03; D-183..D-186, D-188..D-193, D-202..D-204, D-220, PR-1, PR-2, PR-7). The fold and its two call sites are described in ds_psg.h. Plan 05-03 adds the state, the register decode and storage (ds_psg_write), the tick divisor,
  * the register mask table, the power-on values and the fold of the
- * counters (the two noise counters and LFSRs clock from time 0 under every policy, a running channel counter advances its wave index in closed form); plan 05-04 adds the synthesis and the record and frame emission. No allocation, no global, no clock.
+ * counters (the two noise counters and LFSRs clock from time 0 under every policy, a running channel counter advances its wave index in closed form); plan 05-04 adds the synthesis (ds_psg_sample, the volume curve psg_vol.def) and the frame emission on the 192-clock grid
+ * (the DSPE record of a write is built in bus.c). No allocation, no global, no clock.
  * In-fold times are offsets from the base B = machine_time - 1 (D-221, RF-8): an event at offset o is at time B + o, the stamp is at offset t = stamp - B, and no absolute time near 2^64 is ever formed.
  */
 #include <stddef.h>
@@ -80,22 +81,22 @@ static uint64_t chan_period(const struct ds_instance *inst, uint32_t ch, uint32_
     return (uint64_t)d * (f != 0u ? f : (uint32_t)DS_CONST_psg_f0_as);
 }
 
-void ds_psg_advance(struct ds_instance *inst, uint64_t stamp, uint32_t step_end, struct ds_obs_log *obs)
+/* the volume curve (psg_vol.def, LED-AUD-0009): VOL[a] for a = 0..29, indexed only below psg_silence_att (D-194, D-195) */
+static const uint32_t vol[] = {
+#define DS_PSG_VOL(a, value) value,
+#include "psg_vol.def"
+#undef DS_PSG_VOL
+};
+_Static_assert(sizeof vol / sizeof vol[0] == (size_t)DS_CONST_psg_silence_att, "psg_vol.def must hold exactly psg_silence_att rows: VOL is indexed only below the silence threshold");
+_Static_assert(6u * 31u * 32768u < (1u << 31), "the sum of six channels at level 31 and VOL[0] (6,094,848) must stay below 2^31 (D-194, D-195)");
+
+/* every event at an offset <= t from B, with no rebase (PR-1): the noise counters in time order, select 4's counter before select 5's at one instant, each event one LFSR step and a reload with the period in force (D-185, D-193); then every running channel counter in closed form
+ * (RESEARCH section 4): with its next event at offset o <= t it steps k = (t - o) / q + 1 times with the period q read at its last reload, and its wave index advances by k mod 32. Called once per sample instant and once at the stamp, so a repeated call with a larger t continues the fold */
+static void fold_to(struct ds_instance *inst, uint64_t t, uint32_t d)
 {
-    uint64_t base_t; /* B + 1 = machine_time, the first unfolded instant */
-    uint64_t t;      /* the stamp as an offset from B */
     uint64_t no[2];
-    uint32_t d;
     uint32_t k;
 
-    (void)obs; /* emission lands in plan 05-04 */
-    base_t = inst->machine_time;
-    if (stamp < base_t) {
-        return; /* nothing at or before the stamp is unfolded; a rebase to B itself changes nothing */
-    }
-    t = stamp - base_t + 1u;
-    d = ds_psg_divisor(inst);
-    /* the noise counters: every event at an offset <= t in time order, select 4's counter before select 5's at one instant; each event is one LFSR step and reloads with the period in force (D-185, D-193) */
     no[0] = inst->psg_nrem[0];
     no[1] = inst->psg_nrem[1];
     for (;;) {
@@ -107,7 +108,8 @@ void ds_psg_advance(struct ds_instance *inst, uint64_t stamp, uint32_t step_end,
         inst->psg_lfsr[n] = lfsr_step(inst->psg_lfsr[n]);
         no[n] += noise_period(inst, n, d);
     }
-    /* the channel counters in closed form (RESEARCH section 4): a running counter with its next event at offset o <= t steps k = (t - o) / q + 1 times with the period q read at its last reload, and its wave index advances by k mod 32 */
+    inst->psg_nrem[0] = (uint32_t)no[0];
+    inst->psg_nrem[1] = (uint32_t)no[1];
     for (k = 0u; k < 6u; k++) {
         uint64_t o = inst->psg_rem[k];
 
@@ -116,14 +118,93 @@ void ds_psg_advance(struct ds_instance *inst, uint64_t stamp, uint32_t step_end,
             uint64_t steps = (t - o) / q + 1u;
 
             inst->psg_widx[k] = (uint8_t)(((uint32_t)inst->psg_widx[k] + (uint32_t)(steps & 31u)) & 31u);
-            o += steps * q;
+            inst->psg_rem[k] = (uint32_t)(o + steps * q);
         }
-        /* step_end 1 rebases a running counter to the stamp (its next event stays at stamp + r); step_end 0 keeps it relative to B */
-        inst->psg_rem[k] = o == 0u ? 0u : (uint32_t)(step_end != 0u ? o - t : o);
     }
-    for (k = 0u; k < 2u; k++) {
-        inst->psg_nrem[k] = (uint32_t)(step_end != 0u ? no[k] - t : no[k]);
+}
+
+/*
+ * The fold (D-186, PR-1). With a pcm sink (obs != NULL and its pcm channel on: the only read of the sink besides the emit, D-200) every sample instant s x 192 from the log's pcm cursor up to the stamp is visited in time order: the events at or before that instant are folded first
+ * (channel steps and noise clocks before the sample, D-185 tie order), then ds_psg_sample (const) reads the state and ds_obs_pcm emits the frame. A CPU write stamped exactly at a sample instant is applied after that sample, because the write path folds to its stamp before ds_psg_write.
+ * The sample loop runs at most span / 192 + 1 times (D-195). Without a pcm sink every event is folded the same way and only the sampling is skipped (D-200). step_end 1 rebases the distances to the stamp at the end.
+ */
+void ds_psg_advance(struct ds_instance *inst, uint64_t stamp, uint32_t step_end, struct ds_obs_log *obs)
+{
+    uint64_t base_t; /* B + 1 = machine_time, the first unfolded instant */
+    uint64_t t;      /* the stamp as an offset from B */
+    uint32_t d;
+    uint32_t k;
+
+    base_t = inst->machine_time;
+    if (stamp < base_t) {
+        return; /* nothing at or before the stamp is unfolded; a rebase to B itself changes nothing */
     }
+    t = stamp - base_t + 1u;
+    d = ds_psg_divisor(inst);
+    if (obs != NULL && obs->pcm.on) {
+        uint64_t lim = (stamp - base_t) / (uint64_t)DS_CONST_psg_mclk_per_sample + 1u;
+        uint64_t n;
+
+        for (n = 0u; n < lim && obs->pcm.cursor <= stamp / (uint64_t)DS_CONST_psg_mclk_per_sample; n++) {
+            uint64_t si = obs->pcm.cursor * (uint64_t)DS_CONST_psg_mclk_per_sample;
+            uint32_t l;
+            uint32_t r;
+
+            fold_to(inst, si >= base_t ? si - base_t + 1u : 0u, d); /* the cursor never lags the first unfolded instant inside ds_run (ds_obs_begin sets it to ceil(T0 / 192)); a lagging one would sample the state as it is */
+            ds_psg_sample(inst, &l, &r);
+            ds_obs_pcm(obs, l, r);
+            obs->pcm.cursor = obs->pcm.cursor + 1u;
+        }
+    }
+    fold_to(inst, t, d);
+    if (step_end != 0u) { /* the next events stay at stamp + r: a running counter and both noise counters are rebased to the stamp; a frozen channel keeps 0 */
+        for (k = 0u; k < 6u; k++) {
+            if (inst->psg_rem[k] != 0u) {
+                inst->psg_rem[k] = (uint32_t)((uint64_t)inst->psg_rem[k] - t);
+            }
+        }
+        for (k = 0u; k < 2u; k++) {
+            inst->psg_nrem[k] = (uint32_t)((uint64_t)inst->psg_nrem[k] - t);
+        }
+    }
+}
+
+/* the attenuation of one side in steps of 1.5 dB (D-194, MAN:P8-3+P8-4+P8-10): 0..91; one statement, the anchor of the toy psg-atten-max (plan 05-06) */
+static uint32_t side_att(uint32_t mal, uint32_t al, uint32_t lal)
+{
+    return 2u * (15u - mal) + (31u - al) + 2u * (15u - lal);
+}
+
+void ds_psg_sample(const struct ds_instance *inst, uint32_t *l, uint32_t *r)
+{
+    uint32_t lmal = ((uint32_t)inst->psg_main_bal >> 4u) & 0xFu;
+    uint32_t rmal = (uint32_t)inst->psg_main_bal & 0xFu;
+    uint32_t sum_l = 0u;
+    uint32_t sum_r = 0u;
+    uint32_t ch;
+
+    for (ch = 0u; ch < 6u; ch++) {
+        uint32_t ctl = inst->psg_ctl[ch];
+        uint32_t bal = inst->psg_bal[ch];
+        uint32_t level;
+        uint32_t att;
+
+        if ((ctl & 0x80u) == 0u) {
+            continue; /* chON 0: the channel contributes 0 whatever DDA, NE or the latch hold (D-191, MAN:P8-4) */
+        }
+        /* DDA 1: the latch; else the wave word at the wave index (D-191; the noise level of select 4/5 with NE 1 replaces it in plan 05-07) */
+        level = (ctl & 0x40u) != 0u ? (uint32_t)inst->psg_dda[ch] & 0x1Fu : (uint32_t)inst->psg_wave[ch * 32u + ((uint32_t)inst->psg_widx[ch] & 31u)] & 0x1Fu;
+        att = side_att(lmal, ctl & 0x1Fu, (bal >> 4u) & 0xFu);
+        if (att < (uint32_t)DS_CONST_psg_silence_att) {
+            sum_l += level * vol[att];
+        }
+        att = side_att(rmal, ctl & 0x1Fu, bal & 0xFu);
+        if (att < (uint32_t)DS_CONST_psg_silence_att) {
+            sum_r += level * vol[att];
+        }
+    }
+    *l = sum_l;
+    *r = sum_r;
 }
 
 /* a channel counter runs while chON is 1 and DDA is 0, and for select 1 while TRG is 0 (D-185, D-192) */

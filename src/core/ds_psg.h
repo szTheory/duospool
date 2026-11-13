@@ -1,11 +1,12 @@
 /* SPDX-License-Identifier: MIT OR Apache-2.0 */
 /* SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors */
 /*
- * ds_psg.h - the private entry points of the PSG (plans 05-02, 05-03; D-186, D-202, D-203, D-222, PR-1). Private to the core and its tests like ds_core.h; no public header exists (D-05).
+ * ds_psg.h - the private entry points of the PSG (plans 05-02, 05-03, 05-04; D-186, D-202, D-203, D-222, PR-1). Private to the core and its tests like ds_core.h; no public header exists (D-05).
  * All PSG time advances through ONE function, ds_psg_advance (psg.c), called from exactly two places and from nowhere else: (1) at the head of every write to hardware window 2 ($1FE800-$1FEBFF), after the stamp and io_buffer and before the write is decoded,
  * with step_end 0 (bus.c); (2) at the end of every step, directly after the VDC fold, with the stamp start + total - 1 and step_end 1 (ds_cpu_step_obs, cpu.c). Never at a read (the PSG has no read function, H8-24) and never in the interrupt sample.
  * PR-1 (the D-222 carrier, no struct ds_bus member): inside a step machine_time is the step start, so the stored PSG distances stay relative to machine_time - 1 for the whole step; a step_end 0 call processes every event with time <= stamp without rebasing,
- * and the step_end 1 call folds to the step's last clock and rebases the distances to it. An out-of-step bus write (a test with no bus) folds at its stamp with no rebase. obs is the observer log or NULL, used for emission only and read for nothing else.
+ * and the step_end 1 call folds to the step's last clock and rebases the distances to it. An out-of-step bus write (a test with no bus) folds at its stamp with no rebase. obs is the observer log or NULL: its pcm channel (on, and the cursor of the next sample index, plan 05-04)
+ * is read to visit the sample instants and nothing else of it is read; samples are emitted through ds_obs_pcm, the DSPE record of a write through ds_obs_psg in bus.c.
  * A distance r of PSGT names the next event at machine_time + r - 1 (D-186); r = 0 is a frozen channel counter. Between steps the D-203 ranges hold: a running channel 1..24,576 (1..6,291,456 for select 1 once the LFO couples it, 05-09), a noise counter
  * 1..11,904, and every next event on the tick grid of d (psg_tick_divisor, 3 or 6, read from the profile by ds_psg_divisor and stored nowhere, D-183, D-223).
  */
@@ -56,6 +57,13 @@ struct ds_psg_write_info {
  * runs (key-on, a DDA 1 -> 0 or TRG 1 -> 0 release restarts at the next tick plus one period, a freeze sets the distance 0). Returns the effect bits and fills *info (never NULL).
  */
 uint32_t ds_psg_write(struct ds_instance *inst, uint32_t reg, uint32_t value, uint64_t stamp, struct ds_psg_write_info *info);
+
+/*
+ * The stereo point sample of the modelled output at the current state (plan 05-04; D-191, D-194, PR-10): per channel the level is 0 when chON is 0, the DDA latch when DDA is 1, else the wave word at the wave index (5 bits); per side the attenuation
+ * att = 2 x (15 - MAL) + (31 - AL) + 2 x (15 - LAL) in 1.5 dB steps (0..91) and the contribution level x VOL[att] (psg_vol.def) when att is below psg_silence_att, else 0; *l and *r are the plain unsigned sums of the six channels (at most 6,094,848). Const: it reads
+ * the instance and changes nothing, so a sink can never change machine state through it (D-200). ds_psg_advance calls it at every sample instant when the run carries a pcm sink.
+ */
+void ds_psg_sample(const struct ds_instance *inst, uint32_t *l, uint32_t *r);
 
 /* the power-on PSG state under every policy (D-193, D-204): registers, latches, indices and channel distances 0, both noise distances 1, both LFSRs psg_lfsr_reset; the wave RAM is left to the policy (zero, or drawn by seeded-prng-v4) */
 void ds_psg_poweron(struct ds_instance *inst);

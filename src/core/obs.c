@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT OR Apache-2.0 */
 /* SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors */
 /*
- * obs.c - the instruction sink, device-register sink, video sink, PSG sink and PCM sink writers (plans 03-10, 03-19, 04-02 and 05-02; D-119, D-131, D-162, D-197, D-198). The layouts, the header rules and the refusal cases are in ds_obs.h. Records and the header are written byte by byte,
+ * obs.c - the instruction sink, device-register sink, video sink, PSG sink and PCM sink writers (plans 03-10, 03-19, 04-02, 05-02 and 05-04; D-119, D-131, D-162, D-197, D-198). The layouts, the header rules and the refusal cases are in ds_obs.h. Records and the header are written byte by byte,
  * little-endian, from widened unsigned values: no struct is written through a cast, so host byte order and alignment never reach the output. Nothing here reads caller memory except the
  * input fields of the sinks (the record pointer and the capacity); the header is overwritten and never read back. No allocation, no global, no clock.
  */
@@ -262,15 +262,16 @@ static void write_vheader(const struct ds_obs_vchan *ch)
     }
 }
 
-/* the pcm header (plan 05-02; D-197): +00 u32 count, +04 u32 lost, +08 u64 seq, +16 u64 first, +24 u32 sample_mclk, +28 u16 frame_bytes, +30 u8 version, +31 u8 format; first and sample_mclk are 0 until plan 05-04 sets them (PR-4); a channel the request did not carry writes nothing */
+/* the pcm header (plan 05-02; D-197): +00 u32 count, +04 u32 lost, +08 u64 seq, +16 u64 first, +24 u32 sample_mclk, +28 u16 frame_bytes, +30 u8 version, +31 u8 format; since plan 05-04 first is ceil(T0 / 192) of the call and sample_mclk 192 (PR-4), written at the
+ * start and at the end of the call; a channel the request did not carry writes nothing */
 static void write_pheader(const struct ds_obs_chan *ch)
 {
     if (ch->on) {
         put_u32(ch->header, ch->count);
         put_u32(ch->header + 4, ch->lost);
         put_u64(ch->header + 8, ch->seq);
-        put_u64(ch->header + 16, UINT64_C(0));
-        put_u32(ch->header + 24, 0u);
+        put_u64(ch->header + 16, ch->first);
+        put_u32(ch->header + 24, (uint32_t)DS_CONST_psg_mclk_per_sample);
         put_u16(ch->header + 28, (uint32_t)DS_PCM_FRAME_BYTES);
         ch->header[30] = (uint8_t)DS_PCM_VERSION;
         ch->header[31] = (uint8_t)DS_PCM_FORMAT;
@@ -286,6 +287,8 @@ static void chan_open(struct ds_obs_chan *ch, uint8_t *header, uint8_t *records,
     ch->count = 0u;
     ch->lost = 0u;
     ch->seq = UINT64_C(0);
+    ch->first = UINT64_C(0);
+    ch->cursor = UINT64_C(0);
     write_header(ch);
 }
 
@@ -330,12 +333,14 @@ void ds_obs_begin(struct ds_obs_log *log, const struct ds_run_request *request, 
     struct ds_psg_sink *psg = request->psg;
     struct ds_pcm_sink *pcm = request->pcm;
 
-    (void)machine_time; /* PR-4: plan 05-04 sets the pcm cursor and the header field first from it (ceil(T0 / 192)) */
     chan_open(&log->insn, insn != NULL ? insn->header : NULL, insn != NULL ? insn->records : NULL, insn != NULL ? insn->capacity : 0u, insn != NULL);
     chan_open(&log->dev, dev != NULL ? dev->header : NULL, dev != NULL ? dev->records : NULL, dev != NULL ? dev->capacity : 0u, dev != NULL);
     vchan_open(&log->vid, request->vid);
     chan_open(&log->psg, psg != NULL ? psg->header : NULL, psg != NULL ? psg->records : NULL, psg != NULL ? psg->capacity : 0u, psg != NULL);
     chan_open(&log->pcm, pcm != NULL ? pcm->header : NULL, pcm != NULL ? pcm->frames : NULL, pcm != NULL ? pcm->capacity : 0u, pcm != NULL);
+    /* the first sample instant at or after T0 (D-187, PR-4): ceil(T0 / 192), written without forming T0 + 191 */
+    log->pcm.first = machine_time / (uint64_t)DS_CONST_psg_mclk_per_sample + (machine_time % (uint64_t)DS_CONST_psg_mclk_per_sample != 0u ? UINT64_C(1) : UINT64_C(0));
+    log->pcm.cursor = log->pcm.first;
     write_pheader(&log->pcm); /* chan_open wrote the first 16 bytes of the 32-byte pcm header; this writes all of them */
 }
 
