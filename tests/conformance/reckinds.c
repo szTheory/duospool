@@ -1214,7 +1214,8 @@ struct crow {
     char value[16];
     char ledger[16];
 };
-#define CROWS_MAX 40u
+/* 64 = WH_MAX of src/text/text.c (plan 05-03, F-53, PR-3): Phase 5 reaches 49 rows (34 before it plus the 15 psg_ rows); the added-row control below needs n + 1 <= CROWS_MAX */
+#define CROWS_MAX 64u
 
 /* copy the field starting at p and ending at the first stop character into out (cap bytes, terminated); the end pointer, or NULL when it does not fit or no stop character follows */
 static const char *take_field(const char *p, char stop, char *out, size_t cap)
