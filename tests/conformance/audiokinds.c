@@ -2354,11 +2354,11 @@ void kind_audio_fault_sweep(const struct kase *k, struct ctx *c, char *got, size
         au_mask_text(g->kills, dtxt, sizeof dtxt);
         au_mask_text(flips, ftxt, sizeof ftxt);
         au_mask_text(g->kills & ~flips, mtxt, sizeof mtxt);
-        snprintf(msg, sizeof msg, "group %.31s: the declared kill(s) %s do not flip it (declared %s, observed %s; D-209)", g->gid, mtxt, dtxt, ftxt);
+        snprintf(msg, sizeof msg, "group %.31s: the declared kill(s) %.40s do not flip it (declared %.40s, observed %.40s; D-209)", g->gid, mtxt, dtxt, ftxt);
         check(c, (g->kills & ~flips) == 0u, msg);
-        snprintf(msg, sizeof msg, "group %.31s: no declared fault flips it (declared %s): a vacuous group (D-209)", g->gid, dtxt);
+        snprintf(msg, sizeof msg, "group %.31s: no declared fault flips it (declared %.40s): a vacuous group (D-209)", g->gid, dtxt);
         check(c, (g->kills & flips) != 0u, msg);
-        snprintf(line, sizeof line, "audio_sweep %.31s %s declared=%s observed=%s missing=%s\n", g->gid, g->cls, dtxt, ftxt, mtxt);
+        snprintf(line, sizeof line, "audio_sweep %.31s %.95s declared=%.40s observed=%.40s missing=%.40s\n", g->gid, g->cls, dtxt, ftxt, mtxt);
         if (used + strlen(line) + 1u < sizeof detail) {
             memcpy(detail + used, line, strlen(line) + 1u);
             used += strlen(line);
