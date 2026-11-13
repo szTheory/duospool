@@ -67,6 +67,7 @@ start, which is the critical path), and the run conclusion.
 | 2026-11-11 | 42939483070 | 0 | gate=98 | 100 | success |
 | 2026-11-11 | 43122980214 | 0 | gate=342 | 344 | success |
 | 2026-11-12 | 43275379025 | 0 | gate=853 | 856 | success |
+| 2026-11-13 | 43352015009 | 0 | gate-gawk=438, gate-mawk=555, gate=3 | 562 | success |
 
 ## Failure classes the job owns
 
@@ -84,7 +85,7 @@ different job, not a deletion.
   of a job (AGENTS.md, "CI and release: review efficiency after every run"). The result of each review, including "nothing to change", is recorded
   here next to the row it is about.
 - Revisit caching when any single step exceeds 30 seconds. Until then there is no cache: measure first.
-- Review the gate job's `timeout-minutes` limit (D-61; 10 until plan 03-33, 20 since, then 25 per work job and 5 for the aggregator in the parallel-job change below, unverified on CI) against each recorded critical path. The second gate run and
+- Review the gate job's `timeout-minutes` limit (D-61; 10 until plan 03-33, 20 since, then 25 per work job and 5 for the aggregator in the parallel-job change below, first run on CI in run 43352015009) against each recorded critical path. The second gate run and
   the two compiler runs add to the job, so the limit may be too tight or needlessly loose.
 - Time is a record and a warning, never a failure of the gate (D-60).
 
@@ -1122,4 +1123,60 @@ mean anything), E0.
 | the four new cases | | | 3.83 | about 4 percent of a 90 s `conformance` stage |
 
 The `vid-palette-mask` toy runs one more EXPECT case (`video_spr_basic_solid`, review fix M-03, about 0.1 s). Nothing was weakened to save time and no gate stage or rule changed.
+
+## First Phase 4.1 CI run and first run of the parallel second awk job (run 43352015009, pull request 4)
+
+Authorised by the owner on 2026-11-12 (answer: "Stacked PR on PR 3"): one new branch, `gsd/phase-04.1-vdc-sprites`, and one pull request whose base is the Phase 4 branch (the head of pull request 3).
+The local Phase 4.1 history held the Phase 4 docs commit only as a cherry-pick (6c386c8 of 0ce50ba, the same tree), so the owner chose one `git merge --no-ff` of the Phase 4 head on the new branch (89a3ed8). Its tree equals the Phase 4.1 head's tree.
+No setting was changed. `main`, the Phase 2, 3 and 4 branches and pull requests 1 to 3 were not touched. No tag was pushed, nothing was force-pushed and nothing was merged.
+The evidence tier is E0, repeatability. The run shows that the Phase 4.1 gate passes on a second machine class under two awk implementations and two compilers. It does not show that any profile is accurate.
+This section supersedes the "unverified on CI" statements in the "Parallel second awk job" and Phase 4.1 sections above, as of head 89a3ed8. The head that adds this section has its own run, which is not recorded here.
+
+One run, one green result, no fix-forward. The three-job shape ran as designed on its first hosted run:
+
+| Job | Started | Seconds | Conclusion | Notes |
+|-----|---------|---------|------------|-------|
+| `gate-gawk` | 02:25:04 | 438 | success | default awk `/usr/bin/gawk`, `CHECK RESULT PASS`, 57 stages |
+| `gate-mawk` | 02:25:04 | 555 | success | `awk for this gate run: /usr/bin/mawk` through the shim (already installed, so the apt fallback did not run), `CHECK RESULT PASS`, 57 stages |
+| `gate` (aggregator) | 02:34:21 | 3 | success | started 2 s after `gate-mawk` ended; printed `gate-gawk: success` and `gate-mawk: success` |
+
+Queue 0 s. Run wall 562 s, which is the critical path (`gate-mawk` plus the aggregator). Runner seconds in total: 996.
+Both work jobs ran on runner image `ubuntu-24.04` 20261101.360.1 (the same image as the Phase 4 runs), with the Ubuntu `cc65 2.19-1` package. `fixture-build` and `fixtures` passed in both jobs, so the fixture hash pins (taken on macOS) reproduce on the runner, including the Phase 4.1 sprite fixtures.
+
+Step seconds (from the step timestamps), with the single-job Phase 4 run 1 (43275379025) for comparison:
+
+| Step | `gate-gawk` | `gate-mawk` | Phase 4 run 1 (one job) |
+|------|-------------|-------------|-------------------------|
+| Set up job, checkout (full clone), tool versions | 3 | 6 | 3 |
+| Install cc65 | 9 | 14 | 10 |
+| Gate (gawk) | 339 | | 339 |
+| Range audit (35 commits over the Phase 4 base) | 3 | | 15 |
+| gcc build and conformance | 82 | | 74 |
+| Gate under the other awk (mawk) | | 414 | 330 |
+| clang build and conformance | | 120 | 80 |
+
+Slowest stages inside the gate, from the gaps between the `CHECK` lines, gawk job then mawk job, with Phase 4 run 1 (gawk) in brackets: `sanitizers` 153.7 and 195.3 (172), `conformance` 82.2 and 97.1 (72.5), `determinism` 69.4 and 83.5 (61.6).
+Those three stages are 305 s of the 339 s gawk gate and 376 s of the 414 s mawk gate (90 and 91 percent). Every other stage is 3.0 s or less in the gawk job: `video-check` 1.9 s, `build` 1.3 s cold, `fixture-build` 1.1 s. In the mawk job `build` took 6.1 s and `video-check` 2.1 s.
+
+### Efficiency review of the first run of the three-job shape
+
+- **The parallel split works.** The critical path fell from 856 s and 1051 s (the two Phase 4 runs as one job) to 562 s: 294 s (34 percent) and 489 s (47 percent) shorter. Runner seconds stayed about the same (996, against 853 and 1048), as the estimate said.
+  562 s is 7 s above the top of the expected band of about 450 to 555 s. The `gate-mawk` job (555 s) was above its expected 423 to 516 s, and `gate-gawk` (438 s) was 3 s under its expected 441 to 545 s.
+- **The two jobs did not balance on this run: 438 s against 555 s, where the estimate expected 20 to 30 s between them.** The gap does not come from mawk. Every C-heavy stage in the mawk job was slower by the same factor:
+  `sanitizers` 1.27 times, `conformance` 1.18 times and `determinism` 1.20 times. `build` was 6.1 s against 1.3 s, and the clang step 120 s against the gcc step's 82 s (in Phase 4 run 1, on one machine, it was 80 s against 74 s).
+  In Phase 4 run 1, where both awks ran on the same machine, mawk was the faster gate (330 s against 339 s). The likely cause is a slower runner draw for `gate-mawk`. This was not confirmed: the log does not print the CPU model or core count.
+  With two runners the critical path is the slower of two draws, so the run-to-run spread already measured (23 percent on identical code) now applies to each job separately.
+- **The aggregator reports correctly on success.** It is named `gate`, so the check name that the pending ruleset hand-off asks for exists. It ran only after both legs (`needs`), took 3 s, and printed both results.
+  From the workflow text, it fails when a leg fails. With `if: always()` it runs even when a needed job failed, was cancelled or was skipped. Its step runs under the default `shell: sh -eu {0}`, and `test "$GAWK_RESULT" = success` exits 1 for any other result, which fails the step, the job and the `gate` check.
+  `scripts/workflow-check` (`WF_AGGREGATOR`) and the selftest `mutation-workflow-agg-skipped` enforce this shape. The failure path was not exercised on CI on purpose; no leg was broken to observe it.
+- **Timeouts.** 25 minutes (1500 s) is 2.7 times the slower job (555 s), and 5 minutes is far above the aggregator's 3 s. Not changed.
+- **D-176 job trigger.** Both work jobs were under 600 s on this run (438 s and 555 s), so the CI-job trigger did not fire for Phase 4.1. The margin for `gate-mawk` is 45 s, so a slower runner draw can still cross it. This is a record, not a new decision.
+- **Phase 4.1 cost on the runner.** The gawk gate took 339 s, the same as Phase 4 run 1, after 16 sprite and invariance cases were added. Within the gate, `conformance` rose by 10 s and `sanitizers` fell by 18 s, which is inside the runner spread. There is no sign of a sprite stage cost.
+- **Duplicated set-up.** Checkout, tool versions and cc65 install are paid twice: 12 s in `gate-gawk` and 20 s in `gate-mawk`, about 3 percent of runner seconds. A cache is still not worth it (a 9 to 14 s apt install).
+- **Low-hanging levers, none applied (each changes the workflow, which is the owner's decision):**
+  (a) Print `nproc` and the CPU model in the `Tool versions` step: one line per job and no time cost. Future reviews could then tell a slow runner from a code regression; today this review can only infer it.
+  (b) Move the clang build and conformance step (120 s here) into a third parallel job. On this run the critical path would have been about 440 s instead of 562 s, for about 20 s more runner set-up. The balance estimate for two jobs only holds if both runners are equally fast, and this run shows they need not be.
+  (c) Skip `sanitizers` in the mawk leg: about 150 to 195 s, the largest single saving. It still needs a skip mechanism, which the fail-closed rule discourages, and the owner's decision.
+  Pairing the second awk with clang is no longer a lever, because the jobs are already parallel.
+- **Nothing was weakened.** No stage, control, selftest, case or workflow step was skipped, merged or shortened, and no workflow file changed for this review.
 
