@@ -8,10 +8,10 @@ id = "audio_tone_golden"
 kind = "audio"
 fixture = "authored:psg-tone"
 request = ""
-expect = "rom=psg-tone;id=27;checks=4;scene=tone_golden"
+expect = "rom=psg-tone;id=27;checks=10;scene=tone_golden"
 meaning = "One zero-policy run of psg-tone gives the DSPA and DSPE stream digests pinned beside the literal scene tone_sel0: a change detector (E0 repeatability), never a verdict"
 required = true
 control = false
 expect_outcome = "pass"
 pins = []
-until_mclk = 1000000
+until_mclk = 12000000

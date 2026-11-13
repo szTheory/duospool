@@ -8,10 +8,10 @@ id = "audio_fault_sweep_tone_sel0"
 kind = "audio_fault_sweep"
 fixture = "authored:psg-tone"
 request = ""
-expect = "rom=psg-tone;id=27;checks=4;scene=tone_sel0"
+expect = "rom=psg-tone;id=27;checks=10;scene=tone_sel0"
 meaning = "Every literal group of the tracer scene turns into a failure under each stream fault it declares (a perturbed literal, a dropped, duplicated, zeroed, constant or reversed stretch of samples, a dropped or relabelled event), so no group of the scene is vacuous (E0)"
 required = true
 control = false
 expect_outcome = "pass"
 pins = []
-until_mclk = 1000000
+until_mclk = 12000000

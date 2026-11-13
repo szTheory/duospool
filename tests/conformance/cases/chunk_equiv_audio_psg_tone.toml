@@ -14,5 +14,5 @@ required = true
 control = false
 expect_outcome = "pass"
 pins = []
-until_mclk = 1000000
+until_mclk = 12000000
 chunks = "7,191,193,1366,vframe"

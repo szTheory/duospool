@@ -354,6 +354,12 @@ audio_fault_sweep_tone_sel0
 audio_judge_forms
 audio_tone_golden
 audio_hash_not_verdict
+audio_tone_pan01
+audio_tone_pan23
+audio_tone_pan45
+audio_fault_sweep_tone_pan01
+audio_fault_sweep_tone_pan23
+audio_fault_sweep_tone_pan45
 aud_noninterference
 psg_dev_join
 snapshot_restore_audio

@@ -8,10 +8,10 @@ id = "audio_tone_sel0_d3"
 kind = "audio"
 fixture = "authored:psg-tone"
 request = "bind.psg_tick_divisor=3"
-expect = "rom=psg-tone;id=27;checks=4;scene=tone_sel0;expect_red=period_L,period_R"
+expect = "rom=psg-tone;id=27;checks=10;scene=tone_sel0;expect_red=period_L,period_R"
 meaning = "The tracer scene bound to psg_tick_divisor = 3 fails exactly its period groups (a cycle of 128 samples gives a distance of 512 against the literal 1,024) while cycle_order, silent and the event groups stay green: the period rows can fail and the divisor reaches them (E0)"
 required = true
 control = false
 expect_outcome = "pass"
 pins = []
-until_mclk = 1000000
+until_mclk = 12000000

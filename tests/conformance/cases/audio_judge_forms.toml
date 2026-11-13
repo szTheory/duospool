@@ -9,10 +9,10 @@ id = "audio_judge_forms"
 kind = "audio_judge_forms"
 fixture = "authored:psg-tone"
 request = ""
-expect = "rom=psg-tone;id=27;checks=4;scene=tone_sel0"
+expect = "rom=psg-tone;id=27;checks=10;scene=tone_sel0"
 meaning = "Every form and judged kind of the audio judge passes its right literal, fails a wrong or perturbed one and refuses a malformed row; a null synthesiser fails every live row of the tracer scene; a missing sink is a harness failure (E0)"
 required = true
 control = false
 expect_outcome = "pass"
 pins = []
-until_mclk = 1000000
+until_mclk = 12000000

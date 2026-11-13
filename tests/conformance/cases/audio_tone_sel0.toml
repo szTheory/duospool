@@ -10,10 +10,10 @@ id = "audio_tone_sel0"
 kind = "audio"
 fixture = "authored:psg-tone"
 request = ""
-expect = "rom=psg-tone;id=27;checks=4;scene=tone_sel0"
+expect = "rom=psg-tone;id=27;checks=10;scene=tone_sel0"
 meaning = "A guest that uploads a 32-word table to select 0 and keys it on at F = 256 makes the core emit one DSPE record per window-2 write with the decoded fields of the register pages and DSPA frames whose rising crossings are 1,024 samples apart over four cycles, whose plateaus rank as the words and which are 0 before key-on and at power-on; identical under zero and v4 seed 1 (E0)"
 required = true
 control = false
 expect_outcome = "pass"
 pins = []
-until_mclk = 1000000
+until_mclk = 12000000

@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The fault sweep of the scene tone_pan01 (plan 05-06; D-209, ER-20, R3): the runner kind audio_fault_sweep runs psg-tone once under the zero policy, applies each fault AF0..AF9 in memory to copies of the captured streams and judges every group of tone_pan01 of fixtures/src/psg_tone.aexp
+# on each copy (AF3, L and R swapped, kills the single-channel and both-panned groups). Every declared kill must flip its group and a group no declared fault flips fails; the evidence prints the observed kill matrix of all ten faults. E0.
+id = "audio_fault_sweep_tone_pan01"
+kind = "audio_fault_sweep"
+fixture = "authored:psg-tone"
+request = ""
+expect = "rom=psg-tone;id=27;checks=10;scene=tone_pan01"
+meaning = "Every literal group of the pan-pair scene tone_pan01 turns into a failure under each stream fault it declares, so no group of the scene is vacuous (E0)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 12000000

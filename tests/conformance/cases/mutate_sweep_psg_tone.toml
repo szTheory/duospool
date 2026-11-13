@@ -1,17 +1,17 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
-# The mutation sweep of the psg_tone fixture (plan 05-04; D-126, D-212, F-41): every literal of its DCK1 table (the XOR masks of its 4 GUEST checks) is flipped in an in-memory copy of the image and must flip exactly its own check to fail; the fixture has no observe row, so no index is
+# The mutation sweep of the psg_tone fixture (plan 05-04, 10 checks from 05-06; D-126, D-212, F-41): every literal of its DCK1 table (the XOR masks of its 10 GUEST checks) is flipped in an in-memory copy of the image and must flip exactly its own check to fail; the fixture has no observe row, so no index is
 # excluded (exclude would equal build/gate/fixtures/psg-tone.observe, which is empty). Evidence tier E0; a pass is not a support claim.
 id = "mutate_sweep_psg_tone"
 kind = "mutate_sweep"
 fixture = "authored:psg-tone"
 request = ""
 expect = "id=27"
-meaning = "Changing the expected literal of any one of the 4 psg_tone checks flips exactly that check to fail and no other, so none of the 4 checks is vacuous"
+meaning = "Changing the expected literal of any one of the 10 psg_tone checks flips exactly that check to fail and no other, so none of the 10 checks is vacuous"
 required = true
 control = false
 expect_outcome = "pass"
 pins = []
-until_mclk = 1000000
-checks = 4
+until_mclk = 12000000
+checks = 10

@@ -8,10 +8,10 @@ id = "audio_hash_not_verdict"
 kind = "audio_hash_not_verdict"
 fixture = "authored:psg-tone"
 request = ""
-expect = "rom=psg-tone;id=27;checks=4;scene=tone_sel0"
+expect = "rom=psg-tone;id=27;checks=10;scene=tone_sel0"
 meaning = "An AF7-faulted copy of psg_tone's streams passes a golden taken from itself while the literal groups of tone_sel0 fail on it, and a golden with no literal scene or a second golden is refused as audio-hash-only (E0)"
 required = true
 control = false
 expect_outcome = "pass"
 pins = []
-until_mclk = 1000000
+until_mclk = 12000000

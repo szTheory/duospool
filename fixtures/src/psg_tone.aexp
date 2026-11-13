@@ -1,19 +1,13 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
-# psg_tone.aexp - the hand-derived literal rows of the audio scenes of fixtures/src/psg_tone.s (plan 05-04, grown by 05-06; D-187, D-196, D-197, D-199, D-206..D-208, D-211, D-212, D-225, D-230, PR-13, RF-13, RF-14, ER-14..ER-21).
-# scripts/fixture-build writes this file, comments dropped, as build/gate/fixtures/psg-tone.aexp.tsv; the runner kind audio (tests/conformance/audiokinds.c) reads only that file; scripts/audio-check (plan 05-05) judges this source.
-# One source holds the literals: no expected value lives in a case file, and none comes from a run of DuoSpool, another emulator or a hash (R7). Each row carries its class through its group (R1); the weakest class of the inputs wins (R2, ER-10).
-# Rows are TAB separated, keys closed. Row kinds: aexp sample_mclk=N (the header: must equal the DSPA stream's sample_mclk); scene NAME case=ID role=literal|golden|expect_red [twin=NAME] [expect_red=G,...];
-#   group SCENE GID form=ROWS|REL|STRUCT|EV kind=KIND class=MAN:<P8-n+...>|GUEST:<model>|ASSUMED:<LED-id> kills=AF0,...; row SCENE GID SELECTOR LITERAL (key=value items separated by semicolons).
-# Selector: anchor=ev:ch=<0..5|G>;reg=R<n>;[val=$hh;]nth=N names the N-th DSPE record of that channel (G: the global chan $FE), register and value; ev=+K the K-th record after it (form EV); from=+M and to=+M master clocks after it, or from=M absolute (no anchor);
-#   to=ev:ch=..;reg=..;[val=..;]nth=N an end anchor (RF-13); side=L|R. A window [from, to) holds the samples s with from <= s x 192 < to (D-187: sample s sees every event at or before s x 192 and no write stamped there).
-# The scene tone_sel0 (select 0, F = 256, d = 6): key-on at stamp w, w' = w - (w mod 6); step j (j >= 1) at w' + 1536 j sets the wave index to j mod 32; att = 0 on both sides (R1 $FF, AL $1F, R5 $FF: S = 0), so a sample is 32768 x word (the exact value is ASSUMED and not judged here).
-# AF kills are judged by audio_fault_sweep_tone_sel0 (plan 05-05, D-209): every kill declared in 05-04 flips its group (none was changed); the case prints the observed kill matrix of AF0..AF9.
-# Byte budget (D-230, cap 32,768 bytes and 512 rows): after plan 05-04 this file is 12,532 bytes (tone_sel0: 10 groups, 57 rows; a row about 115 bytes, a group 92, a comment line about 200); projected +2.7 KB in 05-05 (STRUCT groups, golden scene) and +16 KB in 05-06
-#   (three pan scenes about 2.5 KB each, tone_atten 2 KB, event rows 3.6 KB, probe 0.8 KB, twin 2.5 KB): about 31 KB and 250 rows. The margin is small: later plans write one comment line per group, never per row.
-#   After plan 05-05: 14,550 bytes and 76 rows (tone_sel0 12 groups with the STRUCT header and count, the golden scene tone_golden); the 05-06 projection is then about 30.5 KB of 32,768.
+# psg_tone.aexp - the hand-derived literal rows of the audio scenes of fixtures/src/psg_tone.s (plan 05-04, grown by 05-05 and 05-06; D-187, D-196, D-197, D-199, D-206..D-212, D-225, D-230, PR-13, RF-13, RF-14, ER-14..ER-21).
+# scripts/fixture-build writes it without comments as build/gate/fixtures/psg-tone.aexp.tsv for the runner kind audio (tests/conformance/audiokinds.c holds the grammar); scripts/audio-check judges this source. No literal comes from a case file, a run or a hash (R7).
+# Selector: anchor=ev:ch=<0..5|G>;reg=R<n>;[val=$hh;]nth=N (the N-th DSPE record of that channel, G the chan $FE); ev=+K; from=+M, to=+M master clocks after it, or absolute; to=ev:... an end anchor; side=L|R. A window holds the samples s with from <= 192s < to (D-187).
+# Budget (D-230, 32,768 bytes): 12,532 bytes after 05-04, 14,550 after 05-05. From 05-06: one comment block per scene, side pairs of one literal in one group of two rows, short group ids (per period, ord cycle_order, sil silent, lev levels_exact, ao atten_order, ae atten_equal).
 aexp	sample_mclk=192
+# tone_sel0 (select 0, F = 256, d = 6): key-on at stamp w, w' = w - (w mod 6); step j (j >= 1) at w' + 1536 j sets the wave index to j mod 32; att = 0 on both sides (R1 $FF, AL $1F, R5 $FF: S = 0), so a sample is 32768 x word (ASSUMED, not judged here).
+#   The AF kills of each literal scene are judged by its audio_fault_sweep case (D-209), which prints the observed matrix of AF0..AF9.
 scene	tone_sel0	case=audio_tone_sel0	role=literal
 # ev_value_sel0 (GUEST:program): the order and values of the writes of (c) and (e) of psg_tone.s, counted from the R0 $00 of (c), the second R0 $00 of the program ((b) writes R0 = 0 first); (d) writes nothing, so the key-on is the 40th record.
 group	tone_sel0	ev_value_sel0	form=EV	kind=ev_value	class=GUEST:program	kills=AF0,AF8
@@ -100,7 +94,87 @@ row	tone_sel0	header	stream=dspe	version=1
 # count (ASSUMED:LED-VID-0001+LED-AUD-0014): video frame 0 of 262 lines is m = 1 x 357,630 master clocks, the one whole frame the scene covers (the run ends at DSV1 done, never read here, R7); it holds n = ceil(357630 / 192) = 1,863 samples (D-187), and the stream sits on the grid to the run's end.
 group	tone_sel0	count	form=STRUCT	kind=count	class=ASSUMED:LED-VID-0001+LED-AUD-0014	kills=AF0,AF1,AF2,AF4
 row	tone_sel0	count	from=0;to=357630	m=357630;n=1863
+# tone_pan01/23/45 (05-06; D-189, D-208, D-212, ER-16): the pan-pair scripts of the psg_tone.s header, selects a, b at F 128, 192; 256, 320; 384, 448. Every key-on follows R4 $40 (wave index 0, D-190), so as in tone_sel0 the only rising crossing (word 31 -> 0) of cycle k is c_k = ceil(w'/192) + kF;
+#   the window +(192F + 2000)..+(1152F + 1000) of the key-on holds c_2..c_6 (c_1 < w + 192F + 192, c_7 > w + 1344F - 6): per d = 4F, k = 4 (MAN:P8-9+H8-23 at S = 0); ord: the plateaus between the first two crossings rank as the table (the .s header formula). A, B: a, b solo, R1 $FF, AL $1F, R5 $FF.
+#   C1: a alone, R5 $F0, AL $1D: left S = 0 + 1 + 0 = 1 (ASSUMED:LED-AUD-0008, ER-16), right S = 16 (sil MAN:P8-10, key-on + 2,000 to the key-off); C2 the mirror for b (R5 $0F); C3 both (ASSUMED isolation). AF3 kills the C groups.
+#   nth counts that channel's R4 records of that value (select 0 had one R4 $9F in tone_sel0; C1, C3 key-ons are R4 $9D 1 and 2; the C1, C2 key-off the 2nd R4 $1D); val= keeps the counts free of the R4 $00 writes of (b), which toy psg-chsel-mask moves to selects 0 and 1.
+scene	tone_pan01	case=audio_tone_pan01	role=literal
+group	tone_pan01	per_0_A	form=ROWS	kind=period	class=MAN:P8-9+H8-23	kills=AF0,AF2,AF4,AF5,AF6
+row	tone_pan01	per_0_A	anchor=ev:ch=0;reg=R4;val=$9F;nth=2;from=+26576;to=+148456;side=L	f=128;k=4;d=512;r1=$FF;al=$1F;r5=$FF
+row	tone_pan01	per_0_A	anchor=ev:ch=0;reg=R4;val=$9F;nth=2;from=+26576;to=+148456;side=R	f=128;k=4;d=512;r1=$FF;al=$1F;r5=$FF
+group	tone_pan01	ord_0_A	form=ROWS	kind=cycle_order	class=MAN:P8-4+P8-5	kills=AF0,AF5,AF6,AF7
+row	tone_pan01	ord_0_A	anchor=ev:ch=0;reg=R4;val=$9F;nth=2;from=+26576;to=+148456;side=L	words=16,19,22,25,28,31,18,21,24,27,30,17,20,23,26,29,15,4,9,14,3,8,13,2,7,12,1,6,11,0,5,10;r1=$FF;al=$1F;r5=$FF
+row	tone_pan01	ord_0_A	anchor=ev:ch=0;reg=R4;val=$9F;nth=2;from=+26576;to=+148456;side=R	words=16,19,22,25,28,31,18,21,24,27,30,17,20,23,26,29,15,4,9,14,3,8,13,2,7,12,1,6,11,0,5,10;r1=$FF;al=$1F;r5=$FF
+group	tone_pan01	per_1_B	form=ROWS	kind=period	class=MAN:P8-9+H8-23	kills=AF0,AF2,AF4,AF5,AF6
+row	tone_pan01	per_1_B	anchor=ev:ch=1;reg=R4;val=$9F;nth=1;from=+38864;to=+222184;side=L	f=192;k=4;d=768;r1=$FF;al=$1F;r5=$FF
+row	tone_pan01	per_1_B	anchor=ev:ch=1;reg=R4;val=$9F;nth=1;from=+38864;to=+222184;side=R	f=192;k=4;d=768;r1=$FF;al=$1F;r5=$FF
+group	tone_pan01	ord_1_B	form=ROWS	kind=cycle_order	class=MAN:P8-4+P8-5	kills=AF0,AF5,AF6,AF7
+row	tone_pan01	ord_1_B	anchor=ev:ch=1;reg=R4;val=$9F;nth=1;from=+38864;to=+222184;side=L	words=23,28,17,22,27,16,21,26,31,20,25,30,19,24,29,18,2,5,8,11,14,1,4,7,10,13,0,3,6,9,12,15;r1=$FF;al=$1F;r5=$FF
+row	tone_pan01	ord_1_B	anchor=ev:ch=1;reg=R4;val=$9F;nth=1;from=+38864;to=+222184;side=R	words=23,28,17,22,27,16,21,26,31,20,25,30,19,24,29,18,2,5,8,11,14,1,4,7,10,13,0,3,6,9,12,15;r1=$FF;al=$1F;r5=$FF
+group	tone_pan01	sil_C1_R	form=ROWS	kind=silent	class=MAN:P8-10	kills=AF0,AF3,AF6
+row	tone_pan01	sil_C1_R	anchor=ev:ch=0;reg=R4;val=$9D;nth=1;from=+2000;to=ev:ch=0;reg=R4;val=$1D;nth=2;side=R	r1=$FF;al=$1D;r5=$F0
+group	tone_pan01	sil_C2_L	form=ROWS	kind=silent	class=MAN:P8-10	kills=AF0,AF3,AF6
+row	tone_pan01	sil_C2_L	anchor=ev:ch=1;reg=R4;val=$9D;nth=1;from=+2000;to=ev:ch=1;reg=R4;val=$1D;nth=2;side=L	r1=$FF;al=$1D;r5=$0F
+group	tone_pan01	per_0_C1_L	form=ROWS	kind=period	class=ASSUMED:LED-AUD-0008	kills=AF0,AF2,AF3,AF4,AF5,AF6
+row	tone_pan01	per_0_C1_L	anchor=ev:ch=0;reg=R4;val=$9D;nth=1;from=+26576;to=+148456;side=L	f=128;k=4;d=512;r1=$FF;al=$1D;r5=$F0
+group	tone_pan01	per_1_C2_R	form=ROWS	kind=period	class=ASSUMED:LED-AUD-0008	kills=AF0,AF2,AF3,AF4,AF5,AF6
+row	tone_pan01	per_1_C2_R	anchor=ev:ch=1;reg=R4;val=$9D;nth=1;from=+38864;to=+222184;side=R	f=192;k=4;d=768;r1=$FF;al=$1D;r5=$0F
+group	tone_pan01	per_0_C3_L	form=ROWS	kind=period	class=ASSUMED:LED-AUD-0008	kills=AF0,AF2,AF3,AF4,AF5,AF6
+row	tone_pan01	per_0_C3_L	anchor=ev:ch=0;reg=R4;val=$9D;nth=2;from=+26576;to=+148456;side=L	f=128;k=4;d=512;r1=$FF;al=$1D;r5=$F0
+group	tone_pan01	per_1_C3_R	form=ROWS	kind=period	class=ASSUMED:LED-AUD-0008	kills=AF0,AF2,AF3,AF4,AF5,AF6
+row	tone_pan01	per_1_C3_R	anchor=ev:ch=1;reg=R4;val=$9D;nth=2;from=+38864;to=+222184;side=R	f=192;k=4;d=768;r1=$FF;al=$1D;r5=$0F
+scene	tone_pan23	case=audio_tone_pan23	role=literal
+group	tone_pan23	per_2_A	form=ROWS	kind=period	class=MAN:P8-9+H8-23	kills=AF0,AF2,AF4,AF5,AF6
+row	tone_pan23	per_2_A	anchor=ev:ch=2;reg=R4;val=$9F;nth=1;from=+51152;to=+295912;side=L	f=256;k=4;d=1024;r1=$FF;al=$1F;r5=$FF
+row	tone_pan23	per_2_A	anchor=ev:ch=2;reg=R4;val=$9F;nth=1;from=+51152;to=+295912;side=R	f=256;k=4;d=1024;r1=$FF;al=$1F;r5=$FF
+group	tone_pan23	ord_2_A	form=ROWS	kind=cycle_order	class=MAN:P8-4+P8-5	kills=AF0,AF5,AF6,AF7
+row	tone_pan23	ord_2_A	anchor=ev:ch=2;reg=R4;val=$9F;nth=1;from=+51152;to=+295912;side=L	words=19,26,17,24,31,22,29,20,27,18,25,16,23,30,21,28,9,4,15,10,5,0,11,6,1,12,7,2,13,8,3,14;r1=$FF;al=$1F;r5=$FF
+row	tone_pan23	ord_2_A	anchor=ev:ch=2;reg=R4;val=$9F;nth=1;from=+51152;to=+295912;side=R	words=19,26,17,24,31,22,29,20,27,18,25,16,23,30,21,28,9,4,15,10,5,0,11,6,1,12,7,2,13,8,3,14;r1=$FF;al=$1F;r5=$FF
+group	tone_pan23	per_3_B	form=ROWS	kind=period	class=MAN:P8-9+H8-23	kills=AF0,AF2,AF4,AF5,AF6
+row	tone_pan23	per_3_B	anchor=ev:ch=3;reg=R4;val=$9F;nth=1;from=+63440;to=+369640;side=L	f=320;k=4;d=1280;r1=$FF;al=$1F;r5=$FF
+row	tone_pan23	per_3_B	anchor=ev:ch=3;reg=R4;val=$9F;nth=1;from=+63440;to=+369640;side=R	f=320;k=4;d=1280;r1=$FF;al=$1F;r5=$FF
+group	tone_pan23	ord_3_B	form=ROWS	kind=cycle_order	class=MAN:P8-4+P8-5	kills=AF0,AF5,AF6,AF7
+row	tone_pan23	ord_3_B	anchor=ev:ch=3;reg=R4;val=$9F;nth=1;from=+63440;to=+369640;side=L	words=28,21,30,23,16,25,18,27,20,29,22,31,24,17,26,19,4,1,14,11,8,5,2,15,12,9,6,3,0,13,10,7;r1=$FF;al=$1F;r5=$FF
+row	tone_pan23	ord_3_B	anchor=ev:ch=3;reg=R4;val=$9F;nth=1;from=+63440;to=+369640;side=R	words=28,21,30,23,16,25,18,27,20,29,22,31,24,17,26,19,4,1,14,11,8,5,2,15,12,9,6,3,0,13,10,7;r1=$FF;al=$1F;r5=$FF
+group	tone_pan23	sil_C1_R	form=ROWS	kind=silent	class=MAN:P8-10	kills=AF0,AF3,AF6
+row	tone_pan23	sil_C1_R	anchor=ev:ch=2;reg=R4;val=$9D;nth=1;from=+2000;to=ev:ch=2;reg=R4;val=$1D;nth=2;side=R	r1=$FF;al=$1D;r5=$F0
+group	tone_pan23	sil_C2_L	form=ROWS	kind=silent	class=MAN:P8-10	kills=AF0,AF3,AF6
+row	tone_pan23	sil_C2_L	anchor=ev:ch=3;reg=R4;val=$9D;nth=1;from=+2000;to=ev:ch=3;reg=R4;val=$1D;nth=2;side=L	r1=$FF;al=$1D;r5=$0F
+group	tone_pan23	per_2_C1_L	form=ROWS	kind=period	class=ASSUMED:LED-AUD-0008	kills=AF0,AF2,AF3,AF4,AF5,AF6
+row	tone_pan23	per_2_C1_L	anchor=ev:ch=2;reg=R4;val=$9D;nth=1;from=+51152;to=+295912;side=L	f=256;k=4;d=1024;r1=$FF;al=$1D;r5=$F0
+group	tone_pan23	per_3_C2_R	form=ROWS	kind=period	class=ASSUMED:LED-AUD-0008	kills=AF0,AF2,AF3,AF4,AF5,AF6
+row	tone_pan23	per_3_C2_R	anchor=ev:ch=3;reg=R4;val=$9D;nth=1;from=+63440;to=+369640;side=R	f=320;k=4;d=1280;r1=$FF;al=$1D;r5=$0F
+group	tone_pan23	per_2_C3_L	form=ROWS	kind=period	class=ASSUMED:LED-AUD-0008	kills=AF0,AF2,AF3,AF4,AF5,AF6
+row	tone_pan23	per_2_C3_L	anchor=ev:ch=2;reg=R4;val=$9D;nth=2;from=+51152;to=+295912;side=L	f=256;k=4;d=1024;r1=$FF;al=$1D;r5=$F0
+group	tone_pan23	per_3_C3_R	form=ROWS	kind=period	class=ASSUMED:LED-AUD-0008	kills=AF0,AF2,AF3,AF4,AF5,AF6
+row	tone_pan23	per_3_C3_R	anchor=ev:ch=3;reg=R4;val=$9D;nth=2;from=+63440;to=+369640;side=R	f=320;k=4;d=1280;r1=$FF;al=$1D;r5=$0F
+scene	tone_pan45	case=audio_tone_pan45	role=literal
+group	tone_pan45	per_4_A	form=ROWS	kind=period	class=MAN:P8-9+H8-23	kills=AF0,AF2,AF4,AF5,AF6
+row	tone_pan45	per_4_A	anchor=ev:ch=4;reg=R4;val=$9F;nth=1;from=+75728;to=+443368;side=L	f=384;k=4;d=1536;r1=$FF;al=$1F;r5=$FF
+row	tone_pan45	per_4_A	anchor=ev:ch=4;reg=R4;val=$9F;nth=1;from=+75728;to=+443368;side=R	f=384;k=4;d=1536;r1=$FF;al=$1F;r5=$FF
+group	tone_pan45	ord_4_A	form=ROWS	kind=cycle_order	class=MAN:P8-4+P8-5	kills=AF0,AF5,AF6,AF7
+row	tone_pan45	ord_4_A	anchor=ev:ch=4;reg=R4;val=$9F;nth=1;from=+75728;to=+443368;side=L	words=21,16,27,22,17,28,23,18,29,24,19,30,25,20,31,26,14,5,12,3,10,1,8,15,6,13,4,11,2,9,0,7;r1=$FF;al=$1F;r5=$FF
+row	tone_pan45	ord_4_A	anchor=ev:ch=4;reg=R4;val=$9F;nth=1;from=+75728;to=+443368;side=R	words=21,16,27,22,17,28,23,18,29,24,19,30,25,20,31,26,14,5,12,3,10,1,8,15,6,13,4,11,2,9,0,7;r1=$FF;al=$1F;r5=$FF
+group	tone_pan45	per_5_B	form=ROWS	kind=period	class=MAN:P8-9+H8-23	kills=AF0,AF2,AF4,AF5,AF6
+row	tone_pan45	per_5_B	anchor=ev:ch=5;reg=R4;val=$9F;nth=1;from=+88016;to=+517096;side=L	f=448;k=4;d=1792;r1=$FF;al=$1F;r5=$FF
+row	tone_pan45	per_5_B	anchor=ev:ch=5;reg=R4;val=$9F;nth=1;from=+88016;to=+517096;side=R	f=448;k=4;d=1792;r1=$FF;al=$1F;r5=$FF
+group	tone_pan45	ord_5_B	form=ROWS	kind=cycle_order	class=MAN:P8-4+P8-5	kills=AF0,AF5,AF6,AF7
+row	tone_pan45	ord_5_B	anchor=ev:ch=5;reg=R4;val=$9F;nth=1;from=+88016;to=+517096;side=L	words=26,23,20,17,30,27,24,21,18,31,28,25,22,19,16,29,6,15,8,1,10,3,12,5,14,7,0,9,2,11,4,13;r1=$FF;al=$1F;r5=$FF
+row	tone_pan45	ord_5_B	anchor=ev:ch=5;reg=R4;val=$9F;nth=1;from=+88016;to=+517096;side=R	words=26,23,20,17,30,27,24,21,18,31,28,25,22,19,16,29,6,15,8,1,10,3,12,5,14,7,0,9,2,11,4,13;r1=$FF;al=$1F;r5=$FF
+group	tone_pan45	sil_C1_R	form=ROWS	kind=silent	class=MAN:P8-10	kills=AF0,AF3,AF6
+row	tone_pan45	sil_C1_R	anchor=ev:ch=4;reg=R4;val=$9D;nth=1;from=+2000;to=ev:ch=4;reg=R4;val=$1D;nth=2;side=R	r1=$FF;al=$1D;r5=$F0
+group	tone_pan45	sil_C2_L	form=ROWS	kind=silent	class=MAN:P8-10	kills=AF0,AF3,AF6
+row	tone_pan45	sil_C2_L	anchor=ev:ch=5;reg=R4;val=$9D;nth=1;from=+2000;to=ev:ch=5;reg=R4;val=$1D;nth=2;side=L	r1=$FF;al=$1D;r5=$0F
+group	tone_pan45	per_4_C1_L	form=ROWS	kind=period	class=ASSUMED:LED-AUD-0008	kills=AF0,AF2,AF3,AF4,AF5,AF6
+row	tone_pan45	per_4_C1_L	anchor=ev:ch=4;reg=R4;val=$9D;nth=1;from=+75728;to=+443368;side=L	f=384;k=4;d=1536;r1=$FF;al=$1D;r5=$F0
+group	tone_pan45	per_5_C2_R	form=ROWS	kind=period	class=ASSUMED:LED-AUD-0008	kills=AF0,AF2,AF3,AF4,AF5,AF6
+row	tone_pan45	per_5_C2_R	anchor=ev:ch=5;reg=R4;val=$9D;nth=1;from=+88016;to=+517096;side=R	f=448;k=4;d=1792;r1=$FF;al=$1D;r5=$0F
+group	tone_pan45	per_4_C3_L	form=ROWS	kind=period	class=ASSUMED:LED-AUD-0008	kills=AF0,AF2,AF3,AF4,AF5,AF6
+row	tone_pan45	per_4_C3_L	anchor=ev:ch=4;reg=R4;val=$9D;nth=2;from=+75728;to=+443368;side=L	f=384;k=4;d=1536;r1=$FF;al=$1D;r5=$F0
+group	tone_pan45	per_5_C3_R	form=ROWS	kind=period	class=ASSUMED:LED-AUD-0008	kills=AF0,AF2,AF3,AF4,AF5,AF6
+row	tone_pan45	per_5_C3_R	anchor=ev:ch=5;reg=R4;val=$9D;nth=2;from=+88016;to=+517096;side=R	f=448;k=4;d=1792;r1=$FF;al=$1D;r5=$0F
 # tone_golden (ER-20, D-209: an E0 change detector beside the literal scene tone_sel0 and its sweep, never a verdict; at most one golden per ROM): the digests of the D-199 streams of one zero-policy run, made with ds_runner --audio-out audio_tone_sel0 and recomputed with the host shasum -a 256
 #   of the .dspa and .dspe files (both equal, 2026-11-13, epoch 6). A golden is regenerated on an epoch bump or a change of the streams, with the old and the new digests recorded on this line.
+#   05-06 Task 1 (the pan scenes grow the streams): pcm 3e20cc72..ad805 -> 95172f4f..9d223b, psg f85f0369..e3640 -> 65d1b578..82dc (host shasum equal to the runner's).
 scene	tone_golden	case=audio_tone_golden	role=golden
-golden	tone_golden	pcm_sha256=3e20cc7254314cb494d29c9b95dfc822350d3d371647cdc8916b4619caaad805	psg_sha256=f85f0369cc78b31500259f684a2c749f3503382fb57ce21a6c2f473563c3e640
+golden	tone_golden	pcm_sha256=95172f4fa1c738a03405784d5a565e534c3e8100b3fc08ac075068e9409d223b	psg_sha256=65d1b57839f2bb72ddba4e24bb2ed56e7548585054702567ac9d8036743b82dc
