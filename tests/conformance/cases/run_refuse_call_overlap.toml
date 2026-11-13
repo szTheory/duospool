@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# ds_run refusal run.memory_invalid for the call's own memory (plan 05-02; Phase 3 core review IN-03, D-198, T-05-05): after the struct_size and reserved checks and before any sink check, a request or a result that overlaps the instance is refused.
+# The boot of the authored ds-proto has run past 600 master clocks; the instance of both rows is a malloc'd copy of it, so the request and the result are copied into its work RAM with defined effective types. Row 1: a valid request inside the instance
+# must return REFUSED with run.memory_invalid in an outside result, 0 steps, and the instance block byte-identical. Row 2: the result struct inside the instance must return REFUSED and is never written, so the block stays byte-identical.
+# After each row the same call with the request or the result outside the instance is accepted and runs, so the overlap is the only defect of the row. With the check deleted, row 1 runs the machine (the block changes) and row 2 is accepted.
+# Evidence tier E0 (repeatability and a literal): the refusal and the non-mutation rule are the specification of this plan, not a hardware claim.
+id = "run_refuse_call_overlap"
+kind = "run_refuse"
+fixture = "none"
+request = ""
+expect = "rom=ds-proto;refuse=memory_invalid;rows=call_overlap"
+meaning = "A ds_run request or result that overlaps the instance is refused as run.memory_invalid before any sink check, and the instance stays byte-identical (a result inside the instance is never written)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

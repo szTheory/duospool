@@ -5,7 +5,7 @@
  * D-93, D-94, D-95). Steps are indivisible and the deadline is absolute, so run(N) followed by run(M) takes the same steps as run(M) from the start:
  * chunk invariance holds by construction. Nothing but the instance survives a step; there is no local cache of CPU state between steps.
  * A step is one instruction, the interrupt entry it triggers, or one step of a block transfer (the prologue, one byte, the epilogue, plan 03-25), so a deadline or a stop callback can end a run between any two of them (D-92).
- * Order of a call: refuse a malformed request (NULL instance or request, wrong struct_size, nonzero reserved, a sink that is oversized or not valid memory (plans 03-10 and 03-19: ds_obs_sinks_check), a deadline that would wrap
+ * Order of a call: refuse a malformed request (NULL instance or request, wrong struct_size, nonzero reserved, a request or result that overlaps the instance (IN-03, plan 05-02), a sink that is oversized or not valid memory (plans 03-10 and 03-19: ds_obs_sinks_check), a deadline that would wrap
  * the 64-bit machine time), then (with a sink) overwrite its header, return UNTIL with zero steps when the deadline is not ahead, then check the stop callback before the first step
  * and after every step. The insn hook sees each instruction once, before it runs, the dev hook each logged hardware-page access, the vid sink (plan 04-02) receives whole video records, the psg and pcm sinks (plan 05-02) receive PSG write records and raw-audio frames (no producer until plan 05-04), and none of them can change the instance (ds_obs.h).
  * A stop that holds at the step where the deadline is reached is a stop (CALLBACK), as in the Phase 2 budgeted run.
@@ -58,7 +58,7 @@ uint64_t ds_max_step_mclk(void)
 static uint32_t finish(struct ds_run_result *result, const struct ds_instance *inst, uint32_t reason, uint32_t refusal, uint64_t until,
                        uint64_t steps)
 {
-    if (result != NULL) {
+    if (result != NULL && !ds_obs_overlaps_instance(inst, result, sizeof *result)) { /* a result inside the instance is refused (IN-03) and never written: writing it would change the refused instance, so the return value is the only report */
         uint64_t now = inst != NULL ? inst->machine_time : UINT64_C(0);
 
         result->reason = reason;

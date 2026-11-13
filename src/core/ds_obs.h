@@ -144,6 +144,8 @@ struct ds_obs_log {
 
 /* DS_RUNREF_NONE when the sinks of the request may be used by this call, else the refusal (memory_invalid or sink_unsupported) in the order above; a NULL sink is not carried and is always acceptable */
 uint32_t ds_obs_sinks_check(const struct ds_run_request *request, const struct ds_instance *inst, const struct ds_run_result *result);
+/* 1 when the n bytes at p overlap the instance (IN-03, plan 05-02): the request and result test of ds_obs_sinks_check, and ds_run's rule that a result inside the instance is never written; a NULL inst or p overlaps nothing */
+int ds_obs_overlaps_instance(const struct ds_instance *inst, const void *p, size_t n);
 /* zero the running counts and overwrite the headers of the sinks the request carries (plan 05-02 form, D-198: later sinks never change it); machine_time is the instance's time at the start of the call (unused until plan 05-04 sets the pcm cursor from it, PR-4) */
 void ds_obs_begin(struct ds_obs_log *log, const struct ds_run_request *request, uint64_t machine_time);
 void ds_obs_insn(struct ds_obs_log *log, const struct ds_instance *inst, uint32_t opcode);     /* one record, or lost++; log NULL or no insn sink does nothing */

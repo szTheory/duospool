@@ -412,7 +412,7 @@ struct ds_run_result {
  * than ds_max_step_mclk(). No state lives outside the instance between steps: run(N) then run(M) equals run(M) from the start (D-92).
  * A NULL instance or request, a wrong struct_size, a nonzero reserved, a request or result that overlaps the instance (memory_invalid, plan 05-02),
  * a sink with a capacity above DS_SINK_MAX_RECORDS, DS_VID_SINK_MAX_BYTES or DS_PCM_SINK_MAX_FRAMES (sink_unsupported), a sink that overlaps the call's own memory, another sink or itself or is misaligned (memory_invalid) and a deadline that would wrap machine time are
- * refused with REFUSED and a refusal code; the instance is then unchanged. Returns the reason, also written to result when it is not NULL.
+ * refused with REFUSED and a refusal code; the instance is then unchanged. Returns the reason, also written to result when it is not NULL and does not overlap the instance (IN-03: such a result is never written).
  */
 uint32_t ds_run(struct ds_instance *inst, const struct ds_run_request *request, struct ds_run_result *result);
 

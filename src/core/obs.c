@@ -93,6 +93,38 @@ static void sink_ref_dev(struct sink_ref *r, const struct ds_dev_sink *s)
     r->records = NULL;
 }
 
+/* the PSG sink (plan 05-02): the dev shape */
+static void sink_ref_psg(struct sink_ref *r, const struct ds_psg_sink *s)
+{
+    r->present = s != NULL;
+    r->obj = (uintptr_t)s;
+    r->obj_bytes = sizeof(struct ds_psg_sink);
+    r->obj_align = (size_t)_Alignof(struct ds_psg_sink);
+    r->rec_align = (size_t)DS_PSG_ALIGN;
+    r->rec_unit = (size_t)DS_PSG_RECORD_BYTES;
+    r->limit = (uint32_t)DS_SINK_MAX_RECORDS;
+    r->capacity = 0u;
+    r->rec = 0u;
+    r->rec_bytes = 0u;
+    r->records = NULL;
+}
+
+/* the PCM sink (plan 05-02; D-197): its capacity is in frames of DS_PCM_FRAME_BYTES */
+static void sink_ref_pcm(struct sink_ref *r, const struct ds_pcm_sink *s)
+{
+    r->present = s != NULL;
+    r->obj = (uintptr_t)s;
+    r->obj_bytes = sizeof(struct ds_pcm_sink);
+    r->obj_align = (size_t)_Alignof(struct ds_pcm_sink);
+    r->rec_align = (size_t)DS_PCM_ALIGN;
+    r->rec_unit = (size_t)DS_PCM_FRAME_BYTES;
+    r->limit = (uint32_t)DS_PCM_SINK_MAX_FRAMES;
+    r->capacity = 0u;
+    r->rec = 0u;
+    r->rec_bytes = 0u;
+    r->records = NULL;
+}
+
 /* the video sink: its capacity is already a byte count, so the unit is one byte */
 static void sink_ref_vid(struct sink_ref *r, const struct ds_vid_sink *s)
 {
@@ -123,7 +155,12 @@ static int record_range_ok(struct sink_ref *r)
     return (uintptr_t)r->rec_bytes <= UINTPTR_MAX - r->rec; /* the range would wrap the address space */
 }
 
-#define DS_OBS_SINKS 3u /* the channels of the table: insn, dev, vid (Phase 5 adds aud) */
+#define DS_OBS_SINKS 5u /* the channels of the table: insn, dev, vid and the two audio sinks psg and pcm of plan 05-02 (D-198) */
+
+int ds_obs_overlaps_instance(const struct ds_instance *inst, const void *p, size_t n)
+{
+    return inst != NULL && p != NULL && ranges_overlap((uintptr_t)p, n, (uintptr_t)inst, sizeof *inst);
+}
 
 uint32_t ds_obs_sinks_check(const struct ds_run_request *request, const struct ds_instance *inst, const struct ds_run_result *result)
 {
@@ -131,9 +168,15 @@ uint32_t ds_obs_sinks_check(const struct ds_run_request *request, const struct d
     unsigned i;
     unsigned j;
 
+    /* 0: the call's own memory (IN-03, plan 05-02, D-198): a request or a result that overlaps the instance is refused before any sink is looked at; nothing of the request but its address is used here */
+    if (ds_obs_overlaps_instance(inst, request, sizeof *request) || ds_obs_overlaps_instance(inst, result, sizeof *result)) {
+        return (uint32_t)DS_RUNREF_memory_invalid;
+    }
     sink_ref_insn(&s[0], request->insn);
     sink_ref_dev(&s[1], request->dev);
     sink_ref_vid(&s[2], request->vid);
+    sink_ref_psg(&s[3], request->psg);
+    sink_ref_pcm(&s[4], request->pcm);
     /* 1: the sink structs (nothing of a sink is read before its struct is known to be aligned and clear of the call's memory and of every other struct) */
     for (i = 0u; i < DS_OBS_SINKS; i++) {
         if (s[i].present && ((s[i].obj % (uintptr_t)s[i].obj_align) != 0u || touches_call(s[i].obj, s[i].obj_bytes, inst, request, result))) {
@@ -159,6 +202,14 @@ uint32_t ds_obs_sinks_check(const struct ds_run_request *request, const struct d
     if (s[2].present) {
         s[2].capacity = request->vid->capacity;
         s[2].records = request->vid->bytes;
+    }
+    if (s[3].present) {
+        s[3].capacity = request->psg->capacity;
+        s[3].records = request->psg->records;
+    }
+    if (s[4].present) {
+        s[4].capacity = request->pcm->capacity;
+        s[4].records = request->pcm->frames;
     }
     for (i = 0u; i < DS_OBS_SINKS; i++) {
         if (s[i].present && s[i].capacity > s[i].limit) {
