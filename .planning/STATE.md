@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 5
 current_phase_name: PSG Raw Audio
-current_plan: 5
+current_plan: 6
 status: executing
-stopped_at: Completed 05-04-PLAN.md
-last_updated: "2026-11-13T16:21:58.575Z"
+stopped_at: Completed 05-05-PLAN.md
+last_updated: "2026-11-13T17:31:33.303Z"
 last_activity: 2026-11-12
 last_activity_desc: Phase 04.1 complete, transitioned to Phase 5
-state_head: 167f2c833b5608679b22346d695638fac59e035d
+state_head: 2c9dfa02d561b24a87497b950244a37ce40a0c3f
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 101
-  completed_plans: 95
+  completed_plans: 96
   percent: 71
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 5 (PSG Raw Audio) — READY TO EXECUTE
-Current Plan: 5
+Current Plan: 6
 Total Plans in Phase: 10
 Status: Ready to execute
 Last activity: 2026-11-12 — Phase 04.1 complete, transitioned to Phase 5
@@ -155,6 +155,7 @@ Progress: [███████░░░] 71%
 | Phase 05 P02 | 50 min | 2 tasks | 20 files |
 | Phase 05 P03 | 220 min | 3 tasks | 46 files |
 | Phase 05 P04 | 3h10m | 3 tasks | 41 files |
+| Phase 05 P05 | 130 min | 3 tasks | 74 files |
 
 ## Accumulated Context
 
@@ -353,6 +354,10 @@ Recent decisions affecting current work:
 - [Phase 05]: 05-04: a scene row names one case; another case may judge that scene only with expect_red (the d = 3 control audio_tone_sel0_d3)
 - [Phase 05]: 05-04: aexp selector items are flat; reg, val and nth bind to the most recent anchor; a window [from, to) holds the samples with from <= 192 s < to
 - [Phase 05]: 05-04: in chunk_equiv an audio header off the closed form is a counted check, a lost frame stays harness_failure, so the fold toy turns the case guest_failure
+- [Phase 05]: 05-05: KINDCLASS carries the form of each kind; audio-check and the runner refuse a group whose form is not its kind's
+- [Phase 05]: 05-05: disputed points are found in the row or marked by the author with the literal item mark=MARKER (held, keyon, latch_off, lfo_wrap need the mark)
+- [Phase 05]: 05-05: golden digests live in a golden row (golden SCENE pcm_sha256= psg_sha256=); header groups take class DEF:<ledger ids> (ER-19)
+- [Phase 05]: 05-05: kinds judged by a later plan are parsed and refused as harness_failure when judged, never a pass
 
 ### Pending Todos
 
@@ -376,6 +381,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-13T16:21:58.094Z
-Stopped at: Completed 05-04-PLAN.md
+Last session: 2026-11-13T17:31:32.045Z
+Stopped at: Completed 05-05-PLAN.md
 Resume file: None

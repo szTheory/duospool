@@ -1222,3 +1222,14 @@ in under 20,000 instructions (about 13,500 in its counted delays, from the loop 
 
 `audio-check` is the 58th stage (C-1, F-51, PR-18): static, registered right after `video-check` and before the build.
 It runs `scripts/audio-check` on this repository, the negative mini-roots of `tests/audio` (one per code, plus `ok-audio` and `ok-inventory`), the generated lex controls of `ac_gen_limits` (with `ok-size-cap`, a valid file of exactly 32,768 bytes) and the exit-2 control of a 32,769-byte `.aexp` (D-230, D-232).
+
+Local runs of plan 05-05 (same machine as the 05-01 baseline, 2026-11-13; E0, no CI claim, no push). The machine was shared all afternoon, so no quiet-machine number exists yet and cut trigger (3) stays unjudged (05-08 re-measures):
+
+| Run | What | Result | Wall s | User CPU s | System s | Load average (1 min) |
+|-----|------|--------|--------|------------|----------|----------------------|
+| 05-05 Task 1 | `sh scripts/check --timing` (the new stage and the sweep kind) | PASS, 58 stages | 674.6 | 463.0 | 139.2 | 19.6 at start, 10.1 at end |
+| 05-05 Task 2 | `sh scripts/check --timing` (forms, judge forms) | PASS, 58 stages | 460.8 | 379.1 | 68.8 | 9.5 at start, 9.6 at end |
+| 05-05 Task 3 | `sh scripts/check --timing` (golden role; the plan-end gate) | PASS, 58 stages | 447.9 | 365.3 | 68.1 | 17.6 at start, 15.2 at end |
+| 05-05 | `sh scripts/check --selftest` | PASS, 203 PASS lines | 138.2 | 49.7 | 79.9 | |
+
+Stage seconds over 5 s of the Task 3 run (gate clock): `sanitizers` 191, `determinism` 91, `conformance` 76, `fixtures` 10, `named-controls` 8, `inventory` 7, `video-check` 7, `audio-check` 6. The 362 conformance cases include 4 new audio cases (fault sweep, judge forms, golden, hash-not-verdict).
