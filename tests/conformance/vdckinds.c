@@ -16,6 +16,7 @@
  *   snapshot_restore_video    expect = rom=NAME;schedules=1364,1366,7;stride=N (until_mclk needed): the fixture is run on each schedule (calls to the deadlines j * size) with a vid sink on every call; at every stop of the schedules 1364 and 1366, which fall at every phase inside a line, and at every stride-th stop and
  *                             at every stop whose machine time is a multiple of 1365 (a pending line event at the machine time itself) of the schedule 7, the machine is snapshotted, restored into a fresh poisoned boot of the same image (member by member equal to the source) and the run goes on with the target. The concatenated
  *                             stream bytes, the digest, the machine time, the steps and the verdict RAM of every schedule equal those of the uninterrupted run (D-137). A case that restored at no stop at a multiple of 1365 is a guest_failure: the tie would be untested.
+ *                             The optional item ;sprite-pend (Phase 4.1 review fix M-04) also requires, for every policy and schedule, a restore at a stop where the source holds sprite flags pending (sprite_pend non-zero, between the EV_LINE and the EV_RCR of a display line with OVERFLOW or COLLISION).
  *   vdc_random_regs           expect = programs=N;seed=N (until_mclk needed; plan 04-13, D-175, T-04-44): N in-process programs (rp_build_vdc in randprog.c) that write random values to every VDC register through AR and the data port,
  *                             to the VCE window, to the DMA triggers and through block transfers, with random waits, each run to the deadline with a vid sink of the closed-form capacity: ds_run stops at the deadline, no record is lost, the count equals
  *                             floor((M - 1) / 1365) + 1, every record is whole and every border, index and colour value is below 512. Meant for the sanitizer preset as much as the gate preset; E0 (no crash, no out-of-range value, termination), nothing is
@@ -883,6 +884,7 @@ struct sv_stats {
     unsigned restores;
     unsigned at_grid;   /* restores at a stop whose machine time is a multiple of 1365: the next line event is pending at the machine time itself */
     unsigned mid_line;
+    unsigned pend;      /* restores at a stop where the source held sprite flags pending (sprite_pend non-zero) */
 };
 
 /* run the fixture under the request on a schedule (size 0 = the uninterrupted run: one call to until), restoring as the schedule says; 0 on success, -1 after a harness error */
@@ -977,6 +979,7 @@ static int sv_exec(struct ctx *c, const char *rom, const char *request, uint64_t
                     break;
                 }
                 st->restores++;
+                st->pend += w->sprite_pend != 0u ? 1u : 0u;
                 st->at_grid += grid ? 1u : 0u;
                 st->mid_line += grid ? 0u : 1u;
                 diff = snap_first_diff(nw, w);
@@ -1021,9 +1024,10 @@ void kind_snapshot_restore_video(const struct kase *k, struct ctx *c, char *got,
     unsigned total = 0u;
     unsigned grid = 0u;
     unsigned mid = 0u;
+    unsigned pend = 0u;
 
     if (!k->has[K_EXPECT] || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until < 1000u || vd_stream_cap(until) == 0u || pk_copy_text(k->val[K_EXPECT], list, sizeof list) != 0) {
-        harness_error(c, "a snapshot_restore_video case needs until_mclk and expect = rom=NAME;schedules=1364,1366,7;stride=N");
+        harness_error(c, "a snapshot_restore_video case needs until_mclk and expect = rom=NAME;schedules=1364,1366,7;stride=N[;sprite-pend]");
         return;
     }
     while ((item = pk_next_item(&rest, ';')) != NULL) {
@@ -1048,13 +1052,15 @@ void kind_snapshot_restore_video(const struct kase *k, struct ctx *c, char *got,
             seen |= nsched > 0u ? 2u : 0u;
         } else if (strncmp(item, "stride=", 7u) == 0 && (seen & 4u) == 0u && parse_u64(item + 7, &stride) == 0 && stride >= 1u && stride <= 100000u) {
             seen |= 4u;
+        } else if (strcmp(item, "sprite-pend") == 0 && (seen & 8u) == 0u && (seen & 7u) != 0u) {
+            seen |= 8u;
         } else {
             seen = 0u;
             break;
         }
     }
-    if (seen != 7u) {
-        harness_error(c, "a snapshot_restore_video case needs until_mclk and expect = rom=NAME;schedules=1364,1366,7;stride=N");
+    if ((seen & 7u) != 7u) {
+        harness_error(c, "a snapshot_restore_video case needs until_mclk and expect = rom=NAME;schedules=1364,1366,7;stride=N[;sprite-pend]");
         return;
     }
     for (p = 0u; p < VD_POLICIES_VIDEO && !c->harness; p++) {
@@ -1085,6 +1091,7 @@ void kind_snapshot_restore_video(const struct kase *k, struct ctx *c, char *got,
             char msg[240];
             unsigned before = st.restores;
             unsigned grid_before = st.at_grid;
+            unsigned pend_before = st.pend;
 
             if (sv_exec(c, rom, request, until, &sched[s], (unsigned)stride, &o, &st) != 0) {
                 break;
@@ -1110,14 +1117,19 @@ void kind_snapshot_restore_video(const struct kase *k, struct ctx *c, char *got,
                 snprintf(msg, sizeof msg, "policy %s, schedule %llu: no restore fell at a stop whose machine time is a multiple of 1365 (a line event pending at the machine time): the tie would be untested", vd_policy_name(p), (unsigned long long)sched[s].size);
                 check(c, st.at_grid > grid_before, msg);
             }
+            if ((seen & 8u) != 0u) {
+                snprintf(msg, sizeof msg, "policy %s, schedule %llu: no restore fell at a stop where the source held sprite flags pending (sprite_pend non-zero): the sprite state across a restore would be untested", vd_policy_name(p), (unsigned long long)sched[s].size);
+                check(c, st.pend > pend_before, msg);
+            }
             vd_stream_free(&o.vs);
         }
         total += st.restores;
         grid += st.at_grid;
         mid += st.mid_line;
+        pend += st.pend;
         vd_stream_free(&ref.vs);
     }
-    snprintf(got, gotcap, "restores=%u at_grid=%u mid_line=%u", total, grid, mid);
+    snprintf(got, gotcap, "restores=%u at_grid=%u mid_line=%u sprite_pend=%u", total, grid, mid, pend);
 }
 
 /* ---- vdc_vram (plan 04-06; D-148, D-175 (c), T-04-23) ---- */

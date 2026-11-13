@@ -915,7 +915,7 @@ figures below (user CPU of one `ds_runner --only ID` run in the gate preset, loa
 |-------|---------|--------|-------|
 | (1) toys link shared object libraries | fired | applied at checkpoint A (`d831680`) | CMake only; cold build of 25 toys 47.1 s to 3.3 s user CPU |
 | (2) video fixtures under two policies | fired (`conformance` 86 s over 60 s) | **applied** in this plan | see lever (2) below |
-| (3) drop one chunk schedule from the video chunk cases | fired (`conformance` 86 s after lever (2)) | **applied** in this plan | see lever (3) below |
+| (3) drop one chunk schedule from the video chunk cases | fired (`conformance` 86 s after lever (2)) | **applied** in this plan, **reverted** by the Phase 4.1 review fix I-06 | see lever (3) below |
 | (4) move `vdc_random_regs` and the Linux container run to a scheduled job | fired (`conformance` still 86 s after lever (3)) | **recorded, not applied** | see lever (4) below |
 
 ### Lever (2): two policies in the video non-interference, restore and observer runs
@@ -947,6 +947,8 @@ figures below (user CPU of one `ds_runner --only ID` run in the gate preset, loa
   period that is neither a divisor nor a neighbour of the 1365-clock line and added no phase that 7, 1364 and 1366 do not reach. A record stream compared across
   schedules, the restore cases and `chunk_equiv_random32` (which keeps all its CPU schedules) are unchanged. This is recorded as an applied lever whose measured value is
   about 0.1 s, so that the efficiency review after the first Phase 4.1 CI run can restore the schedule at no real cost.
+- **Reverted (Phase 4.1 review fix I-06).** The code review found the saving inside the noise and the schedule a real loss of coverage, so the three cases run 3072 again (`git show 3c45af7` reversed for the case files); see
+  "Phase 4.1 review fixes" below.
 
 ### Lever (4): `vdc_random_regs` and the Linux container run to a scheduled job (recorded, not applied)
 
@@ -1100,3 +1102,24 @@ Nothing is weakened by any trigger: no stage, control, selftest or case was skip
 - **The second awk and Linux runs** are whole-gate runs: the Linux container parts above are local one-offs (about 75 minutes for all six under emulation) and are not in the CI job, so they cost no CI time; the two awk implementations on the runner are the parallel jobs of the quick task, unverified until pushed.
 - **The best remaining lever on the evidence so far** is the same as at the Phase 4 review: the parallel second awk job, already applied and unverified. A skip of `sanitizers` in the second awk run is the next, and it needs the owner's decision on the fail-closed rule.
 - Nothing was weakened to save seconds, and no workflow file changed in this plan.
+
+## Phase 4.1 review fixes (local runs, not CI runs)
+
+CI for these fixes: unverified, no push is authorised (D-64). The figures are user CPU of one `ds_runner --only ID` run each in the gate preset on a warm tree, on the shared development machine (loaded, so only the ratios
+mean anything), E0.
+
+- **Lever (3) reverted (review fix I-06).** `chunk_equiv_video_vce_pal` and `chunk_equiv_video_bg_scroll` run 7, 1364, 1366, 3072 and one frame again, and `chunk_equiv_random32_video` runs 1364, 1366, 3072 and one frame: 0.19 s,
+  0.85 s and 2.19 s in this session (0.12, 0.52 and 1.32 s at the lever measurement under another load; the difference is the load, the schedule itself is about 0.1 s).
+- **Four sprite invariance cases (review fix M-04, security flag U-02).** The video chunk, restore, observer and non-interference cases ran only vce-pal, bg-scroll and random programs, none of which sets SB. Each kind takes one ROM and
+  one deadline per case, and the sprite scenes of spr-limit need a deadline (1.9 to 7.5 million clocks) that the vce-pal cases (0.6 and 4 million) do not have, so one case per kind was added instead of a ROM list:
+
+| Case | Kind | Deadline (master clocks) | User CPU s | Note |
+|------|------|--------------------------|-----------|------|
+| `chunk_equiv_video_spr_limit` | chunk_equiv | 7,500,000 | 1.11 | 1364, 1366, 3072 and one frame; the kind compares past the guest's done state (D-95), so the whole guest runs |
+| `vid_noninterference_spr_limit` | vid_noninterference | 1,900,000 | 0.31 | 2 policies, four sink shapes |
+| `observer_spr_limit` | observer | 1,900,000 | 1.34 | 2 policies, whole, chunk:7 and stop:5000; the 7-clock chunks of spr-limit run here |
+| `snapshot_restore_video_spr` | snapshot_restore_video | 1,900,000 | 1.07 | schedule 3072, 1,236 restores over 2 policies, 12 of them at a stop with sprite flags pending (the new item `sprite-pend` requires at least one per policy) |
+| the four new cases | | | 3.83 | about 4 percent of a 90 s `conformance` stage |
+
+The `vid-palette-mask` toy runs one more EXPECT case (`video_spr_basic_solid`, review fix M-03, about 0.1 s). Nothing was weakened to save time and no gate stage or rule changed.
+

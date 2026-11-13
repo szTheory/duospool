@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Restore at the stops of a sprite run (Phase 4.1 review fix M-04, security flag U-02; D-121, D-122, D-137, D-160, D-163, ER-7): the runner kind snapshot_restore_video runs the authored spr_limit fixture under the two power-on policies of the video runs (zero and seeded-prng-v3 seed 1) in calls to the
+# deadlines of the schedule 3072 (a period that is neither a divisor nor a neighbour of the 1365-clock line, so its stops walk through the line phases; the schedules 1364, 1366 and 7 are run by the vce_pal and bg_scroll cases) with a vid sink on every call. At every stop the machine is snapshotted,
+# restored into a fresh poisoned boot of the same image, compared member by member with the source (ROM excluded) and the run goes on with the restored target; the machine time, steps, verdict RAM, digest and concatenated stream bytes of the chain must equal those of the uninterrupted run.
+# The deadline, 1,900,000 master clocks, ends after the display lines 20 to 35 of frame 5 (16 sprites with 12 slots: OVERFLOW pending from the EV_LINE to the EV_RCR of each line), and the item sprite-pend requires a restore at a stop where the source held sprite flags pending (sprite_pend non-zero),
+# so the sprite state across a restore is shown, not assumed. The cost stays near the vce_pal restore case (about 600 restores per policy). Evidence tier E0: the core compared with itself (ER-7); no accuracy or hardware claim, and the word pass is not a support claim.
+id = "snapshot_restore_video_spr"
+kind = "snapshot_restore_video"
+fixture = "authored:spr-limit"
+request = ""
+expect = "rom=spr-limit;schedules=3072;stride=1;sprite-pend"
+meaning = "Snapshots of the first 1900000 clocks of the spr_limit run taken at every stop of the 3072 schedule, some of them with sprite flags pending, restored into a fresh poisoned instance and continued, give the machine time, steps, verdict RAM, digest and raw video stream of the uninterrupted run under two policies (zero and seeded-prng-v3 seed 1)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 1900000
