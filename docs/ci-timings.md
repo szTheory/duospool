@@ -1233,3 +1233,101 @@ Local runs of plan 05-05 (same machine as the 05-01 baseline, 2026-11-13; E0, no
 | 05-05 | `sh scripts/check --selftest` | PASS, 203 PASS lines | 138.2 | 49.7 | 79.9 | |
 
 Stage seconds over 5 s of the Task 3 run (gate clock): `sanitizers` 191, `determinism` 91, `conformance` 76, `fixtures` 10, `named-controls` 8, `inventory` 7, `video-check` 7, `audio-check` 6. The 362 conformance cases include 4 new audio cases (fault sweep, judge forms, golden, hash-not-verdict).
+
+## Phase 5 checkpoint A (plan 05-08; local runs, not CI runs)
+
+CI for Phase 5: unverified: no push is authorised (D-64). No Phase 5 commit has run on a GitHub runner, so this section makes no CI claim; every run is E0 repeatability and no time here is a pass or fail criterion (D-214).
+It is the checkpoint A record of D-216 and D-217: the phase-gate set run once over plans 05-01 to 05-07 and 05-12, the cost against the D-214 budgets, and the figures that cut triggers (2) and (3) need. The cut itself is decided by the orchestrator, not here.
+
+Machine: the development machine of the 05-01 baseline (Apple M5 Pro, 18 cores, macOS, BWK awk, Apple clang, cmake), 2026-11-13, at the tree of `29f9016` (the last commit of plan 05-07), after a restart of the machine.
+**The machine was never quiet.** Unrelated jobs (another project's emulated Linux container gate, a container VM, indexing) held the one-minute load average between about 6 and 18 during every run below. A quiet window (load under 4) was waited for, about 9 minutes before the restart and 9 after it, and did not come.
+Every figure is therefore load-confounded and is recorded with its load. To keep the trigger (3) comparison like for like anyway, the 05-01 baseline tree (`9619efe`) was measured again, warm, in a scratch clone outside the repository, between two runs of this tree in the same half hour.
+
+| Run | Tree | What | Result | Wall s | User CPU s | System s | Load (1 min): start, end; mean of 20 s samples |
+|-----|------|------|--------|--------|------------|----------|------------------------------------------------|
+| 05-01 baseline (recorded) | `9619efe` | `sh scripts/check --timing`, warm | PASS, 57 stages | 328.2 | 270.0 | 48.0 | 5.7, 9.1 |
+| B0 | `9619efe` (scratch clone, cold) | the same, the warm-up of the clone | PASS, 57 stages | 356.3 | 289.1 | 63.8 | 21.7, 13.0 (it overlapped the dash run) |
+| A | `29f9016` | `/usr/bin/time -p sh scripts/check --timing`, warm | PASS, 58 stages | 384.3 | 316.8 | 55.1 | 15.2, 8.2; mean 11.5 (7.4 to 15.1) |
+| B | `9619efe` (scratch clone, warm) | the same, right after run A | PASS, 57 stages | 317.4 | 264.2 | 43.1 | 8.2, 11.1; mean 12.9 (8.2 to 17.8) |
+| C | `29f9016` | the same, right after run B | PASS, 58 stages | 376.4 | 317.1 | 47.8 | 11.1, 10.4; mean 7.7 (5.8 to 11.1) |
+| dash | `29f9016` | `/usr/bin/time -p dash scripts/check`, the first run after the restart | PASS, 58 stages | 495.9 | 403.5 | 66.5 | 10.3, 9.9; it overlapped run B0 for about 4 minutes |
+| selftest | `29f9016` | `sh scripts/check --selftest` | SELFTEST RESULT PASS, 207 PASS lines (206 rows) | 109.3 | 38.8 | | 10.7, 10.7 |
+| audit | `f6afede..29f9016` | `sh scripts/audit-history --range` (the Phase 5 range) | clean: 37 commits, 383 blobs, 2,431 blob-path pairs | 37.4 | 12.9 | | |
+
+The earlier Phase 5 plan-end figures, each from its SUMMARY, all at a higher or shifting load and none judged alone:
+
+| Plan | Run | Wall s | User CPU s | Load (1 min) |
+|------|-----|--------|------------|--------------|
+| 05-02 | `sh scripts/check` at `4b3e09d` (sinks, no PSG fold yet) | 313.7 | 264.3 | 7.6 to 8.4 |
+| 05-03 | `sh scripts/check` at `4515695` (the noise fold in every step) | 665 | 429.0 | 22 to 31 |
+| 05-04 | `--timing` after Task 3 (synthesis, emission, the judge) | 657.5 | 501.2 | 22.5 to 11.9 |
+| 05-05 | `--timing`, plan end | 447.9 | 365.3 | 17.6 to 15.2 |
+| 05-06 | `--timing` before the Task 1 commit, and at plan end | 402.8 and 644.8 | 331.5 and 450.2 | 11.6 to 9.6, and 8.3 to 15.5 |
+| 05-12 | `--timing`, plan end | 472.8 | 371.9 | 10.6 to 10.5 |
+| 05-07 | `--timing`, plan end | 415.0 | 334.4 | 13.8 to 9.5 |
+
+**Cut trigger (3), the local warm gate user CPU.** This tree reads 316.8 s and 317.1 s (runs A and C, mean load 11.5 and 7.7).
+Against the recorded 05-01 baseline (270.0 s) that is +17.4 percent; against the baseline tree measured in the same half hour (run B, 264.2 s at mean load 12.9) it is +20.0 percent. The trigger fires above +25 percent: 337.5 s on the recorded figure, 330.3 s on run B.
+Both comparisons are under it, by 20.4 s and 13.2 s. The two runs of this tree differ by 0.3 s at mean loads of 11.5 and 7.7, and run B reads 5.8 s below its 05-01 figure, so at this load range the user CPU figure moved by about 2 percent; the comparison is load-confounded, and the confounder is stated, not removed.
+
+Stage seconds of 5 s or more (the gate's own clock):
+
+| Stage | 05-01 baseline | B (`9619efe`) | A (`29f9016`) | C (`29f9016`) |
+|-------|----------------|---------------|---------------|---------------|
+| `sanitizers` | 142 | 135 | 168 | 169 |
+| `conformance` | 67 | 62 | 76 | 76 |
+| `determinism` | 53 | 58 | 62 | 62 |
+| `audio-check` | | | 8 | 5 |
+| `video-check` | 6 | 5 | 8 | 5 |
+| `inventory` | 6 | 5 | 6 | 5 |
+| `fixtures` | 5 | 5 | 5 | 6 |
+| `named-controls` | 5 | 5 | 6 | 7 |
+| sum of all stages | 328 | 317 | 384 | 377 |
+
+Against run B the Phase 5 growth sits in `sanitizers` (+25 percent, +33 s), `conformance` (+23 percent, +14 s) and `determinism` (+7 percent, +4 s), plus the new `audio-check` stage (5 to 8 s; D-214 estimated about 2 s). Every other stage is 4 s or less in all four runs.
+The 53 audio, `psg_` and `aud_` cases run in about 7 s wall in one plain `ds_runner` invocation of the gate preset (the baseline run of the scratch mutant sweep below, load about 10), so most of the growth is the PSG fold that runs in every guest step since 05-03 and the six audio toys, not the audio cases themselves.
+
+Budget rows of D-214 at this checkpoint (after 05-07; the handbook section 9 carries the same table):
+
+| Budget | Before Phase 5 | Phase 5 target | At checkpoint A |
+|--------|----------------|----------------|-----------------|
+| Gate stages | 57 | 58 | 58 |
+| Constants rows / CROWS_MAX | 34 / 40 | 49 / 64 | 49 / 64 |
+| Withheld ids | 35 | 42 | 42 |
+| Regions | 21 | 24 | 24 |
+| Toys | 26 | 33 (32 after a cut) | 32 (6 of the 7 audio toys; psg-lfo-shift is 05-09's) |
+| Conformance REQUIRED cases | 334 | about 379 to 394 | 388 |
+| Guest ROMs / OX_ROMS_MAX | 36 / 40 | 39 / 48 | 38 / 48 |
+| DSV ids | 1..26 | 27, 28, 29 | 27 (psg_tone) and 28 (psg_mod) used; 29 (psg_lfo) waits for 05-09 |
+| Ledger entries / REQUIRED lines | 63 / 63 | 75 / 75 | 75 / 75 |
+| Local warm gate user CPU | 270.0 s (05-01) | +10 to +20 percent; cut trigger (3) above +25 percent | 316.8 to 317.1 s: +17.4 percent (recorded baseline), +20.0 percent (same-hour re-run) |
+| CI critical path | 562 s (`gate-mawk` 555 s, 4.1 run) | about 587 to 612 s; D-176 job trigger 600 s per job | unverified (no CI run); estimate below: about 525 to 670 s |
+
+**CI critical path estimate (an estimate, not a measurement; unverified until an owner-authorised push, D-64).** Each step of the first Phase 4.1 run (run 43352015009) is scaled by the local growth of the matching stages, run B to runs A and C: the gate by 1.20 (sum of stage seconds 317 to 380.5), a conformance step by 1.23.
+`gate-gawk`: 12 (set-up) + 339 x 1.20 (gate) + 3 (range audit) + 82 x 1.23 (gcc conformance) = about 523 s. `gate-mawk`: 20 + 414 x 1.20 + 120 x 1.23 = about 665 s on a runner draw as slow as that run's mawk leg, or about 528 s on a draw as fast as its gawk leg.
+The critical path (the slower leg plus the 3 s aggregator) is therefore about 525 to 670 s, and the 600 s job trigger of D-176 is crossed only by the slow-draw estimate. The estimate is above the D-214 central figure (+25 to +50 s, about 587 to 612 s) because the local growth is about 20 percent rather than the 5 to 9 percent that figure assumed.
+Lever (a) (`9619efe`, `nproc` and the CPU model in the tool-versions step of both jobs; the owner's yes or no at publish time) is what lets the first Phase 5 CI run tell a slow draw from growth.
+
+Linux container parts (`sh scripts/linux-repro`, all six default parts in one run on the tree of `29f9016`, under emulation, linux/amd64 on an arm64 host, Ubuntu 24.04.5; local one-offs, not CI runs). mawk and gawk are the second awk:
+
+| Part | awk and compiler | Result |
+|------|------------------|--------|
+| `default-awk` | stock mawk 1.3.4, gcc 13.3 | PASS: gate exit 0, 58 stages, 1,493 s; `--selftest` exit 0 |
+| `mawk` | mawk 1.3.4, clang 18.1.3 | PASS: gate 58 stages, 1,120 s; `--selftest` exit 0 |
+| `gawk` | gawk 5.2.1, gcc 13.3 | PASS: gate 58 stages, 914 s; `--selftest` exit 0 |
+| `gate-gcc` | `-std=c11 -pedantic -Wall -Wextra -Wconversion -Wshadow -Werror` | PASS |
+| `gate-clang` | the same flags, clang 18 | PASS |
+| `core-boundary-gcc` | gcc 13.3 | PASS |
+
+`LINUX_REPRO RESULT PASS`, 5,142 s in all (16:57 to 18:23, while the scratch mutant sweep of plan 05-08 ran on the host for its first 25 minutes and other jobs held the load at about 10 to 27).
+
+Sizes (ROM-SIZE shapes, audit-history): of the 248 files added or modified in `f6afede..29f9016`, none is 4,096 bytes or more and a multiple of 8,192 or of 8,192 plus 512; the largest are `scripts/check` (247,387 bytes) and `tests/conformance/audiokinds.c` (208,349 bytes).
+
+### Efficiency review inputs (AGENTS.md: review after each CI run; no Phase 5 CI run exists yet)
+
+- **`sanitizers` is the largest stage and grew the most** (168 s, 44 percent of the wall time; +33 s against run B). It reruns every conformance case under ASan and UBSan, so the per-step PSG fold is paid there too.
+  The cheapest candidate is the D-176 lever (2) pattern for the audio fixtures in the sanitize preset only (two power-on policies instead of three in the observer, restore and non-interference runs); not applied, because one loaded local run is not a CI measurement and the lever drops seed 2 runs.
+- **`conformance` (76 s)** grew by 14 s with 54 more cases, six audio toys and the fold in every guest step; the audio cases themselves take about 7 s.
+- **`audio-check` (5 to 8 s)** is above its 2 s estimate: it runs the negative mini-roots and the generated lex controls, each a separate awk run.
+- **The CI job trigger** is at risk on a slow runner draw (estimate above). If the first Phase 5 CI run crosses 600 s, the D-176 staging order applies before any evidence is dropped; nothing is staged here.
+- Nothing was weakened to save seconds: no stage, control, selftest, case or golden was skipped, shortened or removed.
