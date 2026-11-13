@@ -162,7 +162,10 @@ The plan file was written by this executor from 05-06 Task 3b and its split prop
 
 **6. [Note] aud12-e** ("volume writes act at their stamp") moves to row with NEED atten_order, as planned. Its TEXT states that the tone_atten windows open 2,000 master clocks after the write, which is a bound, not the exact instant.
 
-Requirement ticks: git diff .planning/REQUIREMENTS.md showed no change after the plan-complete step (requirements.mark-complete was not called), so nothing was reverted; 05-10 completes the AUD ids. state.advance-plan set Current Plan to 8; it was set back to 7 (05-07 is next) and Total Plans in Phase to 11 by hand. .planning/state.json, rewritten by the tooling, was restored to its original bytes and is not committed.
+State and requirements after the plan-complete step:
+- git diff .planning/REQUIREMENTS.md showed no change (requirements.mark-complete was not called), so nothing was reverted; 05-10 completes the AUD ids.
+- state.advance-plan set Current Plan to 8; it was set back to 7 (05-07 is next) and Total Plans in Phase to 11 by hand.
+- .planning/state.json, rewritten by the tooling, was restored to its original bytes and is not committed.
 
 ## Known Stubs
 
