@@ -450,6 +450,22 @@ Community and prior art (evidence class E4 at best, agreement is not correctness
 
 </code_context>
 
+<errata>
+## Errata and rulings after research and pattern mapping (orchestrator, binding)
+
+05-RESEARCH.md (RF-1..RF-13) and 05-PATTERNS.md (C-1..C-11, F-51..F-86) found places where the locked text and the repo disagree. These rulings amend the decisions named; where they differ from the text above, they win.
+
+- **D-219 (amends D-192 and D-208, RF-4).** Modulation is active while LF CTL is not 0 and both channels (select 0 and select 1) are on. LF TRG = 1 holds the modulation value at wave[1][0] - 16 and the select-1 counter frozen at widx 0 [MAN img P8-6]; TRG = 0 lets select 1 step. The MAN `lfo_static` rows therefore judge a TRG = 1 run with the held value. LED-AUD-0011 is worded to match; the entry stays assumed (ER-14).
+- **D-220 (RF-5).** Counter restart edges beyond key-on are modelling assumptions: a channel counter reloads on key-on, on DDA 1 -> 0 and on a TRG 1 -> 0 release of an uncoupled select 1. They are named constants in constants.def with ledger id LED-AUD-0004 or -0011 and carry no MAN row.
+- **D-221 (RF-1, RF-8).** A fold spans at most the largest single step (`ds_max_step_mclk()`, 600 clocks today), not 4.7 M clocks; the design is unchanged and every bound in the plans uses the tighter figure. All fold arithmetic is on offsets from the fold point, never absolute times near 2^64.
+- **D-222 (RF-2, F-64, C-8).** The carrier of the write-local fold point is chosen in plan 05-03 under three constraints: machine state never depends on a sink; a bare bus built by a test (as `dl_windows` does) is legal and a NULL carrier means no PSG fold; strict-C11 initialisers stay valid. There is no const-signature anchor in core-boundary-check (D-200 is read without it).
+- **D-223 (RF-3).** The bound divisor is read from the profile through one helper and stored in no region. Restoring a d = 3 snapshot into a d = 6 instance is refused by the profile-identity rule; plan 05-03 verifies the snapshot carries the profile identity and adds a refusal row if it does not.
+- **D-224 (C-1..C-6, C-10).** Counts follow the repo, not the text: `audio-check` makes 58 stages; `CROWS_MAX` (reckinds.c) is raised in 05-03 with its own control, and the withheld-id cap is 64; withheld ids are 35 now, 42 after; record-lint's 16,384-byte golden cap is met by compacting the history comments of the two goldens in the first task of 05-03; seeded-prng-v4 is policy 6 (the hostile row `policy-5=field` stays red); all 13 constants rows land in 05-03 (D-202 and D-217 over D-205); selftest counts are computed by the plan, one removal selftest per `audio-check` rule.
+- **D-225 (C-7).** The `.aexp` header defines `sample_mclk`; twin scenes are named with a plain identifier suffix (`_twin`), not `T'`.
+- **D-226 (C-9, lever b).** CI lever (b), the third parallel clang job, is dropped from Phase 5: it conflicts with `rule-job-gate` (every non-gate job runs `sh scripts/check`) and needs cc65 and fixture-build. Lever (a), printing `nproc` and the CPU model in the tool-versions step, stays in 05-01 as a one-line workflow edit and is listed as a publish-time hand-off. The CI trigger of D-180 style is recorded against the measured two-leg critical path.
+- **D-227 (RF-12, RF-13).** Long audio ROMs must not overflow the `opcode_exercise` instruction sink (plan 05-04 states the sink size it relies on); the `.aexp` selector grammar has an end anchor so silence windows do not depend on cycle counts.
+</errata>
+
 <specifics>
 ## Specific Ideas
 
