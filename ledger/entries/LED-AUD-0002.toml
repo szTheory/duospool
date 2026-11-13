@@ -1,15 +1,17 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 # Seed entry for research open gap 9 (PSG channel numbering). A modelling assumption, not an established hardware fact.
+# Amended by plan 05-01 (05-CONTEXT D-189, D-213): the second-hand sources are replaced by image-read P8 pages; the disagreement records a naming-base difference only.
+# E1 candidate (D-213): promotion only by ER-2 and ER-22 in plan 05-08 or 05-10. If the LFO is cut, its placement clause has no guest row and the entry stays assumed until Phase 5.1.
 id = "LED-AUD-0002"
-statement = "DuoSpool models PSG channels as numbered 0 to 5 with noise on channels 4 and 5 and channel 1 modulating channel 0 (LFO); the numbering and placement are not established."
+statement = "DuoSpool numbers the PSG channels by the R0 select value 0 to 5, equal to the manual ch1 to ch6 (P8-3); noise is on select 4 and 5 (P8-2, P8-9) and select 1 modulates select 0 through the LFO (P8-2, P8-6). Modelling assumption."
 profile = "pce-hucard-2btn"
 status = "assumed"
-sources = ["FACT|wiki per ARCHITECTURE|6 channels, 32 x 5-bit waveform; second-hand (SUMMARY open-gap 9, C19)", "CODE|emulators|noise and LFO channel placement (SUMMARY open-gap 9)", "REPORT|PITFALLS, Mesen2 notes|number channels 1-based while ARCHITECTURE is 0-based (SUMMARY open-gap 9)"]
+sources = ["FACT|P8-3|gsd-executor image 2026-11-13: R0 values 0 to 5 select ch1 to ch6, 6 and 7 shaded", "FACT|P8-2 P8-9|same read: noise generator on ch5 and ch6; R7 for ch5 and ch6 only", "FACT|P8-2 P8-6|same read: the LFO uses the ch2 waveform to modulate ch1; R8 with ch2 R2 and R3"]
 evidence = []
-disagreement = "ARCHITECTURE numbers channels 0-based; PITFALLS and the Mesen2 notes number them 1-based; noise and LFO placement comes from emulator code"
+disagreement = "DX-2 numbering base only: the manual is 1-based (ch1 to ch6), ARCHITECTURE and DuoSpool are 0-based (the R0 value), and PITFALLS and the Mesen2 notes are 1-based; no source disagrees on the placement."
 pinning_test = "PENDING:5"
-updated = "2026-11-09"
+updated = "2026-11-13"
 assumption = "The ledger and all fixtures use 0-based indices; any 1-based source is converted at citation time and the base is written in the sources detail."
 revisit_phase = 5
 withheld = ["any noise behaviour beyond channel placement", "any LFO behaviour beyond channel placement"]

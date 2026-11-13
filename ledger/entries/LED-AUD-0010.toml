@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# PSG noise generator (05-CONTEXT D-193; AUD-01, AUD-03). Modelling assumptions: the page says only pseudo random noise (square wave).
+# Constants (plan 05-03, this ledger id): psg_lfsr_reset 1, psg_lfsr_taps 137219, psg_noise_high_level 31. The period from seed 1 is 131,071.
+id = "LED-AUD-0010"
+statement = "DuoSpool models each noise channel (select 4, 5) as an 18-bit LFSR shifting right, new bit 17 = XOR of bits 0, 1, 11, 12, 17 (psg_lfsr_taps 137219), output the bit shifted out as level 31 or 0, reset to 1 under every policy (psg_lfsr_reset), clocking at its noise clock whatever NE and chON are, and replacing the wave when NE is 1. Modelling assumption."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|P8-2|images 2026-11-13: noise on ch5 and ch6, pseudo random noise (square wave); no width, taps or seed", "FACT|P8-6|same read: NE 1 enables noise and disables sound", "CODE|Mednafen, Mesen2, Geargrafx, MAME|reading material only, nothing copied: 18-bit LFSR, taps and clocking as in the disagreement field", "REPORT|community quote|LFSR taps and width; not re-read"]
+evidence = []
+disagreement = "DX-3 noise LFSR: taps, width, seed and levels come from emulators and a community quote; the page says only pseudo random noise (square wave). MAME clocks the LFSR only while NE is set."
+pinning_test = "PENDING:5"
+updated = "2026-11-13"
+assumption = "Every LFSR detail is a constant with this ledger id; noise_seq rows are ASSUMED and name their policy, while two_level and run_grid rows do not depend on the sequence (D-208)."
+revisit_phase = 5
+withheld = ["any noise sequence claim", "any noise spectrum claim", "any noise timing claim", "noise-accurate"]
+origin = "05-CONTEXT D-193"

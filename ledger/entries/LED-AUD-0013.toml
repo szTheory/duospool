@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# The PSG event record DSPE v1 (05-CONTEXT D-196; AUD-02). A project definition, not a hardware claim (ER-13, ER-19). A hash of the stream is E0 repeatability evidence and never a verdict (ER-20).
+id = "LED-AUD-0013"
+statement = "The psg record (DSPE v1) is a project definition: one 24-byte little-endian record per CPU write to the PSG window (stamp, pc, reg, value, sel, chan, effect bits, wave_idx, post, version 1) as D-196 fixes; it asserts no hardware register state, and a hash of the stream is E0 repeatability evidence only."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["UNKNOWN|record format|a project definition; no source describes it"]
+evidence = []
+disagreement = "none: project definition; no source is compared"
+pinning_test = "PENDING:5"
+updated = "2026-11-13"
+assumption = "The field names, sizes and order are project choices recorded in the core header; the runner parses records with its own offsets and never includes the core header (ER-19), and expected values never come from DuoSpool output."
+revisit_phase = 5
+withheld = ["register read-back", "hardware register state"]
+origin = "05-CONTEXT D-196"

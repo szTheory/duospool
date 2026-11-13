@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# PSG wave RAM modes (05-CONTEXT D-190, D-191; AUD-01). A modelling assumption until promoted, not a hardware measurement.
+# E1 candidate (D-213): every clause is stated on P8-4 or P8-5 (image read); promotion only by ER-2 and ER-22 in plan 05-08 or 05-10.
+id = "LED-AUD-0005"
+statement = "DuoSpool models wave RAM modes as: with chON 0 and DDA 0 an R6 write stores the word at the address counter and increments it; DDA 1 resets the counter to 0; with DDA 1 an R6 write goes to the D/A and is held until the next write, wave RAM unchanged; with chON 0 the channel output is off. Modelling assumption."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|P8-4|gsd-executor image 2026-11-13: (chON, DDA) mode table 00 write and increment, 01 counter reset, 10 mixing, 11 counter reset and each write to the D/A; chON 0 turns the sound output off", "FACT|P8-5|same read: procedures (1) to (3); in DDA mode each write is held until the next one and R6 data are not changed"]
+evidence = []
+disagreement = "DX-12 DDA reset: the page states a level (the counter is reset while DDA is 1); pcetech, MAME and Mednafen reset on the DDA 1 -> 0 edge and Mesen2 only with chON 0; the level and edge readings are observably equal."
+pinning_test = "PENDING:5"
+updated = "2026-11-13"
+assumption = "The level reading gives the invariant DDA 1 implies widx 0 (a restore rule, D-203). The playback phase, the pointer while off and writes while playing are outside the statement (LED-AUD-0004, LED-AUD-0012)."
+revisit_phase = 5
+withheld = ["playback phase", "the wave pointer while a channel is off", "writes while a channel plays"]
+origin = "05-CONTEXT D-190"

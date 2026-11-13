@@ -49,6 +49,8 @@ Withheld claim words: "accurate", "cycle-accurate", "interrupt-accurate", "pad-a
 
 Withheld claim words: "pixel-accurate", "raster-accurate", "scanline-accurate", "dot-accurate", "sprite-accurate", "scroll-accurate", "colour-accurate", "timing-accurate", "DMA-accurate", "VRAM-timing-accurate", "renders correctly", "displays correctly", "plays games", "video-compatible". None of them is used here without an evidence class.
 
+Withheld claim words: "pitch-accurate", "sound-accurate", "audio-accurate", "sample-accurate", "noise-accurate", "LFO-accurate", "volume-accurate", "band-limited", "sounds correct", "plays music", "authentic sound", "audio-compatible". None of them is used here without an evidence class.
+
 ## Local gate
 
 ```

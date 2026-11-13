@@ -1,16 +1,17 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 # Seed entry for research conflict C1 (PSG clock). A modelling assumption, not an established hardware fact.
+# Amended by plan 05-01 (05-CONTEXT D-183, D-213): the statement names the literal divisor; P8-9, P8-12 and H8-23 are image-read FACT sources; the disagreement is rewritten (DX-1). Status unchanged (ER-14).
 id = "LED-AUD-0001"
-statement = "DuoSpool models the PSG as advancing its counters at master clock divided by 6 (about 3.58 MHz); this is a modelling assumption, not an established hardware fact."
+statement = "DuoSpool clocks every PSG counter at master/d, d the bound psg_tick_divisor; d = 6 equals P8-9 with fmaster = OSC1/3 (H8-23), checked against the P8-12 table, and d = 3 doubles every PSG frequency relative to those pages; no hardware measurement exists. Modelling assumption."
 profile = "pce-hucard-2btn"
 status = "assumed"
-sources = ["REPORT|pcetech.txt|effective tick master/6 (SUMMARY C1)", "CODE|Geargrafx, Mednafen, Ares|each models master/6 (SUMMARY C1)", "FACT|HuC6280 manual p. H8-23|clock pin OSC1/3 = 7.16 MHz; second-hand via ARCHITECTURE (SUMMARY C19)"]
+sources = ["REPORT|pcetech.txt|effective tick master/6 (SUMMARY C1)", "CODE|Geargrafx, Mednafen, Ares|each models master/6 (SUMMARY C1)", "FACT|P8-9|gsd-executor image 2026-11-13: fOUT = fmaster/(2 x 32 x F), fmaster 7.16 MHz supplied by the CPU", "FACT|H8-23|same read: CLKP f = OSC1/3", "FACT|P8-12|same read: scale table at 7.16 MHz, A4 F 254 440.45 Hz, C1 F 3,421 32.70 Hz"]
 evidence = []
-disagreement = "master/6 = 3.58 MHz (pcetech report; three codebases) versus OSC1/3 = 7.16 MHz on the manual clock pin (second-hand fact); patents cited by pcetech say 7.16 MHz while its formulas imply 3.58"
+disagreement = "DX-1: P8-9 (fOUT = fmaster/(2 x 32 x F), 7.16 MHz from the CPU), H8-23 (CLKP = OSC1/3) and P8-12 (computed at 7.16 MHz) against the master/6 x 32F wording of pcetech and three emulators: one formula, 6F master clocks per step. Only OSC1/3 x 32F contradicts the pages, and d = 3 implements it. What stays unmeasured is the hardware."
 pinning_test = "PENDING:5"
-updated = "2026-11-09"
-assumption = "psg_tick_divisor is proposed as 6 as a labelled placeholder; the profile field stays open until a measurement exists."
+updated = "2026-11-13"
+assumption = "psg_tick_divisor stays an open profile field (3 or 6) bound by the run request; every audio case binds 6 except the d = 3 expect_red control (D-183, D-211); no literal is computed from the bound value, and the status is held by ER-14."
 revisit_phase = 5
-withheld = ["any PSG pitch claim", "any PSG period claim", "any PSG timing claim", "PCM rate claims tied to the tick"]
+withheld = ["any PSG pitch claim", "any PSG period claim", "any PSG timing claim", "PCM rate claims tied to the tick", "pitch-accurate"]
 origin = "SUMMARY C1"

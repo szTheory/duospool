@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# PSG register edges (05-CONTEXT D-188, D-189, D-190, D-220, D-223; AUD-01). Modelling assumptions: no page states any of these edges.
+# Constants (src/core/constants.def, plan 05-03, this ledger id): psg_select_67_drop 1, psg_wave_write_when_on 1, psg_keyon_widx_step 0, psg_dda_release_restart 1, psg_trg_release_restart 1 (PR-3).
+id = "LED-AUD-0004"
+statement = "DuoSpool models: reg = window offset & $0F (a 16-byte mirror); R2-R7 writes dropped at select 6, 7; reads return io_buffer, no penalty; R6 with chON 1, DDA 0 stores with no increment; key-on keeps widx; a counter restarts at (w - w mod d) + its period on key-on, DDA 1 -> 0 and TRG 1 -> 0 of an uncoupled select 1; R6 with DDA 1 loads the latch at any chON. Modelling assumption."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|H8-24|images 2026-11-13: decode A3-A0; the 16-byte mirror is an inference", "FACT|P8-5|same read: procedure (3); the latch load with chON 0 is an inference", "CODE|MAME, Mednafen, Geargrafx, Mesen2|reading material only, nothing copied", "REPORT|pcetech.txt|R6 while playing ignored; reads give the buffer", "UNKNOWN|the manual|no restart instant, select 6, 7 rule or key-on phase"]
+evidence = []
+disagreement = "DX-8 latch with chON 0: inferred from P8-5 (3); MAME and Mesen2 latch regardless, Mednafen only with chON 1. DX-9 R6 while playing: four emulators store with no increment (Mesen2 cites a game rip), pcetech says ignored. DX-10 key-on: Mednafen adds 1 to the index, MAME and Mesen2 reload the period, Geargrafx neither. DX-13: three drop select 6, 7 writes, MAME keeps 8 slots."
+pinning_test = "PENDING:5"
+updated = "2026-11-13"
+assumption = "Each edge is a named constant with this ledger id, chosen so that fixtures can run; rows that depend on one are ASSUMED class, and judged windows stay insensitive to the restart instants (D-185, D-220). The bound divisor d is read from the profile and stored in no region (D-223)."
+revisit_phase = 5
+withheld = ["every clause of the statement as a hardware fact", "any claim about R6 writes while a channel plays", "any key-on phase claim", "any claim about restoring a snapshot taken with psg_tick_divisor 3 into an instance bound to 6 (cross-binding restore, D-223)"]
+origin = "05-CONTEXT D-188"

@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# PSG silence and attenuation order (05-CONTEXT D-194; AUD-01). A modelling assumption until promoted, not a hardware measurement.
+# E1 candidate (D-213) scoped to the undisputed points: chON 0, R1 or R5 $00, sums >= 16, the strict per-step decrease; promotion only by ER-2 and ER-22 in plan 05-08 or 05-10.
+# Constant (plan 05-03, this ledger id): psg_silence_att 30, which also silences at sum 15; that boundary is outside the statement.
+id = "LED-AUD-0008"
+statement = "DuoSpool models a channel side as silent when chON is 0, when R1 or R5 is $00, or when the P8-10 sum (15 - MAL) + (15 - AL high 4 bits) + (15 - LAL) is 16 or more, and its level as strictly decreasing per one-step decrease of the R1, R4 and R5 fields. Modelling assumption."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|P8-3 P8-4|gsd-executor images 2026-11-13: R1 and R5 about 3 dB per step, AL about 1.5 dB per step, F and $1F the maxima; chON 0 turns the output off", "FACT|P8-10|same read: silent if R1, R4 or R5 is 0 or the sum exceeds F; example sums 4 (12 dB) and 15 (45 dB, no sound); about 45 dB range, a little leak"]
+evidence = []
+disagreement = "DX-5 silence at sum 15: the P8-10 text says no sound when the sum exceeds F while its worked example has a sum of exactly 15 and no sound; Mednafen silences only at its reduction >= 31 on a non-linear table and MAME spreads 48 dB. The model follows the example and the 45 dB sentence; 15 stays outside the statement."
+pinning_test = "PENDING:5"
+updated = "2026-11-13"
+assumption = "att = 2(15 - MAL) + (31 - AL) + 2(15 - LAL) >= 30 is the same as a P8-10 sum >= 15 for both values of AL bit 0; MAN silent rows sit at chON 0, sums >= 16 and R1 or R5 $00, while sum-15 and field-zero rows below 16 are ASSUMED (ER-15, ER-16)."
+revisit_phase = 5
+withheld = ["the sum-15 boundary", "any dB value", "any loudness claim"]
+origin = "05-CONTEXT D-194"
