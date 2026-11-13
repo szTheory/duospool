@@ -8,7 +8,7 @@ aud01-a	LED-AUD-0001	row	period	every PSG counter ticks at master/d with d the b
 aud01-b	LED-AUD-0001	row	case:audio_tone_sel0_d3	d = 3 doubles every PSG frequency: the period groups of tone_sel0 are red under bind.psg_tick_divisor=3 (expect_red, D-211)
 aud01-c	LED-AUD-0001	limit	no-measurement	no hardware measurement exists: C1 stays open and no pitch, frequency or timing claim is made (ER-14)
 aud02-a	LED-AUD-0002	row	ev_decode	channels are numbered by the R0 select value 0 to 5 (the DSPE chan of R2..R6 writes)
-aud02-b	LED-AUD-0002	later:05-07	two_level,run_grid	noise is on select 4 and 5
+aud02-b	LED-AUD-0002	row	two_level,run_grid	noise is on select 4 and 5
 aud02-c	LED-AUD-0002	later:05-09	lfo_static,lfo_needs_sel1	select 1 modulates select 0 through the LFO
 aud03-a	LED-AUD-0003	row	ev_decode	A3-A0 0 to 9 select R0 to R9 (the reg and the decoded fields of each DSPE record)
 aud03-b	LED-AUD-0003	row	ev_edge	A3-A0 $A to $F have no target (NO_TARGET; a disputed point, ASSUMED rows only): the edge group of tone_atten, a write to $080A (05-12)
@@ -31,7 +31,7 @@ aud05-b	LED-AUD-0005	row	ev_decode	DDA 1 resets the address counter to 0 (IDX_RE
 aud05-c	LED-AUD-0005	later:05-07	dda_hold,dda_ram_kept	with DDA 1 an R6 write goes to the D/A and is held until the next write, wave RAM unchanged
 aud05-d	LED-AUD-0005	row	silent	with chON 0 the channel output is off (silent_pre of tone_sel0)
 aud06-a	LED-AUD-0006	row	period	a channel cycle is 192 x F master clocks for F >= 1 with psg_tick_divisor 6 (the 6F step, the 32-word cycle)
-aud06-b	LED-AUD-0006	later:05-07	run_grid,noise_ratio	a noise clock of 384 x NFc for NFc >= 1
+aud06-b	LED-AUD-0006	row	run_grid,noise_ratio	a noise clock of 384 x NFc for NFc >= 1
 aud06-c	LED-AUD-0006	later:05-09	lfo_dynamic	an LFO-coupled select-1 step of 6 x F2 x FLF
 aud07-a	LED-AUD-0007	limit	disputed-zero	F = 0 as 4096, FLF = 0 as 256 and NFc = 0 as a noise clock of 32 ticks are disputed points (ER-15): ASSUMED rows only, no MAN row is owed; psg_decode and psg_lfo_trg cover the stores
 aud07-b	LED-AUD-0007	later:05-09	lfo_static	the modulated select-0 value masked to 12 bits with 0 read as 4096 (the LFO wrap is a disputed point)
@@ -44,18 +44,18 @@ aud09-b	LED-AUD-0009	later:05-07	dda_hold,two_level	the level is the latch in DD
 aud09-c	LED-AUD-0009	row	levels_exact	scaled per side by VOL[att] for att < 30 and 0 above (the Q15 curve is ASSUMED): lev_P1 and lev_P2 of tone_atten; psg_vol_table at att 29, 30 and 91 (05-06)
 aud09-d	LED-AUD-0009	later:05-07	levels_exact,period	summed linearly over six channels into unsigned L and R, no DC removal or filter (05-06 judges one channel per side only; a same-side sum of two DDA levels is the plan of 05-07)
 aud09-e	LED-AUD-0009	limit	huc6280-only	HuC6280 only, not HuC6280A: no HuC6280A profile exists in Phase 5
-aud10-a	LED-AUD-0010	later:05-07	two_level	each noise channel outputs level 31 or 0 (the bit shifted out of an 18-bit LFSR)
-aud10-b	LED-AUD-0010	later:05-07	noise_seq	new bit 17 = XOR of bits 0, 1, 11, 12, 17 (psg_lfsr_taps 137219), reset to 1 under every policy
-aud10-c	LED-AUD-0010	later:05-07	run_grid,noise_ratio	the LFSR clocks at its noise clock whatever NE and chON are
-aud10-d	LED-AUD-0010	later:05-07	two_level	the noise replaces the wave when NE is 1
+aud10-a	LED-AUD-0010	row	two_level	each noise channel outputs level 31 or 0 (the bit shifted out of an 18-bit LFSR)
+aud10-b	LED-AUD-0010	row	noise_seq	new bit 17 = XOR of bits 0, 1, 11, 12, 17 (psg_lfsr_taps 137219), reset to 1 under every policy
+aud10-c	LED-AUD-0010	row	noise_seq	the LFSR clocks at its noise clock whatever NE and chON are (judged by the noise_seq ordinals of mod_noise4, counted from boot through the time select 4 has NE 0 and chON 0)
+aud10-d	LED-AUD-0010	row	two_level	the noise replaces the wave when NE is 1
 aud11-a	LED-AUD-0011	later:05-09	lfo_static,lfo_needs_sel1	modulation applies while LF CTL != 0 and select 0 and 1 have chON 1
 aud11-b	LED-AUD-0011	later:05-09	lfo_static	select 0 uses (F0 + $1000 + (w << s) - (16 << s)) & $FFF, s 0, 2, 4
 aud11-c	LED-AUD-0011	later:05-09	lfo_static	TRG 1 holds w at wave[1][0] whatever widx[1] is and freezes the select-1 counter
 aud11-d	LED-AUD-0011	later:05-09	lfo_dynamic	TRG 0 lets select 1 step every d x F1e x FLFe (one combined counter)
 aud12-a	LED-AUD-0012	row	period	counters tick at k x d master clocks (the period groups at d = 6; the tick phase 0 is ASSUMED)
-aud12-b	LED-AUD-0012	later:05-07	cycle_phase	R2, R3 and R7 writes apply at the next reload
+aud12-b	LED-AUD-0012	row	noise_seq	R2, R3 and R7 writes apply at the next reload (R7: the noise_seq ordinals of mod_noise4 keep the old period up to the first reload after the write; R2 and R3 at a reload are not judged by a row)
 aud12-c	LED-AUD-0012	later:05-07	cycle_phase	a counter is frozen while chON 0 or DDA 1 (select 1 also while TRG 1)
-aud12-d	LED-AUD-0012	later:05-07	two_level	the select 4 and 5 wave counters run under NE 1
+aud12-d	LED-AUD-0012	limit	ne-wave-unheard	the select 4 and 5 wave counters run under NE 1 (limit, plan 05-07: the wave is not heard while NE is 1 and no Phase 5 scene releases NE while a channel plays, so no row judges it; the entry stays assumed)
 aud12-e	LED-AUD-0012	row	atten_order	volume writes act at their stamp: the atten_order (and silent) windows of tone_atten open 2,000 master clocks after their volume write, a bound and not the exact instant (05-12)
 aud12-f	LED-AUD-0012	row	case:psg_fold	ties: select 1, select 0 to 5, noise, sample, then a write (an event at a write stamp is processed before the write; the order itself is ASSUMED and no MAN row judges it)
 aud13-a	LED-AUD-0013	row	case:psg_dev_join	one 24-byte little-endian DSPE record per CPU write to the PSG window, joined 1:1 to the dev log
@@ -73,7 +73,7 @@ d182-b	D-182	limit	no-measurement	P8-9 fOUT and H8-23 CLKP = OSC1/3 are E1 docum
 d183-a	D-183	row	case:audio_tone_sel0_d3	psg_tick_divisor d (3 or 6, OPEN) divides every PSG counter; every audio case binds 6 except the d = 3 expect_red case
 d184-a	D-184	row	period	step d x Fe and cycle 32 x d x Fe (Fe = F)
 d184-b	D-184	limit	disputed-zero	Fe = 4096 for F = 0, FLFe = 256 for FLF = 0 and 32 ticks for NFc = 0 are disputed points (ER-15), ASSUMED rows only
-d184-c	D-184	later:05-07	run_grid,noise_ratio	noise d x 64 x NFc with NFc = 31 - (R7 & $1F)
+d184-c	D-184	row	run_grid,noise_ratio	noise d x 64 x NFc with NFc = 31 - (R7 & $1F)
 d184-d	D-184	later:05-09	lfo_dynamic	coupled select-1 step d x F1e x FLFe
 d184-e	D-184	later:05-09	lfo_static	F0' = (F0 + $1000 + (w << s) - (16 << s)) & $FFF, 0 -> 4096, s = 2((R9 & 3) - 1)
 d185-a	D-185	later:05-07	cycle_phase	key-on next = (w - w mod d) + d x Fe with the index unchanged; R2, R3 and R7 apply at the next reload; frozen while chON 0 or DDA 1
@@ -93,9 +93,9 @@ d190-c	D-190	row	case:psg_wave_ptr	R6 with chON 1 and DDA 0 stores with no incre
 d191-a	D-191	row	silent	output gating: chON 0 gives 0
 d191-b	D-191	row	cycle_order	chON 1 with DDA 0 and NE 0 gives wave[widx]
 d191-c	D-191	later:05-07	dda_hold,dda_order	DDA 1 gives the latch
-d191-d	D-191	later:05-07	two_level	NE at select 4 or 5 gives the noise level
+d191-d	D-191	row	two_level	NE at select 4 or 5 gives the noise level
 d192-a	D-192	later:05-09	lfo_static,lfo_dynamic	the LFO acts while CTL != 0 with select 0 and 1 on (amended by D-219, D-231)
-d193-a	D-193	later:05-07	noise_seq,two_level	two 18-bit LFSRs, output bit 0 as 31 or 0, reset 1 under every policy, clocking from time 0; period 131,071
+d193-a	D-193	row	noise_seq,two_level	two 18-bit LFSRs, output bit 0 as 31 or 0, reset 1 under every policy, clocking from time 0; period 131,071
 d194-a	D-194	row	levels_exact	att = 2(15 - MAL) + (31 - AL) + 2(15 - LAL); contribution level x VOL[att]; L and R plain unsigned sums: lev_P1 (att 0) and lev_P2 (att 8) of tone_atten (05-06)
 d194-b	D-194	row	silent	silent at att >= 30 (S >= 15; the sum 15 is disputed, MAN rows sit at S >= 16): sil_P3_R (MAN, S = 16) and sil_P2_R (ASSUMED, S = 15) of tone_atten (05-06)
 d196-a	D-196	row	ev_value,ev_decode	DSPE v1: one 24-byte record per window-2 write with the effect bits of psg_effects.def (a definition, ER-19)

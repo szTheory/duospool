@@ -376,3 +376,10 @@ observer_psg_tone
 audio_out_rights
 pcm_cadence
 mutate_sweep_psg_tone
+psg_mod
+audio_mod_noise4
+audio_mod_noise5
+audio_mod_r7
+audio_fault_sweep_mod_noise4
+audio_fault_sweep_mod_noise5
+audio_fault_sweep_mod_r7

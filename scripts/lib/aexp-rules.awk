@@ -88,10 +88,10 @@ BEGIN {
   split("audio audio_fault_sweep aud_noninterference psg_dev_join snapshot_restore_audio aud_poweron_policy_diff psg_fold pcm_cadence", ak, " ")
   for (i = 1; i in ak; i++) audiokind[ak[i]] = 1
   watched["src/core/psg.c"] = 1
-  # the closed keys: selector items and literal items (the judged keys of the runner kinds and the lint inputs; plan check 3 info 5)
+  # the closed keys: selector items and literal items (the judged keys of the runner kinds and the lint inputs; plan check 3 info 5; plan 05-07 adds bits, the noise_seq string, and ords, the dda_hold ordinals, as au_keys of audiokinds.c does)
   split("anchor reg val nth ev from to side stream", sk, " ")
   for (i = 1; i in sk; i++) selkey[sk[i]] = 1
-  split("f k d nf g f2 flf step w w1 w2 shift set m n r1 al r5 side chon p0 p1 words minrun reg val vals chan effect wave_idx post sample_mclk frame_bytes version format mark peak", lkk, " ")
+  split("f k d nf g f2 flf step w w1 w2 shift set m n r1 al r5 side chon p0 p1 words minrun reg val vals chan effect wave_idx post sample_mclk frame_bytes version format mark peak bits ords", lkk, " ")
   for (i = 1; i in lkk; i++) litkey[lkk[i]] = 1
   nrec = 0; nsent = 0; nfiles = 0; ns = 0; ng = 0; nr = 0; nviol = 0; nrl = 0; nexempt = 0
   toy_active = 0; inv_active = 0; rules_active = 0
@@ -326,7 +326,7 @@ END {
     # numeric inputs (every value below 2^31)
     split("", nv)
     for (kx in lv) {
-      if (kx == "set" || kx == "words" || kx == "vals" || kx == "mark" || kx == "reg" || kx == "side") continue
+      if (kx == "set" || kx == "words" || kx == "vals" || kx == "ords" || kx == "bits" || kx == "mark" || kx == "reg" || kx == "side") continue
       nv[kx] = num(lv[kx])
       if (nv[kx] < 0) {
         violf(rf, "AEXP_FORMAT", rln, "the literal value " kx "=" lv[kx] " is not a decimal of at most 9 digits or $ and at most 7 hex digits")  # rule-format

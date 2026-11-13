@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Noise on select 4 (plan 05-07; D-184, D-191, D-193, D-208, RF-6, RF-11): the runner kind audio judges scene mod_noise4 of fixtures/src/psg_mod.aexp on the DSPE and DSPA streams of psg-mod (two_level and run_grid MAN, run_min and noise_seq ASSUMED LED-AUD-0010, the R7 decode MAN).
+id = "audio_mod_noise4"
+kind = "audio"
+fixture = "authored:psg-mod"
+request = ""
+expect = "rom=psg-mod;id=28;checks=3;scene=mod_noise4"
+meaning = "Select 4 keyed on with NE 1 and NFc 7 gives exactly two levels whose interior runs are multiples of 14 samples, the shortest 14, and whose level at each noise event follows the committed seed-1 bit string by ordinal; identical under zero and v4 seed 1 (E0)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000

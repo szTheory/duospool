@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# psg_mod.checks - one row per CHECK of fixtures/src/psg_mod.s (D-125, plan 05-07). Columns separated by one TAB: check index (1-based), slug, class tag, meaning.
+# The PSG is write only (H8-24): these checks judge the guest's own data with two in-guest computations each (GUEST); every judgement of the sound is the runner's, against fixtures/src/psg_mod.aexp (ER-21). A pass is not a support claim (ER-4).
+id=28
+checks=3
+1	table-sum-2	GUEST:table-sum	Table 2 (select 2, mod_r7) summed by a table walk equals the sum of the counter 0..31 (496): the low bytes XOR and the high bytes XOR, ORed, are zero
+2	table-sum-4	GUEST:table-sum	Table 4 (select 4, mod_noise4) summed by a table walk equals the sum of the counter 0..31 (496): the low bytes XOR and the high bytes XOR, ORed, are zero
+3	table-sum-5	GUEST:table-sum	Table 5 (select 5, mod_noise5) summed by a table walk equals the sum of the counter 0..31 (496): the low bytes XOR and the high bytes XOR, ORed, are zero

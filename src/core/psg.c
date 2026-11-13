@@ -4,7 +4,7 @@
  * psg.c - the PSG (plans 05-02, 05-03; D-183..D-186, D-188..D-193, D-202..D-204, D-220, PR-1, PR-2, PR-7). The fold and its two call sites are described in ds_psg.h. Plan 05-03 adds the state, the register decode and storage (ds_psg_write), the tick divisor,
  * the register mask table, the power-on values and the fold of the
  * counters (the two noise counters and LFSRs clock from time 0 under every policy, a running channel counter advances its wave index in closed form); plan 05-04 adds the synthesis (ds_psg_sample, the volume curve psg_vol.def) and the frame emission on the 192-clock grid
- * (the DSPE record of a write is built in bus.c). No allocation, no global, no clock.
+ * (the DSPE record of a write is built in bus.c); plan 05-07 adds the noise level under NE (psg_noise_bit, RF-6). No allocation, no global, no clock.
  * In-fold times are offsets from the base B = machine_time - 1 (D-221, RF-8): an event at offset o is at time B + o, the stamp is at offset t = stamp - B, and no absolute time near 2^64 is ever formed.
  */
 #include <stddef.h>
@@ -63,6 +63,13 @@ static uint32_t lfsr_step(uint32_t s)
     uint32_t b = (s ^ (s >> 1) ^ (s >> 11) ^ (s >> 12) ^ (s >> 17)) & 1u;
 
     return ((s >> 1) | (b << 17)) & DS_PSG_LFSR_MASK;
+}
+
+/* the output of the last step of an LFSR whose state after that step is post (RF-6): the bit shifted out is the parity of post masked $30C01 (bits 0, 10, 11, 16 and 17 of post are bits 1, 11, 12, 17 and the feedback of the state before), so PSGT stores no output bit */
+_Static_assert((((uint32_t)DS_CONST_psg_lfsr_taps >> 1) | (1u << 17)) == 0x30C01u, "the RF-6 output mask $30C01 does not follow from the taps 0, 1, 11, 12 and 17");
+static uint32_t psg_noise_bit(uint32_t post)
+{
+    return (post ^ (post >> 10) ^ (post >> 11) ^ (post >> 16) ^ (post >> 17)) & 1u;
 }
 
 /* the noise period of noise channel n (select 4 + n) in master clocks: d x 64 x NFc with NFc = 31 - NFRQ, or d x psg_noise_nf0_ticks when NFc = 0 (D-184) */
@@ -192,8 +199,14 @@ void ds_psg_sample(const struct ds_instance *inst, uint32_t *l, uint32_t *r)
         if ((ctl & 0x80u) == 0u) {
             continue; /* chON 0: the channel contributes 0 whatever DDA, NE or the latch hold (D-191, MAN:P8-4) */
         }
-        /* DDA 1: the latch; else the wave word at the wave index (D-191; the noise level of select 4/5 with NE 1 replaces it in plan 05-07) */
-        level = (ctl & 0x40u) != 0u ? (uint32_t)inst->psg_dda[ch] & 0x1Fu : (uint32_t)inst->psg_wave[ch * 32u + ((uint32_t)inst->psg_widx[ch] & 31u)] & 0x1Fu;
+        /* DDA 1: the latch; else, at select 4 or 5 with NE 1, the noise level (psg_noise_high_level for an output bit 1, else 0; D-191, D-193, plan 05-07; the wave counter keeps running, D-185); else the wave word at the wave index */
+        if ((ctl & 0x40u) != 0u) {
+            level = (uint32_t)inst->psg_dda[ch] & 0x1Fu;
+        } else if (ch >= 4u && ((uint32_t)inst->psg_noise[ch - 4u] & 0x80u) != 0u) {
+            level = psg_noise_bit(inst->psg_lfsr[ch - 4u]) != 0u ? (uint32_t)DS_CONST_psg_noise_high_level : 0u;
+        } else {
+            level = (uint32_t)inst->psg_wave[ch * 32u + ((uint32_t)inst->psg_widx[ch] & 31u)] & 0x1Fu;
+        }
         att = side_att(lmal, ctl & 0x1Fu, (bal >> 4u) & 0xFu);
         if (att < (uint32_t)DS_CONST_psg_silence_att) {
             sum_l += level * vol[att];

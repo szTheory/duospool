@@ -300,18 +300,19 @@ enum {
     AK_END
 };
 
-/* the kinds of tests/audio/KINDCLASS with their form (scripts/audio-check reads the same table as data) and the plan that brings the judge of a kind this file does not judge yet (NULL: judged here) */
+/* the kinds of tests/audio/KINDCLASS with their form (scripts/audio-check reads the same table as data) and the plan that brings the judge of a kind this file does not judge yet (NULL: judged here; plan 05-07 judges the noise and DDA kinds and cycle_phase, and moves cycle_linear and
+ * dda_equals_wave, which no plan has a row for, to the close-out plan 05-10 to implement or drop) */
 static const struct au_kind_def {
     const char *name;
     int form;
     const char *later;
 } au_kinds[] = {
     {"ev_value", AX_FORM_EV, NULL},           {"ev_decode", AX_FORM_EV, NULL},         {"ev_edge", AX_FORM_EV, NULL},           {"period", AX_FORM_ROWS, NULL},
-    {"period_ratio", AX_FORM_REL, NULL},      {"cycle_order", AX_FORM_ROWS, NULL},     {"cycle_phase", AX_FORM_ROWS, "05-07"},  {"cycle_linear", AX_FORM_ROWS, "05-07"},
+    {"period_ratio", AX_FORM_REL, NULL},      {"cycle_order", AX_FORM_ROWS, NULL},     {"cycle_phase", AX_FORM_ROWS, NULL},     {"cycle_linear", AX_FORM_ROWS, "05-10"},
     {"levels_exact", AX_FORM_ROWS, NULL},     {"silent", AX_FORM_ROWS, NULL},          {"live", AX_FORM_ROWS, NULL},            {"same", AX_FORM_REL, NULL},
-    {"atten_order", AX_FORM_REL, NULL},       {"atten_equal", AX_FORM_REL, NULL},      {"dda_hold", AX_FORM_ROWS, "05-07"},     {"dda_order", AX_FORM_ROWS, "05-07"},
-    {"dda_ram_kept", AX_FORM_ROWS, "05-07"},  {"dda_equals_wave", AX_FORM_REL, "05-07"}, {"dda_level_exact", AX_FORM_ROWS, "05-07"}, {"two_level", AX_FORM_ROWS, "05-07"},
-    {"run_grid", AX_FORM_ROWS, "05-07"},      {"noise_ratio", AX_FORM_REL, "05-07"},   {"run_min", AX_FORM_ROWS, "05-07"},      {"noise_seq", AX_FORM_ROWS, "05-07"},
+    {"atten_order", AX_FORM_REL, NULL},       {"atten_equal", AX_FORM_REL, NULL},      {"dda_hold", AX_FORM_ROWS, NULL},        {"dda_order", AX_FORM_ROWS, NULL},
+    {"dda_ram_kept", AX_FORM_ROWS, NULL},     {"dda_equals_wave", AX_FORM_REL, "05-10"}, {"dda_level_exact", AX_FORM_ROWS, NULL}, {"two_level", AX_FORM_ROWS, NULL},
+    {"run_grid", AX_FORM_ROWS, NULL},         {"noise_ratio", AX_FORM_REL, NULL},      {"run_min", AX_FORM_ROWS, NULL},         {"noise_seq", AX_FORM_ROWS, NULL},
     {"lfo_static", AX_FORM_ROWS, "05-09"},    {"lfo_needs_sel1", AX_FORM_REL, "05-09"}, {"lfo_dynamic", AX_FORM_ROWS, "05-09"}, {"count", AX_FORM_STRUCT, NULL},
     {"header", AX_FORM_STRUCT, NULL},
 };
@@ -1067,8 +1068,8 @@ struct au_lit {
     char val[AU_KV_MAX][AX_TEXT];
 };
 
-/* the closed literal keys: the judged keys of the 05-04 kinds and the inputs of the 05-05 arithmetic lint (plan check 3 info 5) */
-static const char *const au_keys[] = {"f", "k", "d", "nf", "g", "f2", "flf", "step", "w", "w1", "w2", "shift", "set", "m", "n", "r1", "al", "r5", "chon", "p0", "p1", "words", "minrun", "reg", "val", "vals", "chan", "effect", "wave_idx", "post", "sample_mclk", "frame_bytes", "version", "format", "mark", "peak"};
+/* the closed literal keys: the judged keys of the 05-04 kinds and the inputs of the 05-05 arithmetic lint (plan check 3 info 5); plan 05-07 adds bits (the noise_seq string) and ords (the dda_hold change ordinals), also in the litkey list of scripts/lib/aexp-rules.awk */
+static const char *const au_keys[] = {"f", "k", "d", "nf", "g", "f2", "flf", "step", "w", "w1", "w2", "shift", "set", "m", "n", "r1", "al", "r5", "chon", "p0", "p1", "words", "minrun", "reg", "val", "vals", "chan", "effect", "wave_idx", "post", "sample_mclk", "frame_bytes", "version", "format", "mark", "peak", "bits", "ords"};
 
 static const char *au_lit_parse(const char *text, struct au_lit *l)
 {
@@ -1273,9 +1274,126 @@ static unsigned au_rank(const uint64_t *a, unsigned n, uint64_t v)
     return r;
 }
 
-static uint32_t au_peak(const struct au_cap *cp, uint64_t i0, uint64_t i1, int side);
+/* ---- the noise and DDA helpers of plan 05-07 (D-208): runs, plateaus and the DDA writes of a window ---- */
 
-/* perturb (AF0 of D-209, the first row of a group only): the judge reads a perturbed literal (silent: every sample 1; period: d + 1; cycle_order: the first two words swapped; levels_exact: peak + 1), so a live comparison must fail */
+/* the interior runs of the window [i0, i1) on one side (the runs of equal samples, the first and the last run left out because the window cuts them): their number, the smallest, their greatest common divisor, and whether
+ * every one is a multiple of g (g 0: not asked) */
+struct au_runs {
+    unsigned n;
+    uint64_t min;
+    uint64_t gcd;
+    int off_grid;
+    uint64_t bad_at; /* the first sample of the first run off the grid */
+    uint64_t bad_len;
+};
+
+static uint64_t au_gcd(uint64_t a, uint64_t b)
+{
+    while (b != 0u) {
+        uint64_t t = a % b;
+
+        a = b;
+        b = t;
+    }
+    return a;
+}
+
+static void au_runs_of(const struct au_cap *cp, uint64_t i0, uint64_t i1, int side, uint64_t g, struct au_runs *r)
+{
+    uint64_t start = i0;
+    uint64_t i;
+    int first = 1;
+
+    memset(r, 0, sizeof *r);
+    for (i = i0 + 1u; i <= i1; i++) {
+        uint64_t len;
+
+        if (i < i1 && au_sample(cp, i, side) == au_sample(cp, i - 1u, side)) {
+            continue;
+        }
+        len = i - start;
+        if (!first && i < i1) { /* an interior run: neither the first nor the one the window end cuts */
+            r->min = r->n == 0u || len < r->min ? len : r->min;
+            r->gcd = au_gcd(r->gcd, len);
+            if (g != 0u && len % g != 0u && !r->off_grid) {
+                r->off_grid = 1;
+                r->bad_at = start;
+                r->bad_len = len;
+            }
+            r->n++;
+        }
+        first = 0;
+        start = i;
+    }
+}
+
+/* the run-collapsed levels (plateaus) of [i0, i1) on one side into pl (at most cap; the count is returned, cap + 1 when there are more) */
+static unsigned au_plateaus(const struct au_cap *cp, uint64_t i0, uint64_t i1, int side, uint64_t *pl, unsigned cap)
+{
+    unsigned np = 0u;
+    uint64_t i;
+
+    for (i = i0; i < i1; i++) {
+        uint64_t x = au_sample(cp, i, side);
+
+        if (np > 0u && np <= cap && pl[np - 1u] == x) {
+            continue;
+        }
+        if (np >= cap) {
+            return cap + 1u;
+        }
+        pl[np++] = x;
+    }
+    return np;
+}
+
+/* the dense ranks of the n plateaus equal those of the n words in order (rot 0), or at some rotation (any 1); 1 when they do */
+static int au_ranks_match(const uint64_t *pl, const uint64_t *words, unsigned n, int any, unsigned *rot_out)
+{
+    unsigned rot;
+    unsigned j;
+
+    for (rot = 0u; rot < (any ? n : 1u); rot++) {
+        int same = 1;
+
+        for (j = 0u; j < n && same; j++) {
+            same = au_rank(pl, n, pl[(j + rot) % n]) == au_rank(words, n, words[j]);
+        }
+        if (same) {
+            *rot_out = rot;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+#define AU_DDA_MAX 64u
+
+/* the stream indices of the DDA writes (DSPE records with DDA_LOAD) of channel ch whose first sample at or after the stamp lies in [i0, i1), in stream order; the count (at most cap) */
+static unsigned au_dda_writes(const struct au_cap *cp, unsigned ch, uint64_t i0, uint64_t i1, uint64_t *at, unsigned cap)
+{
+    uint32_t i;
+    unsigned n = 0u;
+
+    for (i = 0u; i < cp->ecount && n < cap; i++) {
+        const uint8_t *r = cp->erec + (size_t)i * AU_E_REC;
+        uint64_t a;
+
+        if (r[AU_E_REG] != 6u || r[AU_E_CHAN] != ch || (r[AU_E_EFFECT] & 0x02u) == 0u) {
+            continue;
+        }
+        a = au_index(cp, au_u64(r + AU_E_STAMP));
+        if (a >= i0 && a < i1) {
+            at[n++] = a;
+        }
+    }
+    return n;
+}
+
+static uint32_t au_peak(const struct au_cap *cp, uint64_t i0, uint64_t i1, int side);
+static int au_lit_num(const struct au_lit *l, const char *key, uint64_t *v);
+
+/* perturb (AF0 of D-209, the first row of a group only): the judge reads a perturbed literal (silent: every sample 1; period: d + 1; cycle_order: the first two words swapped; levels_exact: peak + 1; the 05-07 kinds as their comments say), so a live comparison must fail */
 static int au_rows_row(const struct au_cap *cp, const struct ax_group *g, const struct au_sel *s, const struct au_lit *l, int perturb, char *why, size_t cap)
 {
     uint64_t i0 = 0u;
@@ -1357,12 +1475,245 @@ static int au_rows_row(const struct au_cap *cp, const struct ax_group *g, const 
         snprintf(why, cap, "the peak of the window [%llu, %llu) on side %c is %u, the literal is %llu", (unsigned long long)i0, (unsigned long long)i1, s->side == 1 ? 'L' : 'R', (unsigned)pk, (unsigned long long)want);
         return (uint64_t)pk == want ? AU_PASS : AU_FAIL;
     }
-    if (g->kind != AK_CYCLE_ORDER) {
+    if (g->kind == AK_TWO_LEVEL) {
+        /* two_level (D-208, MAN:P8-2+P8-6+P8-9+H8-23): the window holds exactly n distinct sample values on that side (n = 2 for noise: the values themselves are ASSUMED and not judged); AF0 reads n + 1 */
+        uint64_t want = 0u;
+        uint64_t seen[3];
+        unsigned ns = 0u;
+        unsigned j;
+
+        if (au_lit_num(l, "n", &want) != 0 || want == 0u || want > 2u) {
+            snprintf(why, cap, "aexp-malformed: a two_level row needs n (1 or 2)");
+            return AU_HARNESS;
+        }
+        want += perturb ? 1u : 0u;
+        for (i = i0; i < i1 && ns < 3u; i++) {
+            uint64_t x = au_sample(cp, i, s->side);
+            int dup = 0;
+
+            for (j = 0u; j < ns; j++) {
+                dup = dup || seen[j] == x;
+            }
+            if (!dup) {
+                seen[ns++] = x;
+            }
+        }
+        snprintf(why, cap, "the window [%llu, %llu) holds %s%u distinct values on side %c, the literal is %llu", (unsigned long long)i0, (unsigned long long)i1, ns >= 3u ? "at least " : "", ns, s->side == 1 ? 'L' : 'R', (unsigned long long)want);
+        return (uint64_t)ns == want ? AU_PASS : AU_FAIL;
+    }
+    if (g->kind == AK_RUN_GRID || g->kind == AK_RUN_MIN) {
+        /* run_grid (MAN): every interior run is a multiple of g samples (g = 2 x nf at d = 6: a noise clock of 384 x NFc master clocks is 2 x NFc samples); run_min (ASSUMED:LED-AUD-0010, the sequence decides it): the shortest interior run is exactly minrun samples.
+         * A window with no interior run judges nothing and fails. AF0 reads g + 1 or minrun + 1 */
+        uint64_t want = 0u;
+        struct au_runs rs;
+
+        if (au_lit_num(l, g->kind == AK_RUN_GRID ? "g" : "minrun", &want) != 0 || want == 0u) {
+            snprintf(why, cap, "aexp-malformed: a %s row needs %s (above 0)", g->kind == AK_RUN_GRID ? "run_grid" : "run_min", g->kind == AK_RUN_GRID ? "g" : "minrun");
+            return AU_HARNESS;
+        }
+        want += perturb ? 1u : 0u;
+        au_runs_of(cp, i0, i1, s->side, g->kind == AK_RUN_GRID ? want : 0u, &rs);
+        if (rs.n == 0u) {
+            snprintf(why, cap, "the window [%llu, %llu) has no interior run on side %c: nothing to judge", (unsigned long long)i0, (unsigned long long)i1, s->side == 1 ? 'L' : 'R');
+            return AU_FAIL;
+        }
+        if (g->kind == AK_RUN_GRID) {
+            if (rs.off_grid) {
+                snprintf(why, cap, "the interior run at sample %llu is %llu samples, not a multiple of g = %llu (%u interior runs)", (unsigned long long)rs.bad_at, (unsigned long long)rs.bad_len, (unsigned long long)want, rs.n);
+                return AU_FAIL;
+            }
+            snprintf(why, cap, "all %u interior runs of [%llu, %llu) are multiples of g = %llu (their gcd %llu)", rs.n, (unsigned long long)i0, (unsigned long long)i1, (unsigned long long)want, (unsigned long long)rs.gcd);
+            return AU_PASS;
+        }
+        snprintf(why, cap, "the shortest of %u interior runs of [%llu, %llu) is %llu samples, the literal is %llu", rs.n, (unsigned long long)i0, (unsigned long long)i1, (unsigned long long)rs.min, (unsigned long long)want);
+        return rs.min == want ? AU_PASS : AU_FAIL;
+    }
+    if (g->kind == AK_NOISE_SEQ) {
+        /* noise_seq (ASSUMED:LED-AUD-0010): the R7 record of the anchor's channel last before the anchor gives the stamp w; noise events lie at j x p0 up to the first one after w (the reload of the old period, ordinal floor(w / p0) + 2, the event at T = 0 being
+         * ordinal 1, RF-11), then every p1. At each event inside the window the sample at the event instant (the D-185 tie order: the noise clock before the sample) is non-zero exactly when the bit of that ordinal in bits is 1. An ordinal past the string is a
+         * harness error (fail closed, never a wrap). AF0 inverts the bit of the first judged event */
+        const char *bits = au_lit_get(l, "bits");
+        uint64_t p0 = 0u;
+        uint64_t p1 = 0u;
+        uint32_t ai;
+        uint32_t ri = UINT32_MAX;
+        uint32_t e;
+        uint64_t w7;
+        uint64_t t;
+        uint64_t ord;
+        uint64_t nb;
+        unsigned judged = 0u;
+
+        if (bits == NULL || strlen(bits) == 0u || strlen(bits) > 256u || strspn(bits, "01") != strlen(bits) || au_lit_num(l, "p0", &p0) != 0 || au_lit_num(l, "p1", &p1) != 0 || p0 == 0u || p1 == 0u || !s->a.set) {
+            snprintf(why, cap, "aexp-malformed: a noise_seq row needs a start anchor, p0, p1 (above 0) and bits (1 to 256 characters 0 or 1)");
+            return AU_HARNESS;
+        }
+        nb = strlen(bits);
+        ai = au_find(cp, &s->a);
+        for (e = 0u; ai != UINT32_MAX && e < ai; e++) {
+            const uint8_t *r = cp->erec + (size_t)e * AU_E_REC;
+
+            if (r[AU_E_REG] == 7u && r[AU_E_CHAN] == s->a.ch) {
+                ri = e;
+            }
+        }
+        if (ri == UINT32_MAX) {
+            snprintf(why, cap, "no R7 record of channel %u before the anchor: no noise period to count the events from", s->a.ch);
+            return AU_FAIL;
+        }
+        w7 = au_u64(cp->erec + (size_t)ri * AU_E_REC + AU_E_STAMP);
+        t = (w7 / p0 + 1u) * p0;
+        ord = w7 / p0 + 2u;
+        while (au_index(cp, t) < i0) {
+            t += p1;
+            ord++;
+        }
+        for (; au_index(cp, t) < i1; t += p1, ord++) {
+            uint64_t si = au_index(cp, t);
+            int want_on;
+            int on;
+
+            if (ord > nb) {
+                snprintf(why, cap, "the event at %llu master clocks has ordinal %llu, past the %llu bits of the literal: a harness error, never a wrap", (unsigned long long)t, (unsigned long long)ord, (unsigned long long)nb);
+                return AU_HARNESS;
+            }
+            want_on = bits[ord - 1u] == '1';
+            if (perturb && judged == 0u) {
+                want_on = !want_on;
+            }
+            on = au_sample(cp, si, s->side) != 0u;
+            if (on != want_on) {
+                snprintf(why, cap, "the noise event of ordinal %llu (R7 at %llu, the event at %llu, sample %llu) reads %s on side %c, the bit is %c", (unsigned long long)ord, (unsigned long long)w7, (unsigned long long)t, (unsigned long long)si, on ? "non-zero" : "0",
+                         s->side == 1 ? 'L' : 'R', want_on ? '1' : '0');
+                return AU_FAIL;
+            }
+            judged++;
+        }
+        if (judged == 0u) {
+            snprintf(why, cap, "no noise event lies inside the window [%llu, %llu): nothing to judge", (unsigned long long)i0, (unsigned long long)i1);
+            return AU_FAIL;
+        }
+        snprintf(why, cap, "the %u noise events of ordinals %llu to %llu (R7 at %llu) match the bits on side %c", judged, (unsigned long long)(ord - judged), (unsigned long long)(ord - 1u), (unsigned long long)w7, s->side == 1 ? 'L' : 'R');
+        return AU_PASS;
+    }
+    if (g->kind == AK_DDA_HOLD) {
+        /* dda_hold (MAN:P8-4+P8-5): the DDA writes of the anchor's channel inside the window, in order, are the ordinals 1..N; the level changes exactly at the ordinals of ords and is constant between writes. The change of write j is accepted in the sample at or after its
+         * stamp (a_j) or the next one, so the row never judges the tie order of a write at a sample instant (D-185): a_j reads the old or the new level, a_j + 1 .. a_(j+1) - 1 the new one. AF0 moves the first ordinal of ords by one */
+        uint64_t ords[AU_WORDS_MAX];
+        uint64_t at[AU_DDA_MAX];
+        unsigned no = 0u;
+        unsigned nw;
+        unsigned j;
+        unsigned o;
+        uint64_t prev;
+        uint64_t omax = 0u;
+
+        if (au_lit_get(l, "ords") == NULL || au_numlist(au_lit_get(l, "ords"), ords, AU_WORDS_MAX, &no) != 0 || !s->a.set) {
+            snprintf(why, cap, "aexp-malformed: a dda_hold row needs a start anchor and ords (the write ordinals where the level changes)");
+            return AU_HARNESS;
+        }
+        if (perturb) {
+            ords[0] += 1u;
+        }
+        for (o = 0u; o < no; o++) {
+            omax = ords[o] > omax ? ords[o] : omax;
+        }
+        nw = au_dda_writes(cp, s->a.ch, i0, i1, at, AU_DDA_MAX);
+        if ((uint64_t)nw < omax || nw == 0u) {
+            snprintf(why, cap, "the window [%llu, %llu) holds %u DDA writes of channel %u, fewer than the largest ordinal %llu", (unsigned long long)i0, (unsigned long long)i1, nw, s->a.ch, (unsigned long long)omax);
+            return AU_FAIL;
+        }
+        prev = au_sample(cp, i0, s->side);
+        for (i = i0; i < at[0]; i++) {
+            if (au_sample(cp, i, s->side) != prev) {
+                snprintf(why, cap, "the level changes at sample %llu, before the first DDA write (sample %llu)", (unsigned long long)i, (unsigned long long)at[0]);
+                return AU_FAIL;
+            }
+        }
+        for (j = 0u; j < nw; j++) {
+            uint64_t end = j + 1u < nw ? at[j + 1u] : i1;
+            uint64_t lv;
+            int expect = 0;
+
+            if (at[j] + 1u >= end) {
+                snprintf(why, cap, "DDA write %u (sample %llu) leaves no held sample before the next write or the window end", j + 1u, (unsigned long long)at[j]);
+                return AU_FAIL;
+            }
+            lv = au_sample(cp, at[j] + 1u, s->side);
+            if (au_sample(cp, at[j], s->side) != prev && au_sample(cp, at[j], s->side) != lv) {
+                snprintf(why, cap, "sample %llu of DDA write %u reads neither the old nor the new level", (unsigned long long)at[j], j + 1u);
+                return AU_FAIL;
+            }
+            for (i = at[j] + 1u; i < end; i++) {
+                if (au_sample(cp, i, s->side) != lv) {
+                    snprintf(why, cap, "the level after DDA write %u changes at sample %llu before the next write: not held", j + 1u, (unsigned long long)i);
+                    return AU_FAIL;
+                }
+            }
+            for (o = 0u; o < no; o++) {
+                expect = expect || ords[o] == (uint64_t)(j + 1u);
+            }
+            if ((lv != prev) != expect) {
+                snprintf(why, cap, "DDA write %u (sample %llu) %s the level (%llu to %llu), the literal says it %s", j + 1u, (unsigned long long)at[j], lv != prev ? "changes" : "keeps", (unsigned long long)prev, (unsigned long long)lv, expect ? "changes" : "keeps");
+                return AU_FAIL;
+            }
+            prev = lv;
+        }
+        snprintf(why, cap, "the %u DDA writes of channel %u in [%llu, %llu) change the level exactly at the ordinals of the literal and hold it between writes", nw, s->a.ch, (unsigned long long)i0, (unsigned long long)i1);
+        return AU_PASS;
+    }
+    if (g->kind == AK_DDA_ORDER || g->kind == AK_DDA_LEVEL_EXACT || g->kind == AK_CYCLE_PHASE) {
+        /* dda_order (MAN:P8-4+P8-5): the plateaus of the window rank as vals, in order; dda_level_exact (ASSUMED:LED-AUD-0009): the plateaus equal vals; cycle_phase (ASSUMED:LED-AUD-0012): the first plateaus from the window start rank as words in order (no rotation).
+         * AF0 swaps the first two literal values (dda_level_exact: the first value + 1) */
+        uint64_t want[AU_WORDS_MAX];
+        uint64_t pl[AU_WORDS_MAX + 1u];
+        unsigned nwant = 0u;
+        unsigned np;
+        unsigned rot = 0u;
+        const char *key = g->kind == AK_CYCLE_PHASE ? "words" : "vals";
+
+        if (au_lit_get(l, key) == NULL || au_numlist(au_lit_get(l, key), want, AU_WORDS_MAX, &nwant) != 0 || nwant < 2u) {
+            snprintf(why, cap, "aexp-malformed: a %s row needs %s= (2 to 64 numbers)", au_kinds[g->kind - 1].name, key);
+            return AU_HARNESS;
+        }
+        if (perturb && g->kind == AK_DDA_LEVEL_EXACT) {
+            want[0] += 1u;
+        } else if (perturb) {
+            uint64_t t = want[0];
+
+            want[0] = want[1] != want[0] ? want[1] : want[0] + 1u;
+            want[1] = t;
+        }
+        np = au_plateaus(cp, i0, i1, s->side, pl, AU_WORDS_MAX);
+        if (g->kind == AK_CYCLE_PHASE ? np < nwant : np != nwant) {
+            snprintf(why, cap, "%s%u plateaus in the window [%llu, %llu) on side %c, the literal has %u values", np > AU_WORDS_MAX ? "more than " : "", np > AU_WORDS_MAX ? AU_WORDS_MAX : np, (unsigned long long)i0, (unsigned long long)i1, s->side == 1 ? 'L' : 'R', nwant);
+            return AU_FAIL;
+        }
+        if (g->kind == AK_DDA_LEVEL_EXACT) {
+            unsigned j;
+
+            for (j = 0u; j < nwant; j++) {
+                if (pl[j] != want[j]) {
+                    snprintf(why, cap, "plateau %u reads %llu, the literal is %llu", j + 1u, (unsigned long long)pl[j], (unsigned long long)want[j]);
+                    return AU_FAIL;
+                }
+            }
+            snprintf(why, cap, "the %u plateaus of [%llu, %llu) equal the literal levels", nwant, (unsigned long long)i0, (unsigned long long)i1);
+            return AU_PASS;
+        }
+        if (!au_ranks_match(pl, want, nwant, 0, &rot)) {
+            snprintf(why, cap, "the ranks of the first %u plateaus of [%llu, %llu) are not those of the literal in order", nwant, (unsigned long long)i0, (unsigned long long)i1);
+            return AU_FAIL;
+        }
+        snprintf(why, cap, "the first %u plateaus of [%llu, %llu) rank as the literal in order", nwant, (unsigned long long)i0, (unsigned long long)i1);
+        return AU_PASS;
+    }
+    if (g->kind != AK_CYCLE_ORDER && g->kind != AK_DDA_RAM_KEPT) {
         snprintf(why, cap, "the kind %s is parsed but judged from plan %s", au_kinds[g->kind - 1].name, au_kinds[g->kind - 1].later != NULL ? au_kinds[g->kind - 1].later : "05-05");
         return AU_HARNESS;
     }
     {
-        /* cycle_order: the plateaus between the first two rising crossings against the word ranks up to rotation (RF-14) */
+        /* cycle_order, and dda_ram_kept (plan 05-07: the wave RAM kept across DDA, MAN:P8-4+P8-5): the plateaus between the first two rising crossings against the word ranks up to rotation (RF-14) */
         uint64_t cx[2];
         uint64_t words[AU_WORDS_MAX];
         uint64_t pl[AU_WORDS_MAX];
@@ -1603,7 +1954,8 @@ static uint32_t au_peak(const struct au_cap *cp, uint64_t i0, uint64_t i1, int s
     return p;
 }
 
-/* the REL form (D-207, D-208): a relation over the windows of the group's rows in row order. period_ratio (two rows, k on each, p0 and p1 on the first): the distance of k cycles of the first window times p1 equals that of the second times p0; same (two rows, n on the first): the n samples
+/* the REL form (D-207, D-208): a relation over the windows of the group's rows in row order. period_ratio (two rows, k on each, p0 and p1 on the first): the distance of k cycles of the first window times p1 equals that of the second times p0; noise_ratio (plan 05-07; two rows, p0 and
+ * p1 on the first): the run grids of the two windows in the ratio p0 : p1; same (two rows, n on the first): the n samples
  * from the first rising crossing of each window are equal (aligned at the crossing, never at a write, D-185); atten_order (two or more rows): the peaks strictly decrease; atten_equal: the peaks are equal. perturb (AF0): p0 + 1, the second window one sample later, a strict increase of
  * the first pair, the first peak + 1 */
 static int au_rel_group(const struct ax_file *f, unsigned gi, const struct au_cap *cp, int perturb, char *why, size_t cap)
@@ -1652,15 +2004,34 @@ static int au_rel_group(const struct ax_file *f, unsigned gi, const struct au_ca
             snprintf(why, cap, "aexp-malformed: a period_ratio row needs k (1 to 4095), the first also p0 and p1 (above 0)");
             return AU_HARNESS;
         }
+        if (g->kind == AK_NOISE_RATIO && n == 0u && (au_lit_num(&l, "p0", &p0) != 0 || au_lit_num(&l, "p1", &p1) != 0 || p0 == 0u || p1 == 0u)) {
+            snprintf(why, cap, "aexp-malformed: the first row of a noise_ratio group needs p0 and p1 (above 0)");
+            return AU_HARNESS;
+        }
         if (g->kind == AK_SAME && n == 0u && (au_lit_num(&l, "n", &cn) != 0 || cn == 0u)) {
             snprintf(why, cap, "aexp-malformed: the first row of a same group needs n (the samples compared, above 0)");
             return AU_HARNESS;
         }
         n++;
     }
-    if (n < 2u || ((g->kind == AK_PERIOD_RATIO || g->kind == AK_SAME) && n != 2u)) {
-        snprintf(why, cap, "aexp-malformed: a REL group needs two rows (period_ratio and same exactly two)");
+    if (n < 2u || ((g->kind == AK_PERIOD_RATIO || g->kind == AK_SAME || g->kind == AK_NOISE_RATIO) && n != 2u)) {
+        snprintf(why, cap, "aexp-malformed: a REL group needs two rows (period_ratio, same and noise_ratio exactly two)");
         return AU_HARNESS;
+    }
+    if (g->kind == AK_NOISE_RATIO) {
+        /* noise_ratio (plan 05-07, MAN:P8-2+P8-6+P8-9+H8-23): the grid of each window, the gcd of its interior runs, in the ratio p0 : p1 (grid 1 x p1 = grid 2 x p0); a window with no interior run fails. AF0 reads p0 + 1 */
+        struct au_runs rs[2];
+
+        for (r = 0u; r < 2u; r++) {
+            au_runs_of(cp, w0[r], w1[r], sd[r], 0u, &rs[r]);
+            if (rs[r].n == 0u) {
+                snprintf(why, cap, "window %u has no interior run: no grid to compare", r + 1u);
+                return AU_FAIL;
+            }
+        }
+        p0 += perturb ? 1u : 0u;
+        snprintf(why, cap, "the grids (the gcd of the interior runs) of the two windows are %llu and %llu samples, the literal ratio is %llu : %llu", (unsigned long long)rs[0].gcd, (unsigned long long)rs[1].gcd, (unsigned long long)p0, (unsigned long long)p1);
+        return rs[0].gcd * p1 == rs[1].gcd * p0 ? AU_PASS : AU_FAIL;
     }
     if (g->kind == AK_PERIOD_RATIO || g->kind == AK_SAME) {
         uint64_t dist[2];
@@ -2514,6 +2885,9 @@ static int aj_eval(struct aj_ctx *j, const char *form, const char *kind, const c
 #define AJ_B "anchor=ev:ch=0;reg=R4;val=$9F;nth=1;from=+196608;to=+393216"
 #define AJ_Q "anchor=ev:ch=0;reg=R4;val=$9F;nth=1;from=+393216;to=+786432"
 #define AJ_WORDS "words=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16"
+#define AJ_A2 "anchor=ev:ch=0;reg=R4;val=$9F;nth=1;from=+392448;to=+393984" /* samples 2044..2051: four of B's last plateau (word 16 x 500) and four of silence */
+#define AJ_C "anchor=ev:ch=0;reg=R4;val=$9F;nth=1;from=+0;to=+24576"        /* samples 0..127: one cycle, its 32 plateaus from word 0 */
+#define AJ_VALS "vals=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16"
 
 static void aj_forms(struct aj_ctx *j, const struct au_cap *x)
 {
@@ -2539,7 +2913,29 @@ static void aj_forms(struct aj_ctx *j, const struct au_cap *x)
     aj_want(j, "ROWS levels_exact AF0 (peak + 1) fails", aj_eval(j, "ROWS", "levels_exact", AJ_A ";side=L", "peak=31000", NULL, NULL, x, 1), AU_FAIL);
     aj_want(j, "ROWS levels_exact peak 31 x 1000 of B (31 x 500) fails", aj_eval(j, "ROWS", "levels_exact", AJ_B ";side=L", "peak=31000", NULL, NULL, x, 0), AU_FAIL);
     aj_want(j, "ROWS levels_exact without peak is harness", aj_eval(j, "ROWS", "levels_exact", AJ_A ";side=L", "r1=$FF", NULL, NULL, x, 0), AU_HARNESS);
-    aj_want(j, "ROWS a kind judged from a later plan (two_level) is harness", aj_eval(j, "ROWS", "two_level", AJ_A ";side=L", "r1=$FF", NULL, NULL, x, 0), AU_HARNESS);
+    /* plan 05-07: the noise and DDA kinds and cycle_phase on the same capture (every plateau is 4 samples; A2 holds the last 4 samples of B and 4 of silence: two values) */
+    aj_want(j, "ROWS two_level n=2 over A2 passes", aj_eval(j, "ROWS", "two_level", AJ_A2 ";side=L", "n=2", NULL, NULL, x, 0), AU_PASS);
+    aj_want(j, "ROWS two_level AF0 (n + 1) fails", aj_eval(j, "ROWS", "two_level", AJ_A2 ";side=L", "n=2", NULL, NULL, x, 1), AU_FAIL);
+    aj_want(j, "ROWS two_level n=2 over the 32 levels of A fails", aj_eval(j, "ROWS", "two_level", AJ_A ";side=L", "n=2", NULL, NULL, x, 0), AU_FAIL);
+    aj_want(j, "ROWS two_level without n is harness", aj_eval(j, "ROWS", "two_level", AJ_A ";side=L", "r1=$FF", NULL, NULL, x, 0), AU_HARNESS);
+    aj_want(j, "ROWS run_grid g=4 passes", aj_eval(j, "ROWS", "run_grid", AJ_A ";side=L", "nf=2;g=4", NULL, NULL, x, 0), AU_PASS);
+    aj_want(j, "ROWS run_grid g=3 fails", aj_eval(j, "ROWS", "run_grid", AJ_A ";side=L", "g=3", NULL, NULL, x, 0), AU_FAIL);
+    aj_want(j, "ROWS run_grid AF0 (g + 1) fails", aj_eval(j, "ROWS", "run_grid", AJ_A ";side=L", "nf=2;g=4", NULL, NULL, x, 1), AU_FAIL);
+    aj_want(j, "ROWS run_grid over silence (no interior run) fails", aj_eval(j, "ROWS", "run_grid", AJ_Q ";side=L", "nf=2;g=4", NULL, NULL, x, 0), AU_FAIL);
+    aj_want(j, "ROWS run_min minrun=4 passes", aj_eval(j, "ROWS", "run_min", AJ_A ";side=L", "minrun=4", NULL, NULL, x, 0), AU_PASS);
+    aj_want(j, "ROWS run_min AF0 (minrun + 1) fails", aj_eval(j, "ROWS", "run_min", AJ_A ";side=L", "minrun=4", NULL, NULL, x, 1), AU_FAIL);
+    aj_want(j, "ROWS noise_seq with no R7 record before the anchor fails", aj_eval(j, "ROWS", "noise_seq", AJ_A ";side=L", "p0=11904;p1=2688;bits=10", NULL, NULL, x, 0), AU_FAIL);
+    aj_want(j, "ROWS noise_seq without bits is harness", aj_eval(j, "ROWS", "noise_seq", AJ_A ";side=L", "p0=11904;p1=2688", NULL, NULL, x, 0), AU_HARNESS);
+    aj_want(j, "ROWS dda_hold with no DDA write in the window fails", aj_eval(j, "ROWS", "dda_hold", AJ_A ";side=L", "ords=1", NULL, NULL, x, 0), AU_FAIL);
+    aj_want(j, "ROWS dda_hold without ords is harness", aj_eval(j, "ROWS", "dda_hold", AJ_A ";side=L", "r1=$FF", NULL, NULL, x, 0), AU_HARNESS);
+    aj_want(j, "ROWS dda_order of one cycle as the words passes", aj_eval(j, "ROWS", "dda_order", AJ_C ";side=L", AJ_VALS, NULL, NULL, x, 0), AU_PASS);
+    aj_want(j, "ROWS dda_order AF0 (two values swapped) fails", aj_eval(j, "ROWS", "dda_order", AJ_C ";side=L", AJ_VALS, NULL, NULL, x, 1), AU_FAIL);
+    aj_want(j, "ROWS dda_level_exact 0 and 1000 passes", aj_eval(j, "ROWS", "dda_level_exact", "anchor=ev:ch=0;reg=R4;val=$9F;nth=1;from=+0;to=+1536;side=L", "vals=0,1000", NULL, NULL, x, 0), AU_PASS);
+    aj_want(j, "ROWS dda_level_exact AF0 (the first value + 1) fails", aj_eval(j, "ROWS", "dda_level_exact", "anchor=ev:ch=0;reg=R4;val=$9F;nth=1;from=+0;to=+1536;side=L", "vals=0,1000", NULL, NULL, x, 1), AU_FAIL);
+    aj_want(j, "ROWS cycle_phase of the words from word 0 passes", aj_eval(j, "ROWS", "cycle_phase", AJ_C ";side=L", AJ_WORDS, NULL, NULL, x, 0), AU_PASS);
+    aj_want(j, "ROWS cycle_phase of the words rotated by one fails (cycle_order passes it)", aj_eval(j, "ROWS", "cycle_phase", AJ_C ";side=L", "words=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,0", NULL, NULL, x, 0), AU_FAIL);
+    aj_want(j, "ROWS dda_ram_kept of the words passes", aj_eval(j, "ROWS", "dda_ram_kept", AJ_A ";side=R", AJ_WORDS, NULL, NULL, x, 0), AU_PASS);
+    aj_want(j, "ROWS a kind judged from a later plan (cycle_linear) is harness", aj_eval(j, "ROWS", "cycle_linear", AJ_A ";side=L", "r1=$FF", NULL, NULL, x, 0), AU_HARNESS);
     aj_want(j, "ROWS an unknown kind is refused", aj_eval(j, "ROWS", "loud", AJ_A ";side=L", "r1=$FF", NULL, NULL, x, 0), AU_HARNESS);
     aj_want(j, "ROWS the kind period under form REL is refused", aj_eval(j, "REL", "period", AJ_A ";side=L", "f=64;k=4;d=512", NULL, NULL, x, 0), AU_HARNESS);
     /* REL: period_ratio, same, atten_order, atten_equal (window A at x 1000, window B at x 500) */
@@ -2557,7 +2953,10 @@ static void aj_forms(struct aj_ctx *j, const struct au_cap *x)
     aj_want(j, "REL atten_equal of A on L and R passes", aj_eval(j, "REL", "atten_equal", AJ_A ";side=L", "r1=$FF", AJ_A ";side=R", "r1=$FF", x, 0), AU_PASS);
     aj_want(j, "REL atten_equal AF0 (the first peak + 1) fails", aj_eval(j, "REL", "atten_equal", AJ_A ";side=L", "r1=$FF", AJ_A ";side=R", "r1=$FF", x, 1), AU_FAIL);
     aj_want(j, "REL atten_equal of A and B fails", aj_eval(j, "REL", "atten_equal", AJ_A ";side=L", "r1=$FF", AJ_B ";side=L", "r1=$FF", x, 0), AU_FAIL);
-    aj_want(j, "REL a kind judged from a later plan (noise_ratio) is harness", aj_eval(j, "REL", "noise_ratio", AJ_A ";side=L", "r1=$FF", AJ_B ";side=L", "r1=$FF", x, 0), AU_HARNESS);
+    aj_want(j, "REL noise_ratio 1:1 of A and B (both on a 4-sample grid) passes", aj_eval(j, "REL", "noise_ratio", AJ_A ";side=L", "p0=1;p1=1", AJ_B ";side=L", "r1=$FF", x, 0), AU_PASS);
+    aj_want(j, "REL noise_ratio 1:2 fails", aj_eval(j, "REL", "noise_ratio", AJ_A ";side=L", "p0=1;p1=2", AJ_B ";side=L", "r1=$FF", x, 0), AU_FAIL);
+    aj_want(j, "REL noise_ratio AF0 (p0 + 1) fails", aj_eval(j, "REL", "noise_ratio", AJ_A ";side=L", "p0=1;p1=1", AJ_B ";side=L", "r1=$FF", x, 1), AU_FAIL);
+    aj_want(j, "REL a kind judged from a later plan (dda_equals_wave) is harness", aj_eval(j, "REL", "dda_equals_wave", AJ_A ";side=L", "r1=$FF", AJ_B ";side=L", "r1=$FF", x, 0), AU_HARNESS);
     /* STRUCT: count (frame 0 of 357,630 master clocks holds ceil(357630 / 192) = 1863 samples) and header */
     aj_want(j, "STRUCT count m=357630 n=1863 passes", aj_eval(j, "STRUCT", "count", "from=0;to=357630", "m=357630;n=1863", NULL, NULL, x, 0), AU_PASS);
     aj_want(j, "STRUCT count n=1862 fails", aj_eval(j, "STRUCT", "count", "from=0;to=357630", "m=357630;n=1862", NULL, NULL, x, 0), AU_FAIL);

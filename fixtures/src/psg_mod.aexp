@@ -1,0 +1,56 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# psg_mod.aexp - the hand-derived literal rows of the audio scenes of fixtures/src/psg_mod.s (plan 05-07; D-184, D-185, D-189..D-193, D-206..D-212, D-230, D-233, RF-6, RF-11, ER-14..ER-21). scripts/fixture-build writes it without comments as build/gate/fixtures/psg-mod.aexp.tsv
+# for the runner kind audio; scripts/audio-check judges this source. Selectors and windows as in psg_tone.aexp (a window holds the samples s with from <= 192s < to, D-187). No literal comes from a case file, a run or a hash (R7). One comment line per group (D-233).
+# Byte budget (D-230, D-233): this file stays under 32,768 bytes (the plan budget) and the reader cap of 49,152. Every row carries r1, al, r5 and a side where it has a window: R1 $FF, AL $1F, R5 $FF give S = 0 on both sides (att 0).
+aexp	sample_mclk=192
+# mod_noise4 (D-184, D-185, D-193, RF-11): select 4 at NE 1, R7 $98 (NFRQ 24, NFc 7) written at stamp w before the key-on K. Noise events run from boot every 384 x 31 = 11,904 = 62 x 192 master clocks; R7 applies at the next reload, the event at (floor(w / 11,904) + 1) x 11,904 < K + 11,904,
+#   after which events come every 384 x 7 = 2,688 = 14 x 192. The windows start at K + 12,096 (past that reload and one sample) and end at K + 312,096: every event inside lies on a sample instant and the level changes only at events, so every interior run is 14 m samples.
+scene	mod_noise4	case=audio_mod_noise4	role=literal
+# n4_ev (MAN:P8-2+P8-3+P8-4+P8-6, D-196 by hand): R7 $98 at select 4 posts & $9F = $98 with chan 4 and the index 0 that the 32 uploads after R4 $40 left.
+group	mod_noise4	n4_ev	form=EV	kind=ev_decode	class=MAN:P8-2+P8-3+P8-4+P8-6	kills=AF0,AF8,AF9
+row	mod_noise4	n4_ev	anchor=ev:ch=4;reg=R7;val=$98;nth=1;ev=+0	chan=4;effect=$00;wave_idx=0;post=$0098
+# n4_two (MAN:P8-2+P8-6+P8-9+H8-23; P8-2 "pseudo random noise (square wave)"): exactly two distinct values on each side; the values (0 and 31 x VOL[0]) are ASSUMED and not judged.
+group	mod_noise4	n4_two	form=ROWS	kind=two_level	class=MAN:P8-2+P8-6+P8-9+H8-23	kills=AF0,AF5,AF6
+row	mod_noise4	n4_two	anchor=ev:ch=4;reg=R4;val=$9F;nth=1;from=+12096;to=+312096;side=L	n=2;r1=$FF;al=$1F;r5=$FF
+row	mod_noise4	n4_two	anchor=ev:ch=4;reg=R4;val=$9F;nth=1;from=+12096;to=+312096;side=R	n=2;r1=$FF;al=$1F;r5=$FF
+# n4_lev (ASSUMED:LED-AUD-0009+LED-AUD-0010): the high noise level is 31 (psg_noise_high_level) at att 0, so the largest sample is 31 x 32768 = 1,015,808 on each side.
+group	mod_noise4	n4_lev	form=ROWS	kind=levels_exact	class=ASSUMED:LED-AUD-0009+LED-AUD-0010	kills=AF0,AF5,AF6
+row	mod_noise4	n4_lev	anchor=ev:ch=4;reg=R4;val=$9F;nth=1;from=+12096;to=+312096;side=L	peak=1015808;r1=$FF;al=$1F;r5=$FF
+# n4_grid (MAN:P8-2+P8-6+P8-9+H8-23): every interior run is a multiple of g = 384 x 7 / 192 = 14 samples (nf=7;g=14, the lint recomputes g = 2 x nf).
+group	mod_noise4	n4_grid	form=ROWS	kind=run_grid	class=MAN:P8-2+P8-6+P8-9+H8-23	kills=AF0,AF2,AF4,AF5,AF6
+row	mod_noise4	n4_grid	anchor=ev:ch=4;reg=R4;val=$9F;nth=1;from=+12096;to=+312096;side=L	nf=7;g=14;r1=$FF;al=$1F;r5=$FF
+row	mod_noise4	n4_grid	anchor=ev:ch=4;reg=R4;val=$9F;nth=1;from=+12096;to=+312096;side=R	nf=7;g=14;r1=$FF;al=$1F;r5=$FF
+# n4_min (ASSUMED:LED-AUD-0010, the sequence decides it): the shortest interior run is one noise clock, 14 samples (the string below has single bits at every ordinal range the window can take).
+group	mod_noise4	n4_min	form=ROWS	kind=run_min	class=ASSUMED:LED-AUD-0010	kills=AF0,AF5,AF6
+row	mod_noise4	n4_min	anchor=ev:ch=4;reg=R4;val=$9F;nth=1;from=+12096;to=+312096;side=L	minrun=14;r1=$FF;al=$1F;r5=$FF
+# n4_seq (ASSUMED:LED-AUD-0010, all power-on policies: the LFSR resets to 1): the level at each event is non-zero when bits[ordinal] is 1 (ordinal 1 at T = 0, the reload floor(w / p0) + 2, then + 1 per p1); bits = LFSR steps 1..256 from 1 by an outside script that first reproduced the 40 bits of RESEARCH section 2; w < 60,000 (hand count), so ordinals <= 123.
+group	mod_noise4	n4_seq	form=ROWS	kind=noise_seq	class=ASSUMED:LED-AUD-0010	kills=AF0,AF1,AF4,AF5,AF6
+row	mod_noise4	n4_seq	anchor=ev:ch=4;reg=R4;val=$9F;nth=1;from=+12096;to=+312096;side=L	p0=11904;p1=2688;bits=1000000000000000001111110000001111101111110000010000110000101111110001101111001111010011110010010011001011010000001001100000111111010011101101101100110100010000110110100001111111101101010001010001110100101001110101100011001111011011100010000011001011110000;r1=$FF;al=$1F;r5=$FF
+# mod_noise5: the same on select 5 with R7 $91 (NFRQ 17, NFc 14): events every 384 x 14 = 5,376 = 28 x 192 after the reload; no LFSR sequence is judged here, so the toy psg-noise-taps leaves this scene green.
+scene	mod_noise5	case=audio_mod_noise5	role=literal
+# n5_ev (MAN:P8-2+P8-3+P8-4+P8-6): R7 $91 at select 5 posts $0091, chan 5, index 0.
+group	mod_noise5	n5_ev	form=EV	kind=ev_decode	class=MAN:P8-2+P8-3+P8-4+P8-6	kills=AF0,AF8,AF9
+row	mod_noise5	n5_ev	anchor=ev:ch=5;reg=R7;val=$91;nth=1;ev=+0	chan=5;effect=$00;wave_idx=0;post=$0091
+# n5_two (MAN:P8-2+P8-6+P8-9+H8-23): exactly two distinct values on each side.
+group	mod_noise5	n5_two	form=ROWS	kind=two_level	class=MAN:P8-2+P8-6+P8-9+H8-23	kills=AF0,AF5,AF6
+row	mod_noise5	n5_two	anchor=ev:ch=5;reg=R4;val=$9F;nth=1;from=+12096;to=+312096;side=L	n=2;r1=$FF;al=$1F;r5=$FF
+row	mod_noise5	n5_two	anchor=ev:ch=5;reg=R4;val=$9F;nth=1;from=+12096;to=+312096;side=R	n=2;r1=$FF;al=$1F;r5=$FF
+# n5_grid (MAN:P8-2+P8-6+P8-9+H8-23): every interior run is a multiple of g = 384 x 14 / 192 = 28 samples (nf=14;g=28).
+group	mod_noise5	n5_grid	form=ROWS	kind=run_grid	class=MAN:P8-2+P8-6+P8-9+H8-23	kills=AF0,AF2,AF4,AF5,AF6
+row	mod_noise5	n5_grid	anchor=ev:ch=5;reg=R4;val=$9F;nth=1;from=+12096;to=+312096;side=L	nf=14;g=28;r1=$FF;al=$1F;r5=$FF
+row	mod_noise5	n5_grid	anchor=ev:ch=5;reg=R4;val=$9F;nth=1;from=+12096;to=+312096;side=R	nf=14;g=28;r1=$FF;al=$1F;r5=$FF
+# n5_ratio (MAN:P8-2+P8-6+P8-9+H8-23): the grid (gcd of the interior runs) of the select-4 window times 2 equals that of the select-5 window: 14 : 28 = NFc 7 : NFc 14 (p0=1;p1=2).
+group	mod_noise5	n5_ratio	form=REL	kind=noise_ratio	class=MAN:P8-2+P8-6+P8-9+H8-23	kills=AF0,AF2,AF4
+row	mod_noise5	n5_ratio	anchor=ev:ch=4;reg=R4;val=$9F;nth=1;from=+12096;to=+312096;side=L	p0=1;p1=2;r1=$FF;al=$1F;r5=$FF
+row	mod_noise5	n5_ratio	anchor=ev:ch=5;reg=R4;val=$9F;nth=1;from=+12096;to=+312096;side=L	r1=$FF;al=$1F;r5=$FF
+# mod_r7 (D-189, D-208): select 2 plays table 2 at F = 256 (a cycle of 256 samples, one rising crossing, word 31 -> word 0); R0 $02 (its 3rd record: the channel loop wrote the 1st, the set-up the 2nd) and R7 $98 come between two windows of 210,000 master clocks.
+scene	mod_r7	case=audio_mod_r7	role=literal
+# r7_same (MAN:P8-2+P8-9: R7 exists for selects 4 and 5 only): the 768 samples (3 cycles) from the first rising crossing of each window are equal, aligned at the crossing, never at a write (D-185).
+group	mod_r7	r7_same	form=REL	kind=same	class=MAN:P8-2+P8-9	kills=AF0,AF2
+row	mod_r7	r7_same	anchor=ev:ch=2;reg=R4;val=$9F;nth=1;from=+50000;to=+260000;side=L	n=768;r1=$FF;al=$1F;r5=$FF
+row	mod_r7	r7_same	anchor=ev:ch=G;reg=R0;val=$02;nth=3;from=+2000;to=+212000;side=L	r1=$FF;al=$1F;r5=$FF
+# r7_drop (ASSUMED:LED-AUD-0004, the record of a dropped write is a project definition): the R7 $98 after the 3rd R0 $02 has no target: chan $FF, effect NO_TARGET ($20), wave_idx $FF, post $FFFF.
+group	mod_r7	r7_drop	form=EV	kind=ev_edge	class=ASSUMED:LED-AUD-0004	kills=AF0,AF8
+row	mod_r7	r7_drop	anchor=ev:ch=G;reg=R0;val=$02;nth=3;ev=+1	chan=$FF;effect=$20;wave_idx=$FF;post=$FFFF
