@@ -4,16 +4,16 @@ current_phase: 5
 current_phase_name: PSG Raw Audio
 current_plan: 7
 status: executing
-stopped_at: Completed 05-06-PLAN.md (Tasks 1, 2, 3a; Task 3b split to 05-12 pending a D-230 decision)
-last_updated: "2026-11-13T18:44:37.623Z"
+stopped_at: "Completed 05-12-PLAN.md (05-06 Task 3b: the D-233 cap and the psg_tone event rows)"
+last_updated: "2026-11-13T19:27:09.018Z"
 last_activity: 2026-11-12
 last_activity_desc: Phase 04.1 complete, transitioned to Phase 5
-state_head: d5427e28a1790f8204f68260c2d01d71ca4f6688
+state_head: 10dd0d1c72f98d75ce54b97de457e70bd8d5e669
 progress:
   total_phases: 7
   completed_phases: 5
-  total_plans: 101
-  completed_plans: 97
+  total_plans: 102
+  completed_plans: 98
   percent: 71
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 
 Phase: 5 (PSG Raw Audio) — READY TO EXECUTE
 Current Plan: 7
-Total Plans in Phase: 10
+Total Plans in Phase: 11
 Status: Ready to execute
 Last activity: 2026-11-12 — Phase 04.1 complete, transitioned to Phase 5
 
@@ -157,6 +157,7 @@ Progress: [███████░░░] 71%
 | Phase 05 P04 | 3h10m | 3 tasks | 41 files |
 | Phase 05 P05 | 130 min | 3 tasks | 74 files |
 | Phase 05 P06 | 135 min | 3 tasks | 35 files |
+| Phase 05 P12 | 90 min | 2 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -362,6 +363,9 @@ Recent decisions affecting current work:
 - [Phase 05]: 05-06: every pan, attenuation and twin anchor carries val= (toy psg-chsel-mask moves the R4 $00 writes of (b) at selects 4 and 5 to selects 0 and 1, which would shift a plain nth count)
 - [Phase 05]: 05-06: side pairs of one literal share a group of two rows and group ids are short (D-230 budget); the twin red list is 7 merged groups
 - [Phase 05]: 05-06: Task 3b (event rows, mask probe, ev_edge) split to 05-12: psg_tone.aexp holds 32,406 of 32,768 bytes; 05-12 needs a D-230 decision (cap or relocation) first
+- [Phase 05]: 05-12: AEXP_MAX_BYTES is 49152 (D-233); the oversize control pads to 49,153 bytes and ok-size-cap to exactly 49,152; the C reader has no byte cap
+- [Phase 05]: 05-12: every new R2 decode row follows a program-written R3 (a first R2 after power-on posts the power-on F high nibble, an ASSUMED input under ER-10)
+- [Phase 05]: 05-12: the disputed edges (mirror, $080A, R7 at select 3, selects 6 and 7) are one ASSUMED ev_edge group in tone_atten with mark= items
 
 ### Pending Todos
 
@@ -385,6 +389,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-13T18:44:36.907Z
-Stopped at: Completed 05-06-PLAN.md (Tasks 1, 2, 3a; Task 3b split to 05-12 pending a D-230 decision)
+Last session: 2026-11-13T19:27:08.520Z
+Stopped at: Completed 05-12-PLAN.md (05-06 Task 3b: the D-233 cap and the psg_tone event rows)
 Resume file: None
