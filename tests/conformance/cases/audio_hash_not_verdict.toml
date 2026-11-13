@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# A hash is not a verdict (plan 05-05; ER-20, D-209, ER-11): the runner kind audio_hash_not_verdict (tests/conformance/audiokinds.c) runs psg-tone once, applies AF7 (each 32-sample cycle reversed) to a copy of the streams over the window of the first cycle_order group of tone_sel0 and hashes the copy
+# as its own golden. The faulted streams pass that golden, while literal groups of tone_sel0 fail on the same streams (the cycle_order group among them) and the pinned golden of tone_golden sees the change. The runtime refusal audio-hash-only is shown for a golden scene whose ROM has no literal
+# scene and for a second golden scene of one ROM. E0: a digest only says "unchanged"; the literal groups say what is right.
+id = "audio_hash_not_verdict"
+kind = "audio_hash_not_verdict"
+fixture = "authored:psg-tone"
+request = ""
+expect = "rom=psg-tone;id=27;checks=4;scene=tone_sel0"
+meaning = "An AF7-faulted copy of psg_tone's streams passes a golden taken from itself while the literal groups of tone_sel0 fail on it, and a golden with no literal scene or a second golden is refused as audio-hash-only (E0)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 1000000

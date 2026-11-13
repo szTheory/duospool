@@ -1045,6 +1045,7 @@ static const struct {
     {"audio", kind_audio, 0},
     {"audio_fault_sweep", kind_audio_fault_sweep, 0},
     {"audio_judge_forms", kind_audio_judge_forms, 0},
+    {"audio_hash_not_verdict", kind_audio_hash_not_verdict, 0},
     {"aud_noninterference", kind_aud_noninterference, 0},
     {"psg_dev_join", kind_psg_dev_join, 0},
     {"snapshot_restore_audio", kind_snapshot_restore_audio, 0},

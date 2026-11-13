@@ -1766,6 +1766,102 @@ static int au_eval_group(const struct ax_file *f, unsigned gi, const struct au_c
     return out;
 }
 
+/* the golden role (ER-20, D-209): NULL when the golden scene si may be judged, else the reason of the refusal audio-hash-only. A golden scene is valid only beside a literal scene of the same ROM (the same file) whose audio_fault_sweep case exists among the cases of this run,
+ * and a ROM has at most one golden scene: a stream digest is a change detector and never a verdict */
+static const char *au_golden_refusal(const struct ax_file *f, unsigned si)
+{
+    unsigned i;
+    unsigned ngold = 0u;
+    int lit = 0;
+    int swept = 0;
+
+    for (i = 0u; i < f->ns; i++) {
+        ngold += f->sc[i].role == AX_ROLE_GOLDEN ? 1u : 0u;
+        lit = lit || f->sc[i].role == AX_ROLE_LITERAL;
+    }
+    if (f->sc[si].role != AX_ROLE_GOLDEN || ngold != 1u) {
+        return "audio-hash-only: a ROM has at most one golden scene (D-209)";
+    }
+    if (!lit) {
+        return "audio-hash-only: a golden scene is valid only beside a literal scene of the same ROM (a digest alone is not a verdict, ER-20)";
+    }
+    for (i = 0u; i < f->ns && !swept; i++) {
+        size_t c;
+
+        if (f->sc[i].role != AX_ROLE_LITERAL) {
+            continue;
+        }
+        for (c = 0u; c < case_count() && !swept; c++) {
+            const struct kase *k2 = case_get(c);
+            char want[AU_NAME + 8u];
+            const char *ex = k2->has[K_EXPECT] ? k2->val[K_EXPECT] : "";
+            const char *at;
+
+            snprintf(want, sizeof want, "scene=%s", f->sc[i].name);
+            at = strstr(ex, want);
+            if (k2->has[K_KIND] && strcmp(k2->val[K_KIND], "audio_fault_sweep") == 0 && at != NULL && (at == ex || at[-1] == ';') && (at[strlen(want)] == '\0' || at[strlen(want)] == ';')) {
+                swept = 1;
+            }
+        }
+    }
+    return swept ? NULL : "audio-hash-only: the literal scene beside the golden scene has no audio_fault_sweep case, so its groups are not shown live (ER-20)";
+}
+
+/* the golden row of scene name, or NULL */
+static const struct ax_golden *au_golden_row(const struct ax_file *f, const char *name)
+{
+    unsigned i;
+
+    for (i = 0u; i < f->ngold; i++) {
+        if (strcmp(f->gd[i].scene, name) == 0) {
+            return &f->gd[i];
+        }
+    }
+    return NULL;
+}
+
+/* the golden case: one run of the ROM under the zero policy, both stream digests against the pinned ones (E0 change detectors) */
+static void au_golden_case(const struct kase *k, struct ctx *c, const struct ax_file *f, unsigned si, const struct au_expect *e, uint64_t until, char *got, size_t gotcap)
+{
+    struct au_cap cp;
+    char req[600];
+    char pcm_hex[2u * DS_SHA256_BYTES + 1u];
+    char psg_hex[2u * DS_SHA256_BYTES + 1u];
+    char det[900];
+    const char *why = au_golden_refusal(f, si);
+    const struct ax_golden *gd = au_golden_row(f, f->sc[si].name);
+
+    memset(&cp, 0, sizeof cp);
+    if (why != NULL) {
+        harness_error(c, why);
+        return;
+    }
+    if (gd == NULL) {
+        harness_error(c, "aexp-malformed: the golden scene has no golden row with its two digests");
+        return;
+    }
+    if (vd_policy_request(0u, k->has[K_REQUEST] ? k->val[K_REQUEST] : "", req, sizeof req) != 0) {
+        harness_error(c, "the request of the golden case is too long");
+        return;
+    }
+    if (au_capture(c, e->rom, req, until, e, &cp, 1, got, gotcap) != 0) {
+        au_cap_free(&cp);
+        return;
+    }
+    if (au_digests(&cp, pcm_hex, psg_hex) != 0) {
+        harness_error(c, "out of memory for the audio streams");
+        au_cap_free(&cp);
+        return;
+    }
+    check(c, strcmp(pcm_hex, gd->pcm) == 0, "golden: the DSPA stream digest differs from the pinned pcm_sha256 (a change detector, E0; the literal case of the ROM decides what is right, ER-20)");
+    check(c, strcmp(psg_hex, gd->psg) == 0, "golden: the DSPE stream digest differs from the pinned psg_sha256 (a change detector, E0; the literal case of the ROM decides what is right, ER-20)");
+    snprintf(det, sizeof det, "pcm_sha256=%s psg_sha256=%s E0 repeatability (a change detector beside the literal scene of the same ROM, never a verdict, ER-20)\naudio_golden: scene %s, pinned pcm_sha256=%s psg_sha256=%s; audio_frames=%u audio_events=%u machine_time=%llu\n", pcm_hex, psg_hex, f->sc[si].name,
+             gd->pcm, gd->psg, (unsigned)cp.fcount, (unsigned)cp.ecount, (unsigned long long)cp.machine_time);
+    set_evidence_detail(det);
+    snprintf(got + strlen(got), gotcap - strlen(got), " golden frames=%u events=%u", (unsigned)cp.fcount, (unsigned)cp.ecount);
+    au_cap_free(&cp);
+}
+
 void kind_audio(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
 {
     struct au_expect e;
@@ -1829,8 +1925,11 @@ void kind_audio(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
             harness_error(c, "an expect_red scene names a literal scene of its file with twin= and lists its red groups with expect_red=, and its case carries no expect_red of its own (D-211)");
             goto done;
         }
+    } else if (f->sc[si].role == AX_ROLE_GOLDEN) {
+        au_golden_case(k, c, f, si, &e, until, got, gotcap);
+        goto done;
     } else if (f->sc[si].role != AX_ROLE_LITERAL) {
-        harness_error(c, "the scene is not a literal or expect_red scene (the golden role is judged by its digests)");
+        harness_error(c, "the scene is not a literal, expect_red or golden scene");
         goto done;
     }
     /* the two policy runs of D-204: zero (judged) and seeded-prng-v4 seed 1 (identity) */
@@ -2599,6 +2698,149 @@ done:
     au_cap_free(&cap0);
     free(j.f);
     free(f);
+}
+
+/* ---- audio_hash_not_verdict (plan 05-05 Task 3; ER-20, D-209): a stream digest is a change detector and never a verdict ---- */
+
+/* psg_tone's streams with AF7 (each 32-sample cycle reversed over the window of the scene's first cycle_order group) are hashed as their own golden: the digests of the faulted streams pass that golden, while the literal groups of the scene fail on the same streams;
+ * the pinned golden of the ROM sees the change, and the runtime refusal audio-hash-only holds for a golden with no literal scene and for a second golden */
+void kind_audio_hash_not_verdict(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    struct au_expect e;
+    struct ax_file *f = NULL;
+    struct ax_file *g2 = NULL;
+    struct au_cap cap0;
+    struct au_cap x;
+    char req[600];
+    char own_pcm[2u * DS_SHA256_BYTES + 1u];
+    char own_psg[2u * DS_SHA256_BYTES + 1u];
+    char re_pcm[2u * DS_SHA256_BYTES + 1u];
+    char re_psg[2u * DS_SHA256_BYTES + 1u];
+    char det[1200];
+    char reds[300];
+    size_t rl = 0u;
+    uint64_t until = 0u;
+    unsigned si;
+    unsigned gi;
+    unsigned gold = AX_MAX;
+    unsigned target = AX_MAX;
+    unsigned nred = 0u;
+    struct au_target t;
+    const struct ax_golden *gd = NULL;
+
+    memset(&cap0, 0, sizeof cap0);
+    memset(&x, 0, sizeof x);
+    reds[0] = '\0';
+    if (!k->has[K_EXPECT] || au_parse(k->val[K_EXPECT], &e) != 0 || e.nred != 0u || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until == 0u) {
+        harness_error(c, "an audio_hash_not_verdict case needs until_mclk and expect = rom=NAME;id=N;checks=N;scene=NAME (a literal scene)");
+        return;
+    }
+    f = (struct ax_file *)calloc(1u, sizeof *f);
+    g2 = (struct ax_file *)calloc(1u, sizeof *g2);
+    if (f == NULL || g2 == NULL) {
+        harness_error(c, "out of memory for the aexp rows");
+        goto done;
+    }
+    {
+        const char *err = ax_load(e.rom, f);
+
+        if (err != NULL) {
+            harness_error(c, err);
+            goto done;
+        }
+    }
+    for (si = 0u; si < f->ns && strcmp(f->sc[si].name, e.scene) != 0; si++) {
+    }
+    for (gi = 0u; gi < f->ns; gi++) {
+        gold = f->sc[gi].role == AX_ROLE_GOLDEN && gold == AX_MAX ? gi : gold;
+    }
+    for (gi = 0u; gi < f->ng; gi++) {
+        target = target == AX_MAX && strcmp(f->gr[gi].scene, e.scene) == 0 && f->gr[gi].kind == AK_CYCLE_ORDER ? gi : target;
+    }
+    if (si == f->ns || f->sc[si].role != AX_ROLE_LITERAL || gold == AX_MAX || target == AX_MAX || (gd = au_golden_row(f, f->sc[gold].name)) == NULL) {
+        harness_error(c, "audio_hash_not_verdict needs a literal scene with a cycle_order group and the golden scene of the same ROM");
+        goto done;
+    }
+    if (vd_policy_request(0u, k->has[K_REQUEST] ? k->val[K_REQUEST] : "", req, sizeof req) != 0 || au_capture(c, e.rom, req, until, &e, &cap0, 1, got, gotcap) != 0) {
+        if (!c->harness) {
+            harness_error(c, "the request of the case is too long");
+        }
+        goto done;
+    }
+    au_target_of(f, target, &cap0, &t);
+    if (au_cap_copy(&cap0, &x) != 0 || au_digests(&cap0, re_pcm, re_psg) != 0) {
+        harness_error(c, "out of memory for the faulted copy");
+        goto done;
+    }
+    au_fault(&x, 7u, &t);
+    if (au_digests(&x, own_pcm, own_psg) != 0) {
+        harness_error(c, "out of memory for the faulted digests");
+        goto done;
+    }
+    /* the faulted streams pass their own golden: hashed again, the digests equal the ones taken as the golden (a hash only says "unchanged") */
+    {
+        char a_pcm[2u * DS_SHA256_BYTES + 1u];
+        char a_psg[2u * DS_SHA256_BYTES + 1u];
+
+        if (au_digests(&x, a_pcm, a_psg) != 0) {
+            harness_error(c, "out of memory for the faulted digests");
+            goto done;
+        }
+        check(c, strcmp(a_pcm, own_pcm) == 0 && strcmp(a_psg, own_psg) == 0, "the AF7-faulted streams do not pass a golden taken from themselves");
+    }
+    check(c, strcmp(own_pcm, re_pcm) != 0, "AF7 left the DSPA stream digest unchanged: the fault did not reach the stream");
+    check(c, strcmp(own_pcm, gd->pcm) != 0, "the pinned golden of the ROM does not see the AF7 change");
+    /* the literal groups of the scene on the faulted streams: at least the cycle_order group must fail */
+    for (gi = 0u; gi < f->ng; gi++) {
+        char why[320];
+
+        if (strcmp(f->gr[gi].scene, e.scene) != 0) {
+            continue;
+        }
+        if (au_eval_group(f, gi, &x, 0, why, sizeof why) != AU_PASS) {
+            nred++;
+            if (rl + strlen(f->gr[gi].gid) + 2u < sizeof reds) {
+                rl += (size_t)snprintf(reds + rl, sizeof reds - rl, "%s%s", rl > 0u ? "," : "", f->gr[gi].gid);
+            }
+        }
+    }
+    check(c, nred >= 1u, "no literal group of the scene fails on the AF7-faulted streams, so the literal case would not tell them apart");
+    {
+        char why[320];
+
+        check(c, au_eval_group(f, target, &x, 0, why, sizeof why) != AU_PASS, "the cycle_order group passes on the AF7-faulted streams");
+    }
+    /* the runtime refusal audio-hash-only: the golden scene with the literal scenes taken away, and a second golden scene */
+    memcpy(g2, f, sizeof *g2);
+    for (gi = 0u; gi < g2->ns; gi++) {
+        g2->sc[gi].role = g2->sc[gi].role == AX_ROLE_LITERAL ? AX_ROLE_EXPECT_RED : g2->sc[gi].role;
+    }
+    {
+        const char *why = au_golden_refusal(g2, gold);
+
+        check(c, why != NULL && strncmp(why, "audio-hash-only", 15u) == 0, "a golden scene with no literal scene of its ROM was not refused as audio-hash-only (ER-20)");
+    }
+    memcpy(g2, f, sizeof *g2);
+    if (g2->ns < AX_MAX) {
+        g2->sc[g2->ns] = g2->sc[gold];
+        memcpy(g2->sc[g2->ns].name, "second_golden", 14u);
+        g2->ns++;
+    }
+    {
+        const char *why = au_golden_refusal(g2, gold);
+
+        check(c, why != NULL && strncmp(why, "audio-hash-only", 15u) == 0, "a second golden scene of one ROM was not refused as audio-hash-only (D-209)");
+    }
+    check(c, au_golden_refusal(f, gold) == NULL, "the golden scene of the ROM, beside its literal scene and that scene's sweep case, is refused");
+    snprintf(det, sizeof det, "audio_hash_not_verdict: AF7 over the window of %s; the faulted streams hash to pcm_sha256=%s psg_sha256=%s E0 repeatability and pass a golden taken from themselves,\nwhile %u literal group(s) of %s fail on them (%s); the pinned golden pcm_sha256=%s sees the change;"
+             " audio-hash-only refuses a golden without a literal scene and a second golden (ER-20)\n", f->gr[target].gid, own_pcm, own_psg, nred, e.scene, reds, gd->pcm);
+    set_evidence_detail(det);
+    snprintf(got + strlen(got), gotcap - strlen(got), " red=%u", nred);
+done:
+    au_cap_free(&cap0);
+    au_cap_free(&x);
+    free(f);
+    free(g2);
 }
 
 /* ---- the D-200 proof set kinds of the audio file (plan 05-04 Task 2): aud_noninterference, psg_dev_join, snapshot_restore_audio, aud_poweron_policy_diff ---- */

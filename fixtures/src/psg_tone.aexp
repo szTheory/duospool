@@ -9,9 +9,10 @@
 # Selector: anchor=ev:ch=<0..5|G>;reg=R<n>;[val=$hh;]nth=N names the N-th DSPE record of that channel (G: the global chan $FE), register and value; ev=+K the K-th record after it (form EV); from=+M and to=+M master clocks after it, or from=M absolute (no anchor);
 #   to=ev:ch=..;reg=..;[val=..;]nth=N an end anchor (RF-13); side=L|R. A window [from, to) holds the samples s with from <= s x 192 < to (D-187: sample s sees every event at or before s x 192 and no write stamped there).
 # The scene tone_sel0 (select 0, F = 256, d = 6): key-on at stamp w, w' = w - (w mod 6); step j (j >= 1) at w' + 1536 j sets the wave index to j mod 32; att = 0 on both sides (R1 $FF, AL $1F, R5 $FF: S = 0), so a sample is 32768 x word (the exact value is ASSUMED and not judged here).
-# AF kills are written now and judged by the fault sweep from plan 05-05 (D-209).
+# AF kills are judged by audio_fault_sweep_tone_sel0 (plan 05-05, D-209): every kill declared in 05-04 flips its group (none was changed); the case prints the observed kill matrix of AF0..AF9.
 # Byte budget (D-230, cap 32,768 bytes and 512 rows): after plan 05-04 this file is 12,532 bytes (tone_sel0: 10 groups, 57 rows; a row about 115 bytes, a group 92, a comment line about 200); projected +2.7 KB in 05-05 (STRUCT groups, golden scene) and +16 KB in 05-06
 #   (three pan scenes about 2.5 KB each, tone_atten 2 KB, event rows 3.6 KB, probe 0.8 KB, twin 2.5 KB): about 31 KB and 250 rows. The margin is small: later plans write one comment line per group, never per row.
+#   After plan 05-05: 14,550 bytes and 76 rows (tone_sel0 12 groups with the STRUCT header and count, the golden scene tone_golden); the 05-06 projection is then about 30.5 KB of 32,768.
 aexp	sample_mclk=192
 scene	tone_sel0	case=audio_tone_sel0	role=literal
 # ev_value_sel0 (GUEST:program): the order and values of the writes of (c) and (e) of psg_tone.s, counted from the R0 $00 of (c), the second R0 $00 of the program ((b) writes R0 = 0 first); (d) writes nothing, so the key-on is the 40th record.
@@ -99,3 +100,7 @@ row	tone_sel0	header	stream=dspe	version=1
 # count (ASSUMED:LED-VID-0001+LED-AUD-0014): video frame 0 of 262 lines is m = 1 x 357,630 master clocks, the one whole frame the scene covers (the run ends at DSV1 done, never read here, R7); it holds n = ceil(357630 / 192) = 1,863 samples (D-187), and the stream sits on the grid to the run's end.
 group	tone_sel0	count	form=STRUCT	kind=count	class=ASSUMED:LED-VID-0001+LED-AUD-0014	kills=AF0,AF1,AF2,AF4
 row	tone_sel0	count	from=0;to=357630	m=357630;n=1863
+# tone_golden (ER-20, D-209: an E0 change detector beside the literal scene tone_sel0 and its sweep, never a verdict; at most one golden per ROM): the digests of the D-199 streams of one zero-policy run, made with ds_runner --audio-out audio_tone_sel0 and recomputed with the host shasum -a 256
+#   of the .dspa and .dspe files (both equal, 2026-11-13, epoch 6). A golden is regenerated on an epoch bump or a change of the streams, with the old and the new digests recorded on this line.
+scene	tone_golden	case=audio_tone_golden	role=golden
+golden	tone_golden	pcm_sha256=3e20cc7254314cb494d29c9b95dfc822350d3d371647cdc8916b4619caaad805	psg_sha256=f85f0369cc78b31500259f684a2c749f3503382fb57ce21a6c2f473563c3e640

@@ -181,7 +181,8 @@ write_vexp() {
 }
 
 # write_aexp STEM NAME (plan 05-04; D-206, D-207, D-230, F-73, PR-13): OUT/fixtures/NAME.aexp.tsv carries the rows of SRC/STEM.aexp, the hand-written literal rows of the audio scenes, to the runner kind audio (tests/conformance/audiokinds.c reads build/gate/fixtures/NAME.aexp.tsv by a
-# relative path). Comments and blank lines are dropped; every other line is a row of one of four kinds with a field-count range (F-73 (b): the optional twin= and expect_red= of a scene): aexp (the header, 2 fields: aexp sample_mclk=N), scene (4 to 6), group (7) and row (5), TAB separated,
+# relative path). Comments and blank lines are dropped; every other line is a row of one of five kinds with a field-count range (F-73 (b): the optional twin= and expect_red= of a scene): aexp (the header, 2 fields: aexp sample_mclk=N), scene (4 to 6), group (7), row (5) and golden (4: the two
+# stream digests of a golden scene, plan 05-05, ER-20), TAB separated,
 # no empty field and no space inside a field. The grammar, the class lint and the kill rules are judged by scripts/audio-check (plan 05-05) and again by the runner, so this writer only shapes the file. A malformed row, an unknown kind or no row at all is a harness error (exit 2).
 # The file is written only for the base image of a stem that has a .aexp source. awk runs with its status tested and nothing on the left of a pipe (CR-01).
 write_aexp() {
@@ -195,6 +196,7 @@ write_aexp() {
       else if ($1 == "scene") { lo = 4; hi = 6 }
       else if ($1 == "group") { lo = 7; hi = 7 }
       else if ($1 == "row") { lo = 5; hi = 5 }
+      else if ($1 == "golden") { lo = 4; hi = 4 }
       if (lo == 0 || NF < lo || NF > hi) { bad = 1; next }
       for (i = 1; i <= NF; i++) {
         if ($i == "" || index($i, " ") > 0) bad = 1

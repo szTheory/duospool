@@ -352,6 +352,8 @@ audio_tone_sel0
 audio_tone_sel0_d3
 audio_fault_sweep_tone_sel0
 audio_judge_forms
+audio_tone_golden
+audio_hash_not_verdict
 aud_noninterference
 psg_dev_join
 snapshot_restore_audio

@@ -60,13 +60,13 @@ aud12-e	LED-AUD-0012	later:05-06	atten_order	volume writes act at their stamp
 aud12-f	LED-AUD-0012	row	case:psg_fold	ties: select 1, select 0 to 5, noise, sample, then a write (an event at a write stamp is processed before the write; the order itself is ASSUMED and no MAN row judges it)
 aud13-a	LED-AUD-0013	row	case:psg_dev_join	one 24-byte little-endian DSPE record per CPU write to the PSG window, joined 1:1 to the dev log
 aud13-b	LED-AUD-0013	row	ev_value,ev_decode	the record fields stamp, pc, reg, value, sel, chan, effect, wave_idx, post and version 1 as D-196 fixes (a project definition, ER-19)
-aud13-c	LED-AUD-0013	limit	hash-e0	a hash of the DSPE stream is E0 repeatability evidence only (ER-20)
+aud13-c	LED-AUD-0013	row	case:audio_hash_not_verdict	a hash of the DSPE stream is E0 repeatability evidence only (ER-20): a faulted stream passes its own golden and fails the literal groups
 aud13-d	LED-AUD-0013	row	header	every DSPE record carries version 1 and the psg header counts the records delivered (a definition, ER-19)
 aud14-a	LED-AUD-0014	row	case:pcm_cadence	point samples at s x 192 master clocks (psg_mclk_per_sample, psg_sample_phase_mclk 0): ceil(M / 192) frames
 aud14-b	LED-AUD-0014	row	silent	frames of 2 x u32 little-endian unsigned, L then R, 0 = nothing contributes (a format definition, ER-19)
 aud14-c	LED-AUD-0014	limit	no-filter	no filtering, resampling or DC removal: a definition of the stream, nothing to judge beyond the frames
 aud14-d	LED-AUD-0014	row	case:psg_fold	events before the sample at one instant
-aud14-e	LED-AUD-0014	limit	hash-e0	a hash of the DSPA stream is E0 only (ER-20)
+aud14-e	LED-AUD-0014	row	case:audio_hash_not_verdict	a hash of the DSPA stream is E0 only (ER-20): the golden audio_tone_golden is a change detector beside the literal scene
 aud14-f	LED-AUD-0014	row	count	video frame 0 of 262 lines holds ceil(357630 / 192) = 1,863 samples and the stream sits on the grid to the run's end (ASSUMED:LED-VID-0001)
 d182-a	D-182	row	period	a step is 6F master clocks and a cycle 192F at d = 6 (C1 documentary under the bound divisor)
 d182-b	D-182	limit	no-measurement	P8-9 fOUT and H8-23 CLKP = OSC1/3 are E1 documentary, not a measurement (ER-14)

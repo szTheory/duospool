@@ -432,6 +432,8 @@ void kind_audio(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_audio_fault_sweep(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 /* plan 05-05 Task 2 (audiokinds.c): pass, fail and harness rows of every form and judged kind on a synthetic capture, the AF0 perturbation, the null-synth controls and the missing-sink rule */
 void kind_audio_judge_forms(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+/* plan 05-05 Task 3 (audiokinds.c): an AF7-faulted stream passes a golden taken from itself and fails the literal groups; the refusal audio-hash-only (ER-20) */
+void kind_audio_hash_not_verdict(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 /* the D-200 proof set of plan 05-04 Task 2 (audiokinds.c): sinks on and off under three policies, the DSPE to dev join, restores at audio stops, the power-on policy difference that the identity check must see; psg_fold is in psgkinds.c */
 void kind_aud_noninterference(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_psg_dev_join(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
