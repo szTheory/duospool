@@ -14,5 +14,5 @@ meaning = "The attenuation and silence rules of P8-10 on one playing channel: it
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-AUD-0008"]
 until_mclk = 12000000

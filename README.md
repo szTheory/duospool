@@ -31,12 +31,13 @@ flag that stays clear while its enable is clear and every other collision row ar
 collision timing, collision of transparent pixels, the sprite width modes (SM and VM other than 0) and sprite pattern addressing for CGY 2.
 
 Supported entries (evidence tier E1, documentary): LED-CPU-0001, LED-CPU-0002, LED-CPU-0005, LED-CPU-0014, LED-CPU-0016,
-LED-IRQ-0002, LED-IRQ-0004 (part a only), LED-VID-0006, LED-VID-0008, LED-VID-0009, LED-VID-0014, LED-VID-0016 and
-LED-VID-0017. Supported here means the model equals the cited manual page: a documentary comparison, not a hardware measurement.
+LED-IRQ-0002, LED-IRQ-0004 (part a only), LED-VID-0006, LED-VID-0008, LED-VID-0009, LED-VID-0014, LED-VID-0016,
+LED-VID-0017 and LED-AUD-0008. Supported here means the model equals the cited manual page: a documentary comparison, not a hardware measurement.
 Each Phase 4 entry is scoped by its statement to the page-stated part only: LED-VID-0008 covers the RR, DV and VD flags, their
 enables and the clear on read (the OR and CR flags are raised by the sprite model, a labelled assumption outside the E1 statement), LED-VID-0009 the next-line statements for BXR and
 BYR, LED-VID-0014 the trigger, the length and the DCR bits of the VRAM copy (the cancel at a display start is a modelling reading), and
-LED-VID-0017 exactly the control register contents 00h and 01h.
+LED-VID-0017 exactly the control register contents 00h and 01h. For the PSG, E1 documentary: the entries the README lists as supported equal
+the cited PSG manual page, not a hardware measurement.
 
 Guest-recorded interrupt positions agree with the model's position for the profile's line count (E2 self-consistency); the position
 is a labelled modelling assumption.
