@@ -347,3 +347,6 @@ psg_wave_ptr
 psg_lfo_trg
 psg_poweron
 psg_restore_divisor
+psg_tone
+audio_tone_sel0
+audio_tone_sel0_d3

@@ -425,6 +425,9 @@ void kind_psg_wave_ptr(const struct kase *k, struct ctx *c, char *got, size_t go
 void kind_psg_lfo_trg(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_psg_poweron(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_psg_restore_divisor(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+/* audiokinds.c (plan 05-04): the audio kind, a guest ROM run with a psg, a pcm and a dev sink under the zero policy and seeded-prng-v4 seed 1, its DSV1 verdict, the DSPE records and DSPA frames judged by group against the hand literals of NAME.aexp (EV and ROWS forms),
+ * the expect_red binding of D-211 and the stream digests beside them (E0) */
+void kind_audio(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_model_param_vdc(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-08: the VD and RR status-read stamps of the vdc_stat guest under the default and the two bound model rows (D-143, D-168) */
 void kind_vdc_irq_agree(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-17: the guest-recorded RCR to VD and VD to RCR = 64 intervals against the dev log read stamps and the hand-derived literals of the case (D-174, ER-3, ER-10) */
 void kind_vdc_advance_pure(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-10: the DMA closed form against a naive per-clock model over seeded random stamp partitions that cross display starts (D-151, D-175) */

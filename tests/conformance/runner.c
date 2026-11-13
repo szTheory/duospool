@@ -1042,6 +1042,7 @@ static const struct {
     {"spin_forever", kind_spin, 0},
     {"guest", kind_guest, 0},
     {"video", kind_video, 0},
+    {"audio", kind_audio, 0},
     {"video_out_rights", kind_video_out_rights, 0},
     {"video_fault_sweep", kind_video_fault_sweep, 0},
     {"video_hash_not_verdict", kind_video_hash_not_verdict, 0},

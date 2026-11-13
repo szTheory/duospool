@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The PSG tracer (plan 05-04; D-183, D-187, D-196, D-197, D-199, D-204, D-206..D-208, D-212, ER-14, ER-19, ER-20, ER-21): the runner kind audio (tests/conformance/audiokinds.c) boots the authored psg-tone image, attaches a psg, a pcm and a dev sink, runs it to the end of its
+# DSV1 verdict, judges the DSV1 block like the guest kind and then judges the scene tone_sel0 by group: the DSPE records (stamp, pc, reg, value and the decoded fields) and the DSPA frames (u32 L, u32 R per 192 master clocks) are parsed with the OFFSETS WRITTEN IN THAT FILE,
+# never from a core header (ER-19). The literals live in fixtures/src/psg_tone.aexp (hand-derived rows, the derivation in its comments; built/gate/fixtures/psg-tone.aexp.tsv by scripts/fixture-build): ev_value (GUEST:program), ev_decode (MAN:P8-2+P8-3+P8-4), period (MAN:P8-9+H8-23,
+# documentary under the bound divisor 6, ER-14), cycle_order (MAN:P8-4+P8-5), silent before key-on (MAN:P8-4) and at power-on (ASSUMED:LED-PROF-0003). The case runs under the zero policy and seeded-prng-v4 seed 1 and requires byte-identical DSPE and DSPA streams across the two
+# (the fixture initialises every word it plays, D-204). The evidence text prints pcm_sha256 and psg_sha256 E0 repeatability beside the groups: a hash is a change detector, never a verdict (ER-20). No pitch, timing or sound claim; the word pass is not a support claim.
+id = "audio_tone_sel0"
+kind = "audio"
+fixture = "authored:psg-tone"
+request = ""
+expect = "rom=psg-tone;id=27;checks=4;scene=tone_sel0"
+meaning = "A guest that uploads a 32-word table to select 0 and keys it on at F = 256 makes the core emit one DSPE record per window-2 write with the decoded fields of the register pages and DSPA frames whose rising crossings are 1,024 samples apart over four cycles, whose plateaus rank as the words and which are 0 before key-on and at power-on; identical under zero and v4 seed 1 (E0)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 1000000

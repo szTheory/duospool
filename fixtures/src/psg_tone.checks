@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# psg_tone.checks - one row per CHECK of fixtures/src/psg_tone.s (D-125, plan 05-04). Columns separated by one TAB: check index (1-based), slug, class tag, meaning.
+# The PSG is write only (H8-24): these checks judge the guest's own table data with two in-guest computations each (GUEST); every judgement of the sound is the runner's, against fixtures/src/psg_tone.aexp (ER-21). A pass is not a support claim (ER-4).
+id=27
+checks=4
+1	table-sum-low	GUEST:table-sum	The low byte of the sum of the 32 table words (a table walk) equals the low byte of the sum of the counter 0..31: 496 = $01F0, low byte $F0
+2	table-sum-high	GUEST:table-sum	The high byte of the same two sums: $01
+3	table-order	GUEST:table-order	Words 0..15 of the table equal the closed form 16 + 3i (i = 0..5), 29 - 3(i - 6) (i = 6..10), 18 + 3(i - 11) (i = 11..15): the OR of the differences is zero
+4	table-perm	GUEST:table-perm	The 32 words are a permutation of 0..31: a bit per value in four map bytes, all set (the AND of the bytes is $FF)

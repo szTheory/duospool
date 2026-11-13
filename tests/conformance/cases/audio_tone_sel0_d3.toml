@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The wrong-divisor control of criterion 3 (plan 05-04; D-183, D-211 (2), RF-14): the scene tone_sel0 of fixtures/src/psg_tone.aexp judged on a run whose profile binds psg_tick_divisor = 3 (request bind.psg_tick_divisor=3). Every PSG counter then ticks twice as often, so a cycle at
+# F = 256 is 128 samples and the distance of the period rows is 512, not the literal 1,024: the case passes only when exactly the groups named by expect_red (period_L and period_R) fail and every other group of the scene passes (cycle_order holds at d = 3 because a step still spans 4 samples;
+# the silent and event groups do not depend on d). Any other red set is the harness failure misprog-misattributed (D-211). No literal is computed from the bound divisor (D-183): the d = 3 run is judged against the d = 6 literals and must fail them. Evidence tier E0.
+id = "audio_tone_sel0_d3"
+kind = "audio"
+fixture = "authored:psg-tone"
+request = "bind.psg_tick_divisor=3"
+expect = "rom=psg-tone;id=27;checks=4;scene=tone_sel0;expect_red=period_L,period_R"
+meaning = "The tracer scene bound to psg_tick_divisor = 3 fails exactly its period groups (a cycle of 128 samples gives a distance of 512 against the literal 1,024) while cycle_order, silent and the event groups stay green: the period rows can fail and the divisor reaches them (E0)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 1000000

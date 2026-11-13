@@ -1,0 +1,94 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# psg_tone.aexp - the hand-derived literal rows of the audio scenes of fixtures/src/psg_tone.s (plan 05-04, grown by 05-06; D-187, D-196, D-197, D-199, D-206..D-208, D-211, D-212, D-225, D-230, PR-13, RF-13, RF-14, ER-14..ER-21).
+# scripts/fixture-build writes this file, comments dropped, as build/gate/fixtures/psg-tone.aexp.tsv; the runner kind audio (tests/conformance/audiokinds.c) reads only that file; scripts/audio-check (plan 05-05) judges this source.
+# One source holds the literals: no expected value lives in a case file, and none comes from a run of DuoSpool, another emulator or a hash (R7). Each row carries its class through its group (R1); the weakest class of the inputs wins (R2, ER-10).
+# Rows are TAB separated, keys closed. Row kinds: aexp sample_mclk=N (the header: must equal the DSPA stream's sample_mclk); scene NAME case=ID role=literal|golden|expect_red [twin=NAME] [expect_red=G,...];
+#   group SCENE GID form=ROWS|REL|STRUCT|EV kind=KIND class=MAN:<P8-n+...>|GUEST:<model>|ASSUMED:<LED-id> kills=AF0,...; row SCENE GID SELECTOR LITERAL (key=value items separated by semicolons).
+# Selector: anchor=ev:ch=<0..5|G>;reg=R<n>;[val=$hh;]nth=N names the N-th DSPE record of that channel (G: the global chan $FE), register and value; ev=+K the K-th record after it (form EV); from=+M and to=+M master clocks after it, or from=M absolute (no anchor);
+#   to=ev:ch=..;reg=..;[val=..;]nth=N an end anchor (RF-13); side=L|R. A window [from, to) holds the samples s with from <= s x 192 < to (D-187: sample s sees every event at or before s x 192 and no write stamped there).
+# The scene tone_sel0 (select 0, F = 256, d = 6): key-on at stamp w, w' = w - (w mod 6); step j (j >= 1) at w' + 1536 j sets the wave index to j mod 32; att = 0 on both sides (R1 $FF, AL $1F, R5 $FF: S = 0), so a sample is 32768 x word (the exact value is ASSUMED and not judged here).
+# AF kills are written now and judged by the fault sweep from plan 05-05 (D-209).
+# Byte budget (D-230, cap 32,768 bytes and 512 rows): after plan 05-04 this file is 12,532 bytes (tone_sel0: 10 groups, 57 rows; a row about 115 bytes, a group 92, a comment line about 200); projected +2.7 KB in 05-05 (STRUCT groups, golden scene) and +16 KB in 05-06
+#   (three pan scenes about 2.5 KB each, tone_atten 2 KB, event rows 3.6 KB, probe 0.8 KB, twin 2.5 KB): about 31 KB and 250 rows. The margin is small: later plans write one comment line per group, never per row.
+aexp	sample_mclk=192
+scene	tone_sel0	case=audio_tone_sel0	role=literal
+# ev_value_sel0 (GUEST:program): the order and values of the writes of (c) and (e) of psg_tone.s, counted from the R0 $00 of (c), the second R0 $00 of the program ((b) writes R0 = 0 first); (d) writes nothing, so the key-on is the 40th record.
+group	tone_sel0	ev_value_sel0	form=EV	kind=ev_value	class=GUEST:program	kills=AF0,AF8
+row	tone_sel0	ev_value_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+0	reg=R0;val=$00
+row	tone_sel0	ev_value_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+1	reg=R4;val=$40
+row	tone_sel0	ev_value_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+2	reg=R4;val=$1F
+row	tone_sel0	ev_value_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+3	reg=R6;vals=$10,$13,$16,$19,$1C,$1F,$1D,$1A,$17,$14,$11,$12,$15,$18,$1B,$1E,$0F,$0B,$07,$03,$00,$04,$08,$0C,$0E,$0A,$06,$02,$01,$05,$09,$0D
+row	tone_sel0	ev_value_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+35	reg=R2;val=$00
+row	tone_sel0	ev_value_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+36	reg=R3;val=$01
+row	tone_sel0	ev_value_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+37	reg=R1;val=$FF
+row	tone_sel0	ev_value_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+38	reg=R5;val=$FF
+row	tone_sel0	ev_value_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+39	reg=R4;val=$9F
+# ev_decode_sel0 (MAN:P8-2+P8-3+P8-4): the decoded fields (chan, effect, wave_idx, post) of the same records, written by hand from the register pages and D-196: R0 and R1 are global (chan $FE, wave_idx $FF); R4 $40 sets DDA, so effect IDX_RESET ($08) and the index 0;
+#   R6 write k = 1..32 stores word k - 1 at the index, which then steps: WAVE_STORE ($01), wave_idx k & 31, post the word; R2 and R3 post the 12-bit F ($000, then $100); R4 posts value & $DF; R5 posts the byte.
+group	tone_sel0	ev_decode_sel0	form=EV	kind=ev_decode	class=MAN:P8-2+P8-3+P8-4	kills=AF0,AF8,AF9
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+0	chan=$FE;effect=$00;wave_idx=$FF;post=$0000
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+1	chan=0;effect=$08;wave_idx=0;post=$0040
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+2	chan=0;effect=$00;wave_idx=0;post=$001F
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+3	chan=0;effect=$01;wave_idx=1;post=$0010
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+4	chan=0;effect=$01;wave_idx=2;post=$0013
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+5	chan=0;effect=$01;wave_idx=3;post=$0016
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+6	chan=0;effect=$01;wave_idx=4;post=$0019
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+7	chan=0;effect=$01;wave_idx=5;post=$001C
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+8	chan=0;effect=$01;wave_idx=6;post=$001F
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+9	chan=0;effect=$01;wave_idx=7;post=$001D
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+10	chan=0;effect=$01;wave_idx=8;post=$001A
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+11	chan=0;effect=$01;wave_idx=9;post=$0017
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+12	chan=0;effect=$01;wave_idx=10;post=$0014
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+13	chan=0;effect=$01;wave_idx=11;post=$0011
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+14	chan=0;effect=$01;wave_idx=12;post=$0012
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+15	chan=0;effect=$01;wave_idx=13;post=$0015
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+16	chan=0;effect=$01;wave_idx=14;post=$0018
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+17	chan=0;effect=$01;wave_idx=15;post=$001B
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+18	chan=0;effect=$01;wave_idx=16;post=$001E
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+19	chan=0;effect=$01;wave_idx=17;post=$000F
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+20	chan=0;effect=$01;wave_idx=18;post=$000B
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+21	chan=0;effect=$01;wave_idx=19;post=$0007
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+22	chan=0;effect=$01;wave_idx=20;post=$0003
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+23	chan=0;effect=$01;wave_idx=21;post=$0000
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+24	chan=0;effect=$01;wave_idx=22;post=$0004
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+25	chan=0;effect=$01;wave_idx=23;post=$0008
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+26	chan=0;effect=$01;wave_idx=24;post=$000C
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+27	chan=0;effect=$01;wave_idx=25;post=$000E
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+28	chan=0;effect=$01;wave_idx=26;post=$000A
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+29	chan=0;effect=$01;wave_idx=27;post=$0006
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+30	chan=0;effect=$01;wave_idx=28;post=$0002
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+31	chan=0;effect=$01;wave_idx=29;post=$0001
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+32	chan=0;effect=$01;wave_idx=30;post=$0005
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+33	chan=0;effect=$01;wave_idx=31;post=$0009
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+34	chan=0;effect=$01;wave_idx=0;post=$000D
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+35	chan=0;effect=$00;wave_idx=0;post=$0000
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+36	chan=0;effect=$00;wave_idx=0;post=$0100
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+37	chan=$FE;effect=$00;wave_idx=$FF;post=$00FF
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+38	chan=0;effect=$00;wave_idx=0;post=$00FF
+row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+39	chan=0;effect=$00;wave_idx=0;post=$009F
+# period_L, period_R (MAN:P8-9+H8-23; ER-14: documentary under the bound divisor 6, no pitch claim): a cycle is 32 x 1536 = 49,152 = 256 x 192 master clocks, so the rising crossing (word 31 -> word 0, the only one: the threshold (min + max) / 2 lies between words 15 and 16)
+#   of cycle k is sample c_k = ceil((w' + 49152 k) / 192) = ceil(w' / 192) + 256 k. c_1 (w' + 49,152 <= w + 49,152) is before the window start w + 50,000; c_2 is the first inside and c_6 (w' + 294,912 < w + 300,000) the fifth: c_6 - c_2 = 4 x 256 = 1,024 (f=256;k=4;d=1024, d = k x f).
+#   At d = 3 (audio_tone_sel0_d3) a cycle is 128 samples, the distance 512: the period groups are red there and every other group green (D-183, D-211).
+group	tone_sel0	period_L	form=ROWS	kind=period	class=MAN:P8-9+H8-23	kills=AF0,AF2,AF4,AF5,AF6
+row	tone_sel0	period_L	anchor=ev:ch=0;reg=R4;val=$9F;nth=1;from=+50000;to=+300000;side=L	f=256;k=4;d=1024;r1=$FF;al=$1F;r5=$FF
+group	tone_sel0	period_R	form=ROWS	kind=period	class=MAN:P8-9+H8-23	kills=AF0,AF2,AF4,AF5,AF6
+row	tone_sel0	period_R	anchor=ev:ch=0;reg=R4;val=$9F;nth=1;from=+50000;to=+300000;side=R	f=256;k=4;d=1024;r1=$FF;al=$1F;r5=$FF
+# cycle_order_L, cycle_order_R (MAN:P8-4+P8-5; RF-14): the samples between two consecutive rising crossings of the same window collapse into 32 plateaus (8 samples each at d = 6, 4 at d = 3) whose ranks equal the uploaded words up to rotation;
+#   the table is a permutation of 0..31, so the rank of a plateau is its word and the literal is the table itself.
+group	tone_sel0	cycle_order_L	form=ROWS	kind=cycle_order	class=MAN:P8-4+P8-5	kills=AF0,AF5,AF6,AF7
+row	tone_sel0	cycle_order_L	anchor=ev:ch=0;reg=R4;val=$9F;nth=1;from=+50000;to=+300000;side=L	words=16,19,22,25,28,31,29,26,23,20,17,18,21,24,27,30,15,11,7,3,0,4,8,12,14,10,6,2,1,5,9,13;r1=$FF;al=$1F;r5=$FF
+group	tone_sel0	cycle_order_R	form=ROWS	kind=cycle_order	class=MAN:P8-4+P8-5	kills=AF0,AF5,AF6,AF7
+row	tone_sel0	cycle_order_R	anchor=ev:ch=0;reg=R4;val=$9F;nth=1;from=+50000;to=+300000;side=R	words=16,19,22,25,28,31,29,26,23,20,17,18,21,24,27,30,15,11,7,3,0,4,8,12,14,10,6,2,1,5,9,13;r1=$FF;al=$1F;r5=$FF
+# silent_pre_L, silent_pre_R (MAN:P8-4; chon=0 is the only basis, the inputs give S = 0): from the R5 $FF write, the last write before the delay (d), to the key-on write (an end anchor, RF-13), every sample is 0 on that side (0 is the DSPA definition of no contribution, ER-19).
+#   Channel 0 sits at full volume with chON 0; the other channels are chON 0 at AL 0. Live partners on each side (D-208): period and cycle_order.
+group	tone_sel0	silent_pre_L	form=ROWS	kind=silent	class=MAN:P8-4	kills=AF0,AF6
+row	tone_sel0	silent_pre_L	anchor=ev:ch=0;reg=R5;val=$FF;nth=1;from=+0;to=ev:ch=0;reg=R4;val=$9F;nth=1;side=L	chon=0;r1=$FF;al=$1F;r5=$FF
+group	tone_sel0	silent_pre_R	form=ROWS	kind=silent	class=MAN:P8-4	kills=AF0,AF6
+row	tone_sel0	silent_pre_R	anchor=ev:ch=0;reg=R5;val=$FF;nth=1;from=+0;to=ev:ch=0;reg=R4;val=$9F;nth=1;side=R	chon=0;r1=$FF;al=$1F;r5=$FF
+# silent_poweron_L, silent_poweron_R (ASSUMED:LED-PROF-0003, the power-on PSG state of D-204: every register 0, so chON 0 and S = 45): from sample 0 to the first PSG write (the R0 $00 of (b)), every sample is 0 on that side.
+group	tone_sel0	silent_poweron_L	form=ROWS	kind=silent	class=ASSUMED:LED-PROF-0003	kills=AF0,AF6
+row	tone_sel0	silent_poweron_L	from=0;to=ev:ch=G;reg=R0;val=$00;nth=1;side=L	chon=0;r1=$00;al=$00;r5=$00
+group	tone_sel0	silent_poweron_R	form=ROWS	kind=silent	class=ASSUMED:LED-PROF-0003	kills=AF0,AF6
+row	tone_sel0	silent_poweron_R	from=0;to=ev:ch=G;reg=R0;val=$00;nth=1;side=R	chon=0;r1=$00;al=$00;r5=$00
