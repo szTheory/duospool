@@ -16,6 +16,7 @@
 #include "ds_core.h"
 #include "ds_mapper.h"
 #include "ds_obs.h"
+#include "ds_psg.h"
 #include "ds_vdc.h"
 
 /* processor status bits (H8-4): N V T B D I Z C; B exists only on the stack, so it has no mask here */
@@ -1095,13 +1096,14 @@ static uint32_t cpu_step_body(struct ds_instance *inst, struct ds_obs_log *log)
 }
 
 /* one instruction; log is the observer log of the running ds_run call or NULL (plan 03-10): the instruction hook is called once per executed instruction with the state before it runs (D-119). The VDC and VCE are folded to the last clock of the step (start + total - 1)
- * on every exit of the step, whatever it was, so ds_cpu_step (no log) and ds_run share the fold and the next event is never before machine_time (D-137 (3), F-9, F-28) */
+ * on every exit of the step, whatever it was, so ds_cpu_step (no log) and ds_run share the fold and the next event is never before machine_time (D-137 (3), F-9, F-28). The PSG is folded to the same clock directly after, with step_end 1 (plan 05-02; D-186, PR-1) */
 uint32_t ds_cpu_step_obs(struct ds_instance *inst, struct ds_obs_log *log)
 {
     uint64_t start = inst->machine_time;
     uint32_t total = cpu_step_body(inst, log);
 
     ds_vdc_advance(inst, start + (uint64_t)total - UINT64_C(1), log);
+    ds_psg_advance(inst, start + (uint64_t)total - UINT64_C(1), 1u, log);
     return total;
 }
 

@@ -1613,6 +1613,7 @@ static void dl_windows(struct ctx *c, const char *rom, const char *request, char
     } big;
     struct ds_dev_sink dsk;
     struct ds_obs_log log;
+    struct ds_run_request orq;
     struct ds_bus bus;
     struct ds_bus bus_off;
     unsigned k;
@@ -1630,7 +1631,9 @@ static void dl_windows(struct ctx *c, const char *rom, const char *request, char
     memset(&dsk, 0, sizeof dsk);
     dsk.records = big.b;
     dsk.capacity = DL_WIN_CAP * 4u;
-    ds_obs_begin(&log, NULL, &dsk, NULL);
+    memset(&orq, 0, sizeof orq); /* the request form of ds_obs_begin (plan 05-02, D-198): a zeroed request carrying only this sink */
+    orq.dev = &dsk;
+    ds_obs_begin(&log, &orq, w->machine_time);
     memset(&bus, 0, sizeof bus);
     memset(&bus_off, 0, sizeof bus_off);
     bus.obs = &log;
@@ -1715,6 +1718,7 @@ static void dl_windows(struct ctx *c, const char *rom, const char *request, char
         } small;
         struct ds_dev_sink ssk;
         struct ds_obs_log slog;
+        struct ds_run_request srq;
         struct ds_bus sbus;
         unsigned n;
 
@@ -1722,7 +1726,9 @@ static void dl_windows(struct ctx *c, const char *rom, const char *request, char
         memset(&ssk, 0xA5, sizeof ssk);
         ssk.records = small.b;
         ssk.capacity = 4u;
-        ds_obs_begin(&slog, NULL, &ssk, NULL);
+        memset(&srq, 0, sizeof srq);
+        srq.dev = &ssk;
+        ds_obs_begin(&slog, &srq, w->machine_time);
         memset(&sbus, 0, sizeof sbus);
         sbus.obs = &slog;
         for (n = 0u; n < 10u; n++) {
@@ -2221,7 +2227,9 @@ static void vc_append(struct ctx *c, char *got, size_t gotcap)
     } mem;
     struct ds_vid_sink vsk;
     struct ds_obs_log log;
+    struct ds_run_request orq;
 
+    memset(&orq, 0, sizeof orq); /* the request form of ds_obs_begin (plan 05-02, D-198): a zeroed request carrying only the vid sink; no instance exists here, so the machine time is 0 */
     for (t = 0u; t < (unsigned)(sizeof vc_cases / sizeof vc_cases[0]); t++) {
         const struct vc_case *vc = &vc_cases[t];
         unsigned i;
@@ -2234,7 +2242,8 @@ static void vc_append(struct ctx *c, char *got, size_t gotcap)
         memset(&vsk, OBS_POISON, sizeof vsk);
         vsk.bytes = mem.b + VC_GUARD;
         vsk.capacity = vc->cap;
-        ds_obs_begin(&log, NULL, NULL, &vsk);
+        orq.vid = &vsk;
+        ds_obs_begin(&log, &orq, UINT64_C(0));
         snprintf(msg, sizeof msg, "append case %u: ds_obs_begin did not overwrite the poisoned vid header with zeros", t);
         check(c, get_u32(vsk.header) == 0u && get_u32(vsk.header + 4) == 0u && get_u64(vsk.header + 8) == 0u && get_u64(vsk.header + 16) == 0u && get_u64(vsk.header + 24) == 0u, msg);
         for (i = 0u; i < vc->n; i++) {
@@ -2269,7 +2278,8 @@ static void vc_append(struct ctx *c, char *got, size_t gotcap)
     memset(&vsk, OBS_POISON, sizeof vsk);
     vsk.bytes = mem.b + VC_GUARD;
     vsk.capacity = 3000u;
-    ds_obs_begin(&log, NULL, NULL, &vsk);
+    orq.vid = &vsk;
+    ds_obs_begin(&log, &orq, UINT64_C(0));
     memset(rec, 0x5A, 64u);
     ds_obs_vid(&log, NULL, 64u);
     ds_obs_vid(&log, rec, 0u);
@@ -2278,7 +2288,8 @@ static void vc_append(struct ctx *c, char *got, size_t gotcap)
     check(c, get_u32(vsk.header) == 1u && get_u32(vsk.header + 4) == 2u && get_u64(vsk.header + 8) == 3u && get_u64(vsk.header + 16) == 64u, "a NULL record and an empty record were not counted lost, or the whole record after them was not stored");
     /* an absent sink and a NULL log do nothing: the header of a sink that is not attached keeps its poison */
     memset(&vsk, OBS_POISON, sizeof vsk);
-    ds_obs_begin(&log, NULL, NULL, NULL);
+    orq.vid = NULL;
+    ds_obs_begin(&log, &orq, UINT64_C(0));
     ds_obs_vid(&log, rec, 64u);
     ds_obs_vid(NULL, rec, 64u);
     ds_obs_end(&log);
@@ -2310,4 +2321,273 @@ void kind_vid_chan_append(const struct kase *k, struct ctx *c, char *got, size_t
     }
     vc_attached(c, rom, k->val[K_REQUEST], until, got, gotcap);
     vc_append(c, got, gotcap);
+}
+
+/* ---- kinds psg_chan_append and pcm_chan_append: the two audio sink channels (plan 05-02; D-196, D-197, D-198, F-2, T-05-04, T-05-06) ----
+ * expect = parts=attached,append. Evidence class E0: the channel mechanism and the non-interference of an attached sink, no hardware claim. The layouts are definitions (LED-AUD-0013, LED-AUD-0014); no PSG record or PCM frame has a producer in the core yet.
+ *   attached  fixture = authored:NAME and until_mclk: the ROM is run once with no sink (the reference) and once with only the psg (or only the pcm) sink, header and buffer poisoned with $A5 and guard bytes around it. The header after the run must be overwritten
+ *             (the pcm header reads frame_bytes 8, version 1, format 1), lost 0, seq = count, count within the capacity; the buffer past the stored records and the guards keep their poison; and the run keeps the reference machine time, steps and digest.
+ *             The count itself is not asserted: it is 0 until plan 05-04 adds the producer, and these checks hold before and after it.
+ *   append    direct channel calls, no ds_run: records (24 bytes) or frames (8 bytes) are offered with capacities 0, 1, 4 and 64 and the header must read the counts of the table below, written here by hand from the rule (drop-newest in whole records, the first count
+ *             offers stored back to back, lost = seq - count, once full every later offer is lost); ds_obs_begin overwrites a poisoned header; pcm frames are read back at hand-written byte offsets (L at +0, R at +4, u32 little-endian); an absent sink and a NULL log do nothing. */
+
+#define AC_GUARD 64u
+#define AC_LARGE 64u
+#define AC_PSG_BYTES (AC_LARGE * DS_PSG_RECORD_BYTES)
+#define AC_PCM_FRAMES 512u /* the attached run of 40,000 master clocks is about 209 frames at 192 master clocks per frame (D-187); 512 leaves room once plan 05-04 produces frames */
+
+/* the pcm header fields the core writes in every accepted call (D-197, PR-4) */
+static int ac_pcm_fixed_ok(const uint8_t *h)
+{
+    return get_u16(h + 28) == 8u && h[30] == 1u && h[31] == 1u;
+}
+
+static void ac_attached(struct ctx *c, const char *rom, const char *request, uint64_t until, int pcm, char *got, size_t gotcap)
+{
+    struct booted b0;
+    struct booted b1;
+    const struct ds_instance *ci0 = NULL;
+    const struct ds_instance *ci1 = NULL;
+    struct ds_run_request rq;
+    struct ds_run_result r0;
+    struct ds_run_result r1;
+    struct ds_psg_sink psk;
+    struct ds_pcm_sink fsk;
+    union {
+        uint64_t align;
+        unsigned char b[AC_GUARD + AC_PCM_FRAMES * DS_PCM_FRAME_BYTES + AC_GUARD];
+    } mem;
+    uint8_t d0[DS_DIGEST_BYTES];
+    uint8_t d1[DS_DIGEST_BYTES];
+    const uint8_t *h = pcm ? fsk.header : psk.header;
+    uint32_t cap = pcm ? AC_PCM_FRAMES : AC_LARGE;
+    size_t unit = pcm ? (size_t)DS_PCM_FRAME_BYTES : (size_t)DS_PSG_RECORD_BYTES;
+    const char *err = boot_built_rom(rom, request, &b0, &ci0);
+    size_t j;
+    size_t used_bytes;
+    int untouched = 1;
+
+    if (err != NULL) {
+        harness_error(c, err);
+        return;
+    }
+    err = boot_built_rom(rom, request, &b1, &ci1);
+    if (err != NULL) {
+        release_boot(&b0);
+        harness_error(c, err);
+        return;
+    }
+    memset(&mem, OBS_POISON, sizeof mem);
+    memset(&psk, OBS_POISON, sizeof psk);
+    memset(&fsk, OBS_POISON, sizeof fsk);
+    psk.records = mem.b + AC_GUARD;
+    psk.capacity = AC_LARGE;
+    fsk.frames = mem.b + AC_GUARD;
+    fsk.capacity = AC_PCM_FRAMES;
+    memset(&r0, 0, sizeof r0);
+    memset(&r1, 0, sizeof r1);
+    memset(&rq, 0, sizeof rq);
+    rq.struct_size = (uint32_t)sizeof rq;
+    rq.until_mclk = until;
+    (void)ds_run((struct ds_instance *)(void *)b0.mem, &rq, &r0);
+    if (pcm) {
+        rq.pcm = &fsk;
+    } else {
+        rq.psg = &psk;
+    }
+    (void)ds_run((struct ds_instance *)(void *)b1.mem, &rq, &r1);
+    note_run(c, r1.machine_time, r1.reason);
+    check(c, r0.reason == (uint32_t)DS_RUN_REASON_UNTIL && r1.reason == (uint32_t)DS_RUN_REASON_UNTIL && r1.refusal == (uint32_t)DS_RUNREF_NONE, "a run with an audio sink was refused or did not reach its deadline");
+    check(c, get_u32(h + 4) == 0u && (uint64_t)get_u32(h) == get_u64(h + 8) && get_u32(h) <= cap && (!pcm || ac_pcm_fixed_ok(h)),
+          "the audio sink header after the run does not read lost 0, seq = count within the capacity (and for pcm frame_bytes 8, version 1, format 1): a poisoned header must be overwritten by a run that carries only this sink");
+    used_bytes = (size_t)(get_u32(h) <= cap ? get_u32(h) : cap) * unit;
+    for (j = 0u; j < sizeof mem.b; j++) {
+        if (j >= AC_GUARD && j < AC_GUARD + used_bytes) {
+            continue;
+        }
+        untouched = untouched && mem.b[j] == (unsigned char)OBS_POISON; /* the guards and every byte past the stored records (for psg also the tail of the shared buffer past its 64 records) */
+    }
+    check(c, untouched, "the core wrote into the guard bytes or into the audio buffer past the records it stored");
+    check(c, r0.machine_time == r1.machine_time && r0.steps == r1.steps && ds_digest(ci0, d0) == 0u && ds_digest(ci1, d1) == 0u && memcmp(d0, d1, DS_DIGEST_BYTES) == 0,
+          "attaching an audio sink changed the machine time, the steps or the digest of the run");
+    release_boot(&b0);
+    release_boot(&b1);
+    snprintf(got, gotcap, "count=%u lost=%u seq=%llu", (unsigned)get_u32(h), (unsigned)get_u32(h + 4), (unsigned long long)get_u64(h + 8));
+}
+
+/* one append case: the capacity (records or frames), the number offered, and the counts the rule predicts (seq is n) */
+struct ac_case {
+    uint32_t cap;
+    unsigned n;
+    uint32_t count;
+    uint32_t lost;
+    const char *what;
+};
+
+static const struct ac_case ac_cases[] = {
+    {0u, 3u, 0u, 3u, "capacity 0 stores nothing and counts every offer lost"},
+    {1u, 3u, 1u, 2u, "capacity 1 keeps the first offer whole and drops the two newest"},
+    {4u, 4u, 4u, 0u, "an exact fit stores all four"},
+    {4u, 10u, 4u, 6u, "capacity 4: the first four stay whole, the six newest are lost and the sink stays full"},
+    {AC_LARGE, 10u, 10u, 0u, "a large capacity stores every offer"},
+};
+
+static unsigned char ac_pattern(unsigned i, uint32_t j)
+{
+    return (unsigned char)(0x11u * (i + 1u) + j);
+}
+
+/* the frame values of offer i: every byte distinct, so a swapped L and R or a wrong byte order is visible */
+static uint32_t ac_left(unsigned i)
+{
+    return UINT32_C(0x04030201) + UINT32_C(0x10101010) * (uint32_t)i;
+}
+
+static uint32_t ac_right(unsigned i)
+{
+    return UINT32_C(0x08070605) + UINT32_C(0x10101010) * (uint32_t)i;
+}
+
+/* the first count offers stored back to back: a psg record is the 24 pattern bytes; a pcm frame is L at +0..+3 and R at +4..+7, least significant byte first (hand-written offsets, D-197) */
+static int ac_stored_ok(const unsigned char *buf, int pcm, uint32_t count)
+{
+    unsigned i;
+    uint32_t j;
+    int same = 1;
+
+    for (i = 0u; i < count; i++) {
+        if (pcm) {
+            const unsigned char *f = buf + (size_t)i * 8u;
+            uint32_t l = ac_left(i);
+            uint32_t r = ac_right(i);
+
+            same = same && f[0] == (unsigned char)(l & 0xFFu) && f[1] == (unsigned char)((l >> 8u) & 0xFFu) && f[2] == (unsigned char)((l >> 16u) & 0xFFu) && f[3] == (unsigned char)((l >> 24u) & 0xFFu);
+            same = same && f[4] == (unsigned char)(r & 0xFFu) && f[5] == (unsigned char)((r >> 8u) & 0xFFu) && f[6] == (unsigned char)((r >> 16u) & 0xFFu) && f[7] == (unsigned char)((r >> 24u) & 0xFFu);
+        } else {
+            for (j = 0u; j < 24u; j++) {
+                same = same && buf[(size_t)i * 24u + j] == ac_pattern(i, j);
+            }
+        }
+    }
+    return same;
+}
+
+static void ac_append(struct ctx *c, int pcm, char *got, size_t gotcap)
+{
+    unsigned t;
+    unsigned checks = 0u;
+    char msg[320];
+    unsigned char rec[DS_PSG_RECORD_BYTES];
+    union {
+        uint64_t align;
+        unsigned char b[AC_GUARD + AC_PSG_BYTES + AC_GUARD];
+    } mem;
+    struct ds_psg_sink psk;
+    struct ds_pcm_sink fsk;
+    struct ds_obs_log log;
+    struct ds_run_request orq;
+    const uint8_t *h = pcm ? fsk.header : psk.header;
+    size_t hbytes = pcm ? sizeof fsk.header : sizeof psk.header;
+    uint32_t unit = pcm ? 8u : 24u;
+    size_t k;
+
+    for (t = 0u; t < (unsigned)(sizeof ac_cases / sizeof ac_cases[0]); t++) {
+        const struct ac_case *ac = &ac_cases[t];
+        unsigned i;
+        uint32_t j;
+        int untouched = 1;
+        int zeroed;
+
+        memset(&mem, OBS_POISON, sizeof mem);
+        memset(&psk, OBS_POISON, sizeof psk);
+        memset(&fsk, OBS_POISON, sizeof fsk);
+        psk.records = mem.b + AC_GUARD;
+        psk.capacity = ac->cap;
+        fsk.frames = mem.b + AC_GUARD;
+        fsk.capacity = ac->cap;
+        memset(&orq, 0, sizeof orq); /* a zeroed request carrying only the sink under test (D-198); no instance exists here, so the machine time is 0 */
+        if (pcm) {
+            orq.pcm = &fsk;
+        } else {
+            orq.psg = &psk;
+        }
+        ds_obs_begin(&log, &orq, UINT64_C(0));
+        /* the poisoned header must read all zero, except the pcm constants frame_bytes 8, version 1 and format 1; first and sample_mclk read 0 until plan 05-04 sets them (PR-4) */
+        zeroed = get_u32(h) == 0u && get_u32(h + 4) == 0u && get_u64(h + 8) == 0u && (!pcm || (get_u64(h + 16) == 0u && get_u32(h + 24) == 0u && ac_pcm_fixed_ok(h)));
+        snprintf(msg, sizeof msg, "append case %u: ds_obs_begin did not overwrite the poisoned %s header", t, pcm ? "pcm" : "psg");
+        check(c, zeroed, msg);
+        for (i = 0u; i < ac->n; i++) {
+            if (pcm) {
+                ds_obs_pcm(&log, ac_left(i), ac_right(i));
+            } else {
+                for (j = 0u; j < DS_PSG_RECORD_BYTES; j++) {
+                    rec[j] = ac_pattern(i, j);
+                }
+                ds_obs_psg(&log, rec);
+            }
+        }
+        ds_obs_end(&log);
+        snprintf(msg, sizeof msg, "append case %u (%s): the %s header reads count %u lost %u seq %llu, the rule predicts count %u lost %u seq %u", t, ac->what, pcm ? "pcm" : "psg", (unsigned)get_u32(h), (unsigned)get_u32(h + 4), (unsigned long long)get_u64(h + 8),
+                 (unsigned)ac->count, (unsigned)ac->lost, ac->n);
+        /* first and sample_mclk stay 0 until plan 05-04 (PR-4) */
+        check(c, get_u32(h) == ac->count && get_u32(h + 4) == ac->lost && get_u64(h + 8) == (uint64_t)ac->n && (!pcm || (get_u64(h + 16) == 0u && get_u32(h + 24) == 0u && ac_pcm_fixed_ok(h))), msg);
+        snprintf(msg, sizeof msg, "append case %u (%s): the stored %s are not the first offers, whole and back to back", t, ac->what, pcm ? "frames (L then R, u32 little-endian)" : "records");
+        check(c, ac_stored_ok(mem.b + AC_GUARD, pcm, ac->count), msg);
+        for (j = 0u; j < (uint32_t)sizeof mem.b; j++) {
+            if (j < AC_GUARD || j >= AC_GUARD + ac->count * unit) {
+                untouched = untouched && mem.b[j] == (unsigned char)OBS_POISON;
+            }
+        }
+        snprintf(msg, sizeof msg, "append case %u (%s): the core wrote into the guard bytes or past the stored %s", t, ac->what, pcm ? "frames" : "records");
+        check(c, untouched, msg);
+        checks++;
+    }
+    /* an absent sink and a NULL log do nothing: the header of a sink that is not attached keeps its poison */
+    memset(&psk, OBS_POISON, sizeof psk);
+    memset(&fsk, OBS_POISON, sizeof fsk);
+    memset(&orq, 0, sizeof orq);
+    memset(rec, 0x5A, sizeof rec);
+    ds_obs_begin(&log, &orq, UINT64_C(0));
+    ds_obs_psg(&log, rec);
+    ds_obs_pcm(&log, 1u, 2u);
+    ds_obs_psg(NULL, rec);
+    ds_obs_pcm(NULL, 1u, 2u);
+    ds_obs_end(&log);
+    {
+        int poisoned = 1;
+
+        for (k = 0u; k < hbytes; k++) {
+            poisoned = poisoned && h[k] == (unsigned char)OBS_POISON;
+        }
+        check(c, poisoned, pcm ? "a call with no pcm sink wrote a pcm header" : "a call with no psg sink wrote a psg header");
+    }
+    {
+        size_t used = strlen(got);
+
+        snprintf(got + used, gotcap - used, " append_cases=%u", checks);
+    }
+}
+
+static void audio_chan_append(const struct kase *k, struct ctx *c, int pcm, char *got, size_t gotcap)
+{
+    char rom[48];
+    uint64_t until = 0u;
+
+    rom[0] = '\0';
+    if (strcmp(k->val[K_EXPECT], "parts=attached,append") != 0 || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until == 0u || authored_name(k->val[K_FIXTURE], rom, sizeof rom) != 0) {
+        harness_error(c, pcm ? "a pcm_chan_append case needs fixture = authored:NAME, until_mclk and expect = parts=attached,append" : "a psg_chan_append case needs fixture = authored:NAME, until_mclk and expect = parts=attached,append");
+        return;
+    }
+    ac_attached(c, rom, k->val[K_REQUEST], until, pcm, got, gotcap);
+    ac_append(c, pcm, got, gotcap);
+}
+
+void kind_psg_chan_append(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    audio_chan_append(k, c, 0, got, gotcap);
+}
+
+void kind_pcm_chan_append(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    audio_chan_append(k, c, 1, got, gotcap);
 }

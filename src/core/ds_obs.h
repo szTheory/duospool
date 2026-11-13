@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: MIT OR Apache-2.0 */
 /* SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors */
 /*
- * ds_obs.h - the observer sinks of the core (plans 03-10 and 03-19; D-119, D-131, WR-02 extended). Private to the core and its tests, like ds_core.h; no public header exists (D-05).
- * A sink is caller memory: the instance holds machine state only and nothing here is part of it. Three sinks exist, all output only; insn and dev share one header and one overflow policy, vid (plan 04-02) has its own, below.
+ * ds_obs.h - the observer sinks of the core (plans 03-10, 03-19, 04-02 and 05-02; D-119, D-131, WR-02 extended, D-197, D-198). Private to the core and its tests, like ds_core.h; no public header exists (D-05).
+ * A sink is caller memory: the instance holds machine state only and nothing here is part of it. Five sinks exist, all output only; insn, dev and psg share one header and one overflow policy, vid (plan 04-02) and pcm (plan 05-02) have their own, below.
  * The instruction sink (insn) receives one fixed-size record per executed instruction:
  *   record (DS_INSN_RECORD_BYTES = 24, little-endian, written byte by byte from widened unsigned values, the state BEFORE the instruction runs):
  *     +00 u64 start stamp (machine time in master clocks)  +08 u16 pc  +10 u8 opcode  +11 u8 A  +12 u8 X  +13 u8 Y  +14 u8 S  +15 u8 P  +16 u8 speed  +17..+23 zero
@@ -19,9 +19,15 @@
  * DS_VID_SINK_MAX_BYTES (a larger one is run.sink_unsupported), and its buffer is DS_VID_ALIGN-aligned. header (DS_VID_HEADER_BYTES = 32, little-endian, in the sink struct): +00 u32 count (whole records stored)  +04 u32 lost (records not stored, saturating)
  * +08 u64 seq (records offered in this call)  +16 u64 bytes (bytes stored: the sum of the stored records)  +24 u64 zero. Written at the start and at the end of every accepted call and never read. The policy is drop-newest in whole records with a sticky full
  * flag (F-2): the first record that does not fit sets full, and that record and every later one of the call count as lost, even a later one that is smaller; lost = seq - count and no record is ever cut or gapped. A record pointer is never used for a zero-length copy.
+ * The PSG sink (psg, plan 05-02; D-196, D-198) has the dev shape: the 16-byte header above, DS_PSG_RECORD_BYTES = 24 per record (the DSPE v1 layout, LED-AUD-0013, is filled by a later plan; the channel here only stores whole records), DS_PSG_ALIGN-aligned,
+ * at most DS_SINK_MAX_RECORDS records, drop-newest. The PCM sink (pcm, plan 05-02; D-197) holds raw-audio frames of DS_PCM_FRAME_BYTES = 8 (u32 L then u32 R, little-endian, unsigned; LED-AUD-0014), DS_PCM_ALIGN-aligned, at most DS_PCM_SINK_MAX_FRAMES frames
+ * (a larger capacity is run.sink_unsupported). header (DS_PCM_HEADER_BYTES = 32, little-endian): +00 u32 count (frames stored)  +04 u32 lost (saturating)  +08 u64 seq (frames offered)  +16 u64 first  +24 u32 sample_mclk  +28 u16 frame_bytes (8)  +30 u8 version (1)
+ * +31 u8 format (1 = 2 x u32le unsigned, L then R). Written at the start and at the end of every accepted call and never read; first and sample_mclk stay 0 until plan 05-04 (PR-4). The policy is drop-newest in whole frames with the sticky full flag (F-2): frames have
+ * one size, so the first frame that does not fit leaves count at the capacity and every later frame of the call is lost as well (the chan_slot rule); lost = seq - count, never a gap.
  * The count of the running call lives in a local of ds_run (struct ds_obs_log), never in the instance and never in caller memory. A sink whose memory overlaps the instance, the request, the result, itself or another sink, a misaligned
  * sink or record pointer, a NULL record pointer with a nonzero capacity, or a record range that wraps the address space is refused as run.memory_invalid and nothing is written (the instance is byte-identical). A capacity above
- * DS_SINK_MAX_RECORDS (insn, dev) or DS_VID_SINK_MAX_BYTES (vid) is refused as run.sink_unsupported. The order of the checks is: the sink structs (memory_invalid), then the capacities (sink_unsupported), then the record ranges (memory_invalid). Hooks are void and take a const
+ * DS_SINK_MAX_RECORDS (insn, dev, psg), DS_VID_SINK_MAX_BYTES (vid) or DS_PCM_SINK_MAX_FRAMES (pcm) is refused as run.sink_unsupported.
+ * Before any sink, a request or a result that overlaps the instance is memory_invalid (IN-03, plan 05-02). The order of the sink checks is: the sink structs (memory_invalid), then the capacities (sink_unsupported), then the record ranges (memory_invalid). Hooks are void and take a const
  * instance: they cannot change machine state. The type name ds_sink_fn belongs to the digest stream (ds_serial.h).
  */
 #ifndef DS_OBS_H
@@ -54,6 +60,22 @@ _Static_assert(DS_VID_MAX_DOTS == (uint32_t)DS_CONST_line_mclk / 2u, "DS_VID_MAX
 _Static_assert(DS_VID_MAX_REC_BYTES == 2792u, "the longest DSVR v1 record is 64 + 2728 = 2792 bytes (D-161)");
 _Static_assert((uint64_t)DS_VID_SINK_MAX_BYTES <= (uint64_t)SIZE_MAX, "the largest sink must fit the address space");
 
+/* the PSG register-write sink (plan 05-02; D-196, D-198): the dev shape, one 24-byte DSPE v1 record per window-2 write */
+#define DS_PSG_RECORD_BYTES 24u
+#define DS_PSG_HEADER_BYTES 16u
+#define DS_PSG_ALIGN 8u
+_Static_assert((uint64_t)DS_SINK_MAX_RECORDS * (uint64_t)DS_PSG_RECORD_BYTES <= (uint64_t)SIZE_MAX, "the largest sink must fit the address space");
+
+/* the raw-audio frame sink (plan 05-02; D-197): 8-byte frames, a 32-byte header, at most 8,388,608 frames (64 MiB) */
+#define DS_PCM_FRAME_BYTES 8u
+#define DS_PCM_HEADER_BYTES 32u
+#define DS_PCM_ALIGN 8u
+#define DS_PCM_SINK_MAX_FRAMES 8388608u /* a larger capacity is run.sink_unsupported */
+#define DS_PCM_VERSION 1u
+#define DS_PCM_FORMAT 1u /* 2 x u32le unsigned, L then R */
+_Static_assert((uint64_t)DS_PCM_SINK_MAX_FRAMES * (uint64_t)DS_PCM_FRAME_BYTES <= (uint64_t)SIZE_MAX, "the largest sink must fit the address space");
+_Static_assert((uint64_t)DS_PCM_SINK_MAX_FRAMES * (uint64_t)DS_PCM_FRAME_BYTES <= (uint64_t)UINT32_MAX, "the byte count of the largest pcm sink must fit a u32");
+
 /* the kind and flag bytes of a dev record */
 enum { DS_DEV_WRITE = 1, DS_DEV_READ = 2, DS_DEV_ST = 3 };
 enum { DS_DEV_FLAG_PENALTY = 1, DS_DEV_FLAG_PHYS = 2 };
@@ -74,6 +96,18 @@ struct ds_vid_sink {
     uint8_t header[DS_VID_HEADER_BYTES]; /* output only: written by ds_run, never read */
     uint8_t *bytes;                      /* capacity bytes of caller memory, DS_VID_ALIGN-aligned when capacity is nonzero */
     uint32_t capacity;                   /* BYTES, from the request: nothing in caller memory but this field steers how much is written */
+};
+
+struct ds_psg_sink {
+    uint8_t header[DS_PSG_HEADER_BYTES]; /* output only: written by ds_run, never read */
+    uint8_t *records;                    /* capacity * DS_PSG_RECORD_BYTES bytes of caller memory, DS_PSG_ALIGN-aligned when capacity is nonzero */
+    uint32_t capacity;                   /* records, from the request */
+};
+
+struct ds_pcm_sink {
+    uint8_t header[DS_PCM_HEADER_BYTES]; /* output only: written by ds_run, never read */
+    uint8_t *frames;                     /* capacity * DS_PCM_FRAME_BYTES bytes of caller memory, DS_PCM_ALIGN-aligned when capacity is nonzero */
+    uint32_t capacity;                   /* FRAMES, from the request */
 };
 
 /* the running state of one sink in one ds_run call: a local of ds_run, written back to the header at the end; on is 0 for a sink the request did not carry */
@@ -104,17 +138,24 @@ struct ds_obs_log {
     struct ds_obs_chan insn;
     struct ds_obs_chan dev;
     struct ds_obs_vchan vid;
+    struct ds_obs_chan psg; /* the dev shape (plan 05-02) */
+    struct ds_obs_chan pcm; /* 8-byte frames: one size, so chan_slot's rule is the sticky full rule (plan 05-02, F-2) */
 };
 
 /* DS_RUNREF_NONE when the sinks of the request may be used by this call, else the refusal (memory_invalid or sink_unsupported) in the order above; a NULL sink is not carried and is always acceptable */
 uint32_t ds_obs_sinks_check(const struct ds_run_request *request, const struct ds_instance *inst, const struct ds_run_result *result);
-void ds_obs_begin(struct ds_obs_log *log, struct ds_insn_sink *insn, struct ds_dev_sink *dev, struct ds_vid_sink *vid); /* zero the running counts and overwrite the headers of the sinks that are carried */
+/* zero the running counts and overwrite the headers of the sinks the request carries (plan 05-02 form, D-198: later sinks never change it); machine_time is the instance's time at the start of the call (unused until plan 05-04 sets the pcm cursor from it, PR-4) */
+void ds_obs_begin(struct ds_obs_log *log, const struct ds_run_request *request, uint64_t machine_time);
 void ds_obs_insn(struct ds_obs_log *log, const struct ds_instance *inst, uint32_t opcode);     /* one record, or lost++; log NULL or no insn sink does nothing */
 /* one dev record for an access at the stamp the bus computed for it, carrying the pc the bus was given (struct ds_bus pc: never read from the instance); the bus calls it after the access, so aux is the latch it left; log NULL or no dev sink does nothing */
 void ds_obs_dev(struct ds_obs_log *log, const struct ds_instance *inst, uint64_t stamp, uint32_t pc, uint32_t phys, uint32_t value, uint32_t kind, uint32_t flags);
 /* offer one whole video record of rec_bytes bytes at rec (plan 04-02; D-162, F-2): it is stored, or counted lost; the offer is counted in seq either way. A record that does not fit (or any record once one did not fit: the sticky full flag) is lost; a NULL or empty record is
  * malformed, is counted lost and never copied, and does not make the sink full. log NULL or no vid sink does nothing. */
 void ds_obs_vid(struct ds_obs_log *log, const uint8_t *rec, uint32_t rec_bytes);
+/* one whole DSPE record of DS_PSG_RECORD_BYTES at rec (plan 05-02; D-196): stored, or lost when the sink is full (drop-newest); log NULL, rec NULL or no psg sink does nothing. No producer in the core until plan 05-04. */
+void ds_obs_psg(struct ds_obs_log *log, const uint8_t rec[DS_PSG_RECORD_BYTES]);
+/* one raw-audio frame (plan 05-02; D-197): L then R, u32 little-endian, written byte by byte; stored, or lost when the sink is full (sticky, whole frames only); log NULL or no pcm sink does nothing. No producer in the core until plan 05-04. */
+void ds_obs_pcm(struct ds_obs_log *log, uint32_t l, uint32_t r);
 void ds_obs_end(struct ds_obs_log *log); /* overwrite the headers with the final counts; log NULL does nothing */
 
 /* one instruction with the observer hook (cpu.c): ds_cpu_step is ds_cpu_step_obs with no log */

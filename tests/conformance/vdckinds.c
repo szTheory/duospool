@@ -337,6 +337,7 @@ struct vf_fold {
 static int vf_open(struct ctx *c, struct vf_fold *f, const char *rom, uint32_t cap)
 {
     const char *err;
+    struct ds_run_request orq;
 
     memset(f, 0, sizeof *f);
     f->cap = cap;
@@ -356,7 +357,9 @@ static int vf_open(struct ctx *c, struct vf_fold *f, const char *rom, uint32_t c
     f->w = (struct ds_instance *)(void *)f->b.mem;
     f->vsk.bytes = f->bytes;
     f->vsk.capacity = cap;
-    ds_obs_begin(&f->log, NULL, NULL, &f->vsk);
+    memset(&orq, 0, sizeof orq); /* the request form of ds_obs_begin (plan 05-02, D-198): a zeroed request carrying only the vid sink */
+    orq.vid = &f->vsk;
+    ds_obs_begin(&f->log, &orq, f->w->machine_time);
     return 0;
 }
 

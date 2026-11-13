@@ -361,6 +361,8 @@ int trace_out_main(void);
 void kind_observer(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_dev_log(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_vid_chan_append(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_psg_chan_append(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_pcm_chan_append(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_trace_out_rights(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 int output_fixture_permitted(const char *fixture); /* 1 for an authored image listed in build/gate/fixtures-authored.used or a synthetic recipe: the rights rule of --trace-out and --video-out (plan 04-05) */
 /* the stop callback that holds once the guest has set the DSV1 done state with its complement (a speed aid only, D-95: the deadline stays the hard bound) */
