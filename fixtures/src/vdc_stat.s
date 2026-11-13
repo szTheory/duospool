@@ -45,7 +45,7 @@ DSV_CHECKS = 27
         LIT 20, $28               ; ASSUMED:LED-VID-0013 with DCR bit 0 set the same copy sets DS, bit 3: the status is $28, VD and DS
         LIT 21, $00               ; MAN:H7-4 the status read cleared DS and VD: the next read is $00
         LIT 22, $00               ; ASSUMED:LED-VID-0008 (the converse of H7-4) with CR bit 1 clear 18 sprites on a line (more than 17, so too many for any slot count of this setup) set no OR flag: the status read after a wait of more than a frame is $00
-        LIT 23, $02               ; MAN:H7-4 with CR bit 1 set the same line sets OR, bit 1 alone (the CR enable is clear): $02
+        LIT 23, $02               ; ASSUMED:LED-VID-0008 with CR bit 1 set the same line sets OR, bit 1 alone (the CR enable is clear): $02
         LIT 24, $00               ; MAN:H7-4 the status read cleared OR: the next read is $00
         LIT 25, $00               ; ASSUMED:LED-VID-0008 (the converse of H7-4) with CR bit 0 clear sprite 0 opaque over sprite 1 sets no CR flag: the status read after a wait of more than a frame is $00
         LIT 26, $01               ; MAN:H7-4 with CR bit 0 set the same collision sets CR, bit 0 alone (two sprites on the line, so no OR): $01

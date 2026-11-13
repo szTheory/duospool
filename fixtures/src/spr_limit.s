@@ -33,11 +33,11 @@ DSV_CHECKS = 8
         LIT 1, $00                      ; GUEST:pal_bijection the 512 palette low bytes equal the additive running sum E(i + 1) = (E(i) + 91) & 511 from E(0) = 17
         LIT 2, $00                      ; GUEST:pal_bijection the 512 bit 8 values equal the same running sum
         LIT 3, $00                      ; MAN:H7-19 16 sprites on a line with 16 slots (e = 10): no OR flag, the status read after a clean frame is $00
-        LIT 4, $02                      ; MAN:H7-19 the same 16 sprites with e = 8 (2 * (8 - 2) = 12 slots): four are dropped and OR is set, bit 1 alone
-        LIT 5, $02                      ; MAN:H7-19 18 sprites on a line with 16 slots: OR is set, bit 1 alone
+        LIT 4, $02                      ; ASSUMED:LED-VID-0012 the same 16 sprites with e = 8 (2 * (8 - 2) = 12 slots): four are dropped and OR is set, bit 1 alone
+        LIT 5, $02                      ; ASSUMED:LED-VID-0008 18 sprites on a line with 16 slots: OR is set, bit 1 alone (the CR enable is clear while sprite 0 and sprite 1 overlap)
         LIT 6, $02                      ; ASSUMED:LED-VID-0012 17 sprites with e = 12 (20 slots by the formula, the cap of 16 binds; H7-19 says 17 or more, H7-4 says more than 17): the model sets OR
         LIT 7, $01                      ; MAN:H7-4 sprite 0 opaque over another sprite with CR bit 0 set: the CR flag, bit 0 alone
-        LIT 8, $00                      ; MAN:H7-4 the same scene with CR bit 0 clear: the flag is not set, the status read is $00
+        LIT 8, $00                      ; ASSUMED:LED-VID-0008 the same scene with CR bit 0 clear: the flag is not set, the status read is $00
 
 LIM_N = $2450                           ; the writer parameters in work RAM (clear of SCRATCH, the verdict block and the stack): the entry count
 LIM_I = $2451                           ; the entry being written
@@ -153,7 +153,7 @@ fixture_main:
         CHECK_LIT 3                  ; check 3 MAN:H7-19: 16 sprites, 16 slots, no overflow
         VDC_REG BG_R_HDR, HDR_E8
         PHASE_STATUS
-        CHECK_LIT 4                  ; check 4 MAN:H7-19: 12 slots, four dropped, OR set
+        CHECK_LIT 4                  ; check 4 ASSUMED:LED-VID-0012: 12 slots, four dropped, OR set
 ; ---- S18 with e = 10, then with e = 12 ----
         VDC_REG BG_R_HDR, HDR_A
         SATB_START
@@ -162,7 +162,7 @@ fixture_main:
         SPR_SATB_GO
         BG_FRAME
         PHASE_STATUS
-        CHECK_LIT 5                  ; check 5 MAN:H7-19: 18 sprites, OR set
+        CHECK_LIT 5                  ; check 5 ASSUMED:LED-VID-0008: 18 sprites, OR set
         VDC_REG BG_R_HDR, HDR_E12
         BG_FRAME                        ; a clean frame with the cap of 16 binding (no status check: the record rows judge it)
 ; ---- S17, still with e = 12: the formula gives 20 slots and the cap of 16 binds, so the 17th sprite is the one that finds no slot ----
@@ -207,7 +207,7 @@ fixture_main:
         CHECK_LIT 7                  ; check 7 MAN:H7-4: CR set
         VDC_REG BG_R_CR, CR_BBSB
         PHASE_STATUS
-        CHECK_LIT 8                  ; check 8 MAN:H7-4: no flag with its enable clear
+        CHECK_LIT 8                  ; check 8 ASSUMED:LED-VID-0008: no flag with its enable clear
         BG_FRAME
         rts
 
