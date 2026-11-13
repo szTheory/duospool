@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Case ids that must come out guest_failure on the toy, one per line; a second column pass (a TAB and the word pass) marks a case that must STAY pass (F-4). Audio cases only (F-72): the red groups of mod_dda are d_phase, d_rel and d_dec; d_ram (cycle_order up to rotation) stays green.
+audio_mod_dda
+audio_mod_r7	pass
+audio_mod_noise4	pass

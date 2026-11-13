@@ -6,7 +6,7 @@ id = "audio_mod_noise4"
 kind = "audio"
 fixture = "authored:psg-mod"
 request = ""
-expect = "rom=psg-mod;id=28;checks=3;scene=mod_noise4"
+expect = "rom=psg-mod;id=28;checks=8;scene=mod_noise4"
 meaning = "Select 4 keyed on with NE 1 and NFc 7 gives exactly two levels whose interior runs are multiples of 14 samples, the shortest 14, and whose level at each noise event follows the committed seed-1 bit string by ordinal; identical under zero and v4 seed 1 (E0)"
 required = true
 control = false

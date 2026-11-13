@@ -54,3 +54,39 @@ row	mod_r7	r7_same	anchor=ev:ch=G;reg=R0;val=$02;nth=3;from=+2000;to=+212000;sid
 # r7_drop (ASSUMED:LED-AUD-0004, the record of a dropped write is a project definition): the R7 $98 after the 3rd R0 $02 has no target: chan $FF, effect NO_TARGET ($20), wave_idx $FF, post $FFFF.
 group	mod_r7	r7_drop	form=EV	kind=ev_edge	class=ASSUMED:LED-AUD-0004	kills=AF0,AF8
 row	mod_r7	r7_drop	anchor=ev:ch=G;reg=R0;val=$02;nth=3;ev=+1	chan=$FF;effect=$20;wave_idx=$FF;post=$FFFF
+# mod_dda (D-190, D-191, D-220; P8-5 procedure (3)): (b) R4 $DF of select 2 (its 1st) opens DDA play at the latch 0 of R6 $00; the timer handler writes 5, 5, 20, 3, 31, 0, 12, 12, 27 (R6 $05 is the 3rd R6 $05 of select 2 and R6 $1B the 3rd R6 $1B: tables 2 and T2 hold each once).
+#   (d) R4 $40, R4 $00, R4 $9F (select 2's 3rd R4 $9F) plays T2 again; (e) select 3's R4 $DF and R6 $1F give two latches of 31; (f) R4 $9F (the 4th) releases DDA with chON 1. T2 = table 3 in decimal: 28 21 30 23 16 25 18 27 20 29 22 31 24 17 26 19 4 1 14 11 8 5 2 15 12 9 6 3 0 13 10 7.
+scene	mod_dda	case=audio_mod_dda	role=literal
+# d_ev (GUEST:program, ER-21): the guest's own DDA write schedule from the stream: nine consecutive R6 records of the list values in order (the main loop writes nothing while it waits).
+group	mod_dda	d_ev	form=EV	kind=ev_value	class=GUEST:program	kills=AF0,AF8
+row	mod_dda	d_ev	anchor=ev:ch=2;reg=R6;val=$05;nth=3;ev=+0	reg=R6;vals=$05,$05,$14,$03,$1F,$00,$0C,$0C,$1B
+# d_dec (MAN:P8-2+P8-3+P8-4, D-196 by hand): DDA writes 1 and 9 are DDA_LOAD ($02) at the index 0, post 5 and 27 (first, so AF8 and AF9 move row 2); (b) R4 $40 (select 2's 3rd) resets the index from mid-table to 0 (IDX_RESET $08); R4 $DF posts $DF with IDX_RESET.
+group	mod_dda	d_dec	form=EV	kind=ev_decode	class=MAN:P8-2+P8-3+P8-4	kills=AF0,AF8,AF9
+row	mod_dda	d_dec	anchor=ev:ch=2;reg=R6;val=$05;nth=3;ev=+0	chan=2;effect=$02;wave_idx=0;post=$0005
+row	mod_dda	d_dec	anchor=ev:ch=2;reg=R6;val=$05;nth=3;ev=+8	chan=2;effect=$02;wave_idx=0;post=$001B
+row	mod_dda	d_dec	anchor=ev:ch=2;reg=R4;val=$40;nth=3;ev=+0	chan=2;effect=$08;wave_idx=0;post=$0040
+row	mod_dda	d_dec	anchor=ev:ch=2;reg=R4;val=$DF;nth=1;ev=+0	chan=2;effect=$08;wave_idx=0;post=$00DF
+# d_hold (MAN:P8-4+P8-5): from R4 $DF to write 9 + 2,000 the level changes at writes 1, 3, 4, 5, 6, 7, 9 (2 and 8 repeat), held between; a write's change is taken in the sample at or after its stamp or the next (the stamp phase mod 192 is not fixed by a hand count), so no tie order is judged.
+group	mod_dda	d_hold	form=ROWS	kind=dda_hold	class=MAN:P8-4+P8-5	kills=AF0,AF5,AF6,AF8
+row	mod_dda	d_hold	anchor=ev:ch=2;reg=R4;val=$DF;nth=1;from=+0;to=ev:ch=2;reg=R6;val=$1B;nth=3+2000;side=L	ords=1,3,4,5,6,7,9;r1=$FF;al=$1F;r5=$FF
+row	mod_dda	d_hold	anchor=ev:ch=2;reg=R4;val=$DF;nth=1;from=+0;to=ev:ch=2;reg=R6;val=$1B;nth=3+2000;side=R	ords=1,3,4,5,6,7,9;r1=$FF;al=$1F;r5=$FF
+# d_ord (MAN:P8-4+P8-5): from write 1 + 384 (two samples past its stamp) to write 9 + 2,000 the 7 plateaus rank as the held values 5, 20, 3, 31, 0, 12, 27.
+group	mod_dda	d_ord	form=ROWS	kind=dda_order	class=MAN:P8-4+P8-5	kills=AF0,AF5,AF6
+row	mod_dda	d_ord	anchor=ev:ch=2;reg=R6;val=$05;nth=3;from=+384;to=ev:ch=2;reg=R6;val=$1B;nth=3+2000;side=L	vals=5,20,3,31,0,12,27;r1=$FF;al=$1F;r5=$FF
+row	mod_dda	d_ord	anchor=ev:ch=2;reg=R6;val=$05;nth=3;from=+384;to=ev:ch=2;reg=R6;val=$1B;nth=3+2000;side=R	vals=5,20,3,31,0,12,27;r1=$FF;al=$1F;r5=$FF
+# d_lev (ASSUMED:LED-AUD-0009): the same window; at att 0 the held level of value v is v x 32768: 163,840, 655,360, 98,304, 1,015,808, 0, 393,216, 884,736.
+group	mod_dda	d_lev	form=ROWS	kind=dda_level_exact	class=ASSUMED:LED-AUD-0009	kills=AF0,AF5,AF6
+row	mod_dda	d_lev	anchor=ev:ch=2;reg=R6;val=$05;nth=3;from=+384;to=ev:ch=2;reg=R6;val=$1B;nth=3+2000;side=L	vals=163840,655360,98304,1015808,0,393216,884736;r1=$FF;al=$1F;r5=$FF
+# d_ram (MAN:P8-4+P8-5): after (d) the plateaus between two rising crossings (key-on + 50,000 to + 300,000, F = 256) rank as T2 up to rotation: DDA kept the wave RAM.
+group	mod_dda	d_ram	form=ROWS	kind=dda_ram_kept	class=MAN:P8-4+P8-5	kills=AF0,AF5,AF6,AF7
+row	mod_dda	d_ram	anchor=ev:ch=2;reg=R4;val=$9F;nth=3;from=+50000;to=+300000;side=L	words=28,21,30,23,16,25,18,27,20,29,22,31,24,17,26,19,4,1,14,11,8,5,2,15,12,9,6,3,0,13,10,7;r1=$FF;al=$1F;r5=$FF
+row	mod_dda	d_ram	anchor=ev:ch=2;reg=R4;val=$9F;nth=3;from=+50000;to=+300000;side=R	words=28,21,30,23,16,25,18,27,20,29,22,31,24,17,26,19,4,1,14,11,8,5,2,15,12,9,6,3,0,13,10,7;r1=$FF;al=$1F;r5=$FF
+# d_phase (ASSUMED:LED-AUD-0012): from the (d) key-on + 192 the first 32 plateaus are T2 from word 0 in order (DDA set the index 0, the counter is frozen in DDA, key-on keeps the index); toy psg-dda-no-reset turns it red.
+group	mod_dda	d_phase	form=ROWS	kind=cycle_phase	class=ASSUMED:LED-AUD-0012	kills=AF0,AF5,AF6,AF7
+row	mod_dda	d_phase	anchor=ev:ch=2;reg=R4;val=$9F;nth=3;from=+192;to=+60000;side=L	words=28,21,30,23,16,25,18,27,20,29,22,31,24,17,26,19,4,1,14,11,8,5,2,15,12,9,6,3,0,13,10,7;r1=$FF;al=$1F;r5=$FF
+# d_rel (ASSUMED:LED-AUD-0004+LED-AUD-0012, D-220): from the (f) release R4 $9F + 192 the first 32 plateaus are T2 from word 0: the counter, frozen at the index 0 since (e), restarts on DDA 1 -> 0 with chON 1.
+group	mod_dda	d_rel	form=ROWS	kind=cycle_phase	class=ASSUMED:LED-AUD-0004+LED-AUD-0012	kills=AF0,AF5,AF6,AF7
+row	mod_dda	d_rel	anchor=ev:ch=2;reg=R4;val=$9F;nth=4;from=+192;to=+60000;side=L	words=28,21,30,23,16,25,18,27,20,29,22,31,24,17,26,19,4,1,14,11,8,5,2,15,12,9,6,3,0,13,10,7;r1=$FF;al=$1F;r5=$FF
+# d_sum (ASSUMED:LED-AUD-0009, aud09-d): two DDA latches of 31 at att 0 on one side (selects 2 and 3, select 3's R4 $DF + 2,000 to + 20,000) sum linearly: the largest sample is 2 x 31 x 32768 = 2,031,616.
+group	mod_dda	d_sum	form=ROWS	kind=levels_exact	class=ASSUMED:LED-AUD-0009	kills=AF0,AF5,AF6
+row	mod_dda	d_sum	anchor=ev:ch=3;reg=R4;val=$DF;nth=1;from=+2000;to=+20000;side=L	peak=2031616;r1=$FF;al=$1F;r5=$FF

@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Timer-paced DDA (plan 05-07; D-190, D-191, D-212, D-220): scene mod_dda of fixtures/src/psg_mod.aexp: the GUEST write schedule from the stream, decode rows, dda_hold, dda_order and dda_ram_kept (MAN), dda_level_exact, two cycle_phase rows and the two-latch sum (ASSUMED).
+id = "audio_mod_dda"
+kind = "audio"
+fixture = "authored:psg-mod"
+request = ""
+expect = "rom=psg-mod;id=28;checks=8;scene=mod_dda"
+meaning = "A timer-paced DDA scene on select 2 changes the level exactly at the writes that change the value and holds it between writes, the held levels order as the values, the wave RAM survives DDA, playback restarts at word 0 after DDA and two latches add on one side; identical under zero and v4 seed 1 (E0)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000

@@ -6,7 +6,7 @@ id = "audio_fault_sweep_mod_r7"
 kind = "audio_fault_sweep"
 fixture = "authored:psg-mod"
 request = ""
-expect = "rom=psg-mod;id=28;checks=3;scene=mod_r7"
+expect = "rom=psg-mod;id=28;checks=8;scene=mod_r7"
 meaning = "Every literal group of mod_r7 turns into a failure under each stream fault it declares, so no group of the scene is vacuous (E0)"
 required = true
 control = false

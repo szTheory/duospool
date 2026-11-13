@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Toy control (D-210, PR-15, F-4, F-72, R5; an audio toy of plan 05-07): an R4 write with DDA 1 leaves the wave index where it was instead of setting it to 0 (D-190, MAN:P8-4), made from the live src/core/psg.c by scripts/control-mutate. The anchor is the one statement that
+# sets the index to 0; the replacement is an empty statement. The case audio_mod_dda must come out guest_failure: after playback (a) stops mid-table, neither (b) nor (d) resets the index, so the (d) key-on and the (f) release start T2 at that word (d_phase and d_rel red) and the
+# decode rows of R4 $40 and R4 $DF read that index (d_dec red); the order rows are rotation-invariant and stay green (d_ram), and DDA play reads the latch (d_hold, d_ord, d_lev, d_sum green).
+# The cases with the second column pass must STAY pass (F-4): audio_mod_r7 and audio_mod_noise4 upload their tables at the power-on index 0 of selects 2 and 4, which no write moved before. The real core passes all three (REQUIRED cases).
+tag=rule-psg-dda-no-reset
+file=src/core/psg.c
+anchor=inst->psg_widx[sel] = 0u;
+replace=(void)0;

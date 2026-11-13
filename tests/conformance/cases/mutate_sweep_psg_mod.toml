@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The mutation sweep of psg_mod (plan 05-07; D-126, D-212): every GUEST check of the table sums and of the timer-paced DDA schedule is shown able to fail.
+id = "mutate_sweep_psg_mod"
+kind = "mutate_sweep"
+fixture = "authored:psg-mod"
+request = ""
+expect = "id=28"
+meaning = "Changing the expected literal of any one of the 8 psg_mod checks flips exactly that check to fail and no other, so none of the 8 checks is vacuous"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+checks = 8
