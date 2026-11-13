@@ -20,12 +20,14 @@ sweep, a mutation sweep or a toy control.
 
 Phase 4.1 (sprites) is complete locally for the authored sprite fixtures. DuoSpool draws sprites from the sprite attribute table into the
 same per-scanline raw record: both widths, three heights, flips, the palette bank, priority against the background and against other
-sprites, clipping, a per-line limit of 16 sprites (the slot count follows the display width), and the overflow and collision flags, which
-are written into the record and, through the status register, into guest RAM. Every sprite check is E0 repeatability and no sprite entry is
-supported: the sprite statements are labelled assumptions in LED-VID-0011 (decode, addressing and slots, level R2) and LED-VID-0012
-(overflow and collision, level R1), each with its page disagreement recorded. Rows taken from manual pages (origin, index, plane offsets,
-priority, the 16 and 18 sprite lines) are tagged as such in the fixtures; the leftmost-pixel bit order, flips, the CGY field value 2, the
-17th sprite, the two-slot count, the narrow-display counts and every collision row are assumptions. Withheld for sprites: overflow timing,
+sprites, clipping, a per-line limit of 16 sprites (the entries searched follow the display width and the slot count follows the
+horizontal blanking fields HDS, HSW and HDE), and the overflow and collision flags, which are written into the record and, through the
+status register, into guest RAM. Every sprite check is E0 repeatability and no sprite entry is supported: the sprite statements are
+labelled assumptions in LED-VID-0011 (decode, addressing and slots, level R2) and LED-VID-0012 (overflow and collision, level R1), each
+with its page disagreement recorded. Rows taken from manual pages are tagged as such in the fixtures: origin, index, plane offsets,
+priority, the 16 and 18 sprite lines, and the collision rows that read the CR status bit with its enable set and its clear on read (`spr_limit` check 7, `vdc_stat` checks 26 and 27) or the COLLISION flag of the 18 sprite lines. The
+leftmost-pixel bit order, flips, the CGY field value 2, the 12-slot and 17th sprite rows, the two-slot count, the narrow-display counts, a
+flag that stays clear while its enable is clear and every other collision row are assumptions. Withheld for sprites: overflow timing,
 collision timing, collision of transparent pixels, the sprite width modes (SM and VM other than 0) and sprite pattern addressing for CGY 2.
 
 Supported entries (evidence tier E1, documentary): LED-CPU-0001, LED-CPU-0002, LED-CPU-0005, LED-CPU-0014, LED-CPU-0016,
