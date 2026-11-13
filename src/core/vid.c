@@ -17,8 +17,10 @@
  * Y <= display_k + 64 < Y + height covers the line (height 16, 32, 64 for CGY 0, 1, 3 and DS_CONST_vid_cgy2_as for CGY 2) and puts for every visible dot the first opaque sprite pixel in SATB order into a stack array. A sprite pixel has the index 256 | palette << 4 | px, px 0 being transparent (H7-24; plane k is SGk at +16k words, H7-24), the pattern base word is
  * ((PC & ~m) >> 1) << 6 with m = CGX ? 2 : 0 | CGY 1 ? 4 : CGY 2 or 3 ? 12 : 0 (PC bits 10-1 are VRAM address bits 15-6, H7-21), cell (cx, cy) is at base + cx * $40 + cy * $80 and row r of a cell is at +r (H7-22, H7-23), and the leftmost pixel of a row is bit 15 (ASSUMED LED-VID-0011, the one statement marked below). A flip mirrors the whole
  * combined sprite. The dot X - 32 + t is drawn only if it lies in the active window (H7-13: the origin (32, 64) is the display top-left). The composition in ds_vid_render lets the sprite dot replace the background dot when its SPBG bit is 1 or the background dot is transparent (px 0, or BB off) (H7-21). Every VRAM word is read through the bounds-checked accessor.
- * Plan 04.1-02 adds the slot limit, OVERFLOW and COLLISION (D-160; MAN H7-19, H7-4; ASSUMED LED-VID-0011, LED-VID-0012). From HSR and HDR at the line event d = HDW + 1 and e = HDE + HSW + HDS + 3 (characters); entries 0 to 2d (2d + 1 of them, or all 64 when d >= 32) are searched and the slots are min(16, 2 * (e - 2)) (0 when e <= 2), one statement marked below. The scan runs in index order and never stops early: a covering entry
- * is taken when used + need <= slots (need 1 for a 16-wide sprite, 2 for a 32-wide one); a 32-wide sprite with one slot left is taken as its left cell only; any other covering entry is dropped; a drop or a half-drop sets OVERFLOW (a 17th covering sprite sets it, the H7-4 'more than 17' being read as the misprint). An entry off the window still takes its slots. COLLISION is set when the pixel of a taken sprite 0 is opaque at a dot of the
+ * Plan 04.1-02 adds the slot limit, OVERFLOW and COLLISION (D-160; MAN H7-19, H7-4; ASSUMED LED-VID-0011, LED-VID-0012). From HSR and HDR at the line event d = HDW + 1 and e = HDE + HSW + HDS + 3 (characters); entries 0 to 2d (2d + 1 of them, or all 64 when d >= 32) are searched and the slots are min(16, 2 * (e - 2)) (0 when e <= 2), one statement marked below.
+ * The scan runs in index order and never stops early: a covering entry
+ * is taken when used + need <= slots (need 1 for a 16-wide sprite, 2 for a 32-wide one); a 32-wide sprite with one slot left is taken as its left cell only; any other covering entry is dropped; a drop or a half-drop sets OVERFLOW (a 17th covering sprite sets it, the H7-4 'more than 17' being read as the misprint).
+ * An entry off the window still takes its slots. COLLISION is set when the pixel of a taken sprite 0 is opaque at a dot of the
  * active window where a taken entry of another SATB index is also opaque (the two cells of one sprite never collide). The record carries slots_used, OVERFLOW (flag b6) and COLLISION (flag b7) whatever the IE bits say; ev_line (beam.c) keeps them in sprite_pend for the status bits it raises at the end of the window.
  * The render function takes a CONST instance and a stack record and can write no machine state: the record is a pure function of the state at the line event (R1), and what the fold does with the record (emit or drop) changes nothing in the instance (D-164).
  * The layout is a project definition, not a hardware claim (LED-VID-0018, ER-13). The header offsets are asserted below.
@@ -166,6 +168,8 @@ static void active_window(const struct ds_instance *inst, uint32_t *x, uint32_t 
 #define SPR_DOT_S0 0x4000u
 #define SPR_DOT_OTHER 0x2000u
 static const uint8_t spr_height[4] = {16u, 32u, 64u, 64u};
+/* the class 2 is never looked up only while vid_cgy2_as is not 2 (review info I-01 of Phase 4.1): the value 2 would behave as 3 (spr_height[2] is 64 and the mask takes cls >= 2), so the comment above would be false */
+_Static_assert(((unsigned)DS_CONST_vid_cgy2_as & 3u) != 2u, "vid_cgy2_as must name a CGY class other than 2 (LED-VID-0011)");
 
 /* SATB word w of the 256 (byte 2w low, byte 2w+1 high; D-159) */
 static uint32_t satb_word(const struct ds_instance *inst, uint32_t w)
@@ -278,6 +282,8 @@ void ds_vid_sprites(const struct ds_instance *inst, struct ds_vid_spr *spr)
             spr->collision = 1u;
         }
     }
+    /* the record field has the domain 0 to 16 (D-161). The bound is never reached in the core (review fix L-05 of Phase 4.1): slots is at most 16 and used grows only under used + need <= slots or used + 1 == slots, so used <= slots <= 16 on
+     * every path; it is kept as a visible statement of the field's domain, the way the active window keeps its clamp above */
     spr->slots = (uint8_t)(used < SPR_SLOTS_MAX ? used : SPR_SLOTS_MAX);
     spr->overflow = (uint8_t)over;
 }
@@ -322,7 +328,11 @@ uint32_t ds_vid_render(const struct ds_instance *inst, uint64_t origin, const st
     put_le(rec, OFF_BORDER, (uint64_t)pal_entry(inst, BORDER_ENTRY), 2u);
     put_le(rec, OFF_ACTIVE_K, display ? (uint64_t)inst->display_k : (uint64_t)0xFFFFu, 2u); /* the display line index inside VDW, 0xFFFF on every other line (plan 04-08) */
     put_le(rec, OFF_V_STATE, (uint64_t)inst->v_state, 1u);
-    put_le(rec, OFF_FLAGS, (display ? (uint64_t)FLAG_ACTIVE : UINT64_C(0)) | (display && burst != 0u ? (uint64_t)FLAG_BURST : UINT64_C(0)) | (bb != 0u ? (uint64_t)FLAG_BB : UINT64_C(0)) | (sb != 0u ? (uint64_t)FLAG_SB : UINT64_C(0)) | (unmodelled != 0u ? (uint64_t)FLAG_UNMODELLED : UINT64_C(0)) | (clipped != 0u ? (uint64_t)FLAG_CLIPPED : UINT64_C(0)) | (spr->on != 0u && spr->overflow != 0u ? (uint64_t)FLAG_OVERFLOW : UINT64_C(0)) | (spr->on != 0u && spr->collision != 0u ? (uint64_t)FLAG_COLLISION : UINT64_C(0)), 1u);
+    put_le(rec, OFF_FLAGS,
+           (display ? (uint64_t)FLAG_ACTIVE : UINT64_C(0)) | (display && burst != 0u ? (uint64_t)FLAG_BURST : UINT64_C(0)) | (bb != 0u ? (uint64_t)FLAG_BB : UINT64_C(0)) | (sb != 0u ? (uint64_t)FLAG_SB : UINT64_C(0))
+               | (unmodelled != 0u ? (uint64_t)FLAG_UNMODELLED : UINT64_C(0)) | (clipped != 0u ? (uint64_t)FLAG_CLIPPED : UINT64_C(0))
+               | (spr->on != 0u && spr->overflow != 0u ? (uint64_t)FLAG_OVERFLOW : UINT64_C(0)) | (spr->on != 0u && spr->collision != 0u ? (uint64_t)FLAG_COLLISION : UINT64_C(0)),
+           1u);
     put_le(rec, OFF_LINE_DIRTY, (uint64_t)inst->line_dirty, 1u);
     put_le(rec, OFF_SLOTS, spr->on != 0u ? (uint64_t)spr->slots : UINT64_C(0), 1u); /* the slots taken on this line, 0 to 16 (D-161); 0 with SB clear */
     put_le(rec, OFF_COVERING, (uint64_t)spr->on != UINT64_C(0) ? (uint64_t)spr->covering : UINT64_C(0), 1u); /* the SATB entries that cover this line, counted by ds_vid_sprites (D-161); 0 with SB clear */

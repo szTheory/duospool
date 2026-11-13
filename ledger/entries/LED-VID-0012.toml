@@ -5,6 +5,8 @@
 # the slot cap live. Status stays assumed; no E1 promotion.
 # ER-2 record at the close-out (plan 04.1-03, 2026-11-12): not an E1 candidate (D-179), status stays assumed. H7-4 (more than 17 sprites, and two further OR cases the model does not implement) and H7-19 (17 or more) disagree on the count, and the 17 point is an ASSUMED row.
 # No page defines a collision per pixel or the instant of either flag, and the rule that a covering sprite dropped for lack of slots sets OR is a model reading.
+# Phase 4.1 review (L-01, I-02, I-04), recorded and not judged by a fixture row: the flags of a display line with no EV_RCR are lost (assumption text); COLLISION only at a visible dot of the window; the first opaque pixel wins whatever its SPBG.
+# A burst frame (D-157) with SB set after display line 0 runs the STATE part: OR and CR can reach the status and the record carries slots_used, covering and the flags while every dot is the blank index, a model choice.
 id = "LED-VID-0012"
 statement = "R1: OVERFLOW is set iff a covering sprite or sprite half is dropped for lack of slots (a 17th sets it); COLLISION follows the sprite 0 rule; both flags are raised at the end of the active window of the displayed line. A modelling assumption."
 profile = "pce-hucard-2btn"
@@ -14,7 +16,7 @@ evidence = []
 disagreement = "H7-4 says more than 17 sprites while H7-19 says 17 or more; whether transparent pixels collide is not stated on any page held"
 pinning_test = "TEST:video_spr_limit"
 updated = "2026-11-12"
-assumption = "The model follows H7-19 (the 17th sprite is dropped and sets OVERFLOW); the 17 point is ASSUMED and the fixtures test 16 and 18. Flag timing inside a line is a modelling choice."
+assumption = "The model follows H7-19 (the 17th sprite is dropped and sets OVERFLOW); the 17 point is ASSUMED and the fixtures test 16 and 18. Flag timing inside a line is a modelling choice. A display line whose window ends at or past 1365 clocks has no EV_RCR, so its OR and CR never reach the status (lost, not delayed)."
 revisit_phase = 4
 withheld = ["overflow timing", "collision timing", "sprite-accurate"]
 origin = "04-CONTEXT D-160"

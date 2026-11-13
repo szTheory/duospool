@@ -7,6 +7,7 @@
 # (1) The entry has one pinning_test: the origin rows are in video_spr_basic_solid and the limit and H7-19 table rows are in video_spr_limit (the pin of LED-VID-0012), so an E1 sentence over origin, limit and table would rest on rows the pin does not run (the LED-VID-0013 lesson of the Phase 4 review: a supported entry needs a MAN-tagged guest row in its own pin).
 # (2) The pages disagree where the entry is tested (H7-4 more than 17 against H7-19 17 or more; sources that disagree keep an entry assumed) and the 12-slot, cap and narrow-display rows rest on counting one 16-wide sprite as one of the 2(e-2) slots, which H7-19 does not state per sprite.
 # (3) What the entry is for stays assumed: the leftmost pixel as bit 15, flips, the CGY field 2, the partial half, the two-slot rule and the narrow-display covering counts. A narrowed E1 sentence would leave the entry without those, so the decision is to keep one assumed entry whole.
+# Not judged by a fixture row (Phase 4.1 review I-02): a sprite wholly outside the window still takes its slots; the two cells of one sprite never share a dot, so their non-collision is vacuous.
 id = "LED-VID-0011"
 statement = "R2: sprites are decoded from SATB words with origin (32,64), at most 16 per line, slots = min(16, 2(e-2)) and 64 or 2d+1 entries searched, for SM = 0. E1 candidate: only the origin, the 16 limit and the H7-19 table (printed for SM = 0) equal the manual; CGY 2 as 3, the partial-half rule and the 2-slot rule are community readings."
 profile = "pce-hucard-2btn"

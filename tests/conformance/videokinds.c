@@ -1392,8 +1392,10 @@ static int vk_s_frame_flags(struct vk_rc *rc)
     return VG_PASS;
 }
 
-/* STRUCT spr_line (plan 04.1-02; D-160, D-161; MAN H7-19 for the slot rows, ASSUMED LED-VID-0011 and LED-VID-0012 for the rows a group labels so): the display line k (the k-th record with an active window) of the frame numbered held (the author's mark, as ;held=F of a ROWS row: the literal does not rest on the frame number, a neighbouring frame shows the same values or fails) carries
- * slots_used equal to slots, covering equal to covering, the OVERFLOW flag (flags bit 6) equal to ovf and the COLLISION flag (bit 7) equal to col. The offsets are the ones written in this file (ER-13). A frame or line the stream does not hold is a failure naming it; slots is the first item so that F0 (the first number of the literal grows by one) makes the row claim a count its own source does not say. */
+/* STRUCT spr_line (plan 04.1-02; D-160, D-161; MAN H7-19 for the slot rows, ASSUMED LED-VID-0011 and LED-VID-0012 for the rows a group labels so): the display line k (the k-th record with an active window) of the frame numbered held (the author's mark, as ;held=F of a ROWS row: the literal does not rest on the frame number,
+ * a neighbouring frame shows the same values or fails) carries
+ * slots_used equal to slots, covering equal to covering, the OVERFLOW flag (flags bit 6) equal to ovf and the COLLISION flag (bit 7) equal to col.
+ * The offsets are the ones written in this file (ER-13). A frame or line the stream does not hold is a failure naming it; slots is the first item so that F0 (the first number of the literal grows by one) makes the row claim a count its own source does not say. */
 static int vk_s_spr_line(struct vk_rc *rc)
 {
     static const char *const keys[] = {"slots", "covering", "ovf", "col", "k", "held"};
@@ -1420,7 +1422,9 @@ static int vk_s_spr_line(struct vk_rc *rc)
     vk_focus(rc, lines[v[4]]);
     rec = rc->w->rec[lines[v[4]]];
     if ((uint64_t)rec[VK_O_SLOTS] != v[0] || (uint64_t)rec[VK_O_COVERING] != v[1] || (uint64_t)((rec[VK_O_FLAGS] & VK_FLAG_OVERFLOW) != 0u ? 1u : 0u) != v[2] || (uint64_t)((rec[VK_O_FLAGS] & VK_FLAG_COLLISION) != 0u ? 1u : 0u) != v[3]) {
-        snprintf(rc->why, rc->cap, "STRUCT spr_line: display line %llu of frame %llu has slots_used %u, covering %u, OVERFLOW %u, COLLISION %u; the row says %llu, %llu, %llu, %llu", (unsigned long long)v[4], (unsigned long long)v[5], (unsigned)rec[VK_O_SLOTS], (unsigned)rec[VK_O_COVERING], (unsigned)((rec[VK_O_FLAGS] & VK_FLAG_OVERFLOW) != 0u ? 1u : 0u), (unsigned)((rec[VK_O_FLAGS] & VK_FLAG_COLLISION) != 0u ? 1u : 0u), (unsigned long long)v[0], (unsigned long long)v[1], (unsigned long long)v[2], (unsigned long long)v[3]);
+        snprintf(rc->why, rc->cap, "STRUCT spr_line: display line %llu of frame %llu has slots_used %u, covering %u, OVERFLOW %u, COLLISION %u; the row says %llu, %llu, %llu, %llu",
+                 (unsigned long long)v[4], (unsigned long long)v[5], (unsigned)rec[VK_O_SLOTS], (unsigned)rec[VK_O_COVERING], (unsigned)((rec[VK_O_FLAGS] & VK_FLAG_OVERFLOW) != 0u ? 1u : 0u),
+                 (unsigned)((rec[VK_O_FLAGS] & VK_FLAG_COLLISION) != 0u ? 1u : 0u), (unsigned long long)v[0], (unsigned long long)v[1], (unsigned long long)v[2], (unsigned long long)v[3]);
         return VG_FAIL;
     }
     return VG_PASS;
