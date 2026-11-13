@@ -24,6 +24,7 @@
 ;   C1: a alone hard left (R5 $F0, R4 $9D); C2: b alone hard right (R5 $0F, R4 $9D); C3: both, as in C1 and C2. The literals and their derivation are in fixtures/src/psg_tone.aexp. Checks 5..10: each channel table sums to 496 two ways (GUEST).
 ;   Scene tone_atten (sc_atten): select 2 (table 2, F = 256) keyed on once at S = 0 (P1, 17 units) and kept playing; Y (9 units): select 3 fully programmed with chON 0 (R4 $40, $00, table 3, F = 320, R5 $FF, R4 $1F); then each phase writes, last, the register its windows anchor on:
 ;   P2 R1 $C8, R4 $9D, R5 $F8 (the P8-10 example, 17 units); P3 R1 $C7; P4 R1 $FF, R5 $00; P5 R5 $FF, R1 $00; P6 R1 $FF, R4 $9F, R5 $EF; P7 R5 $DF; P8 R5 $FF, R4 $9E; P9 R4 $9F, R1 $EF (6 units each, at least 2.1 cycles + 2,000 master clocks); then R1 $FF and the key-off.
+;   Scene tone_pan01_twin (sc_twin, D-211, D-225), played last: a byte copy of the tone_pan01 script except R2 $81 (select 0 at F + 1 = 129) and the select-1 key-ons with bit 7 clear (B $1F, C2 and C3 $1D): select 1 is never keyed on, every anchor record still exists.
         .setcpu "huc6280"
 
 DSV_ID = 27
@@ -81,7 +82,7 @@ chan_tab:                               ; the six channel tables, 32 bytes each 
 up_tab:                                 ; the upload routine of each channel table
         .word ul0, ul1, ul2, ul3, ul4, ul5
 ; the pan-pair scene script of selects a, b at F a, F b, n delay units (the header); a macro so the three scenes share one shape
-        .macro PAN_SCENE ca, cb, fa, fb, n, r7
+        .macro PAN_SCENE ca, cb, fa, fb, n, r7, kb, kp
         .byte 0, (ca), 4, $40, 4, $00, SC_UP + (ca), 2, <(fa), 3, >(fa)                 ; set-up of select a: the wave index 0, chON 0, the upload, F a
         .if r7
         .byte 7, $00                                                                    ; R7 $00 (NE 0) at select 4
@@ -92,19 +93,21 @@ up_tab:                                 ; the upload routine of each channel tab
         .endif
         .byte 1, $FF                                                                    ; R1 $FF: LMAL F, RMAL F
         .byte 0, (ca), 4, $40, 4, $1F, 5, $FF, 4, $9F, SC_DLY + (n), 4, $1F             ; A: a solo at S = 0 both sides
-        .byte 0, (cb), 4, $40, 4, $1F, 5, $FF, 4, $9F, SC_DLY + (n), 4, $1F             ; B: b solo at S = 0 both sides
+        .byte 0, (cb), 4, $40, 4, $1F, 5, $FF, 4, (kb), SC_DLY + (n), 4, $1F            ; B: b solo at S = 0 both sides (key-on kb: $9F, or $1F in the twin)
         .byte 0, (ca), 4, $40, 4, $1D, 5, $F0, 4, $9D, SC_DLY + (n), 4, $1D             ; C1: a alone hard left (left S = 1, right S = 16)
-        .byte 0, (cb), 4, $40, 4, $1D, 5, $0F, 4, $9D, SC_DLY + (n), 4, $1D             ; C2: b alone hard right (right S = 1, left S = 16)
+        .byte 0, (cb), 4, $40, 4, $1D, 5, $0F, 4, (kp), SC_DLY + (n), 4, $1D            ; C2: b alone hard right (right S = 1, left S = 16; kp: $9D, or $1D in the twin)
         .byte 0, (ca), 4, $40, 4, $1D, 5, $F0, 4, $9D                                   ; C3: a hard left ...
-        .byte 0, (cb), 4, $40, 4, $1D, 5, $0F, 4, $9D, SC_DLY + (n)                     ; ... and b hard right
+        .byte 0, (cb), 4, $40, 4, $1D, 5, $0F, 4, (kp), SC_DLY + (n)                    ; ... and b hard right
         .byte 0, (ca), 4, $1D, 0, (cb), 4, $1D, SC_END                                  ; both keyed off
         .endmacro
 sc_pan01:
-        PAN_SCENE 0, 1, 128, 192, 13, 0
+        PAN_SCENE 0, 1, 128, 192, 13, 0, $9F, $9D
 sc_pan23:
-        PAN_SCENE 2, 3, 256, 320, 21, 0
+        PAN_SCENE 2, 3, 256, 320, 21, 0, $9F, $9D
 sc_pan45:
-        PAN_SCENE 4, 5, 384, 448, 29, 1
+        PAN_SCENE 4, 5, 384, 448, 29, 1, $9F, $9D
+sc_twin:                                ; tone_pan01_twin (D-211): the script of tone_pan01 with select 0 at F + 1 = 129 (R2 $81) and every select-1 key-on written with bit 7 clear ($9F -> $1F in B, $9D -> $1D in C2 and C3)
+        PAN_SCENE 0, 1, 129, 192, 13, 0, $1F, $1D
 sc_atten:                               ; tone_atten (see the header): select 2 keyed on once, its attenuation changed phase by phase
         .byte 0, 2, 4, $40, 4, $00, SC_UP + 2, 2, $00, 3, $01                           ; set-up: select 2, the wave index 0, table 2, F = 256
         .byte 1, $FF, 5, $FF, 4, $9F, SC_DLY + 17                                       ; P1: key-on at S = 0 on both sides
@@ -175,6 +178,7 @@ tone_i: dex
         PLAY sc_pan23
         PLAY sc_pan45
         PLAY sc_atten
+        PLAY sc_twin
 ; (h) check 1 and 2: the sum of the 32 words by a table walk against the sum of the counter 0..31, two computations of 496 = $01F0 (the table is a permutation of 0..31)
         stz a:TS_SUM_LO
         stz a:TS_SUM_HI

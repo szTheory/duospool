@@ -217,9 +217,33 @@ row	tone_atten	ao_r1	anchor=ev:ch=G;reg=R1;val=$EF;nth=1;from=+2000;to=+100304;s
 group	tone_atten	ae	form=REL	kind=atten_equal	class=ASSUMED:LED-AUD-0009	kills=AF0,AF5,AF6
 row	tone_atten	ae	anchor=ev:ch=2;reg=R5;val=$EF;nth=1;from=+2000;to=+100304;side=L	r1=$FF;al=$1F;r5=$EF
 row	tone_atten	ae	anchor=ev:ch=G;reg=R1;val=$EF;nth=1;from=+2000;to=+100304;side=L	r1=$EF;al=$1F;r5=$FF
+# tone_pan01_twin (05-06; D-211, D-225): sc_twin, tone_pan01's script with select 0 at F + 1 = 129 and select 1 never keyed on (R4 $1F in B, $1D in C2, C3). F + 1: 516 samples per 4 cycles, red per_0_A, _C1_L, _C3_L; select 1 silent: no crossing, red
+#   per_1_B, ord_1_B, per_1_C2_R, _C3_R. Green: ord_0_A (order kept), sil_C1_R, sil_C2_L. nth: select 0 R4 $9F 3, $9D 3, 4, $1D 6; select 1 R4 $1F 4, $1D 6, 7, 9. A and B groups carry the L row only.
+scene	tone_pan01_twin	case=audio_tone_pan01_twin	role=expect_red	twin=tone_pan01	expect_red=per_0_A,per_1_B,ord_1_B,per_0_C1_L,per_1_C2_R,per_0_C3_L,per_1_C3_R
+group	tone_pan01_twin	per_0_A	form=ROWS	kind=period	class=MAN:P8-9+H8-23	kills=AF0,AF2,AF4,AF5,AF6
+row	tone_pan01_twin	per_0_A	anchor=ev:ch=0;reg=R4;val=$9F;nth=3;from=+26576;to=+148456;side=L	f=128;k=4;d=512;r1=$FF;al=$1F;r5=$FF
+group	tone_pan01_twin	ord_0_A	form=ROWS	kind=cycle_order	class=MAN:P8-4+P8-5	kills=AF0,AF5,AF6,AF7
+row	tone_pan01_twin	ord_0_A	anchor=ev:ch=0;reg=R4;val=$9F;nth=3;from=+26576;to=+148456;side=L	words=16,19,22,25,28,31,18,21,24,27,30,17,20,23,26,29,15,4,9,14,3,8,13,2,7,12,1,6,11,0,5,10;r1=$FF;al=$1F;r5=$FF
+group	tone_pan01_twin	per_1_B	form=ROWS	kind=period	class=MAN:P8-9+H8-23	kills=AF0,AF2,AF4,AF5,AF6
+row	tone_pan01_twin	per_1_B	anchor=ev:ch=1;reg=R4;val=$1F;nth=4;from=+38864;to=+222184;side=L	f=192;k=4;d=768;r1=$FF;al=$1F;r5=$FF
+group	tone_pan01_twin	ord_1_B	form=ROWS	kind=cycle_order	class=MAN:P8-4+P8-5	kills=AF0,AF5,AF6,AF7
+row	tone_pan01_twin	ord_1_B	anchor=ev:ch=1;reg=R4;val=$1F;nth=4;from=+38864;to=+222184;side=L	words=23,28,17,22,27,16,21,26,31,20,25,30,19,24,29,18,2,5,8,11,14,1,4,7,10,13,0,3,6,9,12,15;r1=$FF;al=$1F;r5=$FF
+group	tone_pan01_twin	sil_C1_R	form=ROWS	kind=silent	class=MAN:P8-10	kills=AF0,AF3,AF6
+row	tone_pan01_twin	sil_C1_R	anchor=ev:ch=0;reg=R4;val=$9D;nth=3;from=+2000;to=ev:ch=0;reg=R4;val=$1D;nth=6;side=R	r1=$FF;al=$1D;r5=$F0
+group	tone_pan01_twin	sil_C2_L	form=ROWS	kind=silent	class=MAN:P8-10	kills=AF0,AF3,AF6
+row	tone_pan01_twin	sil_C2_L	anchor=ev:ch=1;reg=R4;val=$1D;nth=6;from=+2000;to=ev:ch=1;reg=R4;val=$1D;nth=7;side=L	r1=$FF;al=$1D;r5=$0F
+group	tone_pan01_twin	per_0_C1_L	form=ROWS	kind=period	class=ASSUMED:LED-AUD-0008	kills=AF0,AF2,AF3,AF4,AF5,AF6
+row	tone_pan01_twin	per_0_C1_L	anchor=ev:ch=0;reg=R4;val=$9D;nth=3;from=+26576;to=+148456;side=L	f=128;k=4;d=512;r1=$FF;al=$1D;r5=$F0
+group	tone_pan01_twin	per_1_C2_R	form=ROWS	kind=period	class=ASSUMED:LED-AUD-0008	kills=AF0,AF2,AF3,AF4,AF5,AF6
+row	tone_pan01_twin	per_1_C2_R	anchor=ev:ch=1;reg=R4;val=$1D;nth=6;from=+38864;to=+222184;side=R	f=192;k=4;d=768;r1=$FF;al=$1D;r5=$0F
+group	tone_pan01_twin	per_0_C3_L	form=ROWS	kind=period	class=ASSUMED:LED-AUD-0008	kills=AF0,AF2,AF3,AF4,AF5,AF6
+row	tone_pan01_twin	per_0_C3_L	anchor=ev:ch=0;reg=R4;val=$9D;nth=4;from=+26576;to=+148456;side=L	f=128;k=4;d=512;r1=$FF;al=$1D;r5=$F0
+group	tone_pan01_twin	per_1_C3_R	form=ROWS	kind=period	class=ASSUMED:LED-AUD-0008	kills=AF0,AF2,AF3,AF4,AF5,AF6
+row	tone_pan01_twin	per_1_C3_R	anchor=ev:ch=1;reg=R4;val=$1D;nth=9;from=+38864;to=+222184;side=R	f=192;k=4;d=768;r1=$FF;al=$1D;r5=$0F
 # tone_golden (ER-20, D-209: an E0 change detector beside the literal scene tone_sel0 and its sweep, never a verdict; at most one golden per ROM): the digests of the D-199 streams of one zero-policy run, made with ds_runner --audio-out audio_tone_sel0 and recomputed with the host shasum -a 256
 #   of the .dspa and .dspe files (both equal, 2026-11-13, epoch 6). A golden is regenerated on an epoch bump or a change of the streams, with the old and the new digests recorded on this line.
 #   05-06 Task 1 (the pan scenes grow the streams): pcm 3e20cc72..ad805 -> 95172f4f..9d223b, psg f85f0369..e3640 -> 65d1b578..82dc (host shasum equal to the runner's).
 #   05-06 Task 2 (tone_atten): pcm 95172f4f..9d223b -> 73271d68..bec464, psg 65d1b578..82dc -> 74ba2a40..e6542.
+#   Task 3 (the twin): pcm 73271d68..bec464 -> 9f3e65e7..39e6c, psg 74ba2a40..e6542 -> 76f6d249..ff7a1.
 scene	tone_golden	case=audio_tone_golden	role=golden
-golden	tone_golden	pcm_sha256=73271d681be4e61226869755639fcd320d3f6d6c7f95fee6cd88699f28bec464	psg_sha256=74ba2a40bd82c27b623bdc8159a0a60a69b24f40b431c6f6155722e7f9ee6542
+golden	tone_golden	pcm_sha256=9f3e65e7e68cdcd499a207368c936ee76d3721f2154816e14da540f625439e6c	psg_sha256=76f6d2490b95173fa170a46cc362202b1364afa547d80d695df9a5a2174ff7a1

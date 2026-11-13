@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The in-ROM twin of criterion 3 (plan 05-06; D-211 (1), D-225, ER-20): psg_tone plays, after its other scenes, the script of tone_pan01 mis-programmed in two places (select 0 at F + 1 = 129, select 1 never keyed on). The runner kind audio judges the expect_red scene tone_pan01_twin of
+# fixtures/src/psg_tone.aexp, which names twin=tone_pan01 and lists the predicted red groups on its scene row (this case carries no expect_red): the case passes only when exactly those groups fail and the others (ord_0_A, sil_C1_R, sil_C2_L) pass, while audio_tone_pan01 is all green
+# on the same run; any other red set is the harness failure misprog-misattributed. Evidence tier E0: the literals can fail and each fault is attributed to the groups its change predicts.
+id = "audio_tone_pan01_twin"
+kind = "audio"
+fixture = "authored:psg-tone"
+request = ""
+expect = "rom=psg-tone;id=27;checks=10;scene=tone_pan01_twin"
+meaning = "A copy of the tone_pan01 script with select 0 one F step slow and select 1 never keyed on fails exactly the period and order groups those two changes predict and keeps the others green (E0)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 12000000

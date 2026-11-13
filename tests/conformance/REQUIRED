@@ -364,6 +364,7 @@ audio_fault_sweep_tone_pan23
 audio_fault_sweep_tone_pan45
 audio_tone_atten
 audio_fault_sweep_tone_atten
+audio_tone_pan01_twin
 aud_noninterference
 psg_dev_join
 snapshot_restore_audio

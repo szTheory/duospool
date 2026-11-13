@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Toy control (D-210, PR-15, F-4, F-72, R5; an audio toy of plan 05-06): the channel select taken as R0 & 3 instead of R0 & 7 (D-189, MAN:P8-2), made from the live src/core/psg.c by scripts/control-mutate. The anchor is the one statement that stores psg_select; the replacement masks
+# with 3, so select 4 writes reach select 0 and select 5 writes reach select 1. The case audio_tone_pan45 must come out guest_failure: no DSPE record names channel 4 or 5, so every group of tone_pan45 loses its anchor, and selects 0 and 1 play tables 4 and 5 instead.
+# The cases with the second column pass must STAY pass (F-4): audio_tone_pan01 and audio_tone_sel0 anchor on records of selects 0 and 1 by value (val=), so the R4 $00 writes of (b) at selects 4 and 5, which the toy moves to selects 0 and 1, change no count, and both scenes end before
+# any later select 4 or 5 write. The real core passes all three (REQUIRED cases).
+tag=rule-psg-chsel-mask
+file=src/core/psg.c
+anchor=inst->psg_select = (uint8_t)(value & ds_psg_reg_mask(0u));
+replace=inst->psg_select = (uint8_t)(value & 3u);

@@ -21,7 +21,7 @@ aud03-h	LED-AUD-0003	later:05-06	ev_decode	R7 exists for select 4 and 5 only
 aud04-a	LED-AUD-0004	later:05-06	ev_edge	reg = window offset & $0F (a 16-byte mirror)
 aud04-b	LED-AUD-0004	later:05-06	ev_edge	R2-R7 writes are dropped at select 6 and 7
 aud04-c	LED-AUD-0004	row	case:psg_dev_join	reads return io_buffer with no penalty and produce no DSPE record
-aud04-d	LED-AUD-0004	later:05-06	ev_edge	R6 with chON 1 and DDA 0 stores with no increment (held, a disputed point)
+aud04-d	LED-AUD-0004	row	case:psg_wave_ptr	R6 with chON 1 and DDA 0 stores with no increment (held, a disputed point): the C-level WAVE_HELD row of psg_wave_ptr (ASSUMED); no fixture row plays a held write (05-06)
 aud04-e	LED-AUD-0004	later:05-07	cycle_phase	key-on keeps widx; a counter restarts at (w - w mod d) + its period on key-on (the key-on counter, a disputed point)
 aud04-f	LED-AUD-0004	later:05-07	cycle_phase	a counter restarts at (w - w mod d) + its period on DDA 1 -> 0
 aud04-g	LED-AUD-0004	later:05-09	lfo_dynamic	a counter restarts on TRG 1 -> 0 of an uncoupled select 1
@@ -89,7 +89,7 @@ d189-b	D-189	later:05-06	ev_edge	R2..R6 are dropped at select 6 or 7
 d189-c	D-189	later:05-06	ev_decode	R7 only at select 4 or 5; R1, R8 and R9 ignore R0
 d190-a	D-190	row	ev_decode	R4 with DDA 1 sets widx 0; R6 with chON 0 and DDA 0 stores and increments
 d190-b	D-190	later:05-07	dda_hold	R6 with DDA 1 loads the latch
-d190-c	D-190	later:05-06	ev_edge	R6 with chON 1 and DDA 0 stores with no increment (psg_wave_write_when_on 1)
+d190-c	D-190	row	case:psg_wave_ptr	R6 with chON 1 and DDA 0 stores with no increment (psg_wave_write_when_on 1): the C-level WAVE_HELD row of psg_wave_ptr (ASSUMED, 05-06)
 d191-a	D-191	row	silent	output gating: chON 0 gives 0
 d191-b	D-191	row	cycle_order	chON 1 with DDA 0 and NE 0 gives wave[widx]
 d191-c	D-191	later:05-07	dda_hold,dda_order	DDA 1 gives the latch
