@@ -1,7 +1,7 @@
 ; SPDX-License-Identifier: 0BSD
 ; SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 ;
-; psg_tone.s - the PSG tone fixture, DSV id 27 (plan 05-04, grown by 05-06; D-183, D-187, D-191, D-194, D-196, D-206..D-208, D-211, D-212, D-227, RF-12, RF-13, PR-5). It is assembled by ca65 in the gate and never committed as a binary.
+; psg_tone.s - the PSG tone fixture, DSV id 27 (plan 05-04, grown by 05-06 and 05-12; D-183, D-187, D-191, D-194, D-196, D-206..D-208, D-211, D-212, D-227, RF-12, RF-13, PR-5). It is assembled by ca65 in the gate and never committed as a binary.
 ; The guest maps the hardware page at logical $0000 (MPR0 = $FF), so the PSG registers are at logical $0800 to $0809 (fixtures/lib/psg.inc). The PSG is write only (H8-24): the guest cannot read what it plays, so every judgement of the sound is the runner's,
 ; from the DSPE and DSPA streams against the hand literals of fixtures/src/psg_tone.aexp (ER-21); the DSV1 checks here judge only the guest's own table data (GUEST).
 ; Sequence: (a) no PSG write for at least 2,000 master clocks after reset (the power-on silence scene, ASSUMED LED-PROF-0003); (b) for s = 0..5: R0 = s, R4 = $00 (every channel chON 0, DDA 0, AL 0); (c) the select-0 tracer scene: R0 $00, R4 $40 (DDA 1: the wave index resets,
@@ -25,6 +25,9 @@
 ;   Scene tone_atten (sc_atten): select 2 (table 2, F = 256) keyed on once at S = 0 (P1, 17 units) and kept playing; Y (9 units): select 3 fully programmed with chON 0 (R4 $40, $00, table 3, F = 320, R5 $FF, R4 $1F); then each phase writes, last, the register its windows anchor on:
 ;   P2 R1 $C8, R4 $9D, R5 $F8 (the P8-10 example, 17 units); P3 R1 $C7; P4 R1 $FF, R5 $00; P5 R5 $FF, R1 $00; P6 R1 $FF, R4 $9F, R5 $EF; P7 R5 $DF; P8 R5 $FF, R4 $9E; P9 R4 $9F, R1 $EF (6 units each, at least 2.1 cycles + 2,000 master clocks); then R1 $FF and the key-off.
 ;   Scene tone_pan01_twin (sc_twin, D-211, D-225), played last: a byte copy of the tone_pan01 script except R2 $81 (select 0 at F + 1 = 129) and the select-1 key-ons with bit 7 clear (B $1F, C2 and C3 $1D): select 1 is never keyed on, every anchor record still exists.
+;   Grown by plan 05-12 (05-06 Task 3b, D-196): sc_probe, played right after tone_pan01 (select 1 at F = 192 and keyed off; R0 holds 1): R8 $00, R9 $80 (TRG 1: the LFO reset and the select-1 wave index 0, CTL 0), R9 $00, R0 $F9 (select 1), R3 $F1, R3 $00, R2 $3C, R4 $3F, R6 $E5, R9 $7C (stored $00).
+;   In the tone_pan45 set-up (r7 of PAN_SCENE): R7 $78 right after select 4's R4 $40, and R2 again after each R7 $00, so that R2's post rests on the R3 just written and not on the power-on F. sc_edge, played right after tone_atten: R0 3, R5 $FF through the mirror $0815, $A5 to $080A,
+;   R7 $9F at select 3, R0 6 and R2 $12, R0 7 and R6 $1A (the edge writes of ASSUMED rows). No R9 write has CTL != 0 and select 1 stays off. The decoded fields of every record are written by hand in fixtures/src/psg_tone.aexp.
         .setcpu "huc6280"
 
 DSV_ID = 27
@@ -83,13 +86,17 @@ up_tab:                                 ; the upload routine of each channel tab
         .word ul0, ul1, ul2, ul3, ul4, ul5
 ; the pan-pair scene script of selects a, b at F a, F b, n delay units (the header); a macro so the three scenes share one shape
         .macro PAN_SCENE ca, cb, fa, fb, n, r7, kb, kp
-        .byte 0, (ca), 4, $40, 4, $00, SC_UP + (ca), 2, <(fa), 3, >(fa)                 ; set-up of select a: the wave index 0, chON 0, the upload, F a
+        .byte 0, (ca), 4, $40                                                           ; set-up of select a: the wave index 0 ...
         .if r7
-        .byte 7, $00                                                                    ; R7 $00 (NE 0) at select 4
+        .byte 7, $78                                                                    ; R7 $78 at select 4 (05-12: NE 0, stored $18)
+        .endif
+        .byte 4, $00, SC_UP + (ca), 2, <(fa), 3, >(fa)                                  ; ... chON 0, the upload, F a
+        .if r7
+        .byte 7, $00, 2, <(fa)                                                          ; R7 $00 (NE 0) at select 4, then R2 again (05-12)
         .endif
         .byte 0, (cb), 4, $40, 4, $00, SC_UP + (cb), 2, <(fb), 3, >(fb)                 ; set-up of select b
         .if r7
-        .byte 7, $00                                                                    ; R7 $00 (NE 0) at select 5
+        .byte 7, $00, 2, <(fb)                                                          ; R7 $00 (NE 0) at select 5, then R2 again (05-12)
         .endif
         .byte 1, $FF                                                                    ; R1 $FF: LMAL F, RMAL F
         .byte 0, (ca), 4, $40, 4, $1F, 5, $FF, 4, $9F, SC_DLY + (n), 4, $1F             ; A: a solo at S = 0 both sides
@@ -108,6 +115,12 @@ sc_pan45:
         PAN_SCENE 4, 5, 384, 448, 29, 1, $9F, $9D
 sc_twin:                                ; tone_pan01_twin (D-211): the script of tone_pan01 with select 0 at F + 1 = 129 (R2 $81) and every select-1 key-on written with bit 7 clear ($9F -> $1F in B, $9D -> $1D in C2 and C3)
         PAN_SCENE 0, 1, 129, 192, 13, 0, $1F, $1D
+sc_probe:                               ; 05-12: R8, the R9 pair and the mask probe at select 1 (see the header)
+        .byte 8, $00, 9, $80, 9, $00                                                    ; R8 $00; R9 $80 (TRG 1, CTL 0), R9 $00
+        .byte 0, $F9, 3, $F1, 3, $00, 2, $3C, 4, $3F, 6, $E5, 9, $7C, SC_END           ; R0 $F9, R3 $F1, R3 $00, R2 $3C, R4 $3F, R6 $E5, R9 $7C
+sc_edge:                                ; 05-12: the edge writes after tone_atten (see the header)
+        .byte 0, 3, $15, $FF, $0A, $A5, 7, $9F                                          ; select 3: R5 through $0815, $080A, R7 (dropped at select 3)
+        .byte 0, 6, 2, $12, 0, 7, 6, $1A, SC_END                                        ; R2 at select 6, R6 at select 7 (dropped)
 sc_atten:                               ; tone_atten (see the header): select 2 keyed on once, its attenuation changed phase by phase
         .byte 0, 2, 4, $40, 4, $00, SC_UP + 2, 2, $00, 3, $01                           ; set-up: select 2, the wave index 0, table 2, F = 256
         .byte 1, $FF, 5, $FF, 4, $9F, SC_DLY + 17                                       ; P1: key-on at S = 0 on both sides
@@ -173,11 +186,13 @@ tone_i: dex
         bne tone_o
 ; (g) key-off
         PSG_WRITE PSG_R4, $1F
-; (g2) the scenes of plan 05-06 (see the header and fixtures/src/psg_tone.aexp)
+; (g2) the scenes of plans 05-06 and 05-12 (see the header and fixtures/src/psg_tone.aexp)
         PLAY sc_pan01
+        PLAY sc_probe                   ; 05-12
         PLAY sc_pan23
         PLAY sc_pan45
         PLAY sc_atten
+        PLAY sc_edge                    ; 05-12
         PLAY sc_twin
 ; (h) check 1 and 2: the sum of the 32 words by a table walk against the sum of the counter 0..31, two computations of 496 = $01F0 (the table is a permutation of 0..31)
         stz a:TS_SUM_LO

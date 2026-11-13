@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
-# psg_tone.aexp - the hand-derived literal rows of the audio scenes of fixtures/src/psg_tone.s (plan 05-04, grown by 05-05 and 05-06; D-187, D-196, D-197, D-199, D-206..D-212, D-225, D-230, PR-13, RF-13, RF-14, ER-14..ER-21).
+# psg_tone.aexp - the hand-derived literal rows of the audio scenes of fixtures/src/psg_tone.s (plan 05-04, grown by 05-05, 05-06 and 05-12; D-187, D-196, D-197, D-199, D-206..D-212, D-225, D-230, D-233, PR-13, RF-13, RF-14, ER-14..ER-21).
 # scripts/fixture-build writes it without comments as build/gate/fixtures/psg-tone.aexp.tsv for the runner kind audio (tests/conformance/audiokinds.c holds the grammar); scripts/audio-check judges this source. No literal comes from a case file, a run or a hash (R7).
 # Selector: anchor=ev:ch=<0..5|G>;reg=R<n>;[val=$hh;]nth=N (the N-th DSPE record of that channel, G the chan $FE); ev=+K; from=+M, to=+M master clocks after it, or absolute; to=ev:... an end anchor; side=L|R. A window holds the samples s with from <= 192s < to (D-187).
-# Budget (D-230, 32,768 bytes): 12,532 bytes after 05-04, 14,550 after 05-05. From 05-06: one comment block per scene, side pairs of one literal in one group of two rows, short group ids (per period, ord cycle_order, sil silent, lev levels_exact, ao atten_order, ae atten_equal).
+# Budget (D-230; 49,152 bytes since D-233): 12,532 bytes after 05-04, 14,550 after 05-05, 32,406 after 05-06. From 05-06: one comment block per scene, side pairs of one literal in one group of two rows, short group ids (per period, ord cycle_order, sil silent, lev levels_exact, ao atten_order, ae atten_equal).
 aexp	sample_mclk=192
 # tone_sel0 (select 0, F = 256, d = 6): key-on at stamp w, w' = w - (w mod 6); step j (j >= 1) at w' + 1536 j sets the wave index to j mod 32; att = 0 on both sides (R1 $FF, AL $1F, R5 $FF: S = 0), so a sample is 32768 x word (ASSUMED, not judged here).
 #   The AF kills of each literal scene are judged by its audio_fault_sweep case (D-209), which prints the observed matrix of AF0..AF9.
@@ -123,6 +123,26 @@ group	tone_pan01	per_0_C3_L	form=ROWS	kind=period	class=ASSUMED:LED-AUD-0008	kil
 row	tone_pan01	per_0_C3_L	anchor=ev:ch=0;reg=R4;val=$9D;nth=2;from=+26576;to=+148456;side=L	f=128;k=4;d=512;r1=$FF;al=$1D;r5=$F0
 group	tone_pan01	per_1_C3_R	form=ROWS	kind=period	class=ASSUMED:LED-AUD-0008	kills=AF0,AF2,AF3,AF4,AF5,AF6
 row	tone_pan01	per_1_C3_R	anchor=ev:ch=1;reg=R4;val=$9D;nth=2;from=+38864;to=+222184;side=R	f=192;k=4;d=768;r1=$FF;al=$1D;r5=$0F
+# ev_1 (05-12; MAN:P8-2+P8-3+P8-4, D-196 by hand): select 1's set-up from the 2nd R0 $01 ((b) wrote the 1st): R4 $40 IDX_RESET, index 0; R4 $00; the first R6 stores table 1 word 0 ($17, index 1); R3 $00 posts F $0C0 over the R2 $C0 just written; R1 $FF is global at select 1; C2's R5 $0F (4th R0 $01).
+group	tone_pan01	ev_1	form=EV	kind=ev_decode	class=MAN:P8-2+P8-3+P8-4	kills=AF0,AF8,AF9
+row	tone_pan01	ev_1	anchor=ev:ch=G;reg=R0;val=$01;nth=2;ev=+1	chan=1;effect=$08;wave_idx=0;post=$0040
+row	tone_pan01	ev_1	anchor=ev:ch=G;reg=R0;val=$01;nth=2;ev=+2	chan=1;effect=$00;wave_idx=0;post=$0000
+row	tone_pan01	ev_1	anchor=ev:ch=G;reg=R0;val=$01;nth=2;ev=+3	chan=1;effect=$01;wave_idx=1;post=$0017
+row	tone_pan01	ev_1	anchor=ev:ch=G;reg=R0;val=$01;nth=2;ev=+36	chan=1;effect=$00;wave_idx=0;post=$00C0
+row	tone_pan01	ev_1	anchor=ev:ch=G;reg=R0;val=$01;nth=2;ev=+37	chan=$FE;effect=$00;wave_idx=$FF;post=$00FF
+row	tone_pan01	ev_1	anchor=ev:ch=G;reg=R0;val=$01;nth=4;ev=+3	chan=1;effect=$00;wave_idx=0;post=$000F
+# ev_probe (05-12; MAN:P8-2+P8-3+P8-4+P8-6): sc_probe after tone_pan01 at select 1 (F $0C0, off): R8 $00; R9 $80 LFO_RESET ($10) and the select-1 index 0 (P8-6); R9 $00; R0 $F9 posts & $07 = 1; R3 $F1 posts F $1C0, R3 $00 $0C0, R2 $3C $03C; R4 $3F posts & $DF; R6 $E5 is WAVE_STORE of word 0 ($05, index 1); R9 $7C posts & $83 = 0.
+group	tone_pan01	ev_probe	form=EV	kind=ev_decode	class=MAN:P8-2+P8-3+P8-4+P8-6	kills=AF0,AF8,AF9
+row	tone_pan01	ev_probe	anchor=ev:ch=G;reg=R8;val=$00;nth=1;ev=+0	chan=$FE;effect=$00;wave_idx=$FF;post=$0000
+row	tone_pan01	ev_probe	anchor=ev:ch=G;reg=R8;val=$00;nth=1;ev=+1	chan=$FE;effect=$10;wave_idx=$FF;post=$0080
+row	tone_pan01	ev_probe	anchor=ev:ch=G;reg=R8;val=$00;nth=1;ev=+2	chan=$FE;effect=$00;wave_idx=$FF;post=$0000
+row	tone_pan01	ev_probe	anchor=ev:ch=G;reg=R8;val=$00;nth=1;ev=+3	chan=$FE;effect=$00;wave_idx=$FF;post=$0001
+row	tone_pan01	ev_probe	anchor=ev:ch=G;reg=R8;val=$00;nth=1;ev=+4	chan=1;effect=$00;wave_idx=0;post=$01C0
+row	tone_pan01	ev_probe	anchor=ev:ch=G;reg=R8;val=$00;nth=1;ev=+5	chan=1;effect=$00;wave_idx=0;post=$00C0
+row	tone_pan01	ev_probe	anchor=ev:ch=G;reg=R8;val=$00;nth=1;ev=+6	chan=1;effect=$00;wave_idx=0;post=$003C
+row	tone_pan01	ev_probe	anchor=ev:ch=G;reg=R8;val=$00;nth=1;ev=+7	chan=1;effect=$00;wave_idx=0;post=$001F
+row	tone_pan01	ev_probe	anchor=ev:ch=G;reg=R8;val=$00;nth=1;ev=+8	chan=1;effect=$01;wave_idx=1;post=$0005
+row	tone_pan01	ev_probe	anchor=ev:ch=G;reg=R8;val=$00;nth=1;ev=+9	chan=$FE;effect=$00;wave_idx=$FF;post=$0000
 scene	tone_pan23	case=audio_tone_pan23	role=literal
 group	tone_pan23	per_2_A	form=ROWS	kind=period	class=MAN:P8-9+H8-23	kills=AF0,AF2,AF4,AF5,AF6
 row	tone_pan23	per_2_A	anchor=ev:ch=2;reg=R4;val=$9F;nth=1;from=+51152;to=+295912;side=L	f=256;k=4;d=1024;r1=$FF;al=$1F;r5=$FF
@@ -173,6 +193,26 @@ group	tone_pan45	per_4_C3_L	form=ROWS	kind=period	class=ASSUMED:LED-AUD-0008	kil
 row	tone_pan45	per_4_C3_L	anchor=ev:ch=4;reg=R4;val=$9D;nth=2;from=+75728;to=+443368;side=L	f=384;k=4;d=1536;r1=$FF;al=$1D;r5=$F0
 group	tone_pan45	per_5_C3_R	form=ROWS	kind=period	class=ASSUMED:LED-AUD-0008	kills=AF0,AF2,AF3,AF4,AF5,AF6
 row	tone_pan45	per_5_C3_R	anchor=ev:ch=5;reg=R4;val=$9D;nth=2;from=+88016;to=+517096;side=R	f=448;k=4;d=1792;r1=$FF;al=$1D;r5=$0F
+# ev_4, ev_5 (05-12; MAN:P8-2+P8-3+P8-4+P8-6): the set-ups from the 2nd R0 $04, $05: R0 posts & $07; R4 $40 IDX_RESET; R7 $78 at select 4 posts & $9F = $18 (index 0); R4 $00; the first R6 stores word 0 ($15, $1A; index 1); R3 $01 posts F $180, $1C0; R7 $00; R2 again posts the same F; C1's R5 $F0, C2's R5 $0F.
+group	tone_pan45	ev_4	form=EV	kind=ev_decode	class=MAN:P8-2+P8-3+P8-4+P8-6	kills=AF0,AF8,AF9
+row	tone_pan45	ev_4	anchor=ev:ch=G;reg=R0;val=$04;nth=2;ev=+0	chan=$FE;effect=$00;wave_idx=$FF;post=$0004
+row	tone_pan45	ev_4	anchor=ev:ch=G;reg=R0;val=$04;nth=2;ev=+1	chan=4;effect=$08;wave_idx=0;post=$0040
+row	tone_pan45	ev_4	anchor=ev:ch=G;reg=R0;val=$04;nth=2;ev=+2	chan=4;effect=$00;wave_idx=0;post=$0018
+row	tone_pan45	ev_4	anchor=ev:ch=G;reg=R0;val=$04;nth=2;ev=+3	chan=4;effect=$00;wave_idx=0;post=$0000
+row	tone_pan45	ev_4	anchor=ev:ch=G;reg=R0;val=$04;nth=2;ev=+4	chan=4;effect=$01;wave_idx=1;post=$0015
+row	tone_pan45	ev_4	anchor=ev:ch=G;reg=R0;val=$04;nth=2;ev=+37	chan=4;effect=$00;wave_idx=0;post=$0180
+row	tone_pan45	ev_4	anchor=ev:ch=G;reg=R0;val=$04;nth=2;ev=+38	chan=4;effect=$00;wave_idx=0;post=$0000
+row	tone_pan45	ev_4	anchor=ev:ch=G;reg=R0;val=$04;nth=2;ev=+39	chan=4;effect=$00;wave_idx=0;post=$0180
+row	tone_pan45	ev_4	anchor=ev:ch=G;reg=R0;val=$04;nth=4;ev=+3	chan=4;effect=$00;wave_idx=0;post=$00F0
+group	tone_pan45	ev_5	form=EV	kind=ev_decode	class=MAN:P8-2+P8-3+P8-4+P8-6	kills=AF0,AF8,AF9
+row	tone_pan45	ev_5	anchor=ev:ch=G;reg=R0;val=$05;nth=2;ev=+0	chan=$FE;effect=$00;wave_idx=$FF;post=$0005
+row	tone_pan45	ev_5	anchor=ev:ch=G;reg=R0;val=$05;nth=2;ev=+1	chan=5;effect=$08;wave_idx=0;post=$0040
+row	tone_pan45	ev_5	anchor=ev:ch=G;reg=R0;val=$05;nth=2;ev=+2	chan=5;effect=$00;wave_idx=0;post=$0000
+row	tone_pan45	ev_5	anchor=ev:ch=G;reg=R0;val=$05;nth=2;ev=+3	chan=5;effect=$01;wave_idx=1;post=$001A
+row	tone_pan45	ev_5	anchor=ev:ch=G;reg=R0;val=$05;nth=2;ev=+36	chan=5;effect=$00;wave_idx=0;post=$01C0
+row	tone_pan45	ev_5	anchor=ev:ch=G;reg=R0;val=$05;nth=2;ev=+37	chan=5;effect=$00;wave_idx=0;post=$0000
+row	tone_pan45	ev_5	anchor=ev:ch=G;reg=R0;val=$05;nth=2;ev=+38	chan=5;effect=$00;wave_idx=0;post=$01C0
+row	tone_pan45	ev_5	anchor=ev:ch=G;reg=R0;val=$05;nth=4;ev=+3	chan=5;effect=$00;wave_idx=0;post=$000F
 # tone_atten (05-06; D-194, D-208, ER-15, ER-16): select 2 (table 2, F = 256) keyed on once (P1) and kept playing while the sc_atten script of the psg_tone.s header changes R1, R5 and AL; att = 2(15 - MAL) + (31 - AL) + 2(15 - LAL) = 2S + 1 - (AL & 1); VOL of the handbook.
 #   A window anchors on its phase's last write (val= counts that record value; R1 is global): +2000..+100304 holds two whole cycles, +2000..+294912 five crossings at any phase (k = 4, d = 1024); P1 uses the tone_pan windows of its key-on.
 #   P1 S = 0: per, lev 31 x 32768 = 1,015,808 (ASSUMED:LED-AUD-0009). P2 (P8-10: R1 $C8, AL $1D, R5 $F8): left S = 3 + 1 + 0 = 4, att 8: live, per (MAN), lev 31 x 8231 = 255,161; right S = 7 + 1 + 7 = 15: sil ASSUMED, disputed (mark=sum=15).
@@ -217,6 +257,34 @@ row	tone_atten	ao_r1	anchor=ev:ch=G;reg=R1;val=$EF;nth=1;from=+2000;to=+100304;s
 group	tone_atten	ae	form=REL	kind=atten_equal	class=ASSUMED:LED-AUD-0009	kills=AF0,AF5,AF6
 row	tone_atten	ae	anchor=ev:ch=2;reg=R5;val=$EF;nth=1;from=+2000;to=+100304;side=L	r1=$FF;al=$1F;r5=$EF
 row	tone_atten	ae	anchor=ev:ch=G;reg=R1;val=$EF;nth=1;from=+2000;to=+100304;side=L	r1=$EF;al=$1F;r5=$FF
+# ev_2, ev_3 (05-12; MAN:P8-2+P8-3+P8-4): select 2's set-up (7th R0 $02) and Y (7th R0 $03): R4 $40 IDX_RESET; R4 $00; the first R6 stores word 0 ($13, $1C; index 1); R2 posts F over the high nibble 1 of tone_pan23's R3 $01 ($100, $140), R3 $01 the same F; R5 $FF the byte.
+group	tone_atten	ev_2	form=EV	kind=ev_decode	class=MAN:P8-2+P8-3+P8-4	kills=AF0,AF8,AF9
+row	tone_atten	ev_2	anchor=ev:ch=G;reg=R0;val=$02;nth=7;ev=+1	chan=2;effect=$08;wave_idx=0;post=$0040
+row	tone_atten	ev_2	anchor=ev:ch=G;reg=R0;val=$02;nth=7;ev=+2	chan=2;effect=$00;wave_idx=0;post=$0000
+row	tone_atten	ev_2	anchor=ev:ch=G;reg=R0;val=$02;nth=7;ev=+3	chan=2;effect=$01;wave_idx=1;post=$0013
+row	tone_atten	ev_2	anchor=ev:ch=G;reg=R0;val=$02;nth=7;ev=+35	chan=2;effect=$00;wave_idx=0;post=$0100
+row	tone_atten	ev_2	anchor=ev:ch=G;reg=R0;val=$02;nth=7;ev=+36	chan=2;effect=$00;wave_idx=0;post=$0100
+row	tone_atten	ev_2	anchor=ev:ch=G;reg=R0;val=$02;nth=7;ev=+38	chan=2;effect=$00;wave_idx=0;post=$00FF
+group	tone_atten	ev_3	form=EV	kind=ev_decode	class=MAN:P8-2+P8-3+P8-4	kills=AF0,AF8,AF9
+row	tone_atten	ev_3	anchor=ev:ch=G;reg=R0;val=$03;nth=7;ev=+1	chan=3;effect=$08;wave_idx=0;post=$0040
+row	tone_atten	ev_3	anchor=ev:ch=G;reg=R0;val=$03;nth=7;ev=+2	chan=3;effect=$00;wave_idx=0;post=$0000
+row	tone_atten	ev_3	anchor=ev:ch=G;reg=R0;val=$03;nth=7;ev=+3	chan=3;effect=$01;wave_idx=1;post=$001C
+row	tone_atten	ev_3	anchor=ev:ch=G;reg=R0;val=$03;nth=7;ev=+35	chan=3;effect=$00;wave_idx=0;post=$0140
+row	tone_atten	ev_3	anchor=ev:ch=G;reg=R0;val=$03;nth=7;ev=+36	chan=3;effect=$00;wave_idx=0;post=$0140
+row	tone_atten	ev_3	anchor=ev:ch=G;reg=R0;val=$03;nth=7;ev=+37	chan=3;effect=$00;wave_idx=0;post=$00FF
+# edge (05-12; ASSUMED, ER-15, ER-16): sc_edge from its R0 $03 (the 8th): R5 $FF through the mirror $0815 is R5 of select 3 (index 0 since Y); $080A, R7 at select 3, R2 at select 6 and R6 at select 7 have no target (NO_TARGET $20, chan and wave_idx $FF, post $FFFF); R0 6, 7 post the 3 bits.
+group	tone_atten	edge	form=EV	kind=ev_edge	class=ASSUMED:LED-AUD-0003+LED-AUD-0004	kills=AF0,AF8,AF9
+row	tone_atten	edge	anchor=ev:ch=G;reg=R0;val=$03;nth=8;ev=+1	chan=3;effect=$00;wave_idx=0;post=$00FF
+row	tone_atten	edge	anchor=ev:ch=G;reg=R0;val=$03;nth=8;ev=+2	chan=$FF;effect=$20;wave_idx=$FF;post=$FFFF;mark=reg=RA
+row	tone_atten	edge	anchor=ev:ch=G;reg=R0;val=$03;nth=8;ev=+3	chan=$FF;effect=$20;wave_idx=$FF;post=$FFFF
+row	tone_atten	edge	anchor=ev:ch=G;reg=R0;val=$03;nth=8;ev=+4	chan=$FE;effect=$00;wave_idx=$FF;post=$0006;mark=sel=6
+row	tone_atten	edge	anchor=ev:ch=G;reg=R0;val=$03;nth=8;ev=+5	chan=$FF;effect=$20;wave_idx=$FF;post=$FFFF;mark=sel=6
+row	tone_atten	edge	anchor=ev:ch=G;reg=R0;val=$03;nth=8;ev=+6	chan=$FE;effect=$00;wave_idx=$FF;post=$0007;mark=sel=7
+row	tone_atten	edge	anchor=ev:ch=G;reg=R0;val=$03;nth=8;ev=+7	chan=$FF;effect=$20;wave_idx=$FF;post=$FFFF;mark=sel=7
+# edge_v (05-12; GUEST:program): the records of the writes to $0815 and $080A carry reg = offset & $0F (D-196): R5 value $FF, then reg $A value $A5.
+group	tone_atten	edge_v	form=EV	kind=ev_value	class=GUEST:program	kills=AF0,AF8
+row	tone_atten	edge_v	anchor=ev:ch=G;reg=R0;val=$03;nth=8;ev=+1	reg=R5;val=$FF
+row	tone_atten	edge_v	anchor=ev:ch=G;reg=R0;val=$03;nth=8;ev=+2	reg=RA;val=$A5
 # tone_pan01_twin (05-06; D-211, D-225): sc_twin, tone_pan01's script with select 0 at F + 1 = 129 and select 1 never keyed on (R4 $1F in B, $1D in C2, C3). F + 1: 516 samples per 4 cycles, red per_0_A, _C1_L, _C3_L; select 1 silent: no crossing, red
 #   per_1_B, ord_1_B, per_1_C2_R, _C3_R. Green: ord_0_A (order kept), sil_C1_R, sil_C2_L. nth: select 0 R4 $9F 3, $9D 3, 4, $1D 6; select 1 R4 $1F 4, $1D 6, 7, 9. A and B groups carry the L row only.
 scene	tone_pan01_twin	case=audio_tone_pan01_twin	role=expect_red	twin=tone_pan01	expect_red=per_0_A,per_1_B,ord_1_B,per_0_C1_L,per_1_C2_R,per_0_C3_L,per_1_C3_R
@@ -245,5 +313,6 @@ row	tone_pan01_twin	per_1_C3_R	anchor=ev:ch=1;reg=R4;val=$1D;nth=9;from=+38864;t
 #   05-06 Task 1 (the pan scenes grow the streams): pcm 3e20cc72..ad805 -> 95172f4f..9d223b, psg f85f0369..e3640 -> 65d1b578..82dc (host shasum equal to the runner's).
 #   05-06 Task 2 (tone_atten): pcm 95172f4f..9d223b -> 73271d68..bec464, psg 65d1b578..82dc -> 74ba2a40..e6542.
 #   Task 3 (the twin): pcm 73271d68..bec464 -> 9f3e65e7..39e6c, psg 74ba2a40..e6542 -> 76f6d249..ff7a1.
+#   05-12 (the probe, the edge writes and the tone_pan45 R7 $78 and R2 writes): pcm 9f3e65e7..39e6c -> 0d3aeebf..dca37, psg 76f6d249..ff7a1 -> bfa52673..a7869 (host shasum equal to the runner's).
 scene	tone_golden	case=audio_tone_golden	role=golden
-golden	tone_golden	pcm_sha256=9f3e65e7e68cdcd499a207368c936ee76d3721f2154816e14da540f625439e6c	psg_sha256=76f6d2490b95173fa170a46cc362202b1364afa547d80d695df9a5a2174ff7a1
+golden	tone_golden	pcm_sha256=0d3aeebfd556684144745a8f28ff539a2cb59ecb730a250c75e2f678e47dca37	psg_sha256=bfa5267327746e6df9ae6cf688730b45b92e35da924dea2d62643ff5f21a7869

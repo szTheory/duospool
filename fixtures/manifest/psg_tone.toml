@@ -4,16 +4,16 @@
 # Fixture manifest entry (FIX-02, FIX-01, D-59 amended, D-123, D-212): one authored HuCard image of fixtures/src/psg_tone.s. The bytes are assembled in the gate by ca65 and ld65 and are
 # never committed. scripts/fixture-check compares size and sha256 below with the bytes scripts/fixture-build wrote, as hashed by the host sha tool, so a changed source, library or
 # toolchain output turns the gate red. The pin was measured on the first build of plan 05-04 on the Homebrew cc65 2.19 bottle (see fixtures/lib/TOOLS.md); it proves the build is repeatable, nothing more. Re-measured
-# after each change of the source (plan 05-06: the pan-pair scenes, the attenuation scene, the event rows and the twin).
+# after each change of the source (plan 05-06: the pan-pair scenes, the attenuation scene and the twin; plan 05-12: the probe and edge scripts and the tone_pan45 R7 $78 and R2 writes for the event rows).
 id = "psg_tone"
 kind = "authored"
 source = "fixtures/src/psg_tone.s"
 recipe = "psg-tone: ca65 --cpu huc6280 -D ROMBANKS=32 -I fixtures/lib -o build/gate/fx/psg-tone.o fixtures/src/psg_tone.s; ld65 -C fixtures/lib/hucard.cfg -D ROMBANKS=32 -o build/gate/fixtures/psg-tone.pce build/gate/fx/psg-tone.o"
 toolchain = "cc65 V2.19 (ca65 prints V2.18; identity by encoding-matrix bytes, plan 03-08), Homebrew bottle 2.19 locally, hashed by sha256sum or shasum -a 256"
 size = 262144
-sha256 = "1c20a012ecb308b532bff24bef00f63cff68de9db2e9abf91d93627b56635e50"
+sha256 = "744fbf6ed89f1771129267a1f33afcb603963d3d52b1f46af6cdb6846009fe8b"
 licence = "0BSD"
 notices = "none: assembled at gate time from the project-owned sources fixtures/src/psg_tone.s and fixtures/lib/*.inc and hucard.cfg (0BSD); no HuC, PCEAS or cc65 library or startup code, no emulator code, no game content"
 redistribution = "generated-not-committed"
-meaning = "Authored diagnostic HuCard of 256 KiB: power-on silence, every channel chON 0, the select-0 tracer scene (a 32-word table by TIN, F = 256, a counted tone) and from plan 05-06 the pan-pair, attenuation and twin scenes, judged by the runner's audio kind against psg_tone.aexp; 10 DSV1 checks of the guest's own table data (GUEST). A pass is not a support claim."
+meaning = "Authored diagnostic HuCard of 256 KiB: power-on silence, every channel chON 0, the select-0 tracer scene (a 32-word table by TIN, F = 256, a counted tone) and from 05-06 and 05-12 the pan-pair, attenuation, probe, edge and twin scripts, judged by the runner's audio kind against psg_tone.aexp; 10 DSV1 checks of the guest's own table data (GUEST). A pass is not a support claim."
 verdict_source = "guest-computed"

@@ -5,6 +5,8 @@
 # with 3, so select 4 writes reach select 0 and select 5 writes reach select 1. The case audio_tone_pan45 must come out guest_failure: no DSPE record names channel 4 or 5, so every group of tone_pan45 loses its anchor, and selects 0 and 1 play tables 4 and 5 instead.
 # The cases with the second column pass must STAY pass (F-4): audio_tone_pan01 and audio_tone_sel0 anchor on records of selects 0 and 1 by value (val=), so the R4 $00 writes of (b) at selects 4 and 5, which the toy moves to selects 0 and 1, change no count, and both scenes end before
 # any later select 4 or 5 write. The real core passes all three (REQUIRED cases).
+# From plan 05-12 tone_pan45 also holds the decode groups ev_4 and ev_5: under the toy their set-up records name channels 0 and 1 and R7 $78 lands at select 0, where R7 has no target, so both fail with the scene's PCM groups. tone_pan01's ev_1 and ev_probe (select 1, played before
+# tone_pan45) stay green: R0 $F9 & 3 is 1 as R0 $F9 & 7 is.
 tag=rule-psg-chsel-mask
 file=src/core/psg.c
 anchor=inst->psg_select = (uint8_t)(value & ds_psg_reg_mask(0u));

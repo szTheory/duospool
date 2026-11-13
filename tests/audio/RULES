@@ -11,15 +11,15 @@ aud02-a	LED-AUD-0002	row	ev_decode	channels are numbered by the R0 select value 
 aud02-b	LED-AUD-0002	later:05-07	two_level,run_grid	noise is on select 4 and 5
 aud02-c	LED-AUD-0002	later:05-09	lfo_static,lfo_needs_sel1	select 1 modulates select 0 through the LFO
 aud03-a	LED-AUD-0003	row	ev_decode	A3-A0 0 to 9 select R0 to R9 (the reg and the decoded fields of each DSPE record)
-aud03-b	LED-AUD-0003	later:05-06	ev_edge	A3-A0 $A to $F have no target (NO_TARGET; a disputed point, ASSUMED rows only)
-aud03-c	LED-AUD-0003	later:05-06	ev_decode,ev_edge	R0 bits 2-0 pick channel 0 to 5; 6 and 7 pick none (select 6 and 7 are disputed, ASSUMED rows only)
+aud03-b	LED-AUD-0003	row	ev_edge	A3-A0 $A to $F have no target (NO_TARGET; a disputed point, ASSUMED rows only): the edge group of tone_atten, a write to $080A (05-12)
+aud03-c	LED-AUD-0003	row	ev_decode,ev_edge	R0 bits 2-0 pick channel 0 to 5; 6 and 7 pick none (select 6 and 7 are disputed, ASSUMED rows only): ev_probe's R0 $F9 picks select 1, ev_1..ev_5 decode each select, the edge group drops R2 at select 6 and R6 at select 7 (05-12)
 aud03-d	LED-AUD-0003	row	ev_decode	stored masks R4 $DF and R6 $1F (the post field of the decoded R4 and R6 records)
-aud03-e	LED-AUD-0003	later:05-06	ev_decode	stored masks R0 $07, R3 $0F, R7 $9F, R9 $83 and $FF for the others (the mask probe)
+aud03-e	LED-AUD-0003	row	ev_decode	stored masks R0 $07, R3 $0F, R7 $9F, R9 $83 and $FF for the others (the mask probe): ev_probe's R0 $F9, R3 $F1, R4 $3F and R9 $7C, ev_4's R7 $78 (05-12)
 aud03-f	LED-AUD-0003	row	ev_decode	R2 and R3 form the 12-bit F (post $0000 after R2, $0100 after R3)
-aud03-g	LED-AUD-0003	later:05-06	ev_decode	R1, R8 and R9 ignore R0 (the global chan $FE at any select)
-aud03-h	LED-AUD-0003	later:05-06	ev_decode	R7 exists for select 4 and 5 only
-aud04-a	LED-AUD-0004	later:05-06	ev_edge	reg = window offset & $0F (a 16-byte mirror)
-aud04-b	LED-AUD-0004	later:05-06	ev_edge	R2-R7 writes are dropped at select 6 and 7
+aud03-g	LED-AUD-0003	row	ev_decode	R1, R8 and R9 ignore R0 (the global chan $FE at any select): ev_1's R1 and ev_probe's R8 and R9, written at select 1 (05-12)
+aud03-h	LED-AUD-0003	row	ev_decode	R7 exists for select 4 and 5 only: ev_4 and ev_5 decode R7 at selects 4 and 5; the edge group drops R7 at select 3 (a converse, ASSUMED) (05-12)
+aud04-a	LED-AUD-0004	row	ev_edge	reg = window offset & $0F (a 16-byte mirror): the edge group decodes R5 written through $0815 as R5 of select 3 and edge_v reads reg 5 (05-12)
+aud04-b	LED-AUD-0004	row	ev_edge	R2-R7 writes are dropped at select 6 and 7: the edge group, R2 at select 6 and R6 at select 7 (05-12)
 aud04-c	LED-AUD-0004	row	case:psg_dev_join	reads return io_buffer with no penalty and produce no DSPE record
 aud04-d	LED-AUD-0004	row	case:psg_wave_ptr	R6 with chON 1 and DDA 0 stores with no increment (held, a disputed point): the C-level WAVE_HELD row of psg_wave_ptr (ASSUMED); no fixture row plays a held write (05-06)
 aud04-e	LED-AUD-0004	later:05-07	cycle_phase	key-on keeps widx; a counter restarts at (w - w mod d) + its period on key-on (the key-on counter, a disputed point)
@@ -56,7 +56,7 @@ aud12-a	LED-AUD-0012	row	period	counters tick at k x d master clocks (the period
 aud12-b	LED-AUD-0012	later:05-07	cycle_phase	R2, R3 and R7 writes apply at the next reload
 aud12-c	LED-AUD-0012	later:05-07	cycle_phase	a counter is frozen while chON 0 or DDA 1 (select 1 also while TRG 1)
 aud12-d	LED-AUD-0012	later:05-07	two_level	the select 4 and 5 wave counters run under NE 1
-aud12-e	LED-AUD-0012	later:05-06	atten_order	volume writes act at their stamp
+aud12-e	LED-AUD-0012	row	atten_order	volume writes act at their stamp: the atten_order (and silent) windows of tone_atten open 2,000 master clocks after their volume write, a bound and not the exact instant (05-12)
 aud12-f	LED-AUD-0012	row	case:psg_fold	ties: select 1, select 0 to 5, noise, sample, then a write (an event at a write stamp is processed before the write; the order itself is ASSUMED and no MAN row judges it)
 aud13-a	LED-AUD-0013	row	case:psg_dev_join	one 24-byte little-endian DSPE record per CPU write to the PSG window, joined 1:1 to the dev log
 aud13-b	LED-AUD-0013	row	ev_value,ev_decode	the record fields stamp, pc, reg, value, sel, chan, effect, wave_idx, post and version 1 as D-196 fixes (a project definition, ER-19)
@@ -82,11 +82,11 @@ d185-c	D-185	row	case:psg_fold	the tie order select 1, select 0..5, noise, sampl
 d186-a	D-186	row	case:chunk_equiv_audio_psg_tone	the fold runs at window-2 writes and at step end, never at reads: the streams do not depend on where the calls stop
 d187-a	D-187	row	case:pcm_cadence	sample s at s x 192 master clocks; ceil(M / 192) samples after a run to M (a definition, LED-AUD-0014)
 d188-a	D-188	row	ev_value	the window $1FE800-$1FEBFF logs one record per write in program order with its stamp and value
-d188-b	D-188	later:05-06	ev_edge	reg = offset & $0F and $A..$F NO_TARGET (the mirror and the undecoded registers)
+d188-b	D-188	row	ev_edge	reg = offset & $0F and $A..$F NO_TARGET (the mirror and the undecoded registers): the edge and edge_v groups of tone_atten (05-12)
 d188-c	D-188	row	case:psg_dev_join	reads are unchanged and log nothing
 d189-a	D-189	row	ev_decode	psg_select = R0 & 7; R2..R6 go to the selected channel
-d189-b	D-189	later:05-06	ev_edge	R2..R6 are dropped at select 6 or 7
-d189-c	D-189	later:05-06	ev_decode	R7 only at select 4 or 5; R1, R8 and R9 ignore R0
+d189-b	D-189	row	ev_edge	R2..R6 are dropped at select 6 or 7: the edge group, R2 at select 6 and R6 at select 7 (05-12)
+d189-c	D-189	row	ev_decode	R7 only at select 4 or 5; R1, R8 and R9 ignore R0: ev_4, ev_5 and the edge group (R7), ev_1 and ev_probe (R1, R8, R9) (05-12)
 d190-a	D-190	row	ev_decode	R4 with DDA 1 sets widx 0; R6 with chON 0 and DDA 0 stores and increments
 d190-b	D-190	later:05-07	dda_hold	R6 with DDA 1 loads the latch
 d190-c	D-190	row	case:psg_wave_ptr	R6 with chON 1 and DDA 0 stores with no increment (psg_wave_write_when_on 1): the C-level WAVE_HELD row of psg_wave_ptr (ASSUMED, 05-06)

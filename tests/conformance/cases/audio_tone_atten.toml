@@ -4,12 +4,13 @@
 # The attenuation scene tone_atten of psg_tone (plan 05-06; D-194, D-208, ER-15, ER-16, ER-19..ER-21): the runner kind audio judges, on select 2 kept playing while R1, R5 and AL change, the period at S = 0 and at the P8-10 example (S = 4, MAN), the exact peaks 31 x 32768 and
 # 31 x 8231 (ASSUMED:LED-AUD-0009), the disputed sum 15 (ASSUMED, DISPUTED), silence at S = 16 and at an R1 or R5 byte $00 (MAN:P8-10), strictly decreasing peaks for LAL F, E, D, AL $1F, $1E and LMAL F, E (MAN), equal peaks at equal attenuation (ASSUMED) and off-invariance:
 # select 3 programmed with chON 0 leaves the PCM unchanged (MAN:P8-4). Zero policy and seeded-prng-v4 seed 1 with identical streams. Evidence tier E0; no volume claim (ER-14, the withheld words).
+# From plan 05-12 the scene also holds ev_2 and ev_3 (the set-up of select 2 and Y of select 3, MAN:P8-2+P8-3+P8-4), edge (R5 through the mirror $0815, $080A, R7 at select 3, R2 at select 6, R6 at select 7: ASSUMED rows, ER-15) and edge_v (reg = offset & $0F, GUEST:program).
 id = "audio_tone_atten"
 kind = "audio"
 fixture = "authored:psg-tone"
 request = ""
 expect = "rom=psg-tone;id=27;checks=10;scene=tone_atten"
-meaning = "The attenuation and silence rules of P8-10 on one playing channel: its period holds at S = 0 and S = 4, its side reads 0 at S = 16 and at a byte $00, its peaks fall strictly per attenuation step and equal at equal attenuation, and a chON 0 channel adds nothing (E0)"
+meaning = "The attenuation and silence rules of P8-10 on one playing channel: its period holds at S = 0 and S = 4, its side reads 0 at S = 16 and at a byte $00, its peaks fall strictly per attenuation step and equal at equal attenuation, and a chON 0 channel adds nothing; the set-up and edge writes decode as the hand literals (E0)"
 required = true
 control = false
 expect_outcome = "pass"
