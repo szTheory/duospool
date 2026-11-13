@@ -1269,6 +1269,7 @@ The earlier Phase 5 plan-end figures, each from its SUMMARY, all at a higher or 
 **Cut trigger (3), the local warm gate user CPU.** This tree reads 316.8 s and 317.1 s (runs A and C, mean load 11.5 and 7.7).
 Against the recorded 05-01 baseline (270.0 s) that is +17.4 percent; against the baseline tree measured in the same half hour (run B, 264.2 s at mean load 12.9) it is +20.0 percent. The trigger fires above +25 percent: 337.5 s on the recorded figure, 330.3 s on run B.
 Both comparisons are under it, by 20.4 s and 13.2 s. The two runs of this tree differ by 0.3 s at mean loads of 11.5 and 7.7, and run B reads 5.8 s below its 05-01 figure, so at this load range the user CPU figure moved by about 2 percent; the comparison is load-confounded, and the confounder is stated, not removed.
+This is the first of two bracketed pairs: the second pair, taken two hours later, reads +32.4 percent, so trigger (3) is borderline; see "Trigger (3) again" under the cut-line record below.
 
 Stage seconds of 5 s or more (the gate's own clock):
 
@@ -1300,7 +1301,7 @@ Budget rows of D-214 at this checkpoint (after 05-07; the handbook section 9 car
 | Guest ROMs / OX_ROMS_MAX | 36 / 40 | 39 / 48 | 38 / 48 |
 | DSV ids | 1..26 | 27, 28, 29 | 27 (psg_tone) and 28 (psg_mod) used; 29 (psg_lfo) waits for 05-09 |
 | Ledger entries / REQUIRED lines | 63 / 63 | 75 / 75 | 75 / 75 |
-| Local warm gate user CPU | 270.0 s (05-01) | +10 to +20 percent; cut trigger (3) above +25 percent | 316.8 to 317.1 s: +17.4 percent (recorded baseline), +20.0 percent (same-hour re-run) |
+| Local warm gate user CPU | 270.0 s (05-01) | +10 to +20 percent; cut trigger (3) above +25 percent | 316.8 to 357.6 s: +20.0 and +32.4 percent in two same-hour pairs; runner instructions +22.2 and +25.2 percent (see the cut-line record) |
 | CI critical path | 562 s (`gate-mawk` 555 s, 4.1 run) | about 587 to 612 s; D-176 job trigger 600 s per job | unverified (no CI run); estimate below: about 525 to 670 s |
 
 **CI critical path estimate (an estimate, not a measurement; unverified until an owner-authorised push, D-64).** Each step of the first Phase 4.1 run (run 43352015009) is scaled by the local growth of the matching stages, run B to runs A and C: the gate by 1.20 (sum of stage seconds 317 to 380.5), a conformance step by 1.23.
@@ -1322,6 +1323,49 @@ Linux container parts (`sh scripts/linux-repro`, all six default parts in one ru
 `LINUX_REPRO RESULT PASS`, 5,142 s in all (16:57 to 18:23, while the scratch mutant sweep of plan 05-08 ran on the host for its first 25 minutes and other jobs held the load at about 10 to 27).
 
 Sizes (ROM-SIZE shapes, audit-history): of the 248 files added or modified in `f6afede..29f9016`, none is 4,096 bytes or more and a multiple of 8,192 or of 8,192 plus 512; the largest are `scripts/check` (247,387 bytes) and `tests/conformance/audiokinds.c` (208,349 bytes).
+
+### Cut-line record (D-217)
+
+The six triggers of D-217 (handbook section 11), each with its evidence. The cut is taken if any fired; the orchestrator takes the decision and performs any Phase 5.1 insertion (gsd-tools), never this plan. A cut is never a gate failure.
+
+| # | Trigger | Measure | Result |
+|---|---------|---------|--------|
+| 1 | more than two revision plans (05-16 onward) | revision plans created: 0 (no 05-16 or later exists). The one stop-rule split, 05-12 (the event rows of 05-06), does not count (PR-16). The scratch mutant sweep of `src/core/psg.c` (plan SUMMARY) left 3 survivors, each equivalent, so it adds no missing row and no revision plan | **not fired** |
+| 2 | either CI work job over 600 s after lever (a) and D-176 lever (1) | no Phase 5 CI run exists (D-64). Estimate above: `gate-gawk` about 523 s, `gate-mawk` about 528 s on a fast runner draw and about 665 s on a draw as slow as the 4.1 run's mawk leg | **unverified, no CI run yet** (at risk on a slow draw) |
+| 3 | local warm gate user CPU more than 25 percent over the 05-01 baseline, same machine and load | pair 1 (runs A, B, C): +20.0 percent (+17.4 on the recorded 270.0 s); pair 2 (runs D, E, two hours later): +32.4 percent (+30.9 on 270.0 s); | **borderline**: over +25 percent on two of the four like-for-like measures |
+| | | load-independent instructions retired by the runner over all cases: +22.2 percent (gate preset) and +25.2 percent (sanitize preset, the largest stage); load 6 to 18 throughout (below) | |
+| 4 | the LFO needs a new model row or a discrepancy the pages cannot settle | 05-09 adds no model row (`model_params.def` is not in its file set; D-205 keeps the D-113 cap of 4). DX-4 (the extension width of P8-8 against w - 16 of P8-7; the read and restart instants) and DX-16 (TRG level or pulse) stay recorded in LED-AUD-0011 and need no settling for 05-09's MAN rows: | **not fired** |
+| | | the guest `lfo_static` rows run with LF TRG 1 held (D-219, P8-6), where the level and pulse readings agree, and with w = $18 (+8), where the extension width does not act; the negative case (w $08, 504) is a C-level row and the 12-bit wrap is the ASSUMED marker `lfo_wrap` (ER-15) | |
+| 5 | the LFO fold cannot be bounded per D-186 and D-221 | a fold spans at most `ds_max_step_mclk()` (600 clocks, D-221). The coupled pair iterates event by event: at the hostile extreme (d = 3, F = FLF = 1) a fold holds at most about 200 select-1 and 200 select-0 events, | **not fired** (an analytical bound; the loop itself lands in 05-09) |
+| | | 14 noise events and 4 samples (RESEARCH section 4), and every iteration advances the instant, so a fold runs at most 600 iterations | |
+| 6 | the owner prefers an earlier pull request | none relayed by the orchestrator | **not fired** (none relayed) |
+
+**Trigger (3) again: a second bracketed pair and load-independent counts.** The Task 2 gate of this plan read 357.6 s, higher than runs A and C, so a second pair was taken on the same machine, this tree first and the baseline clone right after (E0, local, not CI):
+
+| Run | Tree | Wall s | User CPU s | System s | Load (1 min): start, end; mean of 20 s samples |
+|-----|------|--------|------------|----------|------------------------------------------------|
+| Task 2 gate | `1e3a6e1` (the LED-AUD-0008 promotion; no C change) | 450.6 | 357.6 | | 10.2, 13.0 |
+| D | the same tree with this section's draft (no C change) | 425.0 | 353.4 | 60.3 | 9.5, 8.5; mean 10.6 (8.8 to 14.6) |
+| E | `9619efe` (scratch clone, warm), right after D | 324.1 | 266.9 | 47.7 | 8.5, 8.0; mean 8.8 (7.1 to 11.0) |
+
+Pair 2 gives +32.4 percent (353.4 against 266.9 s; trigger above 333.6 s), against +20.0 percent for pair 1; the C code is the same in all runs, so the 36 s rise of this tree between the pairs is the machine, not the code (a likely cause, not verified: on Apple silicon a contended job runs partly on the efficiency cores, which costs more user CPU for the same work).
+A load-independent measure: `/usr/bin/time -l` on one `ds_runner` invocation over every case of the runner's own case list (the arguments of the `conformance` and `sanitizers` stages, outside the gate, evidence in a scratch directory):
+
+| Runner | This tree | `9619efe` | Growth |
+|--------|-----------|-----------|--------|
+| gate preset, 388 against 334 cases | 1,011,970,546,903 instructions, 53.7 s user | 827,865,831,109 instructions, 45.5 s user | +22.2 percent instructions |
+| sanitize preset, 386 against 332 cases | 4,076,446,474,923 instructions, 194.9 s user | 3,255,998,018,176 instructions, 127.1 s user | +25.2 percent instructions |
+
+These two runners are most of the `conformance`, `sanitizers` and `determinism` stages (about 80 percent of the gate's seconds). Their work grew by 22 and 25 percent, at the line, while the user CPU of the same work moved by 18 to 53 percent with the load. Trigger (3) is therefore neither clearly fired nor clearly clear.
+
+**Recommendation (a judgment on a borderline trigger; the orchestrator decides): take the cut and move the LFO to an inserted Phase 5.1.** The reasons:
+- trigger (3) reads over +25 percent on two of four like-for-like measures, and every measure is already above the D-214 band for the whole phase (+10 to +20 percent) before the LFO lands;
+- 05-09 adds the third audio ROM (psg_lfo) with its observer, chunk, restore and non-interference cases, so the next measure would be further over;
+- trigger (2) is unverified, and its slow-draw estimate (about 665 s) is over 600 s: a Phase 5 pull request without the LFO gives the first CI measure before more scope lands;
+- the cut is clean by design (D-217: the layout is final since 05-03 and the LFO touches only the select-0/1 pair).
+If the rule is read strictly as "cut only on a trigger that fired beyond doubt", the outcome is to stay, with 05-09 next; both readings rest on the numbers above.
+If the cut is taken: 05-09 becomes plan 5.1-01 of an inserted Phase 5.1 with `psg_lfo` and `psg-lfo-shift`; 05-10 closes Phase 5 with the LFO under DSPE UNMODELLED and runs after 05-08; the ROADMAP criterion 1 wording gains "LFO registers logged and decoded; LFO modulation in 5.1"; the toy count stays 32.
+Cut order if more must go (D-217): the LFO first, then `audio_noise_repeat` to two policies; never DDA, period, order or silence rows.
 
 ### Efficiency review inputs (AGENTS.md: review after each CI run; no Phase 5 CI run exists yet)
 

@@ -148,23 +148,23 @@ Carried: D-177 (a)-(g); core: no malloc, file I/O, clocks, env, floats or mutabl
 | Budget | Before Phase 5 | Phase 5 target | Rule |
 |---|---|---|---|
 | Gate stages | 57 | 58 (audio-check, 05-05) | C-1, PR-18 |
-| Power-on policies | 4 | 5 (seeded-prng-v4 = enum 5) | D-228 |
-| .aexp reader cap | none | 49,152 bytes (32,768 until D-233) and 512 rows per file (.vexp stays 16,384); byte budget per .aexp | D-230, D-233 |
+| Power-on policies | 4 | 5 (v4 = enum 5) | D-228 |
+| .aexp reader cap | none | 49,152 bytes (D-233) and 512 rows per file; .vexp 16,384 | D-230, D-233 |
 | Constants rows / CROWS_MAX | 34 / 40 | 49 / 64 | D-224, D-228, PR-3 |
 | Withheld ids | 35 | 42 | D-224 |
-| Record rows (skeleton / with 16 stimulus events / cap) | 153 / 169 / 192 | 175 / 191 / 192 | D-228 |
-| Regions | 21 | 24 | D-202 |
-| Serial / epoch / text | 8 / 5 / 7 | 9 / 6 / 8 (once, 05-03) | D-202 |
-| Snapshot bytes | 92,255 | 92,553 | RF-10 |
-| Instance bytes | 1,141,096 | 1,141,376 | RF-10 |
+| Record rows (skeleton / 16 events / cap) | 153 / 169 / 192 | 175 / 191 / 192 | D-228 |
+| Regions; serial / epoch / text | 21; 8 / 5 / 7 | 24; 9 / 6 / 8 (once, 05-03) | D-202 |
+| Snapshot / instance bytes | 92,255 / 1,141,096 | 92,553 / 1,141,376 | RF-10 |
 | Run request bytes (LP64) | 56 | 72 | RF-17 |
 | OX_ROMS_MAX / guest ROMs | 40 / 36 | 48 / 39 | D-214 |
 | DSV ids | 1..26 | 27 psg_tone, 28 psg_mod, 29 psg_lfo | D-212 |
 | Toys | 26 | 33 (32 after a cut) | D-210 |
-| Ledger entries / REQUIRED lines | 63 / 63 | 75 / 75 (done in 05-01) | D-213 |
+| Ledger entries / REQUIRED lines | 63 / 63 | 75 / 75 | D-213 |
 | Conformance REQUIRED cases | 334 | about 379 to 394 | D-214 |
-| CI critical path | 562 s (gate-mawk 555 s, 4.1 run) | lever (b) dropped: about 587 to 612 s predicted; D-176 job trigger 600 s per job | D-214, D-226 |
-| Local warm gate | 05-01 baseline at 9619efe: user CPU 270.0 s, wall 328.2 s, conformance 67 s, sanitizers 142 s, load 5.7-9.1 | +10 to +20 percent; cut trigger (3) above 337.5 s user CPU at a comparable load | D-214, D-217 |
+| CI critical path | 562 s (4.1 run) | about 587 to 612 s; job trigger 600 s | D-214, D-226 |
+| Local warm gate user CPU | 270.0 s (05-01, load 5.7-9.1) | +10 to +20 percent; trigger (3) over +25 percent | D-214, D-217 |
+
+Checkpoint A (05-08): stages 58, constants 49/64, withheld 42, regions 24, ROMs 38/48, DSV 27-28, toys 32, REQUIRED 388, supported 14; user CPU 317-358 s: +20.0 / +32.4 percent in two same-hour pairs (load 6-18); runner instructions +22 / +25 percent; CI unverified (525-670 s).
 
 ## 10. Discrepancy list (ledger disagreement field)
 
@@ -172,9 +172,10 @@ DX-1 (LED-AUD-0001); DX-2 (-0002); DX-3 (-0010); DX-4, DX-16 (-0011); DX-5 (-000
 
 ## 11. Cut line (D-217)
 
-At 05-08 the cut is taken if any of: (1) more than two revision plans (05-16+) were needed; (2) either CI work job exceeds 600 s after lever (a) and D-176 lever (1); (3) local warm gate user CPU more than 25 percent over the 05-01 baseline, same machine and load; (4) the LFO needs a new model row or an unsettled discrepancy;
-(5) the LFO fold cannot be bounded; (6) the owner prefers an earlier pull request.
-Then 05-09 becomes plan 5.1-01 of an inserted Phase 5.1 (with psg_lfo and psg-lfo-shift), 05-10 closes Phase 5 with the LFO under DSPE UNMODELLED, and ROADMAP criterion 1 gains "LFO registers logged and decoded; LFO modulation in 5.1". Cut order: LFO first, then the noise repeat case to two policies; never DDA, period, order or silence rows.
+Cut at 05-08 if any of: (1) more than two revision plans (05-16+); (2) a CI work job over 600 s after levers (a) and D-176 (1); (3) local warm user CPU over +25 percent of the 05-01 baseline (same machine, load); (4) the LFO needs a new model row or an unsettled discrepancy;
+(5) an unbounded LFO fold; (6) an owner preference for an earlier pull request.
+Then 05-09 becomes plan 5.1-01 of an inserted Phase 5.1 (psg_lfo, psg-lfo-shift), 05-10 closes Phase 5 with the LFO under DSPE UNMODELLED, and ROADMAP criterion 1 gains "LFO registers logged and decoded; LFO modulation in 5.1". Cut order: LFO first, then the noise repeat case to two policies; never DDA, period, order or silence rows.
+05-08 record (docs/ci-timings.md): (1) 0; (2) no CI run; (3) borderline (+20.0 / +32.4 percent); (4)-(6) no. Recommendation: cut (LFO to 5.1); the orchestrator decides.
 
 ## 12. Process rules and the stop rule
 
