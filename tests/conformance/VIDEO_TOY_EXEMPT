@@ -3,7 +3,7 @@
 #
 # The scene cases of fixtures/src/*.vexp that no toy EXPECT lists, one per line: CASE_ID, a TAB and the reason (plan 04-07; D-172, D-173, amendment A5). scripts/video-check reads this file; a line with no reason is VIDEO_EXEMPT_FORMAT, and the count of lines is printed in the VIDEO_CHECK status line.
 # A scene case that a toy EXPECT lists with no second column needs no line here. F0 limit (review fix M-06 of the gate review): F0 perturbs the first number of the first row of a group, so it proves only that the comparison is live; on a frame_flags literal it makes a value no 1-bit flag can hold.
-# A group whose only kill is F0 has no other shown kill unless a toy whose evidence shows that group fail is named: the border groups of vce_pal, vce_dot, bg_basic and spr_basic are (vid-palette-mask); the flag groups of video_unmodelled_mode and video_bg_enab are not.
+# A group whose only kill is F0 has no other shown kill unless a toy whose evidence shows that group fail is named: the border groups of vce_pal, vce_dot, bg_basic and spr_basic are (vid-palette-mask); the flag groups of video_unmodelled_mode and video_bg_enab and the group sboffcnt of video_spr_basic_solid (D-160, shown live against the SB test by a one-off mutant only) are not.
 video_vce_pal_golden	golden change detector beside the literal case video_vce_pal, which vid-palette-mask kills (its evidence shows the border group fail)
 vid_frame_lines	the divider toy does not change line counts or the frame length: the scene is killed by the faults F4 and F9 of its sweep
 video_bg_basic_golden	golden change detector beside the literal cases video_bg_basic_solid and video_bg_basic_asym, which vid-palette-mask and vid-bit-order kill

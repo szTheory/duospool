@@ -12,6 +12,7 @@
 ; The SATB source block of 256 words is at VRAM word $1000: 19 sprite entries (spr_satb below, listed in the vexp comments with the lines and dots each covers) and, for the other 45 entries, the words ($03C0 + $0400 * w) & $FFFF (w is the word number: Y = X = 960 in the low 10 bits, which no display line reaches). A write of the high byte of DVSSR arms the copy at the next
 ; vertical blanking (H7-12), one frame of delay lets it run, then CR = $00C0 (BB and SB set)
 ; draws the sprites from the next frame and six frame delays (BG_FRAME of bg.inc, counted loops that read no register) hold the scene. The frame numbers the vexp judges are measured from this sequence, not computed: a frame that is not the intended one fails its rows, it never passes them. At most 4 sprites cover any display line, so no slot limit binds (plan 04.1-02 owns the limit).
+; Then the SB-clear scene (D-160, added to close gap 1 of 04.1-VERIFICATION): the SATB is left as it is, one BAT word (row 2 column 6) becomes bank 1 and code $041 (index 31), and CR = $0080 (BB set, SB clear) holds for three frame delays, so the sprites that covered visible dots draw nothing and the background shows.
 ; Nothing here is read from a DuoSpool run. No HuC, PCEAS, emulator or cc65 library code.
         .setcpu "huc6280"
 
@@ -108,6 +109,7 @@ spr_satb:
 BAT_DEFAULT = $0040                     ; bank 0, code $040
 TILES_AT = $0400                        ; the word address of code $040 (code * 16)
 TILE_BYTES = 64                         ; 2 tiles of 16 words
+CR_BB_ONLY = $0080                      ; CR: BB (bit 7) set and SB (bit 6) clear (H7-5): the background on, the sprites off (D-160)
 
 ; SPR_PAT addr, table: one 16 x 16 cell (128 bytes) to the VRAM word addr and read back at once against the table; the OR of the differences accumulates in VDC_DIFF_LO and VDC_DIFF_HI
         .macro SPR_PAT addr, table
@@ -168,13 +170,19 @@ fixture_main:
         CHECK_LIT 1                     ; check 1 GUEST:pattern-readback
         lda a:VDC_DIFF_HI
         CHECK_LIT 2                     ; check 2 GUEST:pattern-readback
-; the SATB copy at the next vertical blanking, one frame, then the sprites on
+; the SATB copy at the next vertical blanking, one frame, then the sprites on (the solid and asymmetric scenes), then the SB-clear scene
         SPR_SATB_GO
         BG_FRAME
         VDC_REG BG_R_CR, SPR_CR_BBSB
         BG_FRAME
         BG_FRAME
         BG_FRAME
+        BG_FRAME
+        BG_FRAME
+        BG_FRAME
+; the SB-clear scene (D-160; the gap of 04.1-VERIFICATION truth 21): the SATB stays as copied, BAT row 2 column 6 gets bank 1 and code $041 (index 16 + 15 = 31, H7-14, H7-18) so a background row has three indices, then CR = $0080 (BB set, SB clear) for three frames
+        VDMA_POKE 70, $1041             ; row 2 column 6 (word 2 * 32 + 6): bank 1, code $041 (the opaque tile, dots 48 to 55 of the display lines 16 to 23)
+        VDC_REG BG_R_CR, CR_BB_ONLY
         BG_FRAME
         BG_FRAME
         BG_FRAME

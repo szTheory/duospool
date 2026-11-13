@@ -4,9 +4,9 @@
 # spr_basic.vexp - the hand-derived literal rows of the spr_basic video scenes (plan 04.1-01; D-155, D-159, D-160, D-161, D-169, D-171, D-172, ER-10, ER-11, ER-12, F-13).
 # scripts/fixture-build writes this file, comments dropped, as build/gate/fixtures/spr-basic.vexp.tsv; the runner kind video (tests/conformance/videokinds.c) reads only that file. One source holds the literals: no expected value lives in a case file, and none comes from a run of DuoSpool, another emulator or a hash.
 # The grammar is the one of bg_basic.vexp (scripts/lib/vexp-rules.awk). The fixture (fixtures/src/spr_basic.s) writes the vertical setup (VPR $0F02, VDW 239, VCR 4), HSR $0202 and HDR $031F (HDS 2, HDW 31: active_x 24, active_w 256 dots), MWR 0 (a 32 x 32 BAT), BXR = BYR = 0, the palette P(i) = (91 * i + 17) & 511, the BAT, the sprite patterns and the 256 SATB source words at
-# VRAM word $1000 copied by the SATB DMA of the first vertical blanking after the DVSSR write, then CR = $00C0 (BB and SB set) for six frames.
-# The frames: the number FRAME below was read from the guest's own sequence (the counted delays of spr_basic.s) on one run, as a calibration and never as a literal: the SATB is copied before CR = $00C0 is written once, so every frame from FRAME on holds the same scene (the rows of the solid scene use ;held=5, the author's mark that a neighbouring frame holds the same values;
-# the ASSUMED rows use ;frame=5).
+# VRAM word $1000 copied by the SATB DMA of the first vertical blanking after the DVSSR write, then CR = $00C0 (BB and SB set) for six frames, then the SB-clear scene described before the groups sboff and sboffcnt.
+# The frames: the number FRAME below was read from the guest's own sequence (the counted delays of spr_basic.s) on one run, as a calibration and never as a literal: the SATB is copied before CR = $00C0 is written once, so every frame from FRAME to the end of the six delays holds the same scene (the rows of the solid scene use ;held=5, the author's mark that a neighbouring frame holds the same
+# values; the ASSUMED rows use ;frame=5).
 # Display line K of a frame is the K-th record with an active window (line=active+K); with BYR = 0 the display line K shows virtual row K, so BAT row K / 8 (D-156). The dots of the window are numbered from 0 (BXR = 0): dot i is virtual column i, BAT column i / 8. The background (H7-14, H7-18): the transparent tile (code $040, pixel 0, index 0 whatever the bank) everywhere,
 # except the solid tile of pixel 15 (code $041, bank 0, index 15) at BAT row 2 column 7 (dots 56 to 63, lines 16 to 23)
 # and in the whole of BAT column 22 (dots 176 to 183 of every display line): a stripe of opaque background, index 15.
@@ -66,6 +66,13 @@ row	video_spr_basic_solid	spxval	line=active+20;x=38..58;held=5	value=2*17,16*45
 row	video_spr_basic_solid	spxval	line=active+20;x=96..135;held=5	value=4*17,16*453,16*146,4*17
 group	video_spr_basic_solid	border	form=STRUCT	class=GUEST:pal_bijection	sym=none	kills=F0
 row	video_spr_basic_solid	border	check=border_after_pal	value=273
+# SB-clear scene (D-160: with SB clear the sprite stage produces nothing; gap 1 of 04.1-VERIFICATION): after the six frames the guest writes BAT word 70 (row 2 column 6) as $1041 (bank 1, pixel 15: index 31, H7-14, H7-18), then CR = $0080 (BB set, SB clear) for three frames; frame 12 is a calibration from the guest's sequence (;held=).
+# With SB set, S0 (entry 0, SPBG 0) would show 303 at the dots 40 to 47 of line 20 (transparent background there) and line 20 would have covering 2 (S0, S1) and slots_used 3. With SB clear: dots 38 to 66 of line 20 are the background alone (0 at 38 to 47, 31 at 48 to 55, 15 at 56 to 63, 0 at 64 to 66), slots_used 0, covering 0, no flag.
+# ASSUMED LED-VID-0011: H7-5 and H7-6 (fixtures/lib/cites.txt) give SB as CR bit 6 and its timing; no held page row says SB clear hides the sprites. Kills: sboff F0, F1, F7; sboffcnt F0 only (every line of the frame reads 0 and 0, so F4 and F8 cannot act: 04.1-VALIDATION B7 (f)). A one-off mutant without the SB test of ds_vid_sprites turned both red.
+group	video_spr_basic_solid	sboff	form=ROWS	class=ASSUMED:LED-VID-0011	sym=order	kills=F0,F1,F7
+row	video_spr_basic_solid	sboff	line=active+20;x=38..66;held=12	index=10*0,8*31,8*15,3*0
+group	video_spr_basic_solid	sboffcnt	form=STRUCT	class=ASSUMED:LED-VID-0011	sym=none	kills=F0
+row	video_spr_basic_solid	sboffcnt	check=spr_line	slots=0;covering=0;ovf=0;col=0;k=20;held=12
 scene	video_spr_basic_asym	case=video_spr_basic_asym	role=literal
 group	video_spr_basic_asym	bitorder	form=ROWS	class=ASSUMED:LED-VID-0011	sym=asym	kills=F0,F1,F2,F7
 row	video_spr_basic_asym	bitorder	line=active+200;x=6..25;frame=5	index=2*0,275,7*274,10*0
@@ -90,14 +97,7 @@ row	video_spr_basic_asym	clip	line=active+63;x=0..11;frame=5	index=4*274,275,3*2
 row	video_spr_basic_asym	clip	line=active+63;x=244..255;frame=5	index=4*0,3*274,275,4*274
 row	video_spr_basic_asym	clip	line=active+0;x=38..57;frame=5	index=2*0,8*274,273,9*0
 row	video_spr_basic_asym	clip	line=active+1;x=38..57;frame=5	index=2*0,8*274,0,273,8*0
-# The golden row is a change detector beside the literal scenes, never a verdict (ER-11): the digest is the SHA-256 of the canonical stream of the spr_basic guest (D-163), pinned by plan 04.1-01 after the literal cases video_spr_basic_solid and video_spr_basic_asym passed on that stream, and recomputed outside the core with shasum -a 256 over the --video-out file of
-# video_spr_basic_solid (it equalled the digest the core prints).
-# E0 repeatability only. A later plan that changes the records repins it by its own procedure, recording the old digest, the new digest and the reason in a comment here, in the same commit as the change.
-# Repinned by plan 04.1-02 (task 1) in the same commit as the change: the records now carry slots_used (header byte 33, 1 to 4 on the covering lines of this guest) and the flags b6 and b7 stay 0 (no line of this guest has more sprites than slots or a collision). Old digest
-# cc16b853bcdc1a71cece91b8fe7436a8a1234ecf7fc8677febc8c5d36a3f7cfd, new digest eaf53309d6f8640701406fdfbdb395c0b76d27d8c0c01c481d5a464793db0f66.
-# The literal cases video_spr_basic_solid and video_spr_basic_asym passed on the new stream first; the new digest was recomputed outside the core with shasum -a 256 over the --video-out file of video_spr_basic_solid and equals the digest the core prints. E0 repeatability, a change detector and no
-# verdict (ER-11).
-# Repinned by the Phase 4.1 review fix M-02 in the same commit as the change: SATB entry 18 (A9, a 16 x 32 sprite with Y flip at lines 166 to 197, dots 200 to 215) replaces four filler words, so the records of those lines change. Old digest eaf53309d6f8640701406fdfbdb395c0b76d27d8c0c01c481d5a464793db0f66,
-# new digest dbb97fefdae473de71c4470de269b5cba3c30aaf158bea916dc7d139dc1f287a. The literal cases video_spr_basic_solid and video_spr_basic_asym (with the two new A9 rows) passed on the new stream first; the new digest was recomputed outside the core with shasum -a 256 over the --video-out file of
-# video_spr_basic_solid and equals the digest the core prints. E0 repeatability, a change detector and no verdict (ER-11).
-golden	video_spr_basic_solid	sha256=dbb97fefdae473de71c4470de269b5cba3c30aaf158bea916dc7d139dc1f287a
+# The golden row is a change detector beside the literal scenes, never a verdict (ER-11, E0 repeatability): the SHA-256 of the canonical stream of the guest (D-163). A pin, or a repin in the same commit as the change that moves the stream (old digest, new digest, reason), follows the passing of video_spr_basic_solid and video_spr_basic_asym on that stream,
+# recomputed outside the core with shasum -a 256 over the --video-out file of video_spr_basic_solid and equal to the digest the core prints. History: plan 04.1-01 pinned cc16b853bcdc1a71cece91b8fe7436a8a1234ecf7fc8677febc8c5d36a3f7cfd; plan 04.1-02 task 1 repinned eaf53309d6f8640701406fdfbdb395c0b76d27d8c0c01c481d5a464793db0f66 (records carry slots_used, 1 to 4
+# on the covering lines; flags b6 and b7 stay 0); review fix M-02 repinned dbb97fefdae473de71c4470de269b5cba3c30aaf158bea916dc7d139dc1f287a (SATB entry 18, A9, replaces four filler words); the D-160 gap fix repinned 204d48cc6035f4ceb23ac3416fc226b16f5f3c6571c9b8a1904f507faf687883 (the SB-clear scene, 3499 records; sboff and sboffcnt passed first).
+golden	video_spr_basic_solid	sha256=204d48cc6035f4ceb23ac3416fc226b16f5f3c6571c9b8a1904f507faf687883
