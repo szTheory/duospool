@@ -232,7 +232,7 @@ Plans:
   2. PCM is emitted at a defined, recorded sample rate and format before any host resampling. The per-frame sample count is reported, so a non-integer cadence is visible.
   3. Audio checks assert semantic properties: a channel period that matches the programmed frequency under the current clock assumption, the expected waveform content, and silence where a channel is off. A deliberately mis-programmed fixture (wrong frequency or a silent channel) fails them. "Buffer is nonzero" is never accepted.
   4. Noise output is identical across repeated fresh runs under the same power-on policy. The PSG clock and revision are profile parameters whose ledger status stays open, and no PSG pitch or timing correctness claim is made until C1 is settled.
-**Plans**: 7/11 plans executed in 9 waves (context waves W1-W9 of 05-CONTEXT; 05-01 and 05-02 are parallel-safe in W1; 05-04 is the tracer; the D-217 cut line is at checkpoint 05-08, where 05-09 moves to an inserted Phase 5.1 if a trigger fires; 05-11..05-15 are reserved for stop-rule splits and 05-16 onward for revision plans)
+**Plans**: 8/11 plans executed in 9 waves (context waves W1-W9 of 05-CONTEXT; 05-01 and 05-02 are parallel-safe in W1; 05-04 is the tracer; the D-217 cut line is at checkpoint 05-08, where 05-09 moves to an inserted Phase 5.1 if a trigger fires; 05-11..05-15 are reserved for stop-rule splits and 05-16 onward for revision plans)
 
 Plans:
 - [x] 05-01-PLAN.md - W1: evidence data: ER-1 image reads and the P8 label rules, 12 new and 6 amended ledger entries, withheld words, 05-HANDBOOK.md, CI lever (a), the local gate baseline (no C)
@@ -242,7 +242,7 @@ Plans:
 - [x] 05-05-PLAN.md - W4: the audio judge: full .aexp grammar, REL and STRUCT, AF0..AF9 sweep, audio-check stage 58 with KINDCLASS, DISPUTED, the arithmetic lint and RULES, the golden role
 - [x] 05-06-PLAN.md - W5: six channels: pan-pair scenes with solo phases, event rows for every register, attenuation and silence rows, the in-ROM twin, psg_vol_table, two toys
 - [x] 05-12-PLAN.md - W5 split of 05-06 Task 3b (runs before 05-07): the D-233 .aexp cap 49,152 and the psg_tone event rows (mask probe, R7 $78, decode rows for selects 1..5, the edge script)
-- [ ] 05-07-PLAN.md - W6: noise and DDA: the NE level path, psg_mod, the timer-paced DDA scene, audio_noise_repeat, psg_random_regs, psg_block_flood, two toys, the psg_mod proof set
+- [x] 05-07-PLAN.md - W6: noise and DDA: the NE level path, psg_mod, the timer-paced DDA scene, audio_noise_repeat, psg_random_regs, psg_block_flood, two toys, the psg_mod proof set
 - [ ] 05-08-PLAN.md - W7: checkpoint A: dash, the second awk and all six Linux parts, cost against D-214, the scratch mutant sweep, E1 promotions, THE CUT DECISION
 - [ ] 05-09-PLAN.md - W8: LFO: the combined counter, TRG, CTL shifts and F0', psg_lfo, toy psg-lfo-shift, the psg_lfo proof set (becomes 5.1-01 if the cut is taken)
 - [ ] 05-10-PLAN.md - W9: close-out: phase gate, final pins and promotions, README audio paragraph, 05-VALIDATION.md, verification-report inputs
@@ -292,5 +292,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phases 4 and 5
 | 3. HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad | 38/38 | Complete    | 2026-11-11 |
 | 4. VCE/VDC Raw Video | 16/16 | Complete    | 2026-11-12 |
 | 04.1. VDC Sprites | 3/3 | Complete    | 2026-11-12 |
-| 5. PSG Raw Audio | 7/11 | In Progress | - |
+| 5. PSG Raw Audio | 8/11 | In Progress | - |
 | 6. Headless Runner, Installed-Consumer Proof and Staged Verification | 0/TBD | Not started | - |

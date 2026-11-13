@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 5
 current_phase_name: PSG Raw Audio
-current_plan: 7
+current_plan: 8
 status: executing
-stopped_at: "Completed 05-12-PLAN.md (05-06 Task 3b: the D-233 cap and the psg_tone event rows)"
-last_updated: "2026-11-13T19:27:09.018Z"
+stopped_at: Completed 05-07-PLAN.md (noise, DDA, psg_mod and its proof set)
+last_updated: "2026-11-13T20:28:45.451Z"
 last_activity: 2026-11-12
 last_activity_desc: Phase 04.1 complete, transitioned to Phase 5
-state_head: 10dd0d1c72f98d75ce54b97de457e70bd8d5e669
+state_head: aa4e0b74fb51dd6be0119d5fa025f58cf772f95e
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 102
-  completed_plans: 98
+  completed_plans: 99
   percent: 71
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 5 (PSG Raw Audio) — READY TO EXECUTE
-Current Plan: 7
+Current Plan: 8
 Total Plans in Phase: 11
 Status: Ready to execute
 Last activity: 2026-11-12 — Phase 04.1 complete, transitioned to Phase 5
@@ -158,6 +158,7 @@ Progress: [███████░░░] 71%
 | Phase 05 P05 | 130 min | 3 tasks | 74 files |
 | Phase 05 P06 | 135 min | 3 tasks | 35 files |
 | Phase 05 P12 | 90 min | 2 tasks | 15 files |
+| Phase 5 P07 | about 1 h | 3 tasks | 33 files |
 
 ## Accumulated Context
 
@@ -366,6 +367,9 @@ Recent decisions affecting current work:
 - [Phase 05]: 05-12: AEXP_MAX_BYTES is 49152 (D-233); the oversize control pads to 49,153 bytes and ok-size-cap to exactly 49,152; the C reader has no byte cap
 - [Phase 05]: 05-12: every new R2 decode row follows a program-written R3 (a first R2 after power-on posts the power-on F high nibble, an ASSUMED input under ER-10)
 - [Phase 05]: 05-12: the disputed edges (mirror, $080A, R7 at select 3, selects 6 and 7) are one ASSUMED ev_edge group in tone_atten with mark= items
+- [Phase 5]: 05-07: the noise level is recomputed from the stored LFSR state by the RF-6 parity (mask $30C01); PSGT stores no output bit, the wave counter keeps running under NE
+- [Phase 5]: 05-07: the 256-bit noise_seq string is committed in psg_mod.aexp, drawn outside the repository after reproducing the 40-bit RESEARCH string; no gate-time generator
+- [Phase 5]: 05-07: aud12-d becomes a named limit (the wave is unheard under NE); rf5-a goes to later:05-09; cycle_linear and dda_equals_wave move to 05-10
 
 ### Pending Todos
 
@@ -389,6 +393,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-13T19:27:08.520Z
-Stopped at: Completed 05-12-PLAN.md (05-06 Task 3b: the D-233 cap and the psg_tone event rows)
+Last session: 2026-11-13T20:28:45.092Z
+Stopped at: Completed 05-07-PLAN.md (noise, DDA, psg_mod and its proof set)
 Resume file: None
