@@ -709,6 +709,12 @@ static uint32_t dec_beam(struct ds_instance *inst, struct vctx *v, struct rd *r,
     if (burst > 1u || (uint32_t)line_dirty > 0x3Fu || (uint32_t)sprite_pend > 3u || vd_pending > 1u) {
         return (uint32_t)DS_SNAPREF_field;
     }
+    /* the sprite flags wait only on a display line (Phase 4.1 review fix L-02, security flag U-01): ev_line sets sprite_pend at the EV_LINE of a display line (v_state 1) and the next EV_LINE overwrites it, so a run never holds it
+     * outside VDW, where it would raise OR or CR at the EV_RCR of a non-display line. The stage is not judged: a display line whose window ends at or past 1365 clocks has no EV_RCR, so its flags stay pending at the stage 0 (EV_LINE) until that event
+     * overwrites them (LED-VID-0012), and a restore at such a stop must be accepted */
+    if (sprite_pend != 0u && v_state != 1u) {
+        return (uint32_t)DS_SNAPREF_field;
+    }
     if (((uint32_t)vd_off >= (uint32_t)DS_CONST_line_mclk && (uint32_t)vd_off != SNAP_BEAM_NONE) || ((uint32_t)rcr_off >= (uint32_t)DS_CONST_line_mclk && (uint32_t)rcr_off != SNAP_BEAM_NONE)) {
         return (uint32_t)DS_SNAPREF_field;
     }

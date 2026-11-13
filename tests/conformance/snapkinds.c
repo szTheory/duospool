@@ -1557,6 +1557,19 @@ ED_U16(ed_mwr_100, RG_BEAM, 20u, 0x100u)
 ED_U8(ed_burst_2, RG_BEAM, 22u, 2u)
 ED_U8(ed_dirty_40, RG_BEAM, 23u, 0x40u)
 ED_U8(ed_sprite_4, RG_BEAM, 24u, 4u)
+/* sprite_pend waits only on a display line (Phase 4.1 review fix L-02, security flag U-01): a non-zero value outside VDW (v_state 0, display_k 0xFFFF) is refused; the same value on display line 20 (v_state 1) is accepted, whatever the stage */
+static void ed_spr_pend_vds(uint8_t *b)
+{
+    b[sk_payload_off(RG_BEAM) + 9u] = 0u;
+    sk_put16(BM_AT(b, 12u), 0xFFFFu);
+    b[sk_payload_off(RG_BEAM) + 24u] = 3u;
+}
+static void ed_spr_pend_vdw(uint8_t *b)
+{
+    b[sk_payload_off(RG_BEAM) + 9u] = 1u;
+    sk_put16(BM_AT(b, 12u), 20u);
+    b[sk_payload_off(RG_BEAM) + 24u] = 3u;
+}
 ED_U16(ed_vdoff_555, RG_BEAM, 25u, 1365u)
 ED_U16(ed_vdoff_554, RG_BEAM, 25u, 1364u)
 ED_U16(ed_vdoff_ffff, RG_BEAM, 25u, 0xFFFFu)
@@ -1872,6 +1885,8 @@ static const struct {
     {"burst-2", M_EDIT, ed_burst_2},
     {"dirty-40", M_EDIT, ed_dirty_40},
     {"sprite-4", M_EDIT, ed_sprite_4},
+    {"sprite-pend-vds", M_EDIT, ed_spr_pend_vds},
+    {"sprite-pend-vdw", M_EDIT, ed_spr_pend_vdw},
     {"vd-pending-2", M_EDIT, ed_vdpend_2},
     {"vd-off-1365", M_EDIT, ed_vdoff_555},
     {"vd-off-1364", M_EDIT, ed_vdoff_554},

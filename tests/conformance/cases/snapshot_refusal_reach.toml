@@ -4,13 +4,14 @@
 # Restore rules that refuse in-domain values no run of the bound profile reaches (review fixes M-01, H-01, L-01; D-136, D-151, D-166): same method as snapshot_refusal_beam. frame-263 is a frame length of the domain that is not the 262 the ds-proto profile binds: the snapshot of another profile, refused as profile (frame-262 accepted).
 # dma-done-1 is refused and dma-done-0 accepted: the closed form of the VRAM-to-VRAM transfer is re-based at every apply, so its progress member is 0 between folds. The event order rows start from the accepted edge event-vd-ahead of snapshot_refusal_window (vd_irq_phase hdw_start, no RCR event to come) with one member changed:
 # vd-pend-line-start (VD outstanding under line_start, which raises VD at EV_LINE), vd-pend-stage-rcr (VD outstanding at the stage RCR; EV_VD comes first), vd-after-rcr and vd-rcr-equal (the RCR event of the line at or before the VD event; the window end is after the window start) are refused, vd-before-rcr is accepted.
+# sprite-pend-vds (sprite_pend 3 outside VDW: v_state 0, display_k 0xFFFF) is refused and sprite-pend-vdw (the same on display line 20 inside VDW) accepted: the sprite flags wait only on a display line (Phase 4.1 review fix L-02, security flag U-01).
 # Evidence tier E0: the core compared with its own written domain rules, no hardware claim.
 id = "snapshot_refusal_reach"
 kind = "snapshot_refuse"
 fixture = "authored:ds-proto"
 request = "bind.powerup_policy=seeded-prng-v2;seed=3"
-expect = "frame-263=profile|frame-262=accept|dma-done-1=field|dma-done-0=accept|vd-pend-line-start=field|vd-pend-stage-rcr=field|vd-after-rcr=field|vd-rcr-equal=field|vd-before-rcr=accept"
-meaning = "A snapshot whose frame length is not the one its profile binds is refused as profile, and one whose DMA progress member is not 0 or whose outstanding VD event is out of the order a run produces is refused as field, with the instance byte-identical"
+expect = "frame-263=profile|frame-262=accept|dma-done-1=field|dma-done-0=accept|vd-pend-line-start=field|vd-pend-stage-rcr=field|vd-after-rcr=field|vd-rcr-equal=field|vd-before-rcr=accept|sprite-pend-vds=field|sprite-pend-vdw=accept"
+meaning = "A snapshot whose frame length is not the one its profile binds is refused as profile, and one whose DMA progress member is not 0 or whose outstanding VD event is out of the order a run produces or whose sprite flags wait outside a display line is refused as field, with the instance byte-identical"
 required = true
 control = false
 expect_outcome = "pass"
