@@ -1180,3 +1180,18 @@ Those three stages are 305 s of the 339 s gawk gate and 376 s of the 414 s mawk 
   Pairing the second awk with clang is no longer a lever, because the jobs are already parallel.
 - **Nothing was weakened.** No stage, control, selftest, case or workflow step was skipped, merged or shortened, and no workflow file changed for this review.
 
+## Phase 5 baseline (plan 05-01; local runs, not CI runs)
+
+CI for Phase 5: unverified: no push is authorised (D-64). This section makes no CI claim; the evidence tier of every run is E0, repeatability, and no time here is a pass or fail criterion.
+The run is the local warm gate on the owner's development machine (Apple M5 Pro, 18 cores, macOS, BWK awk, Apple clang, cmake) on 2026-11-13 at the tree of `9619efe` (plan 05-01 after its handbook and lever (a) commits; no C file differs from the Phase 4.1 close).
+It is the baseline of cut trigger (3) of D-217: at plan 05-08 the cut is taken if the local warm gate user CPU grew more than 25 percent over this figure on the same machine and a comparable load.
+
+| Run | What | Result | Wall s | User CPU s | System s | Load average (1 min) |
+|-----|------|--------|--------|------------|----------|----------------------|
+| 1 | `sh scripts/check --timing`, warm tree | PASS, 57 stages | 328.2 | 270.0 | 48.0 | 5.7 at start, 9.1 at end |
+
+The machine was quieter than at the Phase 4.1 close-out (load 25 to 33, user CPU 413.2 s there), so the two user CPU figures are not comparable; the 05-08 comparison uses this row. Cut trigger (3) fires above 337.5 s of user CPU (270.0 x 1.25) at a comparable load; a run at a much higher load is recorded beside a quiet re-run, never judged alone.
+Stage seconds over 5 s, from the gate's own clock (sum 328): `sanitizers` 142, `conformance` 67, `determinism` 53, `inventory` 6, `video-check` 6, `fixtures` 5, `named-controls` 5; every other stage is 4 s or less.
+
+CI levers (D-215, D-226): lever (a), `nproc` and the CPU model in the tool-versions step of both work jobs, is the separate revertible commit `9619efe`; the owner says yes or no at publish time. Lever (b), a third parallel clang job, is dropped (it conflicts with `rule-job-gate` and needs cc65 and `fixture-build`), and lever (c) stays rejected.
+Without lever (b) the CI critical path is the measured two-leg path of the first Phase 4.1 run, 562 s (`gate-mawk` 555 s, the D-176 job trigger is 600 s per job). The Phase 5 estimate of D-214 (+25 to +50 s) puts it at about 587 to 612 s, so the job trigger may fire for `gate-mawk`; this is recorded against the measured run and is re-measured on the first Phase 5 CI run.

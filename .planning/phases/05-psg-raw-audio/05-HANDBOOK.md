@@ -163,7 +163,7 @@ Carried: D-177 (a)-(g); core: no malloc, file I/O, clocks, env, floats or mutabl
 | Ledger entries / REQUIRED lines | 63 / 63 | 75 / 75 (done in 05-01) | D-213 |
 | Conformance REQUIRED cases | 334 | about 379 to 394 | D-214 |
 | CI critical path | 562 s (gate-mawk 555 s, 4.1 run) | lever (b) dropped: about 587 to 612 s predicted; D-176 job trigger 600 s per job | D-214, D-226 |
-| Local warm gate (05-01 baseline) | user CPU 413.2 s at load 25-33 (04.1 close-out) | 05-01 baseline below; cut trigger 3 at +25 percent user CPU | D-217 |
+| Local warm gate | 05-01 baseline at 9619efe: user CPU 270.0 s, wall 328.2 s, conformance 67 s, sanitizers 142 s, load 5.7-9.1 | +10 to +20 percent; cut trigger (3) above 337.5 s user CPU at a comparable load | D-214, D-217 |
 
 ## 10. Discrepancy list (ledger disagreement field)
 
