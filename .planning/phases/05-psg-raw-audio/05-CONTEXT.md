@@ -467,6 +467,7 @@ Community and prior art (evidence class E4 at best, agreement is not correctness
 - **D-226 (C-9, lever b).** CI lever (b), the third parallel clang job, is dropped from Phase 5: it conflicts with `rule-job-gate` (every non-gate job runs `sh scripts/check`) and needs cc65 and fixture-build. Lever (a), printing `nproc` and the CPU model in the tool-versions step, stays in 05-01 as
   a one-line workflow edit and is listed as a publish-time hand-off. The CI trigger of D-180 style is recorded against the measured two-leg critical path.
 - **D-227 (RF-12, RF-13).** Long audio ROMs must not overflow the `opcode_exercise` instruction sink (plan 05-04 states the sink size it relies on); the `.aexp` selector grammar has an end anchor so silence windows do not depend on cycle counts.
+- **D-228 (corrects D-224, planner flag 3).** seeded-prng-v4 takes the next enum value, policy 5, with no gap; the hostile snapshot row that Phase 4 aimed at policy 5 moves to policy 6 (`policy-6=field`) and stays red because 6 is unassigned. D-224's "v4 is policy 6" is read that way. Constants count: D-220 adds two rows, so 15 PSG rows and 49 in total are accepted with the record bound at 191 of 192 (planner flag 2).
 </errata>
 
 <specifics>
