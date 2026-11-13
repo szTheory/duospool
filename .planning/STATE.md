@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 5
 current_phase_name: PSG Raw Audio
-current_plan: 1
+current_plan: 2
 status: executing
-stopped_at: Phase 04.1 complete, ready to plan Phase 5
-last_updated: "2026-11-13T04:46:06.726Z"
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-11-13T06:35:00.737Z"
 last_activity: 2026-11-12
 last_activity_desc: Phase 04.1 complete, transitioned to Phase 5
-state_head: 9a690e6107420b6d5b322e0c41d35247c9e4b16b
+state_head: d6ca3563fd1b63c6db74b7f7c68e66b8cf5c05fb
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 101
-  completed_plans: 91
+  completed_plans: 92
   percent: 71
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 5 (PSG Raw Audio) — READY TO EXECUTE
-Current Plan: 1
+Current Plan: 2
 Total Plans in Phase: 10
 Status: Ready to execute
 Last activity: 2026-11-12 — Phase 04.1 complete, transitioned to Phase 5
@@ -151,6 +151,7 @@ Progress: [███████░░░] 71%
 | Phase 04.1 P01 | 57min | 4 tasks | 36 files |
 | Phase 04.1 P02 | about 1.7 h (local) | 3 tasks | 27 files |
 | Phase 04.1 P03 | about 1.9 hours | 3 tasks | 7 files |
+| Phase 5 P01 | 45 min | 3 tasks | 45 files |
 
 ## Accumulated Context
 
@@ -336,6 +337,9 @@ Recent decisions affecting current work:
 - [Phase 04.1]: COLLISION is sprite 0 against a taken entry of another SATB index, both opaque at a dot of the window; the flag is in the record with the IE bits clear and in the status only through ds_vdc_flag at the EV_RCR of the displayed line
 - [Phase 04.1]: The cap of 16 shows only where 2 * (e - 2) exceeds 16, so the 17 sprite scene runs with HDE 5 and carries the guest check the toy vid-spr-limit turns red
 - [Phase 04.1]: 04.1-03: no sprite entry promoted under ER-2 (LED-VID-0011 and 0012 stay assumed, 0015 deferred, 0008 not widened); README sprite paragraph states E0 and labelled assumptions only
+- [Phase 5]: 05-01: the P8 islabel rule has its own negative control p8-fact-no-img (FACT route); the positive root is ok-p8-label
+- [Phase 5]: 05-01: ER-1 image read of the PSG manual found no number that differs from 05-RESEARCH; OCR errata confirmed
+- [Phase 5]: 05-01: local warm gate baseline for cut trigger (3) is 270.0 s user CPU at load 5.7-9.1 (trigger above 337.5 s)
 
 ### Pending Todos
 
@@ -359,6 +363,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12T23:36:58.502Z
-Stopped at: Phase 04.1 complete, ready to plan Phase 5
+Last session: 2026-11-13T06:35:00.399Z
+Stopped at: Completed 05-01-PLAN.md
 Resume file: None
