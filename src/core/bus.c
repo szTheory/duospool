@@ -64,7 +64,7 @@ static uint32_t offset_of(uint16_t addr)
  * Window 0 is the VDC (register A1-A0), 1 the VCE (A2-A0), 2 the PSG (A3-A0), 3 the timer (A0), 4 the I/O port (one register for the whole window), 5 the interrupt registers (A1-A0: 2 is $1402, 3 is $1403),
  * and windows 6 and 7 ($1800-$1FFF) have no device. The timer, the interrupt controller (plans 03-21 and 03-22), the pad (plan 03-27, io.c), the VCE (plan 04-04, vce.c) and the VDC (plan 04-06, vdc.c) are devices;
  *   the VDC and VCE windows answer from vdc.c and vce.c after the fold; the windows without a device read the unmapped constant and change nothing. The PSG has no read function (H8-24): a read returns the latch, unchanged by the PSG.
- *   A PSG write folds the PSG first (ds_psg_advance at the access stamp, step_end 0; plan 05-02, D-186, D-188) and is decoded from plan 05-03 on; until then the fold is inert and the write only sets io_buffer and is logged.
+ *   A PSG write folds the PSG first (ds_psg_advance at the access stamp, step_end 0; plan 05-02, D-186, D-188), then ds_psg_write decodes reg = offset & $0F and stores it (plan 05-03); the write also sets io_buffer and is logged.
  *   io_buffer (D-104, ASSUMED LED-CPU-0013) is the byte of the last read or write in $0800-$17FF (windows 2 to 5): a read returns its stub value with the upper bits of the byte the window does not drive taken from io_buffer
  *   (the PSG window all eight bits, the timer bit 7 over its 7-bit counter, $1402 and $1403 the upper five bits over three register bits, the interrupt registers $1400 and $1401 all eight, the I/O window nothing: the pad drives all eight lines), and the byte read becomes the new io_buffer;
  *   a write in those windows stores its byte in io_buffer (the I/O window's byte is also the latch of port O). Reads and writes in the VDC and VCE windows and in the empty windows do not touch io_buffer.
@@ -185,10 +185,14 @@ static void hw_write(struct ds_instance *inst, struct ds_bus *bus, uint32_t offs
             ds_irq_write(inst, offset & 0x3FFu, value, stamp);
         }
         break;
-    case HW_PSG: /* the latch first, then the fold to the access stamp (D-188, PR-1: step_end 0, no rebase); the decode of plan 05-03 follows the fold; the dev record below stays last */
+    case HW_PSG: { /* the latch first, then the fold to the access stamp (D-188, PR-1: step_end 0, no rebase), then the decode and storage (plan 05-03; the decoded fields are emitted from plan 05-04 on); the dev record below stays last */
+        struct ds_psg_write_info ev;
+
         inst->io_buffer = value;
         ds_psg_advance(inst, stamp, 0u, bus != NULL ? bus->obs : NULL);
+        (void)ds_psg_write(inst, offset & 0x0Fu, value, stamp, &ev);
         break;
+    }
     case HW_IO: /* the byte is the latch of port O (bit 0 SEL, bit 1 CLR) and, as for every write in $0800-$17FF, the new io_buffer */
         inst->io_buffer = value;
         ds_io_write(inst, value);

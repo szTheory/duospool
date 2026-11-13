@@ -33,6 +33,30 @@ uint32_t ds_psg_divisor(const struct ds_instance *inst);
 /* the storage mask of register reg (0..15) of the window (D-189): R0 $07, R1 $FF, R2 $FF, R3 $0F, R4 $DF, R5 $FF, R6 $1F, R7 $9F, R8 $FF, R9 $83, reg 10..15 0; one table shared with the restore decoder (snapshot.c) */
 uint32_t ds_psg_reg_mask(uint32_t reg);
 
+/* the effect bits of a write (psg_effects.def): DS_PSGE_name = 1 << bit */
+enum ds_psg_effect {
+#define DS_PSG_EFFECT(name, bit, ledger, rule) DS_PSGE_##name = 1u << (bit),
+#include "psg_effects.def"
+#undef DS_PSG_EFFECT
+    DS_PSGE_NONE = 0
+};
+
+/* the decoded fields of one write (D-196): sel is R0 before the write; chan the target channel 0..5 of R2..R7, $FE for R0, R1, R8 and R9, $FF for no target; wave_idx the target channel's wave index after the write ($FF when chan > 5); post the stored value
+ * (R0 3 bits, R2/R3 the 12-bit F, R4 & $DF, R6 the stored word or latch, R7 & $9F, R9 & $83, R1/R5/R8 the byte; $FFFF for no target) */
+struct ds_psg_write_info {
+    uint8_t sel;
+    uint8_t chan;
+    uint8_t effect;
+    uint8_t wave_idx;
+    uint16_t post;
+};
+
+/*
+ * Decode and store one write of value to register reg (offset & $0F) at stamp, after ds_psg_advance folded the PSG to stamp (D-188..D-190, D-192 register side, D-220, PR-2): the masked value goes to the register the select names, and the counter bookkeeping
+ * runs (key-on, a DDA 1 -> 0 or TRG 1 -> 0 release restarts at the next tick plus one period, a freeze sets the distance 0). Returns the effect bits and fills *info (never NULL).
+ */
+uint32_t ds_psg_write(struct ds_instance *inst, uint32_t reg, uint32_t value, uint64_t stamp, struct ds_psg_write_info *info);
+
 /* the power-on PSG state under every policy (D-193, D-204): registers, latches, indices and channel distances 0, both noise distances 1, both LFSRs psg_lfsr_reset; the wave RAM is left to the policy (zero, or drawn by seeded-prng-v4) */
 void ds_psg_poweron(struct ds_instance *inst);
 

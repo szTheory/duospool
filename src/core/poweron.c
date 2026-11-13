@@ -2,7 +2,7 @@
 /* SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors */
 /*
  * poweron.c - power-on state (CORE-03, CPU-06; D-50, D-75, D-79(b), D-83, D-114, D-134).
- * Four policies: zero (everything the manual leaves open is 0), seeded-prng-v1 (RAM only), seeded-prng-v2 (RAM and the open registers) and seeded-prng-v3 (v2 and the VRAM, SATB and palette bytes). A seeded policy derives one stream per domain:
+ * Five policies: zero (everything the manual leaves open is 0), seeded-prng-v1 (RAM only), seeded-prng-v2 (RAM and the open registers), seeded-prng-v3 (v2 and the VRAM, SATB and palette bytes) and seeded-prng-v4 (v3 and the PSG wave RAM). A seeded policy derives one stream per domain:
  *     sub    = splitmix64 step started from state (seed XOR DOMAIN_CONST)      (one step; a bare XOR with no step is not the algorithm)
  *     stream = a splitmix64 generator whose initial state is sub
  *     draws  = successive 64-bit outputs of the stream, written as little-endian bytes
@@ -18,6 +18,8 @@
  * (cpu.c sets them at reset). io_buffer and mpr_latch have no domain and stay 0. The domain constants are the ASCII-packed names padded with underscores: "CPU_____", "MPR_____", "TMR_____".
  * seeded-prng-v3 (plan 04-18; D-167) draws every v2 domain unchanged and then, each from its own stream and in this order, straight into the byte arrays (word w is bytes 2w and 2w+1, little-endian, which is byte k of the stream):
  *     vram 65,536 bytes of vdc_vram ("VRAM____"), satb 512 bytes of vdc_satb ("SATB____"), pal 1,024 bytes of vce_pal ("PAL_____"), then bits 1..7 of every odd palette byte are cleared (a colour entry has 9 bits)
+ * seeded-prng-v4 (plan 05-03; D-204, D-228) draws every v3 domain unchanged and then psgw: 192 bytes of psg_wave ("PSGW____"), byte ch x 32 + i, each and $1F (a wave word is 5 bits); zero, v1, v2 and v3 leave the wave RAM 0. Every PSG register, index, latch, distance and LFSR
+ * keeps its power-on value (psg.c) under every policy.
  * zero, v1 and v2 leave VRAM, SATB and the palette 0. No VDC or VCE register, latch, status, beam or DMA byte is drawn under any policy: a drawn control register could raise IRQ1 under a Phase 3 guest that knows nothing of the VDC.
  * Everything here is a modelling assumption of this project (LED-PROF-0002): no value or evolution rule is a hardware claim. Intended
  * wraparound is unsigned: the sanitize preset has no -fwrapv, so a signed or implicit wrap here would be a defect (D-83).
@@ -37,6 +39,7 @@ static const uint64_t domain_const[DS_DOMAIN_COUNT] = {
     UINT64_C(0x5652414D5F5F5F5F), /* vram: "VRAM____" */
     UINT64_C(0x534154425F5F5F5F), /* satb: "SATB____" */
     UINT64_C(0x50414C5F5F5F5F5F), /* pal: "PAL_____" */
+    UINT64_C(0x505347575F5F5F5F), /* psgw: "PSGW____" */
 };
 
 uint64_t ds_splitmix64_next(uint64_t *state)
@@ -93,12 +96,15 @@ uint32_t ds_policy_of(const char *value)
     if (ds_streq(value, "seeded-prng-v2")) {
         return (uint32_t)DS_POLICY_SEEDED_V2;
     }
-    return ds_streq(value, "seeded-prng-v3") ? (uint32_t)DS_POLICY_SEEDED_V3 : (uint32_t)DS_POLICY_NONE;
+    if (ds_streq(value, "seeded-prng-v3")) {
+        return (uint32_t)DS_POLICY_SEEDED_V3;
+    }
+    return ds_streq(value, "seeded-prng-v4") ? (uint32_t)DS_POLICY_SEEDED_V4 : (uint32_t)DS_POLICY_NONE;
 }
 
 uint32_t ds_policy_is_seeded(uint32_t policy)
 {
-    return policy == (uint32_t)DS_POLICY_SEEDED || policy == (uint32_t)DS_POLICY_SEEDED_V2 || policy == (uint32_t)DS_POLICY_SEEDED_V3 ? 1u : 0u;
+    return policy == (uint32_t)DS_POLICY_SEEDED || policy == (uint32_t)DS_POLICY_SEEDED_V2 || policy == (uint32_t)DS_POLICY_SEEDED_V3 || policy == (uint32_t)DS_POLICY_SEEDED_V4 ? 1u : 0u;
 }
 
 const char *ds_policy_name(uint32_t policy)
@@ -112,7 +118,10 @@ const char *ds_policy_name(uint32_t policy)
     if (policy == (uint32_t)DS_POLICY_SEEDED_V2) {
         return "seeded-prng-v2";
     }
-    return policy == (uint32_t)DS_POLICY_SEEDED_V3 ? "seeded-prng-v3" : NULL;
+    if (policy == (uint32_t)DS_POLICY_SEEDED_V3) {
+        return "seeded-prng-v3";
+    }
+    return policy == (uint32_t)DS_POLICY_SEEDED_V4 ? "seeded-prng-v4" : NULL;
 }
 
 uint32_t ds_policy_version(uint32_t policy)
@@ -123,7 +132,10 @@ uint32_t ds_policy_version(uint32_t policy)
     if (policy == (uint32_t)DS_POLICY_SEEDED_V2) {
         return 2u;
     }
-    return policy == (uint32_t)DS_POLICY_SEEDED_V3 ? 3u : 0u;
+    if (policy == (uint32_t)DS_POLICY_SEEDED_V3) {
+        return 3u;
+    }
+    return policy == (uint32_t)DS_POLICY_SEEDED_V4 ? 4u : 0u;
 }
 
 /* the P bits that seeded-prng-v2 draws: N, V, Z and C (I, D and T are reset facts, B is never stored) */
@@ -172,6 +184,19 @@ static void apply_v3(struct ds_instance *inst)
     }
 }
 
+/* the v4 domain: the PSG wave RAM straight from its own stream, each byte kept to the 5 bits of a wave word */
+static void apply_v4(struct ds_instance *inst)
+{
+    struct ds_stream st;
+    size_t i;
+
+    ds_stream_init(&st, inst->powerup_seed, (uint32_t)DS_DOMAIN_PSGW);
+    ds_stream_fill(&st, inst->psg_wave, sizeof inst->psg_wave);
+    for (i = 0u; i < sizeof inst->psg_wave; i++) {
+        inst->psg_wave[i] = (uint8_t)((uint32_t)inst->psg_wave[i] & 0x1Fu);
+    }
+}
+
 void ds_poweron_apply(struct ds_instance *inst)
 {
     /* the instance was zeroed by the caller: RAM, the mapping registers, the CPU registers and the timer registers are 0 already, which is the whole of the zero policy */
@@ -185,6 +210,9 @@ void ds_poweron_apply(struct ds_instance *inst)
         apply_v2(inst); /* v3 draws every v2 domain unchanged */
     }
     if (inst->powerup_policy >= (uint32_t)DS_POLICY_SEEDED_V3) {
-        apply_v3(inst);
+        apply_v3(inst); /* v4 draws every v3 domain unchanged */
+    }
+    if (inst->powerup_policy >= (uint32_t)DS_POLICY_SEEDED_V4) {
+        apply_v4(inst);
     }
 }

@@ -342,3 +342,8 @@ observer_spr_limit
 snapshot_restore_video_spr
 snapshot_refusal_psg
 snapshot_refusal_psgt
+psg_decode
+psg_wave_ptr
+psg_lfo_trg
+psg_poweron
+psg_restore_divisor

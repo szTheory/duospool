@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# R9 and the select-1 counter (plan 05-03; D-192, D-220, D-231; kind psg_lfo_trg of psgkinds.c). Rows and classes: R9 $80 sets widx[1] = 0 and freezes select 1 (distance 0), LFO_RESET [MAN:P8-6]; R9 $00 with select 1 chON 1 at w = 5,003 restarts select 1 at
+# (w - w mod 6) + 6 x 256 = 6,534 [ASSUMED:LED-AUD-0004 psg_trg_release_restart]; R9 with CTL != 0 sets UNMODELLED and stores value & $83 [D-192, until plan 05-09]; R9 $80, R0 1, R4 $00 and five R6 writes leave widx[1] = 5 under TRG 1 and that snapshot
+# restores [D-231]. Evidence tier E0.
+id = "psg_lfo_trg"
+kind = "psg_lfo_trg"
+fixture = "plain-256k"
+request = ""
+expect = "rows=all"
+meaning = "R9 with TRG 1 resets and freezes select 1, a TRG release restarts it on the tick grid, a CTL write is stored and flagged UNMODELLED, and a TRG state with a non-zero select-1 wave index is reachable and restores"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

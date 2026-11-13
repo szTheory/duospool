@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The PSG power-on state (plan 05-03; D-193, D-204, RF-11, RF-15; kind psg_poweron of psgkinds.c). Rows and classes: every PSG register, latch, wave index and channel distance 0, both noise distances 1 and both LFSRs 1 under zero, v1, v2, v3 and v4 seeds 1
+# and 2 [ASSUMED:LED-PROF-0003]; the wave RAM zero under zero, v1, v2 and v3; under v4 seed 1 wave bytes 0..15 080d150c1b1903020e0a1b190a141103 and the SHA-256 of all 192 0a36d3cc... [ASSUMED:LED-PROF-0003], computed by a throwaway splitmix64 script outside the
+# repository (sub = one step from seed XOR "PSGW____", 24 draws little-endian, each byte & $1F) that first reproduced the committed ram@0 literal of poweron_v3_domain_independence; v4 seed 1 RAM, VRAM, SATB and palette equal v3 seed 1's; a fresh instance
+# folded with step_end 1 to T = 0, 11,904 and 357,629 has LFSRs $20000, $30000, $107EF and noise distances 11,904, 11,904, 11,395 [RF-11 closed form; ASSUMED:LED-AUD-0010+LED-AUD-0012]. Evidence tier E0.
+id = "psg_poweron"
+kind = "psg_poweron"
+fixture = "plain-256k"
+request = ""
+expect = "rows=all"
+meaning = "The PSG powers on with zero registers and frozen channels, noise distance 1 and LFSR 1 under every policy, a zero wave RAM except under seeded-prng-v4, whose wave draw follows every v3 draw, and the noise counters clock from time 0"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

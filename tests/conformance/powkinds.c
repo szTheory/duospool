@@ -12,6 +12,8 @@
  *                   | mpr@INDEX=HEXBYTES (the mapping registers from INDEX on) | cpu=zero | tmr=zero (every register of the domain is 0, as under zero and v1)
  *                   | drawn=cpu|mpr|tmr (the domain is not all zero: a structural assertion that names no value; mpr means MPR0 to MPR6)
  *                   | reset=constants (the reset facts of H8-18 and H8-8 hold: I set, D and T clear, low speed, MPR7 $00, timer stopped, disable register 0, TIQ clear, and io_buffer and mpr_latch 0 under every policy)
+ *                   plan 05-03 (seeded-prng-v4; D-204): wave@OFFSET=HEXBYTES (psg_wave from byte OFFSET) | wave=zero | drawn=wave (the psgw domain is not all zero) | psg=constants (PSG0 zero, every channel distance 0, both noise distances 1,
+ *                   both LFSRs 1, psg_pad 0, every wave byte at most 31, under every policy)
  *                   | streams=distinct (the four domain streams of the request seed start with four different 8-byte words)
  *   poweron_domain  request seed=N; expect extra=A,B: the first 16 bytes of the ram8k stream are unchanged when another stream (the one
  *                   of a value that names no domain, whose constant is 0) draws A or B values in between, that other stream's bytes
@@ -201,6 +203,42 @@ void kind_poweron(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
                 break;
             }
             check(c, memcmp(arr + off, want, (size_t)n) == 0, "the video array differs from the independently derived literal");
+        } else if (strncmp(item, "wave@", 5) == 0) {
+            char *eq = strchr(item, '=');
+            unsigned char want[64];
+            size_t off;
+            long n;
+
+            if (eq == NULL) {
+                harness_error(c, "a wave@ item has no =");
+                break;
+            }
+            *eq = '\0';
+            n = hex_bytes(eq + 1, want, sizeof want);
+            if (parse_size(item + 5, &off) != 0 || n < 0 || off > sizeof inst->psg_wave || (size_t)n > sizeof inst->psg_wave - off) {
+                harness_error(c, "a wave@ item is malformed or outside the wave RAM");
+                break;
+            }
+            check(c, memcmp(inst->psg_wave + off, want, (size_t)n) == 0, "the wave RAM differs from the independently derived literal");
+        } else if (strcmp(item, "wave=zero") == 0) {
+            check(c, is_all_zero(inst->psg_wave, sizeof inst->psg_wave), "the wave RAM is not all zero");
+        } else if (strcmp(item, "drawn=wave") == 0) {
+            check(c, !is_all_zero(inst->psg_wave, sizeof inst->psg_wave), "the psgw domain drew nothing: the wave RAM is all 0");
+        } else if (strcmp(item, "psg=constants") == 0) {
+            unsigned regs = (unsigned)inst->psg_select | inst->psg_main_bal | inst->psg_lfo_freq | inst->psg_lfo_ctl | inst->psg_noise[0] | inst->psg_noise[1];
+            unsigned high = 0u;
+            unsigned i;
+
+            for (i = 0u; i < 6u; i++) {
+                regs |= (unsigned)inst->psg_freq[i] | inst->psg_ctl[i] | inst->psg_bal[i] | inst->psg_widx[i] | inst->psg_dda[i];
+                regs |= inst->psg_rem[i] != 0u ? 1u : 0u;
+            }
+            for (i = 0u; i < sizeof inst->psg_wave; i++) {
+                high |= (unsigned)inst->psg_wave[i] & 0xE0u;
+            }
+            check(c, regs == 0u, "a PSG register, wave index, DDA latch or channel distance is not 0 at power-on (D-204)");
+            check(c, inst->psg_nrem[0] == 1u && inst->psg_nrem[1] == 1u && inst->psg_lfsr[0] == 1u && inst->psg_lfsr[1] == 1u, "a noise distance is not 1 or an LFSR is not psg_lfsr_reset 1 at power-on (D-193, D-204)");
+            check(c, is_all_zero(inst->psg_pad, sizeof inst->psg_pad) && high == 0u, "the PSG padding is not 0 or a wave byte is above 31");
         } else if (strcmp(item, "video=zero") == 0) {
             check(c, is_all_zero(inst->vdc_vram, sizeof inst->vdc_vram) && is_all_zero(inst->vdc_satb, sizeof inst->vdc_satb) && is_all_zero(inst->vce_pal, sizeof inst->vce_pal),
                   "VRAM, SATB or the palette is not all zero");

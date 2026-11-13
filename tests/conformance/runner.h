@@ -407,7 +407,7 @@ int list_fixtures(const size_t *sweep, size_t nsweep);
 
 /* the kinds added after the Phase 3 code review (reviewkinds.c): brk_irq_sample (WR-01, BRK with an interrupt pending, both values of irq_i_sample) and dev_record_pc (WR-02, the pc field of the dev records of a block transfer) */
 /* the VDC and VCE C-level kinds (vdckinds.c, plan 04-05): vdc_fold (random partitions of the fold against one jump, the tie rule through the bus write path, the next-event invariant), vid_noninterference (a vid-only sink in four shapes against no sink under three policies) and snapshot_restore_video (restores at the stops of the video schedules, the concatenated stream
- * compared); vd_policy_request appends policy fragment i (0 zero, 1 and 2 seeded-prng-v3 seeds 1 and 2) to a case's request, as kind_guest does for its default list. VD_POLICIES_VIDEO is the number of policies (zero and seed 1) that the video noninterference and restore runs use since lever (2) of D-176 (plan 04.1-01):
+ * compared); vd_policy_request appends policy fragment i (0 zero, 1 and 2 seeded-prng-v4 seeds 1 and 2 since plan 05-03) to a case's request, as kind_guest does for its default list. VD_POLICIES_VIDEO is the number of policies (zero and seed 1) that the video noninterference and restore runs use since lever (2) of D-176 (plan 04.1-01):
  * the power-on dimension of the video fixtures is carried by vdc_poweron_policy_diff, which keeps all of VD_POLICIES */
 #define VD_POLICIES 3u
 #define VD_POLICIES_VIDEO 2u
@@ -419,6 +419,12 @@ void kind_vdc_poweron_policy_diff(const struct kase *k, struct ctx *c, char *got
 void kind_vdc_vram(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-06: the VRAM words of the instance bytes against literals of the case (D-175 (c)) */
 void kind_vdc_vram_sweep(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-06: all 65,536 word addresses through the accessor pair and the port (D-147) */
 void kind_vdc_regmask(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-06: the register masks, the AR width, the reserved ARs and the status read (D-144, D-146) */
+/* psgkinds.c (plan 05-03): the C-level PSG register, counter, power-on and restore cases */
+void kind_psg_decode(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_psg_wave_ptr(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_psg_lfo_trg(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_psg_poweron(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_psg_restore_divisor(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_model_param_vdc(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-08: the VD and RR status-read stamps of the vdc_stat guest under the default and the two bound model rows (D-143, D-168) */
 void kind_vdc_irq_agree(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-17: the guest-recorded RCR to VD and VD to RCR = 64 intervals against the dev log read stamps and the hand-derived literals of the case (D-174, ER-3, ER-10) */
 void kind_vdc_advance_pure(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-10: the DMA closed form against a naive per-clock model over seeded random stamp partitions that cross display starts (D-151, D-175) */
