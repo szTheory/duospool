@@ -1221,7 +1221,7 @@ in under 20,000 instructions (about 13,500 in its counted delays, from the loop 
 ## Phase 5 plan 05-05: the audio-check stage
 
 `audio-check` is the 58th stage (C-1, F-51, PR-18): static, registered right after `video-check` and before the build.
-It runs `scripts/audio-check` on this repository, the negative mini-roots of `tests/audio` (one per code, plus `ok-audio` and `ok-inventory`), the generated lex controls of `ac_gen_limits` (with `ok-size-cap`, a valid file of exactly 32,768 bytes) and the exit-2 control of a 32,769-byte `.aexp` (D-230, D-232).
+It runs `scripts/audio-check` on this repository, the negative mini-roots of `tests/audio` (one per code, plus `ok-audio` and `ok-inventory`), the generated lex controls of `ac_gen_limits` (with `ok-size-cap`, a valid file of exactly 49,152 bytes) and the exit-2 control of a 49,153-byte `.aexp` (D-230, D-232; the cap rose from 32,768 to 49,152 bytes by D-233 in plan 05-12).
 
 Local runs of plan 05-05 (same machine as the 05-01 baseline, 2026-11-13; E0, no CI claim, no push). The machine was shared all afternoon, so no quiet-machine number exists yet and cut trigger (3) stays unjudged (05-08 re-measures):
 

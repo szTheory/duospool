@@ -1,6 +1,6 @@
 # Phase 5 Handbook: PSG Raw Audio
 
-Written by plan 05-01 from 05-CONTEXT (D-182..D-232; errata win), 05-RESEARCH (RF-1..RF-17) and 05-PATTERNS (C-1..C-11, F-51..F-86). Plans from 05-03 on read this file, their plan and the previous SUMMARY, and open the sources only at cited anchors.
+Written by plan 05-01 from 05-CONTEXT (D-182..D-232, D-233 added by 05-12; errata win), 05-RESEARCH (RF-1..RF-17) and 05-PATTERNS (C-1..C-11, F-51..F-86). Plans from 05-03 on read this file, their plan and the previous SUMMARY, and open the sources only at cited anchors.
 A line here that contradicts 05-CONTEXT is a defect; this file changes only in 05-08, 05-10 or a recorded deviation.
 Channels are R0 select values 0..5 (the manual's ch1..ch6). Page labels: P8-n = PSG manual PDF page n+2; H8-n = hardware manual PDF page n+3 (image rows in fixtures/lib/cites.txt, read 2026-11-13).
 
@@ -63,6 +63,7 @@ Not in phase: resampling, playback, WAV, band-limited synthesis, CD audio, Super
 - D-230 (amends D-207) .aexp reader cap 32,768 bytes per file (one named constant, a 32,769-byte control refused fail-closed); .vexp keeps 16,384; byte budget and wc -c check per .aexp.
 - D-231 (amends D-203) "TRG implies widx[1] = 0" is dropped: R6 writes under TRG 1 advance widx[1] legally; the held value is wave[1][0] - 16 whatever the index; 05-03 adds an accepted row.
 - D-232 The D-230 oversized-.aexp control is an exit-2 control in the pf_empty_path_control pattern; run_controls keeps exit 0/1 for the others.
+- D-233 (amends D-230; added by plan 05-12 as a recorded deviation) .aexp reader cap 49,152 bytes per file (one named constant; a 49,153-byte exit-2 control and an exactly-49,152-byte pass control); .vexp keeps 16,384; one comment line per group still holds.
 
 ## 3. Evidence rules
 
@@ -148,7 +149,7 @@ Carried: D-177 (a)-(g); core: no malloc, file I/O, clocks, env, floats or mutabl
 |---|---|---|---|
 | Gate stages | 57 | 58 (audio-check, 05-05) | C-1, PR-18 |
 | Power-on policies | 4 | 5 (seeded-prng-v4 = enum 5) | D-228 |
-| .aexp reader cap | none | 32,768 bytes and 512 rows per file (.vexp stays 16,384); byte budget per .aexp | D-230 |
+| .aexp reader cap | none | 49,152 bytes (32,768 until D-233) and 512 rows per file (.vexp stays 16,384); byte budget per .aexp | D-230, D-233 |
 | Constants rows / CROWS_MAX | 34 / 40 | 49 / 64 | D-224, D-228, PR-3 |
 | Withheld ids | 35 | 42 | D-224 |
 | Record rows (skeleton / with 16 stimulus events / cap) | 153 / 169 / 192 | 175 / 191 / 192 | D-228 |

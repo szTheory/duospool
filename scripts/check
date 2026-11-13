@@ -1008,10 +1008,10 @@ stage_video_check() {
   return 0
 }
 
-# audio-check (AUD-03; D-206..D-210, D-224, D-230, D-232, ER-15..ER-20, F-51, F-52, F-72, F-73, PR-15, PR-18; plan 05-05): the audio literal files fixtures/src/*.aexp against the grammar (closed keys, limits), the class ceilings of tests/audio/KINDCLASS, the disputed points of tests/audio/DISPUTED, the arithmetic lint,
+# audio-check (AUD-03; D-206..D-210, D-224, D-230, D-232, D-233, ER-15..ER-20, F-51, F-52, F-72, F-73, PR-15, PR-18; plan 05-05): the audio literal files fixtures/src/*.aexp against the grammar (closed keys, limits), the class ceilings of tests/audio/KINDCLASS, the disputed points of tests/audio/DISPUTED, the arithmetic lint,
 # the rule map tests/audio/RULES, the kill, vacuity and hash rules, the silence pairing, the toy registry and the inventory link. Static, so it is registered right after video-check, before the build: ONE stage (F-51), 58 stages in all (PR-18). The stage runs the checker on this repository, then the negative
 # mini-roots of tests/audio (every tests/audio/<case>/ is a mini-root with fixtures/src/t.aexp; ok-<case> must pass and every other case must fail with exactly the codes in its EXPECT; the data files KINDCLASS, DISPUTED and RULES beside them are plain files, which run_controls skips), then the generated lex controls, then the exit-2 size control.
-# ac_gen_limits DIR: one mini-root per stage 1 limit of scripts/lib/aexp-lex.awk under DIR, built on the body of tests/audio/ok-audio (lex-line-too-long, lex-non-ascii, lex-no-spdx, lex-too-many-rows with 513 rows under the byte cap), and ok-size-cap, a valid file of exactly 32,768 bytes that must pass
+# ac_gen_limits DIR: one mini-root per stage 1 limit of scripts/lib/aexp-lex.awk under DIR, built on the body of tests/audio/ok-audio (lex-line-too-long, lex-non-ascii, lex-no-spdx, lex-too-many-rows with 513 rows under the byte cap), and ok-size-cap, a valid file of exactly 49,152 bytes (the cap of D-233) that must pass
 # (D-230: the cap is inclusive). Generated, not committed: no committed file may hold a line over 400 characters, a byte outside ASCII or 513 rows.
 ac_pad_to() {
   ap_f=$1
@@ -1041,18 +1041,18 @@ ac_gen_limits() {
   { cat "$ag_base"; awk 'BEGIN { for (i = 0; i < 507; i++) printf "row\tt\tsilent_L\tfrom=0;to=1;side=L\tchon=0\n" }'; } > "$ag_d/lex-too-many-rows/fixtures/src/t.aexp" || return 2
   echo AEXP_TOO_MANY_ROWS > "$ag_d/lex-too-many-rows/EXPECT"
   cp "$ag_base" "$ag_d/ok-size-cap/fixtures/src/t.aexp" || return 2
-  ac_pad_to "$ag_d/ok-size-cap/fixtures/src/t.aexp" 32768 || return 2
+  ac_pad_to "$ag_d/ok-size-cap/fixtures/src/t.aexp" 49152 || return 2
   return 0
 }
-# ac_oversize_control SCRIPT (D-230, D-232; the pf_empty_path_control pattern): a root whose only .aexp is the valid body of ok-audio padded to 32,769 bytes must make SCRIPT exit 2 with a line FILE TAB AEXP_FILE_TOO_LARGE and never print the STATUS line; exit 1 (a violation) is not enough, because
+# ac_oversize_control SCRIPT (D-230, D-232, D-233; the pf_empty_path_control pattern): a root whose only .aexp is the valid body of ok-audio padded to 49,153 bytes (one over the cap) must make SCRIPT exit 2 with a line FILE TAB AEXP_FILE_TOO_LARGE and never print the STATUS line; exit 1 (a violation) is not enough, because
 # run_controls turns any exit 2 into a harness error, so this control lives outside it. Output goes to $tmp/ac-big.out. Returns 0 when the control holds. The selftest mutation-audio-file-too-large runs it against a copy of the script with the tagged size check removed.
 ac_oversize_control() {
   ao_d="$tmp/ac-big"
   rm -rf "$ao_d"
   mkdir -p "$ao_d/fixtures/src" || return 1
   cp tests/audio/ok-audio/fixtures/src/t.aexp "$ao_d/fixtures/src/t.aexp" || return 1
-  ac_pad_to "$ao_d/fixtures/src/t.aexp" 32769 || return 1
-  [ "$(wc -c < "$ao_d/fixtures/src/t.aexp" | tr -d ' ')" -eq 32769 ] || return 1
+  ac_pad_to "$ao_d/fixtures/src/t.aexp" 49153 || return 1
+  [ "$(wc -c < "$ao_d/fixtures/src/t.aexp" | tr -d ' ')" -eq 49153 ] || return 1
   if sh "$1" --root "$ao_d" --cites fixtures/lib/cites.txt --ledger ledger/entries --data tests/audio > "$tmp/ac-big.out" 2>&1; then ao_r=0; else ao_r=$?; fi
   if [ "$ao_r" -ne 2 ] || ! grep -q "$(printf '\tAEXP_FILE_TOO_LARGE\t')" "$tmp/ac-big.out" || grep -q '^STATUS audio-check ok' "$tmp/ac-big.out"; then
     return 1
@@ -1068,10 +1068,10 @@ stage_audio_check() {
   checker sh "$here/audio-check" || ac_a=$?
   run_controls --ok-prefix --require-negative tests/audio tests/audio sh "$here/audio-check" --root @DIR@ @EXPECT@ || ac_b=$?
   ac_gen_limits "$tmp/ac-gen" || return 2
-  [ "$(wc -c < "$tmp/ac-gen/ok-size-cap/fixtures/src/t.aexp" | tr -d ' ')" -eq 32768 ] || { echo "HARNESS_ERROR ok-size-cap is not 32768 bytes"; return 2; }
+  [ "$(wc -c < "$tmp/ac-gen/ok-size-cap/fixtures/src/t.aexp" | tr -d ' ')" -eq 49152 ] || { echo "HARNESS_ERROR ok-size-cap is not 49152 bytes"; return 2; }
   run_controls --ok-prefix --require-negative "$tmp/ac-gen" "$tmp/ac-gen" sh "$here/audio-check" --root @DIR@ @EXPECT@ || ac_c=$?
   if ac_oversize_control "$here/audio-check"; then :; else
-    echo "CONTROL BROKEN audio-file-too-large (wanted exit 2 with an AEXP_FILE_TOO_LARGE line and no STATUS line for a 32,769-byte .aexp, D-230, D-232)"
+    echo "CONTROL BROKEN audio-file-too-large (wanted exit 2 with an AEXP_FILE_TOO_LARGE line and no STATUS line for a 49,153-byte .aexp, D-230, D-232, D-233)"
     sed 's/^/  /' "$tmp/ac-big.out"
     ac_d=1
   fi
@@ -2979,7 +2979,7 @@ selftest() {
     done
   fi
 
-  # (z7h) the size cap of D-230 is removable and detected (D-232): the exit-2 control ac_oversize_control must hold on an unmutated copy of scripts/ (exit 2 and an AEXP_FILE_TOO_LARGE line for a 32,769-byte file); with the line tagged rule-lex-file-too-large deleted from the copy of audio-check the
+  # (z7h) the size cap of D-230 (49,152 bytes since D-233) is removable and detected (D-232): the exit-2 control ac_oversize_control must hold on an unmutated copy of scripts/ (exit 2 and an AEXP_FILE_TOO_LARGE line for a 49,153-byte file); with the line tagged rule-lex-file-too-large deleted from the copy of audio-check the
   # file reaches the parser and the control must no longer see exit 2 (the alive condition is exit 2 for this case only). One line: SELFTEST mutation-audio-file-too-large PASS|FAIL.
   if st_want mutation-audio-file-too-large; then
     st_ran=1

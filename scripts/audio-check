@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
-# audio-check - the static checker of the audio literal files (AUD-03; plan 05-05; D-206..D-210, D-224, D-225, D-230, D-232, ER-15..ER-20, F-51, F-52, F-72, F-73, PR-13, PR-15, PR-18; the video-check contract). It reads every fixtures/src/*.aexp (the hand-written literal rows of an audio scene) and judges the grammar,
+# audio-check - the static checker of the audio literal files (AUD-03; plan 05-05; D-206..D-210, D-224, D-225, D-230, D-232, D-233, ER-15..ER-20, F-51, F-52, F-72, F-73, PR-13, PR-15, PR-18; the video-check contract). It reads every fixtures/src/*.aexp (the hand-written literal rows of an audio scene) and judges the grammar,
 # the class of every group against its kind's ceiling (tests/audio/KINDCLASS), the disputed points (tests/audio/DISPUTED), the arithmetic lint of the rows (ER-18: E0 consistency of the expectation file, never an oracle; it writes no value), the rule map (tests/audio/RULES), the kill and vacuity rules, the hash role,
 # the silence pairing, the toy registry and the inventory link. It never judges what a row says about a sound, only that a row cannot inflate its class, contradict its own inputs, be vacuous or hide behind a hash.
 # usage: audio-check [--expect CODE[,CODE...]] [--root DIR] [--cites FILE] [--ledger DIR] [--data DIR]
@@ -10,7 +10,7 @@
 #   --cites FILE, --ledger DIR   the cite registry and the ledger directory (default: those of the root when it carries them, else those of this repository; the selftests copy scripts/ and name them)
 #   --data DIR   the directory of KINDCLASS and DISPUTED when the root carries none under tests/audio (default: tests/audio of this repository). RULES is read from ROOT/tests/audio/RULES only: a mini-root without one has no rule map; the repository root must carry it (else exit 2).
 #                The toy rules run only where the root carries tests/conformance/AUDIO_TOY_EXEMPT or tests/controls; the inventory rules only where it carries tests/conformance/cases.
-# Size cap (D-230, D-232): AEXP_MAX_BYTES below is the one named constant; a file over it is refused BEFORE any parsing with a line FILE TAB AEXP_FILE_TOO_LARGE TAB 1 TAB detail and exit 2 (a harness error, fail closed), never exit 1. The .vexp cap of 16,384 stays for video.
+# Size cap (D-230, D-232, D-233): AEXP_MAX_BYTES below is the one named constant (49,152 bytes per file since D-233, raised from 32,768 for the psg_tone event rows of plan 05-12); a file over it is refused BEFORE any parsing with a line FILE TAB AEXP_FILE_TOO_LARGE TAB 1 TAB detail and exit 2 (a harness error, fail closed), never exit 1. The .vexp cap of 16,384 stays for video.
 # Two awk stages, each writing to a file whose exit status is tested (no awk on the left of a pipe), each ending in a sentinel: stage 1 is scripts/lib/aexp-lex.awk (512 rows, 400 characters per line, ASCII, the 0BSD SPDX pair), which prints an END row per file; stage 2 is
 # scripts/lib/aexp-rules.awk, which prints a closing RULES row. A dead stage is AUDIO_STAGE_DEAD (exit 2), never a pass.
 # Codes (printed verbatim; scripts/inventory-check is not edited, F-6): AEXP_FORMAT AEXP_UNKNOWN_KEY AEXP_ARITH AEXP_CLASS_INFLATED AUDIO_DISPUTED_POINT AUDIO_RULE_NO_ROW AUDIO_SILENCE_UNPAIRED AUDIO_GROUP_VACUOUS INV_AUDIO_GROUP_UNKILLED INV_AUDIO_HASH_ONLY AUDIO_SCENE_NO_CASE AUDIO_SCENE_NO_SWEEP
@@ -22,7 +22,7 @@ set -eu
 LC_ALL=C; export LC_ALL
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/.." && pwd)
-AEXP_MAX_BYTES=32768
+AEXP_MAX_BYTES=49152
 
 usage() {
   echo "usage: audio-check [--expect CODE[,CODE...]] [--root DIR] [--cites FILE] [--ledger DIR] [--data DIR]" >&2
@@ -196,7 +196,7 @@ for f in "$root"/fixtures/src/*.aexp; do
   esac
   nfiles=$((nfiles + 1))
   sz=$(wc -c < "$f" | tr -d ' ')
-  if [ "$sz" -gt "$AEXP_MAX_BYTES" ]; then printf '%s\tAEXP_FILE_TOO_LARGE\t1\t%s bytes: the limit is %s (D-230), refused before parsing\n' "$rel" "$sz" "$AEXP_MAX_BYTES"; echo "HARNESS_FILE_TOO_LARGE $rel" >&2; exit 2; fi  # rule-lex-file-too-large
+  if [ "$sz" -gt "$AEXP_MAX_BYTES" ]; then printf '%s\tAEXP_FILE_TOO_LARGE\t1\t%s bytes: the limit is %s (D-230, D-233), refused before parsing\n' "$rel" "$sz" "$AEXP_MAX_BYTES"; echo "HARNESS_FILE_TOO_LARGE $rel" >&2; exit 2; fi  # rule-lex-file-too-large
   if awk -f "$here/lib/aexp-lex.awk" "$f" > "$t1" 2> "$tmp/stage1.err"; then :; else
     dead "stage 1 (aexp-lex.awk) failed on $rel"
   fi
