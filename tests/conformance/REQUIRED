@@ -350,3 +350,11 @@ psg_restore_divisor
 psg_tone
 audio_tone_sel0
 audio_tone_sel0_d3
+aud_noninterference
+psg_dev_join
+snapshot_restore_audio
+aud_poweron_policy_diff
+psg_fold
+chunk_equiv_audio_psg_tone
+chunk_equiv_random32_audio
+observer_psg_tone

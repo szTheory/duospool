@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The DSPE to dev join (plan 05-04; D-196, D-200, F-66): kind psg_dev_join (audiokinds.c) runs psg_tone with the psg and dev sinks and requires one DSPE record per window-2 write in the dev log, in order, equal on stamp, pc, value and register (phys & $F); then an in-memory program
+# with 2 reads of the window, 7 plain writes (undecoded ones included: R7 at select 0, reg $A and $F, R2 at select 6, the $0810 mirror), a TII of 8 bytes to $0806..$080D and one more read must give exactly 15 DSPE records (counted by hand from the program, GUEST:program) and none for its 3 reads.
+# Evidence tier E0 (the record definition, ER-13, ER-19); no hardware claim.
+id = "psg_dev_join"
+kind = "psg_dev_join"
+fixture = "authored:psg-tone"
+request = ""
+expect = "rom=psg-tone"
+meaning = "Every window-2 write of psg_tone and of an in-memory program with block bytes, undecoded writes and reads has exactly one DSPE record, joined to its dev record on stamp, pc, value and register, and no read has one (E0)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 1000000

@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Restores at audio stops (plan 05-04; D-200, D-203, R6; the snapshot_restore_video shape): kind snapshot_restore_audio (audiokinds.c) runs psg_tone to a stop chosen by machine time, snapshots it, restores the snapshot into a poisoned second boot and runs on to the deadline.
+# Stops: at a sample instant (a step boundary on the 192-clock grid), mid-interval (64 to 128 clocks past one), between the R2 and R3 writes, between the R0 and R4 writes of the scene, and inside the TIN to $0806 (after its 10th byte, a block-transfer stop). The prefix streams with the
+# resumed streams appended must equal the whole run's DSPE and DSPA streams byte for byte, with first(i+1) = first(i) + seq(i), and the run must end at the same machine time and digest. 05-07 and 05-09 add the DDA, noise and LFO TRG stops. Evidence tier E0; no hardware claim.
+id = "snapshot_restore_audio"
+kind = "snapshot_restore_audio"
+fixture = "authored:psg-tone"
+request = ""
+expect = "rom=psg-tone;stops=sample,mid,r2r3,r0r4,tin"
+meaning = "A snapshot restored at a sample instant, mid-interval, between two register writes and inside a TIN to the wave port continues psg_tone so that the prefix and resumed audio streams equal the whole run byte for byte and the run ends in the same state (E0)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 700000

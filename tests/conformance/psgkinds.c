@@ -506,3 +506,287 @@ void kind_psg_restore_divisor(const struct kase *k, struct ctx *c, char *got, si
     release_boot(&bt);
     snprintf(got, gotcap, "rows=3");
 }
+
+/* ---- psg_fold (plan 05-04 Task 2; D-185, D-186, D-195, D-200, D-221, F-64; the kind_vdc_fold shape) ----
+ * expect seed=N;partitions=P. A program of register writes drawn from a splitmix64 stream of the seed (E0: the stream only chooses the program) is folded on a fresh instance in one jump (machine time 0, every fold step_end 0 to the next write, then to the end) and again in P random
+ * step partitions (steps of 1 to 600 master clocks, D-221: each step's writes folded with step_end 0, then a step_end 1 fold to the step's last clock and the machine time moved past it, as ds_cpu_step_obs does). Both carry a pcm channel. The PSG registers, wave RAM, indices and LFSRs
+ * must be equal, every next event at the same absolute time, and the samples byte-identical; after every step_end fold the D-186 invariant holds (1 <= r <= the largest period, r = 0 exactly when frozen, (machine_time - 1 + r) mod d = 0); out-of-step folds are not asserted (F-64).
+ * The tie order of D-185 at a write: an R6 write to a running channel at its next step event E minus 1 stores at the old index, at E and at E + 1 at the new one (the event at the write stamp is processed first; E = (w - w mod d) + d x F after a key-on at w, the formula written here);
+ * a key-on stamped at a sample instant is heard from the next sample on (the sample at the stamp sees the state before the write). */
+
+static uint32_t pf_u32(const uint8_t *p)
+{
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
+#define PF_END 240000u
+#define PF_FRAMES (PF_END / 192u + 2u)
+
+static uint64_t pf_next(uint64_t *s)
+{
+    uint64_t z;
+
+    *s += UINT64_C(0x9E3779B97F4A7C15);
+    z = *s;
+    z = (z ^ (z >> 30)) * UINT64_C(0xBF58476D1CE4E5B9);
+    z = (z ^ (z >> 27)) * UINT64_C(0x94D049BB133111EB);
+    return z ^ (z >> 31);
+}
+
+struct pf_w {
+    uint64_t t;
+    uint32_t reg;
+    uint32_t val;
+};
+
+#define PF_WMAX 160u
+
+/* the program of a seed: every channel set up (select, F of 8 to 71, R5 $FF, a few wave words, key-on with or without DDA), R1 $FF, then writes of any register at random later stamps */
+static unsigned pf_program(uint64_t seed, struct pf_w *w)
+{
+    uint64_t s = seed;
+    uint64_t t = 16u;
+    unsigned n = 0u;
+    unsigned ch;
+
+    w[n++] = (struct pf_w){t, 1u, 0xFFu};
+    for (ch = 0u; ch < 6u; ch++) {
+        unsigned j;
+
+        w[n++] = (struct pf_w){t += 30u, 0u, ch};
+        w[n++] = (struct pf_w){t += 30u, 2u, (uint32_t)(8u + pf_next(&s) % 64u)};
+        w[n++] = (struct pf_w){t += 30u, 3u, 0u};
+        w[n++] = (struct pf_w){t += 30u, 5u, 0xFFu};
+        for (j = 0u; j < 4u; j++) {
+            w[n++] = (struct pf_w){t += 30u, 6u, (uint32_t)(pf_next(&s) & 0x1Fu)};
+        }
+        w[n++] = (struct pf_w){t += 30u, 7u, (uint32_t)(pf_next(&s) & 0x9Fu)};
+        w[n++] = (struct pf_w){t += 30u, 4u, (pf_next(&s) & 3u) == 0u ? 0xDFu : 0x9Fu};
+    }
+    while (n < PF_WMAX) {
+        uint64_t r = pf_next(&s);
+
+        t += 1u + r % 2900u;
+        if (t >= (uint64_t)PF_END - 2u) {
+            break;
+        }
+        w[n++] = (struct pf_w){t, (uint32_t)((r >> 16) % 10u), (uint32_t)((r >> 24) & 0xFFu)};
+    }
+    return n;
+}
+
+/* the frozen rule of D-185: chON 0, DDA 1, or select 1 with TRG 1 */
+static int pf_frozen(const struct ds_instance *w, uint32_t ch)
+{
+    return (w->psg_ctl[ch] & 0x80u) == 0u || (w->psg_ctl[ch] & 0x40u) != 0u || (ch == 1u && (w->psg_lfo_ctl & 0x80u) != 0u);
+}
+
+/* the D-186 invariant between steps: 0 when it holds */
+static int pf_invariant(const struct ds_instance *w, uint32_t d)
+{
+    uint32_t k;
+
+    for (k = 0u; k < 6u; k++) {
+        uint32_t r = w->psg_rem[k];
+
+        if (pf_frozen(w, k) ? r != 0u : (r == 0u || r > 6u * 4096u || (w->machine_time - 1u + r) % d != 0u)) {
+            return -1;
+        }
+    }
+    for (k = 0u; k < 2u; k++) {
+        uint32_t r = w->psg_nrem[k];
+
+        if (r == 0u || r > 6u * 64u * 31u || (w->machine_time - 1u + r) % d != 0u) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
+struct pf_pcm {
+    struct ds_pcm_sink fsk;
+    struct ds_run_request rq;
+    struct ds_obs_log log;
+    uint8_t frames[PF_FRAMES * 8u];
+};
+
+static void pf_pcm_open(struct pf_pcm *p)
+{
+    memset(p, 0, sizeof *p);
+    p->fsk.frames = p->frames;
+    p->fsk.capacity = PF_FRAMES;
+    p->rq.pcm = &p->fsk;
+    ds_obs_begin(&p->log, &p->rq, UINT64_C(0));
+}
+
+/* the absolute time of a counter's next event: B + r with B = machine_time - 1 (D-186); 0 for a frozen channel */
+static uint64_t pf_abs(const struct ds_instance *w, uint32_t r)
+{
+    return r == 0u ? 0u : w->machine_time - 1u + (uint64_t)r;
+}
+
+void kind_psg_fold(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    char list[PK_LIST_MAX];
+    char *rest = list;
+    char *item;
+    uint64_t seed = 0u;
+    uint64_t parts = 0u;
+    struct pf_w prog[PF_WMAX];
+    unsigned np;
+    struct booted b1;
+    struct booted b2;
+    struct ds_instance *w1;
+    struct ds_instance *w2;
+    struct pf_pcm *p1 = NULL;
+    struct pf_pcm *p2 = NULL;
+    struct ds_psg_write_info info;
+    uint64_t steps = 0u;
+    unsigned bad_inv = 0u;
+    uint64_t part;
+    uint32_t d;
+    unsigned i;
+
+    if (!k->has[K_EXPECT] || pk_copy_text(k->val[K_EXPECT], list, sizeof list) != 0) {
+        harness_error(c, "a psg_fold case needs expect = seed=N;partitions=P");
+        return;
+    }
+    while ((item = pk_next_item(&rest, ';')) != NULL) {
+        if (strncmp(item, "seed=", 5u) == 0 && parse_u64(item + 5, &seed) == 0) {
+            continue;
+        }
+        if (strncmp(item, "partitions=", 11u) == 0 && parse_u64(item + 11, &parts) == 0 && parts >= 1u && parts <= 64u) {
+            continue;
+        }
+        harness_error(c, "a psg_fold case needs expect = seed=N;partitions=P (P 1 to 64)");
+        return;
+    }
+    if (parts == 0u) {
+        harness_error(c, "a psg_fold case needs expect = seed=N;partitions=P (P 1 to 64)");
+        return;
+    }
+    np = pf_program(seed, prog);
+    w1 = pk_boot(c, k->val[K_FIXTURE], k->has[K_REQUEST] ? k->val[K_REQUEST] : "", &b1);
+    if (w1 == NULL) {
+        return;
+    }
+    w2 = pk_boot(c, k->val[K_FIXTURE], k->has[K_REQUEST] ? k->val[K_REQUEST] : "", &b2);
+    p1 = (struct pf_pcm *)malloc(sizeof *p1);
+    p2 = (struct pf_pcm *)malloc(sizeof *p2);
+    if (w2 == NULL || p1 == NULL || p2 == NULL) {
+        if (w2 != NULL) {
+            release_boot(&b2);
+        }
+        release_boot(&b1);
+        free(p1);
+        free(p2);
+        if (!c->harness) {
+            harness_error(c, "out of memory for the psg_fold kind");
+        }
+        return;
+    }
+    d = ds_psg_divisor(w1);
+    /* the one jump */
+    pk_reset(w1);
+    pf_pcm_open(p1);
+    for (i = 0u; i < np; i++) {
+        ds_psg_advance(w1, prog[i].t, 0u, &p1->log);
+        (void)ds_psg_write(w1, prog[i].reg, prog[i].val, prog[i].t, &info);
+    }
+    ds_psg_advance(w1, (uint64_t)PF_END - 1u, 0u, &p1->log);
+    ds_obs_end(&p1->log);
+    /* the partitions: P runs with different step lengths, each against the one jump */
+    for (part = 0u; part < parts; part++) {
+        uint64_t s = seed ^ (UINT64_C(0xA5A5A5A5) * (part + 1u));
+        uint64_t m = 0u;
+        unsigned wi = 0u;
+        int same = 1;
+        uint32_t ch;
+        char msg[200];
+
+        pk_reset(w2);
+        pf_pcm_open(p2);
+        while (m < (uint64_t)PF_END) {
+            uint64_t len = 1u + pf_next(&s) % 600u;
+
+            if (len > (uint64_t)PF_END - m) {
+                len = (uint64_t)PF_END - m;
+            }
+            while (wi < np && prog[wi].t < m + len) {
+                ds_psg_advance(w2, prog[wi].t, 0u, &p2->log);
+                (void)ds_psg_write(w2, prog[wi].reg, prog[wi].val, prog[wi].t, &info);
+                wi++;
+            }
+            ds_psg_advance(w2, m + len - 1u, 1u, &p2->log);
+            m += len;
+            w2->machine_time = m;
+            steps++;
+            if (pf_invariant(w2, d) != 0) {
+                bad_inv++;
+            }
+        }
+        ds_obs_end(&p2->log);
+        same = memcmp(w1->psg_freq, w2->psg_freq, sizeof w1->psg_freq) == 0 && memcmp(w1->psg_ctl, w2->psg_ctl, sizeof w1->psg_ctl) == 0 && memcmp(w1->psg_bal, w2->psg_bal, sizeof w1->psg_bal) == 0 &&
+               memcmp(w1->psg_widx, w2->psg_widx, sizeof w1->psg_widx) == 0 && memcmp(w1->psg_dda, w2->psg_dda, sizeof w1->psg_dda) == 0 && memcmp(w1->psg_wave, w2->psg_wave, sizeof w1->psg_wave) == 0 &&
+               memcmp(w1->psg_noise, w2->psg_noise, sizeof w1->psg_noise) == 0 && memcmp(w1->psg_lfsr, w2->psg_lfsr, sizeof w1->psg_lfsr) == 0 && w1->psg_select == w2->psg_select && w1->psg_main_bal == w2->psg_main_bal &&
+               w1->psg_lfo_freq == w2->psg_lfo_freq && w1->psg_lfo_ctl == w2->psg_lfo_ctl;
+        for (ch = 0u; ch < 6u; ch++) {
+            same = same && pf_abs(w1, w1->psg_rem[ch]) == pf_abs(w2, w2->psg_rem[ch]);
+        }
+        for (ch = 0u; ch < 2u; ch++) {
+            same = same && pf_abs(w1, w1->psg_nrem[ch]) == pf_abs(w2, w2->psg_nrem[ch]);
+        }
+        snprintf(msg, sizeof msg, "partition %llu: the PSG state after the stepped folds differs from the one jump (registers, wave RAM, indices, LFSRs or the absolute time of a next event)", (unsigned long long)part);
+        check(c, same, msg);
+        snprintf(msg, sizeof msg, "partition %llu: the samples of the stepped folds differ from the one jump (count %u against %u)", (unsigned long long)part, (unsigned)pf_u32(p2->fsk.header), (unsigned)pf_u32(p1->fsk.header));
+        check(c, pf_u32(p1->fsk.header) == PF_END / 192u && pf_u32(p2->fsk.header) == pf_u32(p1->fsk.header) && pf_u32(p1->fsk.header + 4) == 0u && memcmp(p1->frames, p2->frames, (size_t)pf_u32(p1->fsk.header) * 8u) == 0, msg);
+    }
+    check(c, bad_inv == 0u, "the D-186 invariant (1 <= r <= the largest period, r = 0 exactly when frozen, the tick grid) failed after a step_end fold");
+    /* the tie order of D-185 at an R6 write to a running channel: select 0, F = 10, key-on at w = 1003; E = (w - w mod d) + d x 10 */
+    {
+        static const int64_t dts[3] = {-1, 0, 1};
+        static const uint8_t want[3] = {0u, 1u, 1u}; /* the wave index after the held store: the old index before the event, the new one at and after it */
+        uint64_t kw = 1003u;
+        uint64_t e = kw - kw % d + (uint64_t)d * 10u;
+        unsigned j;
+
+        for (j = 0u; j < 3u; j++) {
+            uint64_t t = (uint64_t)((int64_t)e + dts[j]);
+            char msg[160];
+
+            pk_reset(w2);
+            (void)pk_w(w2, 0u, 0u, 10u, &info);
+            (void)pk_w(w2, 2u, 10u, 20u, &info);
+            (void)pk_w(w2, 3u, 0u, 30u, &info);
+            (void)pk_w(w2, 4u, 0x9Fu, kw, &info);
+            (void)pk_w(w2, 6u, 0x15u, t, &info);
+            snprintf(msg, sizeof msg, "an R6 write at the next step event %s gives wave index %u, the tie order of D-185 gives %u", j == 0u ? "minus 1" : j == 1u ? "itself" : "plus 1", (unsigned)info.wave_idx, (unsigned)want[j]);
+            check(c, info.wave_idx == want[j] && (info.effect & (uint8_t)DS_PSGE_WAVE_HELD) != 0u, msg);
+        }
+    }
+    /* a key-on stamped at the sample instant 20 x 192 = 3840: sample 20 sees the state before the write (0), sample 21 hears the channel */
+    {
+        uint32_t j;
+
+        pk_reset(w2);
+        pf_pcm_open(p2);
+        (void)pk_w(w2, 1u, 0xFFu, 10u, &info);
+        (void)pk_w(w2, 0u, 0u, 20u, &info);
+        for (j = 0u; j < 32u; j++) {
+            (void)pk_w(w2, 6u, 31u, 30u + j, &info);
+        }
+        (void)pk_w(w2, 5u, 0xFFu, 100u, &info);
+        (void)pk_w(w2, 2u, 64u, 110u, &info);
+        ds_psg_advance(w2, 3840u, 0u, &p2->log);
+        (void)ds_psg_write(w2, 4u, 0x9Fu, 3840u, &info);
+        ds_psg_advance(w2, 3840u + 192u, 0u, &p2->log);
+        ds_obs_end(&p2->log);
+        check(c, pf_u32(p2->fsk.header) == 22u && pf_u32(p2->frames + 20u * 8u) == 0u && pf_u32(p2->frames + 21u * 8u) != 0u,
+              "a key-on stamped at the sample instant 3840 is heard in sample 20, or not in sample 21: the sample at the stamp must see the state before the write");
+    }
+    release_boot(&b1);
+    release_boot(&b2);
+    free(p1);
+    free(p2);
+    snprintf(got, gotcap, "writes=%u partitions=%llu steps=%llu d=%u", np, (unsigned long long)parts, (unsigned long long)steps, (unsigned)d);
+}

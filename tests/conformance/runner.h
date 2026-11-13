@@ -428,6 +428,12 @@ void kind_psg_restore_divisor(const struct kase *k, struct ctx *c, char *got, si
 /* audiokinds.c (plan 05-04): the audio kind, a guest ROM run with a psg, a pcm and a dev sink under the zero policy and seeded-prng-v4 seed 1, its DSV1 verdict, the DSPE records and DSPA frames judged by group against the hand literals of NAME.aexp (EV and ROWS forms),
  * the expect_red binding of D-211 and the stream digests beside them (E0) */
 void kind_audio(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+/* the D-200 proof set of plan 05-04 Task 2 (audiokinds.c): sinks on and off under three policies, the DSPE to dev join, restores at audio stops, the power-on policy difference that the identity check must see; psg_fold is in psgkinds.c */
+void kind_aud_noninterference(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_psg_dev_join(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_snapshot_restore_audio(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_aud_poweron_policy_diff(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_psg_fold(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_model_param_vdc(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-08: the VD and RR status-read stamps of the vdc_stat guest under the default and the two bound model rows (D-143, D-168) */
 void kind_vdc_irq_agree(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-17: the guest-recorded RCR to VD and VD to RCR = 64 intervals against the dev log read stamps and the hand-derived literals of the case (D-174, ER-3, ER-10) */
 void kind_vdc_advance_pure(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-10: the DMA closed form against a naive per-clock model over seeded random stamp partitions that cross display starts (D-151, D-175) */

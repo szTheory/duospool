@@ -31,7 +31,9 @@
 
 #include "ds_core.h"
 #include "ds_obs.h"
+#include "ds_serial.h"
 #include "ds_sha256.h"
+#include "ds_snapshot.h"
 #include "runner.h"
 
 /* the DSPE v1 record of D-196 as this file knows it (hand-written, ER-19) */
@@ -548,15 +550,21 @@ static const char *ax_load(const char *rom, struct ax_file *f)
 
 /* ---- the capture of one run: the streams the judge reads ---- */
 
+/* the streams of one run, accumulated over its ds_run calls (a chunked run or a restore appends): records, frames and dev records back to back, the first frame of the first call, and whether every later call continued the chain first(i+1) = first(i) + seq(i) */
 struct au_cap {
     uint8_t *erec; /* the DSPE records */
     uint32_t ecount;
+    uint32_t ecap;
     uint8_t *frames; /* the DSPA frames */
     uint32_t fcount;
+    uint32_t fcap;
     uint64_t first;
     uint32_t smclk;
     uint8_t *drec; /* the dev records */
     uint32_t dcount;
+    uint32_t dcap;
+    uint32_t calls;
+    int chain_bad;
     uint64_t machine_time;
     uint32_t reason;
 };
@@ -569,7 +577,7 @@ static void au_cap_free(struct au_cap *cp)
     memset(cp, 0, sizeof *cp);
 }
 
-/* the pcm capacity of D-201 for a run from t0 to the deadline until: ceil((until - t0 + ds_max_step_mclk()) / 192) + 1 frames (0 when it does not fit a sink) */
+/* the pcm capacity of D-201 for a run from t0 to the deadline until: ceil((until - t0 + ds_max_step_mclk()) / 192) + 1 frames */
 static uint64_t au_pcm_capacity(uint64_t t0, uint64_t until)
 {
     uint64_t span = (until > t0 ? until - t0 : 0u) + ds_max_step_mclk();
@@ -577,17 +585,90 @@ static uint64_t au_pcm_capacity(uint64_t t0, uint64_t until)
     return span / 192u + (span % 192u != 0u ? 1u : 0u) + 1u;
 }
 
+/* one ds_run call on w to until (with the DSV1 stop when dsv1 is set) whose psg, pcm and dev sinks point at the free tails of cp (allocated on first use: AU_PSG_CAP records, pcap frames, AU_DEV_CAP records); the call's records and frames are appended. A lost record or frame,
+ * an inconsistent header or a refused request is a harness error on c (-1); 0 otherwise. res receives the result of the call. */
+static int au_run(struct ctx *c, struct ds_instance *w, uint64_t until, int dsv1, uint64_t pcap, struct au_cap *cp, struct ds_run_result *res)
+{
+    struct ds_run_request rq;
+    struct ds_psg_sink psk;
+    struct ds_pcm_sink fsk;
+    struct ds_dev_sink dsk;
+    uint32_t ec;
+    uint32_t fc;
+    uint32_t dc;
+    uint64_t first;
+
+    if (cp->erec == NULL) {
+        if (pcap == 0u || pcap > (uint64_t)DS_PCM_SINK_MAX_FRAMES) {
+            harness_error(c, "the audio run is too long for one pcm sink (more than 8,388,608 frames)");
+            return -1;
+        }
+        cp->erec = (uint8_t *)calloc((size_t)AU_PSG_CAP, (size_t)AU_E_REC);
+        cp->frames = (uint8_t *)calloc((size_t)pcap, (size_t)AU_F_BYTES);
+        cp->drec = (uint8_t *)calloc((size_t)AU_DEV_CAP, (size_t)AU_D_REC);
+        cp->ecap = AU_PSG_CAP;
+        cp->fcap = (uint32_t)pcap;
+        cp->dcap = AU_DEV_CAP;
+        if (cp->erec == NULL || cp->frames == NULL || cp->drec == NULL) {
+            harness_error(c, "out of memory for the sinks of an audio run");
+            return -1;
+        }
+    }
+    memset(&psk, 0, sizeof psk);
+    memset(&fsk, 0, sizeof fsk);
+    memset(&dsk, 0, sizeof dsk);
+    psk.records = cp->erec + (size_t)cp->ecount * AU_E_REC;
+    psk.capacity = cp->ecap - cp->ecount;
+    fsk.frames = cp->frames + (size_t)cp->fcount * AU_F_BYTES;
+    fsk.capacity = cp->fcap - cp->fcount;
+    dsk.records = cp->drec + (size_t)cp->dcount * AU_D_REC;
+    dsk.capacity = cp->dcap - cp->dcount;
+    memset(&rq, 0, sizeof rq);
+    memset(res, 0, sizeof *res);
+    rq.struct_size = (uint32_t)sizeof rq;
+    rq.until_mclk = until;
+    rq.stop = dsv1 ? dsv1_done : NULL; /* a speed aid only (D-95): until_mclk is the hard bound */
+    rq.psg = &psk;
+    rq.pcm = &fsk;
+    rq.dev = &dsk;
+    if (ds_run(w, &rq, res) == (uint32_t)DS_RUN_REASON_REFUSED) {
+        harness_error(c, "ds_run refused the request of an audio run");
+        return -1;
+    }
+    ec = au_u32(psk.header + AU_H_COUNT);
+    fc = au_u32(fsk.header + AU_H_COUNT);
+    dc = au_u32(dsk.header + AU_H_COUNT);
+    first = au_u64(fsk.header + AU_H_FIRST);
+    if (au_u32(psk.header + AU_H_LOST) != 0u || au_u32(fsk.header + AU_H_LOST) != 0u || au_u32(dsk.header + AU_H_LOST) != 0u || au_u64(psk.header + AU_H_SEQ) != (uint64_t)ec || au_u64(fsk.header + AU_H_SEQ) != (uint64_t)fc ||
+        au_u64(dsk.header + AU_H_SEQ) != (uint64_t)dc || ec > psk.capacity || fc > fsk.capacity || dc > dsk.capacity) {
+        harness_error(c, "a sink of the audio run lost a record or a frame, or its header is inconsistent: the streams would be incomplete evidence (D-201)");
+        return -1;
+    }
+    if (au_u16(fsk.header + AU_H_FBYTES) != AU_F_BYTES || fsk.header[AU_H_VERSION] != 1u || fsk.header[AU_H_FORMAT] != 1u || au_u32(fsk.header + AU_H_SMCLK) == 0u || (cp->calls > 0u && au_u32(fsk.header + AU_H_SMCLK) != cp->smclk)) {
+        harness_error(c, "the pcm header does not read frame_bytes 8, version 1, format 1 and one sample_mclk above 0 (D-197)");
+        return -1;
+    }
+    if (cp->calls == 0u) {
+        cp->first = first;
+        cp->smclk = au_u32(fsk.header + AU_H_SMCLK);
+    } else if (first != cp->first + (uint64_t)cp->fcount) {
+        cp->chain_bad = 1; /* first(i+1) = first(i) + seq(i) does not hold (D-200) */
+    }
+    cp->ecount += ec;
+    cp->fcount += fc;
+    cp->dcount += dc;
+    cp->calls++;
+    cp->machine_time = res->machine_time;
+    cp->reason = res->reason;
+    return 0;
+}
+
 /* boot ROM over request, run it to its DSV1 verdict or until with the three sinks, judge the DSV1 block on c (verdict text into got) and keep the streams in cp; 0 when the capture is usable, -1 after a harness error on c */
 static int au_capture(struct ctx *c, const char *rom, const char *request, uint64_t until, const struct au_expect *e, struct au_cap *cp, int note, char *got, size_t gotcap)
 {
     struct booted b;
     const struct ds_instance *ci = NULL;
-    struct ds_run_request rq;
     struct ds_run_result res;
-    struct ds_psg_sink psk;
-    struct ds_pcm_sink fsk;
-    struct ds_dev_sink dsk;
-    uint64_t pcap;
     const char *err;
 
     memset(cp, 0, sizeof *cp);
@@ -596,64 +677,16 @@ static int au_capture(struct ctx *c, const char *rom, const char *request, uint6
         harness_error(c, err);
         return -1;
     }
-    pcap = au_pcm_capacity(ci->machine_time, until);
-    if (pcap > (uint64_t)DS_PCM_SINK_MAX_FRAMES) {
+    if (au_run(c, (struct ds_instance *)(void *)b.mem, until, 1, au_pcm_capacity(ci->machine_time, until), cp, &res) != 0) {
         release_boot(&b);
-        harness_error(c, "the audio case is too long for one pcm sink (until_mclk needs more than 8,388,608 frames)");
-        return -1;
-    }
-    cp->erec = (uint8_t *)calloc((size_t)AU_PSG_CAP, (size_t)AU_E_REC);
-    cp->frames = (uint8_t *)calloc((size_t)pcap, (size_t)AU_F_BYTES);
-    cp->drec = (uint8_t *)calloc((size_t)AU_DEV_CAP, (size_t)AU_D_REC);
-    if (cp->erec == NULL || cp->frames == NULL || cp->drec == NULL) {
-        release_boot(&b);
-        harness_error(c, "out of memory for the sinks of an audio case");
-        return -1;
-    }
-    memset(&psk, 0, sizeof psk);
-    memset(&fsk, 0, sizeof fsk);
-    memset(&dsk, 0, sizeof dsk);
-    psk.records = cp->erec;
-    psk.capacity = AU_PSG_CAP;
-    fsk.frames = cp->frames;
-    fsk.capacity = (uint32_t)pcap;
-    dsk.records = cp->drec;
-    dsk.capacity = AU_DEV_CAP;
-    memset(&rq, 0, sizeof rq);
-    memset(&res, 0, sizeof res);
-    rq.struct_size = (uint32_t)sizeof rq;
-    rq.until_mclk = until;
-    rq.stop = dsv1_done; /* a speed aid only (D-95): until_mclk is the hard bound */
-    rq.psg = &psk;
-    rq.pcm = &fsk;
-    rq.dev = &dsk;
-    if (ds_run((struct ds_instance *)(void *)b.mem, &rq, &res) == (uint32_t)DS_RUN_REASON_REFUSED) {
-        release_boot(&b);
-        harness_error(c, "ds_run refused the request of an audio case");
         return -1;
     }
     if (note) {
         note_run(c, res.machine_time, res.reason);
     }
-    cp->machine_time = res.machine_time;
-    cp->reason = res.reason;
     judge_dsv1(c, ci->ram8k + V_OFF, (unsigned)e->id, (unsigned)e->checks, got, gotcap);
     release_boot(&b);
     if (c->harness || c->timeout) {
-        return -1;
-    }
-    cp->ecount = au_u32(psk.header + AU_H_COUNT);
-    cp->fcount = au_u32(fsk.header + AU_H_COUNT);
-    cp->dcount = au_u32(dsk.header + AU_H_COUNT);
-    cp->first = au_u64(fsk.header + AU_H_FIRST);
-    cp->smclk = au_u32(fsk.header + AU_H_SMCLK);
-    if (au_u32(psk.header + AU_H_LOST) != 0u || au_u32(fsk.header + AU_H_LOST) != 0u || au_u32(dsk.header + AU_H_LOST) != 0u || au_u64(psk.header + AU_H_SEQ) != (uint64_t)cp->ecount ||
-        au_u64(fsk.header + AU_H_SEQ) != (uint64_t)cp->fcount || cp->ecount > AU_PSG_CAP || (uint64_t)cp->fcount > pcap) {
-        harness_error(c, "a sink of the audio case lost a record or a frame, or its header is inconsistent: the streams would be incomplete evidence (D-201)");
-        return -1;
-    }
-    if (au_u16(fsk.header + AU_H_FBYTES) != AU_F_BYTES || fsk.header[AU_H_VERSION] != 1u || fsk.header[AU_H_FORMAT] != 1u || cp->smclk == 0u) {
-        harness_error(c, "the pcm header does not read frame_bytes 8, version 1, format 1 and a sample_mclk above 0 (D-197)");
         return -1;
     }
     if (cp->fcount == 0u && cp->machine_time > cp->first * (uint64_t)cp->smclk) {
@@ -1508,4 +1541,547 @@ done:
     au_cap_free(&cap0);
     au_cap_free(&cap1);
     free(f);
+}
+
+/* ---- the D-200 proof set kinds of the audio file (plan 05-04 Task 2): aud_noninterference, psg_dev_join, snapshot_restore_audio, aud_poweron_policy_diff ---- */
+
+/* the expect rom=NAME of a proof-set case (the built image build/gate/fixtures/NAME.pce), with an optional second item key=VALUE copied into extra (NULL when the case needs none); 0 on success */
+static int au_rom_expect(const struct kase *k, char *rom, size_t romcap, const char *key, char *extra, size_t xcap)
+{
+    char list[PK_LIST_MAX];
+    char *rest = list;
+    char *item;
+    int have_rom = 0;
+    int have_extra = key == NULL;
+
+    if (!k->has[K_EXPECT] || pk_copy_text(k->val[K_EXPECT], list, sizeof list) != 0) {
+        return -1;
+    }
+    while ((item = pk_next_item(&rest, ';')) != NULL) {
+        const char *v;
+
+        if ((v = ax_val(item, "rom")) != NULL && !have_rom && strlen(v) > 0u && strlen(v) < romcap && strspn(v, "abcdefghijklmnopqrstuvwxyz0123456789-") == strlen(v)) {
+            memcpy(rom, v, strlen(v) + 1u);
+            have_rom = 1;
+        } else if (key != NULL && (v = ax_val(item, key)) != NULL && !have_extra && strlen(v) > 0u && strlen(v) < xcap) {
+            memcpy(extra, v, strlen(v) + 1u);
+            have_extra = 1;
+        } else {
+            return -1;
+        }
+    }
+    return have_rom && have_extra ? 0 : -1;
+}
+
+/* the end state of a run that a sink must not change (D-200): reason, machine time, steps, verdict RAM and state digest */
+struct au_end {
+    uint32_t reason;
+    uint64_t mclk;
+    uint64_t steps;
+    uint8_t verdict[V_SIZE];
+    uint8_t digest[DS_DIGEST_BYTES];
+    int digest_ok;
+};
+
+static void au_end_of(struct au_end *e, const struct ds_instance *w, const struct ds_run_result *res)
+{
+    e->reason = res->reason;
+    e->mclk = res->machine_time;
+    e->steps = res->steps;
+    memcpy(e->verdict, w->ram8k + V_OFF, V_SIZE);
+    e->digest_ok = ds_digest(w, e->digest) == 0u;
+}
+
+static int au_end_same(const struct au_end *a, const struct au_end *b)
+{
+    return a->reason == b->reason && a->mclk == b->mclk && a->steps == b->steps && memcmp(a->verdict, b->verdict, V_SIZE) == 0 && a->digest_ok && b->digest_ok && memcmp(a->digest, b->digest, DS_DIGEST_BYTES) == 0;
+}
+
+/* aud_noninterference (D-200): psg_tone run to its DSV1 verdict with the psg, pcm and dev sinks on and with no sink, under zero and seeded-prng-v4 seeds 1 and 2: identical stop reason, machine time, steps, verdict RAM and state digest; the sink runs must have produced
+ * records and frames, so the comparison is not vacuous. The psg and pcm pointers are read only at the gate and the emits; the toy psg-emit-mutates turns this case red. */
+void kind_aud_noninterference(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    char rom[48];
+    uint64_t until = 0u;
+    unsigned i;
+    uint64_t frames = 0u;
+    uint64_t events = 0u;
+
+    if (au_rom_expect(k, rom, sizeof rom, NULL, NULL, 0u) != 0 || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until == 0u) {
+        harness_error(c, "an aud_noninterference case needs until_mclk and expect = rom=NAME");
+        return;
+    }
+    for (i = 0u; i < VD_POLICIES && !c->harness; i++) {
+        char req[600];
+        struct booted b0;
+        struct booted b1;
+        const struct ds_instance *c0 = NULL;
+        const struct ds_instance *c1 = NULL;
+        struct ds_run_request rq;
+        struct ds_run_result r0;
+        struct ds_run_result r1;
+        struct au_end e0;
+        struct au_end e1;
+        struct au_cap cp;
+        const char *err;
+        char msg[200];
+
+        memset(&cp, 0, sizeof cp);
+        if (vd_policy_request(i, k->has[K_REQUEST] ? k->val[K_REQUEST] : "", req, sizeof req) != 0) {
+            harness_error(c, "the request of the aud_noninterference case is too long");
+            return;
+        }
+        err = boot_built_rom(rom, req, &b0, &c0);
+        if (err != NULL) {
+            harness_error(c, err);
+            return;
+        }
+        err = boot_built_rom(rom, req, &b1, &c1);
+        if (err != NULL) {
+            release_boot(&b0);
+            harness_error(c, err);
+            return;
+        }
+        memset(&rq, 0, sizeof rq);
+        memset(&r0, 0, sizeof r0);
+        rq.struct_size = (uint32_t)sizeof rq;
+        rq.until_mclk = until;
+        rq.stop = dsv1_done;
+        (void)ds_run((struct ds_instance *)(void *)b0.mem, &rq, &r0);
+        au_end_of(&e0, c0, &r0);
+        if (au_run(c, (struct ds_instance *)(void *)b1.mem, until, 1, au_pcm_capacity(c1->machine_time, until), &cp, &r1) == 0) {
+            au_end_of(&e1, c1, &r1);
+            snprintf(msg, sizeof msg, "under %s the psg, pcm and dev sinks changed the stop reason, machine time, steps, verdict RAM or state digest of the run", vd_policy_name(i));
+            check(c, au_end_same(&e0, &e1), msg);
+            snprintf(msg, sizeof msg, "under %s the sink run produced no DSPE record or no DSPA frame: the comparison would be vacuous", vd_policy_name(i));
+            check(c, cp.ecount > 0u && cp.fcount > 0u, msg);
+            frames += cp.fcount;
+            events += cp.ecount;
+            if (i == 0u) {
+                note_run(c, r1.machine_time, r1.reason);
+            }
+        }
+        au_cap_free(&cp);
+        release_boot(&b0);
+        release_boot(&b1);
+    }
+    snprintf(got, gotcap, "policies=%u frames=%llu events=%llu", (unsigned)VD_POLICIES, (unsigned long long)frames, (unsigned long long)events);
+}
+
+/* the DSPE records of cp joined 1:1 and in order with the dev records of window-2 writes on (stamp, pc, value, phys & $F) (D-196, F-66); 0 when the join holds, else the index of the first mismatch + 1 into *at */
+static int au_join(const struct au_cap *cp, uint32_t *window_writes, uint32_t *at)
+{
+    uint32_t i;
+    uint32_t j = 0u;
+
+    *window_writes = 0u;
+    *at = 0u;
+    for (i = 0u; i < cp->dcount; i++) {
+        const uint8_t *d = cp->drec + (size_t)i * AU_D_REC;
+        uint32_t phys = au_u32(d + 8);
+        const uint8_t *e;
+
+        if (phys < 0x1FE800u || phys >= 0x1FEC00u || d[13] == 2u) { /* not window 2, or a read (kind 2): a read of the PSG window is not logged and makes no DSPE record */
+            continue;
+        }
+        (*window_writes)++;
+        if (j >= cp->ecount) {
+            *at = i + 1u;
+            return -1;
+        }
+        e = cp->erec + (size_t)j * AU_E_REC;
+        if (au_u64(e + AU_E_STAMP) != au_u64(d) || au_u16(e + AU_E_PC) != au_u16(d + 16) || e[AU_E_VALUE] != d[12] || e[AU_E_REG] != (phys & 0x0Fu)) {
+            *at = i + 1u;
+            return -1;
+        }
+        j++;
+    }
+    if (j != cp->ecount) {
+        *at = cp->dcount + 1u;
+        return -1;
+    }
+    return 0;
+}
+
+/* ---- a synthetic image built in test code (the randprog.c layout: bank 0 at logical $E000 under the reset mapping, the reset vector $FFFE -> $E000, every other vector and the end of the program at a spin loop at $FFF0) ---- */
+
+#define AU_IMG_BANK 0x2000u
+#define AU_IMG_SPIN 0x1FF0u
+
+static void au_img_tail(unsigned char *img, size_t at)
+{
+    unsigned v;
+
+    img[at] = 0x4Cu; /* JMP $FFF0 */
+    img[at + 1u] = 0xF0u;
+    img[at + 2u] = 0xFFu;
+    img[AU_IMG_SPIN] = 0x80u; /* BRA to itself */
+    img[AU_IMG_SPIN + 1u] = 0xFEu;
+    for (v = 0u; v < 4u; v++) {
+        img[0x1FF6u + 2u * v] = 0xF0u;
+        img[0x1FF7u + 2u * v] = 0xFFu;
+    }
+    img[0x1FFEu] = 0x00u;
+    img[0x1FFFu] = 0xE0u;
+}
+
+/* LDA #v; STA $08rr (a PSG register write at logical $0800 + off while MPR0 = $FF) */
+static void au_img_write(unsigned char *img, size_t *at, unsigned off, unsigned v)
+{
+    img[(*at)++] = 0xA9u;
+    img[(*at)++] = (unsigned char)(v & 0xFFu);
+    img[(*at)++] = 0x8Du;
+    img[(*at)++] = (unsigned char)(off & 0xFFu);
+    img[(*at)++] = 0x08u;
+}
+
+static void au_img_head(unsigned char *img, size_t *at)
+{
+    memset(img, 0, RP_IMAGE_BYTES);
+    *at = 0u;
+    img[(*at)++] = 0xA9u; /* LDA #$FF; TAM #$01: MPR0 = $FF, the hardware page at logical $0000 */
+    img[(*at)++] = 0xFFu;
+    img[(*at)++] = 0x53u;
+    img[(*at)++] = 0x01u;
+}
+
+/* the join program (GUEST:program, counted by hand): 2 reads of the window, then 7 writes (R0 = 0; R7 at select 0, reg $A and reg $F: no target; $0810, the mirror of R0, = 6; R2 at select 6: no target; R0 = 1), a TII of 8 bytes from $E100 to $0806..$080D (8 writes:
+ * R6, R7 at select 1, R8, R9, reg $A..$D) and one more read: 15 window-2 writes, so 15 DSPE records, and no record for the 3 reads */
+#define AU_JOIN_WRITES 15u
+
+static void au_img_join(unsigned char *img)
+{
+    size_t at;
+    unsigned i;
+
+    au_img_head(img, &at);
+    img[at++] = 0xADu; /* LDA $0800 */
+    img[at++] = 0x00u;
+    img[at++] = 0x08u;
+    img[at++] = 0xADu; /* LDA $0809 */
+    img[at++] = 0x09u;
+    img[at++] = 0x08u;
+    au_img_write(img, &at, 0x00u, 0x00u);
+    au_img_write(img, &at, 0x07u, 0x55u);
+    au_img_write(img, &at, 0x0Au, 0x11u);
+    au_img_write(img, &at, 0x0Fu, 0x22u);
+    au_img_write(img, &at, 0x10u, 0x06u);
+    au_img_write(img, &at, 0x02u, 0x33u);
+    au_img_write(img, &at, 0x00u, 0x01u);
+    img[at++] = 0x73u; /* TII $E100, $0806, 8 */
+    img[at++] = 0x00u;
+    img[at++] = 0xE1u;
+    img[at++] = 0x06u;
+    img[at++] = 0x08u;
+    img[at++] = 0x08u;
+    img[at++] = 0x00u;
+    img[at++] = 0xADu; /* LDA $0806 */
+    img[at++] = 0x06u;
+    img[at++] = 0x08u;
+    au_img_tail(img, at);
+    for (i = 0u; i < 8u; i++) {
+        img[0x0100u + i] = (unsigned char)(0x41u + 0x11u * i);
+    }
+}
+
+/* psg_dev_join (D-196, D-200, F-66): DSPE joins dev 1:1 on (stamp, pc, value, phys & $F) for the ROM of the case, and for the in-memory join program, whose 15 window-2 writes (block bytes and undecoded writes included) must give exactly 15 DSPE records and whose reads give none */
+void kind_psg_dev_join(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    char rom[48];
+    uint64_t until = 0u;
+    struct booted b;
+    const struct ds_instance *ci = NULL;
+    struct au_cap cp;
+    struct ds_run_result res;
+    unsigned char *img;
+    uint32_t ww = 0u;
+    uint32_t at = 0u;
+    uint32_t rom_events = 0u;
+    const char *err;
+    char msg[200];
+
+    if (au_rom_expect(k, rom, sizeof rom, NULL, NULL, 0u) != 0 || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until == 0u) {
+        harness_error(c, "a psg_dev_join case needs until_mclk and expect = rom=NAME");
+        return;
+    }
+    memset(&cp, 0, sizeof cp);
+    err = boot_built_rom(rom, k->has[K_REQUEST] ? k->val[K_REQUEST] : "", &b, &ci);
+    if (err != NULL) {
+        harness_error(c, err);
+        return;
+    }
+    if (au_run(c, (struct ds_instance *)(void *)b.mem, until, 1, au_pcm_capacity(ci->machine_time, until), &cp, &res) == 0) {
+        note_run(c, res.machine_time, res.reason);
+        snprintf(msg, sizeof msg, "the DSPE records of %.40s do not join the dev records of window-2 writes 1:1 on stamp, pc, value and register (first mismatch near dev record %u)", rom, (unsigned)at);
+        check(c, au_join(&cp, &ww, &at) == 0, msg);
+        check(c, ww == cp.ecount && ww > 0u, "the ROM made no window-2 write, or the DSPE count is not the count of its window-2 writes");
+        rom_events = cp.ecount;
+    }
+    au_cap_free(&cp);
+    release_boot(&b);
+    if (c->harness) {
+        return;
+    }
+    img = (unsigned char *)malloc(RP_IMAGE_BYTES);
+    if (img == NULL) {
+        harness_error(c, "out of memory for the join program");
+        return;
+    }
+    au_img_join(img);
+    err = boot_random(img, "", &b, &ci);
+    free(img);
+    if (err != NULL) {
+        harness_error(c, err);
+        return;
+    }
+    if (au_run(c, (struct ds_instance *)(void *)b.mem, 20000u, 0, au_pcm_capacity(ci->machine_time, 20000u), &cp, &res) == 0) {
+        check(c, au_join(&cp, &ww, &at) == 0, "the DSPE records of the join program do not join its dev records of window-2 writes 1:1");
+        snprintf(msg, sizeof msg, "the join program makes %u DSPE records and %u logged window-2 writes; its 15 writes (7 plain, 8 by TII, the undecoded ones included) must give exactly 15 and its 3 reads none", (unsigned)cp.ecount, (unsigned)ww);
+        check(c, cp.ecount == AU_JOIN_WRITES && ww == AU_JOIN_WRITES, msg);
+    }
+    au_cap_free(&cp);
+    release_boot(&b);
+    snprintf(got, gotcap, "rom_events=%u program_events=%u", (unsigned)rom_events, (unsigned)AU_JOIN_WRITES);
+}
+
+/* the policy-diff program (D-204, D-212): select 3, F = 256, R1 $FF, R5 $FF, key-on with AL $1F, and its wave RAM never written, so what it plays is the power-on wave RAM of the policy */
+static void au_img_poweron(unsigned char *img)
+{
+    size_t at;
+
+    au_img_head(img, &at);
+    au_img_write(img, &at, 0x00u, 0x03u);
+    au_img_write(img, &at, 0x02u, 0x00u);
+    au_img_write(img, &at, 0x03u, 0x01u);
+    au_img_write(img, &at, 0x01u, 0xFFu);
+    au_img_write(img, &at, 0x05u, 0xFFu);
+    au_img_write(img, &at, 0x04u, 0x9Fu);
+    au_img_tail(img, at);
+}
+
+/* aud_poweron_policy_diff (D-204, D-212, R4): the in-memory program plays a channel whose wave RAM it never wrote. Its DSPA stream must differ between seeded-prng-v4 seeds 1 and 2 and between zero and v4 seed 1, and must be identical between zero and seeded-prng-v3 seed 1
+ * (v3 draws no wave). The differences are reported by au_streams_differ, the identity check every audio literal case relies on, so that check is shown able to fail. */
+void kind_aud_poweron_policy_diff(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    static const char *const pol[4] = {"", "bind.powerup_policy=seeded-prng-v4;seed=1", "bind.powerup_policy=seeded-prng-v4;seed=2", "bind.powerup_policy=seeded-prng-v3;seed=1"};
+    struct au_cap cp[4];
+    unsigned char *img;
+    uint64_t until = 0u;
+    unsigned i;
+    int d01;
+    int d12;
+    int d03;
+
+    memset(cp, 0, sizeof cp);
+    if (!k->has[K_EXPECT] || strcmp(k->val[K_EXPECT], "program=sel3-keyon-no-wave") != 0 || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until < 100000u) {
+        harness_error(c, "an aud_poweron_policy_diff case needs until_mclk (at least 100,000) and expect = program=sel3-keyon-no-wave");
+        return;
+    }
+    img = (unsigned char *)malloc(RP_IMAGE_BYTES);
+    if (img == NULL) {
+        harness_error(c, "out of memory for the policy-diff program");
+        return;
+    }
+    au_img_poweron(img);
+    for (i = 0u; i < 4u && !c->harness; i++) {
+        struct booted b;
+        const struct ds_instance *ci = NULL;
+        struct ds_run_result res;
+        const char *err = boot_random(img, pol[i], &b, &ci);
+
+        if (err != NULL) {
+            harness_error(c, err);
+            break;
+        }
+        (void)au_run(c, (struct ds_instance *)(void *)b.mem, until, 0, au_pcm_capacity(ci->machine_time, until), &cp[i], &res);
+        release_boot(&b);
+    }
+    free(img);
+    if (!c->harness) {
+        d12 = au_streams_differ(&cp[1], &cp[2]);
+        d01 = au_streams_differ(&cp[0], &cp[1]);
+        d03 = au_streams_differ(&cp[0], &cp[3]);
+        check(c, d12 == 1, "the DSPA streams of seeded-prng-v4 seeds 1 and 2 do not differ: the identity check of the audio kind could not see a played power-on wave");
+        check(c, d01 == 1, "the zero-versus-v4 identity check of the audio kind does not report a difference between zero and seeded-prng-v4 seed 1 for a channel keyed on without an upload (D-204)");
+        check(c, d03 == 0, "the DSPA streams of zero and seeded-prng-v3 seed 1 differ: v3 draws no wave RAM");
+        check(c, cp[0].fcount > 0u && cp[1].fcount == cp[0].fcount, "the policy runs produced no frames or different frame counts");
+        snprintf(got, gotcap, "v4s1_v4s2=%s zero_v4s1=%s zero_v3s1=%s frames=%u", d12 == 1 ? "differ" : "same", d01 == 1 ? "differ" : "same", d03 == 0 ? "same" : "differ", (unsigned)cp[0].fcount);
+    }
+    for (i = 0u; i < 4u; i++) {
+        au_cap_free(&cp[i]);
+    }
+}
+
+/* ---- snapshot_restore_audio (D-200; the kind_snapshot_restore_video shape) ---- */
+
+#define AU_INSN_CAP 262144u
+
+/* the stamp of the n-th DSPE record of register reg (any channel), with value val when val <= 255; UINT64_MAX when there is none */
+static uint64_t au_stamp_of(const struct au_cap *cp, unsigned reg, unsigned val, unsigned n)
+{
+    uint32_t i;
+    unsigned seen = 0u;
+
+    for (i = 0u; i < cp->ecount; i++) {
+        const uint8_t *r = cp->erec + (size_t)i * AU_E_REC;
+
+        if (r[AU_E_REG] == reg && (val > 255u || r[AU_E_VALUE] == val) && ++seen == n) {
+            return au_u64(r + AU_E_STAMP);
+        }
+    }
+    return UINT64_MAX;
+}
+
+/* the first instruction start (a step boundary) at or after t whose residue mod 192 is rlo..rhi, from the insn records of the reference run; UINT64_MAX when there is none */
+static uint64_t au_step_at(const uint8_t *insn, uint32_t n, uint64_t t, uint64_t rlo, uint64_t rhi)
+{
+    uint32_t i;
+
+    for (i = 0u; i < n; i++) {
+        uint64_t s = au_u64(insn + (size_t)i * DS_INSN_RECORD_BYTES);
+
+        if (s >= t && s % 192u >= rlo && s % 192u <= rhi) {
+            return s;
+        }
+    }
+    return UINT64_MAX;
+}
+
+/* restore at stops chosen by machine time on the ROM of the case: at a sample instant (a step boundary on the 192 grid), mid-interval (a boundary 64 to 128 clocks past one), between the R2 and R3 writes, between the R0 and R4 writes of the scene, and inside the TIN to $0806
+ * (after its 10th byte). The prefix run stops there, a snapshot is restored into a poisoned second boot, and the resumed run's DSPE records and DSPA frames appended to the prefix must equal the whole run's streams byte for byte, with first(i+1) = first(i) + seq(i), the same end
+ * machine time and the same end digest. 05-07 and 05-09 add the DDA, noise and LFO TRG stops. */
+void kind_snapshot_restore_audio(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    static const char *const names[5] = {"sample", "mid", "r2r3", "r0r4", "tin"};
+    char rom[48];
+    char stops[96];
+    uint64_t until = 0u;
+    const char *req = k->has[K_REQUEST] ? k->val[K_REQUEST] : "";
+    struct booted b;
+    const struct ds_instance *ci = NULL;
+    struct ds_insn_sink isk;
+    struct ds_run_request rq;
+    struct ds_run_result res;
+    struct au_cap ref;
+    struct au_end eref;
+    uint8_t *insn = NULL;
+    uint8_t *snap = NULL;
+    uint32_t ninsn = 0u;
+    uint64_t at[5];
+    unsigned i;
+    unsigned done = 0u;
+    const char *err;
+
+    memset(&ref, 0, sizeof ref);
+    if (au_rom_expect(k, rom, sizeof rom, "stops", stops, sizeof stops) != 0 || strcmp(stops, "sample,mid,r2r3,r0r4,tin") != 0 || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until < 400000u) {
+        harness_error(c, "a snapshot_restore_audio case needs until_mclk (at least 400,000) and expect = rom=NAME;stops=sample,mid,r2r3,r0r4,tin");
+        return;
+    }
+    insn = (uint8_t *)calloc((size_t)AU_INSN_CAP, (size_t)DS_INSN_RECORD_BYTES);
+    snap = (uint8_t *)malloc(ds_snapshot_size());
+    if (insn == NULL || snap == NULL) {
+        free(insn);
+        free(snap);
+        harness_error(c, "out of memory for the restore kind");
+        return;
+    }
+    /* the reference: the whole run with the audio sinks, and once more with an instruction sink for the step boundaries */
+    err = boot_built_rom(rom, req, &b, &ci);
+    if (err != NULL) {
+        harness_error(c, err);
+        goto out;
+    }
+    if (au_run(c, (struct ds_instance *)(void *)b.mem, until, 0, au_pcm_capacity(ci->machine_time, until), &ref, &res) != 0) {
+        release_boot(&b);
+        goto out;
+    }
+    au_end_of(&eref, ci, &res);
+    note_run(c, res.machine_time, res.reason);
+    release_boot(&b);
+    err = boot_built_rom(rom, req, &b, &ci);
+    if (err != NULL) {
+        harness_error(c, err);
+        goto out;
+    }
+    memset(&isk, 0, sizeof isk);
+    isk.records = insn;
+    isk.capacity = AU_INSN_CAP;
+    memset(&rq, 0, sizeof rq);
+    rq.struct_size = (uint32_t)sizeof rq;
+    rq.until_mclk = until;
+    rq.insn = &isk;
+    (void)ds_run((struct ds_instance *)(void *)b.mem, &rq, &res);
+    release_boot(&b);
+    ninsn = au_u32(isk.header);
+    if (au_u32(isk.header + 4) != 0u) {
+        harness_error(c, "the instruction sink of the restore kind lost a record");
+        goto out;
+    }
+    /* the stop deadlines: a run stops at the first step end at or after its deadline, so a deadline one clock past a write stamp stops after that write's step */
+    at[0] = au_step_at(insn, ninsn, until / 2u, 0u, 0u);
+    at[1] = au_step_at(insn, ninsn, until / 2u, 64u, 128u);
+    at[2] = au_stamp_of(&ref, 2u, 256u, 1u);
+    at[3] = au_stamp_of(&ref, 0u, 0u, 2u);
+    at[4] = au_stamp_of(&ref, 6u, 256u, 10u);
+    for (i = 2u; i < 5u; i++) {
+        at[i] = at[i] != UINT64_MAX ? at[i] + 1u : UINT64_MAX;
+    }
+    for (i = 0u; i < 5u && !c->harness; i++) {
+        struct booted a;
+        struct booted t;
+        const struct ds_instance *ca = NULL;
+        const struct ds_instance *ct = NULL;
+        struct au_cap cp;
+        struct au_end e;
+        int placed;
+        char msg[240];
+
+        if (at[i] == UINT64_MAX || at[i] >= until) {
+            snprintf(msg, sizeof msg, "the restore stop %s has no deadline inside the run (no step boundary or write found)", names[i]);
+            harness_error(c, msg);
+            break;
+        }
+        memset(&cp, 0, sizeof cp);
+        err = boot_built_rom(rom, req, &a, &ca);
+        if (err != NULL) {
+            harness_error(c, err);
+            break;
+        }
+        err = boot_built_rom(rom, req, &t, &ct);
+        if (err != NULL) {
+            release_boot(&a);
+            harness_error(c, err);
+            break;
+        }
+        if (au_run(c, (struct ds_instance *)(void *)a.mem, at[i], 0, au_pcm_capacity(ca->machine_time, until), &cp, &res) == 0) {
+            uint64_t m = ca->machine_time;
+
+            placed = i == 0u ? m % 192u == 0u : i == 1u ? m % 192u != 0u : i == 2u ? m > at[2] - 1u && m <= au_stamp_of(&ref, 3u, 256u, 1u) : i == 3u ? m > at[3] - 1u && m <= au_stamp_of(&ref, 4u, 0x40u, 1u) : ca->blk_active != 0u;
+            snprintf(msg, sizeof msg, "the restore stop %s landed at machine time %llu, not where it was chosen (a sample instant, mid-interval, between the two writes, inside the TIN)", names[i], (unsigned long long)m);
+            check(c, placed, msg);
+            if (ds_snapshot(ca, snap, ds_snapshot_size(), NULL) != (uint32_t)DS_SNAPREF_NONE) {
+                check(c, 0, "ds_snapshot at an audio restore stop was refused");
+            } else {
+                snap_poison((struct ds_instance *)(void *)t.mem, (i & 1u) != 0u ? 0x5Au : 0xA5u);
+                if (ds_restore((struct ds_instance *)(void *)t.mem, snap, ds_snapshot_size()) != (uint32_t)DS_SNAPREF_NONE) {
+                    check(c, 0, "ds_restore refused the snapshot of an audio restore stop");
+                } else if (au_run(c, (struct ds_instance *)(void *)t.mem, until, 0, 0u, &cp, &res) == 0) {
+                    au_end_of(&e, ct, &res);
+                    snprintf(msg, sizeof msg, "restore at %s (machine time %llu): the prefix and the resumed streams do not equal the whole run byte for byte, or first(i+1) != first(i) + seq(i)", names[i], (unsigned long long)m);
+                    check(c, au_streams_differ(&ref, &cp) == 0 && !cp.chain_bad && cp.calls == 2u, msg);
+                    snprintf(msg, sizeof msg, "restore at %s: the resumed run ends at another machine time or digest than the whole run", names[i]);
+                    check(c, e.mclk == eref.mclk && e.digest_ok && eref.digest_ok && memcmp(e.digest, eref.digest, DS_DIGEST_BYTES) == 0, msg);
+                    done++;
+                }
+            }
+        }
+        au_cap_free(&cp);
+        release_boot(&a);
+        release_boot(&t);
+    }
+    snprintf(got, gotcap, "restores=%u frames=%u events=%u", done, (unsigned)ref.fcount, (unsigned)ref.ecount);
+out:
+    au_cap_free(&ref);
+    free(insn);
+    free(snap);
 }
