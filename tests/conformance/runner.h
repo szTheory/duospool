@@ -442,6 +442,10 @@ void kind_psg_dev_join(const struct kase *k, struct ctx *c, char *got, size_t go
 void kind_snapshot_restore_audio(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_aud_poweron_policy_diff(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_psg_fold(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+/* plan 05-07 Task 3: the noise repeat of criterion 4 (E0) and the block-transfer flood (audiokinds.c), the hostile register programs (psgkinds.c) */
+void kind_audio_noise_repeat(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_psg_block_flood(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_psg_random_regs(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 /* plan 05-04 Task 3 (audiokinds.c): the --audio-out CASE_ID option (the --video-out shape: audio_out_id its value, audiokinds_arg parses it, audio_out_main runs the request, exit 0 or 2), kind audio_out_rights (the rule judged without writing a file) and kind pcm_cadence (the per-frame sample counts) */
 extern const char *audio_out_id;
 int audiokinds_arg(int argc, char **argv, int *a);

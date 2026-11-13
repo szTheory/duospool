@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Noise repeat (plan 05-07; D-193, D-204, D-212, success criterion 4): kind audio_noise_repeat (tests/conformance/audiokinds.c). E0 repeatability of one implementation under one power-on policy at a time, never a claim about the hardware's noise.
+id = "audio_noise_repeat"
+kind = "audio_noise_repeat"
+fixture = "authored:psg-mod"
+request = ""
+expect = "rom=psg-mod"
+meaning = "Two fresh instances of psg_mod run interleaved to the same deadlines give byte-identical DSPE and DSPA streams, noise included, under zero and seeded-prng-v4 seeds 1 and 2, and the comparison reports a one-byte flip of either stream (E0 repeatability, criterion 4)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 2500000

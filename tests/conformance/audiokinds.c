@@ -3317,20 +3317,35 @@ static int au_end_same(const struct au_end *a, const struct au_end *b)
     return a->reason == b->reason && a->mclk == b->mclk && a->steps == b->steps && memcmp(a->verdict, b->verdict, V_SIZE) == 0 && a->digest_ok && b->digest_ok && memcmp(a->digest, b->digest, DS_DIGEST_BYTES) == 0;
 }
 
-/* aud_noninterference (D-200): psg_tone run to its DSV1 verdict with the psg, pcm and dev sinks on and with no sink, under zero and seeded-prng-v4 seeds 1 and 2: identical stop reason, machine time, steps, verdict RAM and state digest; the sink runs must have produced
- * records and frames, so the comparison is not vacuous. The psg and pcm pointers are read only at the gate and the emits; the toy psg-emit-mutates turns this case red. */
-void kind_aud_noninterference(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
-{
-    char rom[48];
-    uint64_t until = 0u;
-    unsigned i;
-    uint64_t frames = 0u;
-    uint64_t events = 0u;
+/* the ROMs of an expect of one to four items rom=NAME (aud_noninterference, plan 05-07: psg_tone and psg_mod); the count, or 0 when the expect is malformed */
+#define AU_ROMS_MAX 4u
 
-    if (au_rom_expect(k, rom, sizeof rom, NULL, NULL, 0u) != 0 || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until == 0u) {
-        harness_error(c, "an aud_noninterference case needs until_mclk and expect = rom=NAME");
-        return;
+static unsigned au_rom_list(const struct kase *k, char roms[AU_ROMS_MAX][48])
+{
+    char list[PK_LIST_MAX];
+    char *rest = list;
+    char *item;
+    unsigned n = 0u;
+
+    if (!k->has[K_EXPECT] || pk_copy_text(k->val[K_EXPECT], list, sizeof list) != 0) {
+        return 0u;
     }
+    while ((item = pk_next_item(&rest, ';')) != NULL) {
+        const char *v = ax_val(item, "rom");
+
+        if (v == NULL || n >= AU_ROMS_MAX || strlen(v) == 0u || strlen(v) >= 48u || strspn(v, "abcdefghijklmnopqrstuvwxyz0123456789-") != strlen(v)) {
+            return 0u;
+        }
+        memcpy(roms[n++], v, strlen(v) + 1u);
+    }
+    return n;
+}
+
+/* one ROM of aud_noninterference: run to its DSV1 verdict or until with the psg, pcm and dev sinks on and with no sink, under zero and seeded-prng-v4 seeds 1 and 2 */
+static void au_nonint_rom(const struct kase *k, struct ctx *c, const char *rom, uint64_t until, int note, uint64_t *frames, uint64_t *events)
+{
+    unsigned i;
+
     for (i = 0u; i < VD_POLICIES && !c->harness; i++) {
         char req[600];
         struct booted b0;
@@ -3344,7 +3359,7 @@ void kind_aud_noninterference(const struct kase *k, struct ctx *c, char *got, si
         struct au_end e1;
         struct au_cap cp;
         const char *err;
-        char msg[200];
+        char msg[240];
 
         memset(&cp, 0, sizeof cp);
         if (vd_policy_request(i, k->has[K_REQUEST] ? k->val[K_REQUEST] : "", req, sizeof req) != 0) {
@@ -3371,13 +3386,13 @@ void kind_aud_noninterference(const struct kase *k, struct ctx *c, char *got, si
         au_end_of(&e0, c0, &r0);
         if (au_run(c, (struct ds_instance *)(void *)b1.mem, until, 1, au_pcm_capacity(c1->machine_time, until), &cp, &r1) == 0) {
             au_end_of(&e1, c1, &r1);
-            snprintf(msg, sizeof msg, "under %s the psg, pcm and dev sinks changed the stop reason, machine time, steps, verdict RAM or state digest of the run", vd_policy_name(i));
+            snprintf(msg, sizeof msg, "%.40s under %s: the psg, pcm and dev sinks changed the stop reason, machine time, steps, verdict RAM or state digest of the run", rom, vd_policy_name(i));
             check(c, au_end_same(&e0, &e1), msg);
-            snprintf(msg, sizeof msg, "under %s the sink run produced no DSPE record or no DSPA frame: the comparison would be vacuous", vd_policy_name(i));
+            snprintf(msg, sizeof msg, "%.40s under %s: the sink run produced no DSPE record or no DSPA frame, so the comparison would be vacuous", rom, vd_policy_name(i));
             check(c, cp.ecount > 0u && cp.fcount > 0u, msg);
-            frames += cp.fcount;
-            events += cp.ecount;
-            if (i == 0u) {
+            *frames += cp.fcount;
+            *events += cp.ecount;
+            if (i == 0u && note) {
                 note_run(c, r1.machine_time, r1.reason);
             }
         }
@@ -3385,7 +3400,27 @@ void kind_aud_noninterference(const struct kase *k, struct ctx *c, char *got, si
         release_boot(&b0);
         release_boot(&b1);
     }
-    snprintf(got, gotcap, "policies=%u frames=%llu events=%llu", (unsigned)VD_POLICIES, (unsigned long long)frames, (unsigned long long)events);
+}
+
+/* aud_noninterference (D-200): each ROM of the case (psg_tone; psg_mod from plan 05-07) run to its DSV1 verdict or until_mclk with the psg, pcm and dev sinks on and with no sink, under zero and seeded-prng-v4 seeds 1 and 2: identical stop reason, machine time, steps, verdict RAM
+ * and state digest; the sink runs must have produced records and frames, so the comparison is not vacuous. The psg and pcm pointers are read only at the gate and the emits; the toy psg-emit-mutates turns this case red. */
+void kind_aud_noninterference(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    char roms[AU_ROMS_MAX][48];
+    unsigned nroms = au_rom_list(k, roms);
+    uint64_t until = 0u;
+    uint64_t frames = 0u;
+    uint64_t events = 0u;
+    unsigned ri;
+
+    if (nroms == 0u || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until == 0u) {
+        harness_error(c, "an aud_noninterference case needs until_mclk and expect = rom=NAME[;rom=NAME...] (one to four ROMs)");
+        return;
+    }
+    for (ri = 0u; ri < nroms && !c->harness; ri++) {
+        au_nonint_rom(k, c, roms[ri], until, ri == 0u, &frames, &events);
+    }
+    snprintf(got, gotcap, "roms=%u policies=%u frames=%llu events=%llu", nroms, (unsigned)VD_POLICIES, (unsigned long long)frames, (unsigned long long)events);
 }
 
 /* the DSPE records of cp joined 1:1 and in order with the dev records of window-2 writes on (stamp, pc, value, phys & $F) (D-196, F-66); 0 when the join holds, else the index of the first mismatch + 1 into *at */
@@ -3667,16 +3702,30 @@ static uint64_t au_step_at(const uint8_t *insn, uint32_t n, uint64_t t, uint64_t
     return UINT64_MAX;
 }
 
-/* restore at stops chosen by machine time on the ROM of the case: at a sample instant (a step boundary on the 192 grid), mid-interval (a boundary 64 to 128 clocks past one), between the R2 and R3 writes, between the R0 and R4 writes of the scene, and inside the TIN to $0806
- * (after its 10th byte). The prefix run stops there, a snapshot is restored into a poisoned second boot, and the resumed run's DSPE records and DSPA frames appended to the prefix must equal the whole run's streams byte for byte, with first(i+1) = first(i) + seq(i), the same end
- * machine time and the same end digest. 05-07 and 05-09 add the DDA, noise and LFO TRG stops. */
-void kind_snapshot_restore_audio(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+/* the stamp of the n-th DSPE record with the effect DDA_LOAD (an R6 write with DDA 1), UINT64_MAX when there is none */
+static uint64_t au_dda_stamp(const struct au_cap *cp, unsigned n)
 {
-    static const char *const names[5] = {"sample", "mid", "r2r3", "r0r4", "tin"};
-    char rom[48];
-    char stops[96];
-    uint64_t until = 0u;
-    const char *req = k->has[K_REQUEST] ? k->val[K_REQUEST] : "";
+    uint32_t i;
+    unsigned seen = 0u;
+
+    for (i = 0u; i < cp->ecount; i++) {
+        const uint8_t *r = cp->erec + (size_t)i * AU_E_REC;
+
+        if ((r[AU_E_EFFECT] & 0x02u) != 0u && ++seen == n) {
+            return au_u64(r + AU_E_STAMP);
+        }
+    }
+    return UINT64_MAX;
+}
+
+/* the restore stops of one ROM. Set 0 (psg_tone): at a sample instant (a step boundary on the 192 grid), mid-interval (a boundary 64 to 128 clocks past one), between the R2 and R3 writes, between the R0 and R4 writes of the scene, and inside the TIN to $0806 (after its 10th
+ * byte). Set 1 (psg_mod, plan 05-07): between two timer-paced DDA writes (after the 5th DDA_LOAD record, timer write 4, before the 6th) and inside a noise run of mod_noise4 (a mid-interval boundary 100,000 clocks after select 4's key-on, the first R4 $9F, with select 4 keyed on
+ * at NE 1). The prefix run stops there, a snapshot is restored into a poisoned second boot, and the resumed run's DSPE records and DSPA frames appended to the prefix must equal the whole run's streams byte for byte, with first(i+1) = first(i) + seq(i), the same end machine time
+ * and the same end digest. The count of restores is added to *done; 05-09 adds the LFO TRG stop */
+static void au_restore_rom(struct ctx *c, const char *rom, const char *req, uint64_t until, int set, unsigned *done, uint32_t *frames, uint32_t *events)
+{
+    static const char *const names[2][5] = {{"sample", "mid", "r2r3", "r0r4", "tin"}, {"dda", "noise", "", "", ""}};
+    unsigned nstops = set == 0 ? 5u : 2u;
     struct booted b;
     const struct ds_instance *ci = NULL;
     struct ds_insn_sink isk;
@@ -3688,15 +3737,11 @@ void kind_snapshot_restore_audio(const struct kase *k, struct ctx *c, char *got,
     uint8_t *snap = NULL;
     uint32_t ninsn = 0u;
     uint64_t at[5];
+    uint64_t k4 = UINT64_MAX;
     unsigned i;
-    unsigned done = 0u;
     const char *err;
 
     memset(&ref, 0, sizeof ref);
-    if (au_rom_expect(k, rom, sizeof rom, "stops", stops, sizeof stops) != 0 || strcmp(stops, "sample,mid,r2r3,r0r4,tin") != 0 || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until < 400000u) {
-        harness_error(c, "a snapshot_restore_audio case needs until_mclk (at least 400,000) and expect = rom=NAME;stops=sample,mid,r2r3,r0r4,tin");
-        return;
-    }
     insn = (uint8_t *)calloc((size_t)AU_INSN_CAP, (size_t)DS_INSN_RECORD_BYTES);
     snap = (uint8_t *)malloc(ds_snapshot_size());
     if (insn == NULL || snap == NULL) {
@@ -3716,7 +3761,9 @@ void kind_snapshot_restore_audio(const struct kase *k, struct ctx *c, char *got,
         goto out;
     }
     au_end_of(&eref, ci, &res);
-    note_run(c, res.machine_time, res.reason);
+    if (set == 0) {
+        note_run(c, res.machine_time, res.reason);
+    }
     release_boot(&b);
     err = boot_built_rom(rom, req, &b, &ci);
     if (err != NULL) {
@@ -3738,15 +3785,22 @@ void kind_snapshot_restore_audio(const struct kase *k, struct ctx *c, char *got,
         goto out;
     }
     /* the stop deadlines: a run stops at the first step end at or after its deadline, so a deadline one clock past a write stamp stops after that write's step */
-    at[0] = au_step_at(insn, ninsn, until / 2u, 0u, 0u);
-    at[1] = au_step_at(insn, ninsn, until / 2u, 64u, 128u);
-    at[2] = au_stamp_of(&ref, 2u, 256u, 1u);
-    at[3] = au_stamp_of(&ref, 0u, 0u, 2u);
-    at[4] = au_stamp_of(&ref, 6u, 256u, 10u);
-    for (i = 2u; i < 5u; i++) {
-        at[i] = at[i] != UINT64_MAX ? at[i] + 1u : UINT64_MAX;
+    if (set == 0) {
+        at[0] = au_step_at(insn, ninsn, until / 2u, 0u, 0u);
+        at[1] = au_step_at(insn, ninsn, until / 2u, 64u, 128u);
+        at[2] = au_stamp_of(&ref, 2u, 256u, 1u);
+        at[3] = au_stamp_of(&ref, 0u, 0u, 2u);
+        at[4] = au_stamp_of(&ref, 6u, 256u, 10u);
+        for (i = 2u; i < 5u; i++) {
+            at[i] = at[i] != UINT64_MAX ? at[i] + 1u : UINT64_MAX;
+        }
+    } else {
+        at[0] = au_dda_stamp(&ref, 5u);
+        at[0] = at[0] != UINT64_MAX ? at[0] + 1u : UINT64_MAX;
+        k4 = au_stamp_of(&ref, 4u, 0x9Fu, 1u);
+        at[1] = k4 != UINT64_MAX ? au_step_at(insn, ninsn, k4 + 100000u, 64u, 128u) : UINT64_MAX;
     }
-    for (i = 0u; i < 5u && !c->harness; i++) {
+    for (i = 0u; i < nstops && !c->harness; i++) {
         struct booted a;
         struct booted t;
         const struct ds_instance *ca = NULL;
@@ -3754,10 +3808,10 @@ void kind_snapshot_restore_audio(const struct kase *k, struct ctx *c, char *got,
         struct au_cap cp;
         struct au_end e;
         int placed;
-        char msg[240];
+        char msg[260];
 
         if (at[i] == UINT64_MAX || at[i] >= until) {
-            snprintf(msg, sizeof msg, "the restore stop %s has no deadline inside the run (no step boundary or write found)", names[i]);
+            snprintf(msg, sizeof msg, "the restore stop %s of %.40s has no deadline inside the run (no step boundary or write found)", names[set][i], rom);
             harness_error(c, msg);
             break;
         }
@@ -3776,8 +3830,12 @@ void kind_snapshot_restore_audio(const struct kase *k, struct ctx *c, char *got,
         if (au_run(c, (struct ds_instance *)(void *)a.mem, at[i], 0, au_pcm_capacity(ca->machine_time, until), &cp, &res) == 0) {
             uint64_t m = ca->machine_time;
 
-            placed = i == 0u ? m % 192u == 0u : i == 1u ? m % 192u != 0u : i == 2u ? m > at[2] - 1u && m <= au_stamp_of(&ref, 3u, 256u, 1u) : i == 3u ? m > at[3] - 1u && m <= au_stamp_of(&ref, 4u, 0x40u, 1u) : ca->blk_active != 0u;
-            snprintf(msg, sizeof msg, "the restore stop %s landed at machine time %llu, not where it was chosen (a sample instant, mid-interval, between the two writes, inside the TIN)", names[i], (unsigned long long)m);
+            if (set == 0) {
+                placed = i == 0u ? m % 192u == 0u : i == 1u ? m % 192u != 0u : i == 2u ? m > at[2] - 1u && m <= au_stamp_of(&ref, 3u, 256u, 1u) : i == 3u ? m > at[3] - 1u && m <= au_stamp_of(&ref, 4u, 0x40u, 1u) : ca->blk_active != 0u;
+            } else {
+                placed = i == 0u ? m > at[0] - 1u && m <= au_dda_stamp(&ref, 6u) : m % 192u != 0u && m > k4 && m < k4 + 312096u && (ca->psg_ctl[4] & 0x80u) != 0u && (ca->psg_noise[0] & 0x80u) != 0u;
+            }
+            snprintf(msg, sizeof msg, "the restore stop %s of %.40s landed at machine time %llu, not where it was chosen (a sample instant, mid-interval, between the two writes, inside the TIN, between two DDA writes, inside a noise run)", names[set][i], rom, (unsigned long long)m);
             check(c, placed, msg);
             if (ds_snapshot(ca, snap, ds_snapshot_size(), NULL) != (uint32_t)DS_SNAPREF_NONE) {
                 check(c, 0, "ds_snapshot at an audio restore stop was refused");
@@ -3787,11 +3845,11 @@ void kind_snapshot_restore_audio(const struct kase *k, struct ctx *c, char *got,
                     check(c, 0, "ds_restore refused the snapshot of an audio restore stop");
                 } else if (au_run(c, (struct ds_instance *)(void *)t.mem, until, 0, 0u, &cp, &res) == 0) {
                     au_end_of(&e, ct, &res);
-                    snprintf(msg, sizeof msg, "restore at %s (machine time %llu): the prefix and the resumed streams do not equal the whole run byte for byte, or first(i+1) != first(i) + seq(i)", names[i], (unsigned long long)m);
+                    snprintf(msg, sizeof msg, "restore of %.40s at %s (machine time %llu): the prefix and the resumed streams do not equal the whole run byte for byte, or first(i+1) != first(i) + seq(i)", rom, names[set][i], (unsigned long long)m);
                     check(c, au_streams_differ(&ref, &cp) == 0 && !cp.chain_bad && cp.calls == 2u, msg);
-                    snprintf(msg, sizeof msg, "restore at %s: the resumed run ends at another machine time or digest than the whole run", names[i]);
+                    snprintf(msg, sizeof msg, "restore of %.40s at %s: the resumed run ends at another machine time or digest than the whole run", rom, names[set][i]);
                     check(c, e.mclk == eref.mclk && e.digest_ok && eref.digest_ok && memcmp(e.digest, eref.digest, DS_DIGEST_BYTES) == 0, msg);
-                    done++;
+                    (*done)++;
                 }
             }
         }
@@ -3799,11 +3857,265 @@ void kind_snapshot_restore_audio(const struct kase *k, struct ctx *c, char *got,
         release_boot(&a);
         release_boot(&t);
     }
-    snprintf(got, gotcap, "restores=%u frames=%u events=%u", done, (unsigned)ref.fcount, (unsigned)ref.ecount);
+    *frames += ref.fcount;
+    *events += ref.ecount;
 out:
     au_cap_free(&ref);
     free(insn);
     free(snap);
+}
+
+/* snapshot_restore_audio (D-200): expect = rom=psg-tone;stops=sample,mid,r2r3,r0r4,tin[;rom=psg-mod;stops=dda,noise]: each ROM with its stop set (au_restore_rom), in that order */
+void kind_snapshot_restore_audio(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    static const char *const sets[2] = {"sample,mid,r2r3,r0r4,tin", "dda,noise"};
+    char list[PK_LIST_MAX];
+    char *rest = list;
+    char *item;
+    char roms[2][48];
+    int set[2] = {-1, -1};
+    unsigned n = 0u;
+    unsigned want_rom = 1u;
+    uint64_t until = 0u;
+    unsigned done = 0u;
+    uint32_t frames = 0u;
+    uint32_t events = 0u;
+    unsigned i;
+    int ok = k->has[K_EXPECT] && pk_copy_text(k->val[K_EXPECT], list, sizeof list) == 0;
+
+    while (ok && (item = pk_next_item(&rest, ';')) != NULL) {
+        const char *v;
+
+        if (want_rom && n < 2u && (v = ax_val(item, "rom")) != NULL && strlen(v) > 0u && strlen(v) < 48u && strspn(v, "abcdefghijklmnopqrstuvwxyz0123456789-") == strlen(v)) {
+            memcpy(roms[n], v, strlen(v) + 1u);
+            want_rom = 0u;
+        } else if (!want_rom && (v = ax_val(item, "stops")) != NULL && (strcmp(v, sets[0]) == 0 || strcmp(v, sets[1]) == 0)) {
+            set[n] = strcmp(v, sets[0]) == 0 ? 0 : 1;
+            n++;
+            want_rom = 1u;
+        } else {
+            ok = 0;
+        }
+    }
+    if (!ok || n == 0u || !want_rom || (n == 2u && set[0] == set[1]) || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until < 400000u) {
+        harness_error(c, "a snapshot_restore_audio case needs until_mclk (at least 400,000) and expect = rom=NAME;stops=sample,mid,r2r3,r0r4,tin[;rom=NAME;stops=dda,noise]");
+        return;
+    }
+    for (i = 0u; i < n && !c->harness; i++) {
+        au_restore_rom(c, roms[i], k->has[K_REQUEST] ? k->val[K_REQUEST] : "", until, set[i], &done, &frames, &events);
+    }
+    snprintf(got, gotcap, "roms=%u restores=%u frames=%u events=%u", n, done, (unsigned)frames, (unsigned)events);
+}
+
+/* ---- audio_noise_repeat and psg_block_flood (plan 05-07 Task 3; D-200, D-201, D-210, D-212, criterion 4) ---- */
+
+#define AU_REPEAT_CHUNK 16384u
+
+/* audio_noise_repeat (D-212, criterion 4; E0 repeatability, never accuracy): for each of zero, seeded-prng-v4 seeds 1 and 2, two fresh instances boot the ROM and run interleaved in calls to the same deadlines (every 16,384 master clocks, A then B) to until_mclk with the psg, pcm
+ * and dev sinks; their DSPE and DSPA streams must be byte-identical (memcmp, the comparison of au_streams_differ). The in-process control flips one byte of a copy of B's PCM and then one byte of its DSPE record, and the same comparison must report each difference. */
+void kind_audio_noise_repeat(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    char rom[48];
+    char detail[1600];
+    size_t used = 0u;
+    uint64_t until = 0u;
+    unsigned i;
+    unsigned same = 0u;
+
+    detail[0] = '\0';
+    if (au_rom_expect(k, rom, sizeof rom, NULL, NULL, 0u) != 0 || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until < 100000u) {
+        harness_error(c, "an audio_noise_repeat case needs until_mclk (at least 100,000) and expect = rom=NAME");
+        return;
+    }
+    for (i = 0u; i < VD_POLICIES && !c->harness; i++) {
+        char req[600];
+        char line[400];
+        char pcm_hex[2u * DS_SHA256_BYTES + 1u];
+        char psg_hex[2u * DS_SHA256_BYTES + 1u];
+        struct booted ba;
+        struct booted bb;
+        const struct ds_instance *ca = NULL;
+        const struct ds_instance *cb = NULL;
+        struct au_cap xa;
+        struct au_cap xb;
+        struct au_cap x2;
+        struct ds_run_result ra;
+        struct ds_run_result rb;
+        uint64_t pcap;
+        uint64_t t;
+        const char *err;
+        int ok = 1;
+        int d;
+        char msg[240];
+
+        memset(&xa, 0, sizeof xa);
+        memset(&xb, 0, sizeof xb);
+        if (vd_policy_request(i, k->has[K_REQUEST] ? k->val[K_REQUEST] : "", req, sizeof req) != 0) {
+            harness_error(c, "the request of the audio_noise_repeat case is too long");
+            return;
+        }
+        err = boot_built_rom(rom, req, &ba, &ca);
+        if (err != NULL) {
+            harness_error(c, err);
+            return;
+        }
+        err = boot_built_rom(rom, req, &bb, &cb);
+        if (err != NULL) {
+            release_boot(&ba);
+            harness_error(c, err);
+            return;
+        }
+        pcap = au_pcm_capacity(ca->machine_time, until);
+        for (t = AU_REPEAT_CHUNK; ok; t += AU_REPEAT_CHUNK) {
+            uint64_t dl = t < until ? t : until;
+
+            ok = au_run(c, (struct ds_instance *)(void *)ba.mem, dl, 0, pcap, &xa, &ra) == 0 && au_run(c, (struct ds_instance *)(void *)bb.mem, dl, 0, pcap, &xb, &rb) == 0;
+            if (dl == until) {
+                break;
+            }
+        }
+        if (ok) {
+            if (i == 0u) {
+                note_run(c, ra.machine_time, ra.reason);
+            }
+            d = au_streams_differ(&xa, &xb);
+            snprintf(msg, sizeof msg, "under %s the two interleaved instances made different %s streams: the noise output does not repeat", vd_policy_name(i), d == 1 ? "DSPA" : "DSPE");
+            check(c, d == 0, msg);
+            snprintf(msg, sizeof msg, "under %s a run produced no DSPE record or no DSPA frame, or the two runs end apart: the comparison would be vacuous", vd_policy_name(i));
+            check(c, xa.ecount > 0u && xa.fcount > 0u && ra.machine_time == rb.machine_time && !xa.chain_bad && !xb.chain_bad, msg);
+            if (d == 0 && au_cap_copy(&xb, &x2) == 0) {
+                x2.frames[(size_t)(x2.fcount / 2u) * AU_F_BYTES] ^= 0x01u;
+                check(c, au_streams_differ(&xa, &x2) == 1, "the control: one flipped PCM byte is not reported as a difference, so the comparison could not fail");
+                x2.frames[(size_t)(x2.fcount / 2u) * AU_F_BYTES] ^= 0x01u;
+                x2.erec[(size_t)(x2.ecount / 2u) * AU_E_REC + AU_E_VALUE] ^= 0x01u;
+                check(c, au_streams_differ(&xa, &x2) == 2, "the control: one flipped DSPE byte is not reported as a difference, so the comparison could not fail");
+                au_cap_free(&x2);
+            } else if (d == 0) {
+                harness_error(c, "out of memory for the control copy of the noise repeat streams");
+            }
+            if (d == 0 && au_digests(&xa, pcm_hex, psg_hex) == 0) {
+                same++;
+                snprintf(line, sizeof line, "%s: two interleaved instances, %u frames and %u events each, identical streams pcm_sha256=%s psg_sha256=%s (E0 repeatability)\n", vd_policy_name(i), (unsigned)xa.fcount, (unsigned)xa.ecount, pcm_hex, psg_hex);
+                if (used + strlen(line) + 1u < sizeof detail) {
+                    memcpy(detail + used, line, strlen(line) + 1u);
+                    used += strlen(line);
+                }
+            }
+        }
+        au_cap_free(&xa);
+        au_cap_free(&xb);
+        release_boot(&ba);
+        release_boot(&bb);
+    }
+    if (!c->harness) {
+        set_evidence_detail(detail);
+    }
+    snprintf(got, gotcap, "E0 repeatability policies=%u identical=%u", (unsigned)VD_POLICIES, same);
+}
+
+/* the flood program (D-212, F-81): MPR0 = $FF, then one TIN of 65,536 bytes (a length of 0) from $E000 to $0806 (R6): every block byte is a window-2 write, 65,536 in all */
+#define AU_FLOOD_WRITES 65536u
+#define AU_FLOOD_CAP 1024u
+
+static void au_img_flood(unsigned char *img)
+{
+    size_t at;
+
+    au_img_head(img, &at);
+    img[at++] = 0xD3u; /* TIN $E000, $0806, $0000 */
+    img[at++] = 0x00u;
+    img[at++] = 0xE0u;
+    img[at++] = 0x06u;
+    img[at++] = 0x08u;
+    img[at++] = 0x00u;
+    img[at++] = 0x00u;
+    au_img_tail(img, at);
+}
+
+/* psg_block_flood (D-200, D-201, D-212, T-05-25): the flood program run once with no sink and once with a psg sink of 1,024 records and a pcm sink of the D-201 closed-form capacity. The psg sink keeps the first 1,024 records and counts the rest as lost (drop-newest of whole
+ * records): count 1,024, lost 65,536 - 1,024, seq = count + lost; the pcm sink loses nothing; and the stop reason, machine time, steps, verdict RAM and state digest are those of the run with no sink */
+void kind_psg_block_flood(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    unsigned char *img;
+    uint64_t until = 0u;
+    struct booted b0;
+    struct booted b1;
+    const struct ds_instance *c0 = NULL;
+    const struct ds_instance *c1 = NULL;
+    struct ds_run_request rq;
+    struct ds_run_result r0;
+    struct ds_run_result r1;
+    struct ds_psg_sink psk;
+    struct ds_pcm_sink fsk;
+    struct au_end e0;
+    struct au_end e1;
+    uint8_t *recs = NULL;
+    uint8_t *frames = NULL;
+    uint64_t pcap;
+    const char *err;
+    char msg[300];
+
+    if (!k->has[K_EXPECT] || strcmp(k->val[K_EXPECT], "program=tin-65536-r6;psg_cap=1024") != 0 || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until < 4800000u) {
+        harness_error(c, "a psg_block_flood case needs until_mclk (at least 4,800,000, past the 65,536-byte TIN) and expect = program=tin-65536-r6;psg_cap=1024");
+        return;
+    }
+    img = (unsigned char *)malloc(RP_IMAGE_BYTES);
+    if (img == NULL) {
+        harness_error(c, "out of memory for the flood program");
+        return;
+    }
+    au_img_flood(img);
+    err = boot_random(img, "", &b0, &c0);
+    if (err == NULL) {
+        err = boot_random(img, "", &b1, &c1);
+        if (err != NULL) {
+            release_boot(&b0);
+        }
+    }
+    free(img);
+    if (err != NULL) {
+        harness_error(c, err);
+        return;
+    }
+    pcap = au_pcm_capacity(c1->machine_time, until);
+    recs = (uint8_t *)calloc((size_t)AU_FLOOD_CAP, (size_t)AU_E_REC);
+    frames = (uint8_t *)calloc((size_t)pcap, (size_t)AU_F_BYTES);
+    if (recs == NULL || frames == NULL) {
+        harness_error(c, "out of memory for the flood sinks");
+        goto out;
+    }
+    memset(&rq, 0, sizeof rq);
+    rq.struct_size = (uint32_t)sizeof rq;
+    rq.until_mclk = until;
+    (void)ds_run((struct ds_instance *)(void *)b0.mem, &rq, &r0);
+    au_end_of(&e0, c0, &r0);
+    memset(&psk, 0, sizeof psk);
+    memset(&fsk, 0, sizeof fsk);
+    psk.records = recs;
+    psk.capacity = AU_FLOOD_CAP;
+    fsk.frames = frames;
+    fsk.capacity = (uint32_t)pcap;
+    rq.psg = &psk;
+    rq.pcm = &fsk;
+    if (ds_run((struct ds_instance *)(void *)b1.mem, &rq, &r1) == (uint32_t)DS_RUN_REASON_REFUSED) {
+        harness_error(c, "ds_run refused the request of the flood run with sinks");
+        goto out;
+    }
+    au_end_of(&e1, c1, &r1);
+    note_run(c, r1.machine_time, r1.reason);
+    check(c, au_end_same(&e0, &e1), "the psg and pcm sinks changed the stop reason, machine time, steps, verdict RAM or state digest of the flood run (D-200)");
+    snprintf(msg, sizeof msg, "the psg sink reads count %u, lost %u, seq %llu: the 65,536 window-2 writes of the TIN must give count 1,024, lost 64,512 and seq = count + lost (drop-newest of whole records)", (unsigned)au_u32(psk.header + AU_H_COUNT), (unsigned)au_u32(psk.header + AU_H_LOST),
+             (unsigned long long)au_u64(psk.header + AU_H_SEQ));
+    check(c, au_u32(psk.header + AU_H_COUNT) == AU_FLOOD_CAP && au_u32(psk.header + AU_H_LOST) == AU_FLOOD_WRITES - AU_FLOOD_CAP && au_u64(psk.header + AU_H_SEQ) == (uint64_t)AU_FLOOD_WRITES, msg);
+    snprintf(msg, sizeof msg, "the pcm sink of the D-201 capacity lost %u frames or its seq %llu is not ceil(T1 / 192) - ceil(T0 / 192)", (unsigned)au_u32(fsk.header + AU_H_LOST), (unsigned long long)au_u64(fsk.header + AU_H_SEQ));
+    check(c, au_u32(fsk.header + AU_H_LOST) == 0u && au_u64(fsk.header + AU_H_SEQ) == (uint64_t)au_u32(fsk.header + AU_H_COUNT) && au_u64(fsk.header + AU_H_SEQ) == (r1.machine_time + 191u) / 192u - au_u64(fsk.header + AU_H_FIRST), msg);
+    check(c, r1.reason == (uint32_t)DS_RUN_REASON_UNTIL, "the flood run did not stop at its deadline");
+    snprintf(got, gotcap, "writes=%u count=%u lost=%u frames=%u", (unsigned)AU_FLOOD_WRITES, (unsigned)au_u32(psk.header + AU_H_COUNT), (unsigned)au_u32(psk.header + AU_H_LOST), (unsigned)au_u32(fsk.header + AU_H_COUNT));
+out:
+    free(recs);
+    free(frames);
+    release_boot(&b0);
+    release_boot(&b1);
 }
 
 /* ---- --audio-out and kind audio_out_rights (plan 05-04 Task 3; D-199, F-85, T-05-16; the --video-out shape) ----

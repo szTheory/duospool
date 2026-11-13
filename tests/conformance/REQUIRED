@@ -386,3 +386,8 @@ audio_fault_sweep_mod_r7
 audio_mod_dda
 audio_fault_sweep_mod_dda
 mutate_sweep_psg_mod
+observer_psg_mod
+chunk_equiv_audio_psg_mod
+audio_noise_repeat
+psg_random_regs
+psg_block_flood

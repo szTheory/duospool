@@ -930,3 +930,189 @@ void kind_psg_pure_function(const struct kase *k, struct ctx *c, char *got, size
     snprintf(got, gotcap, "rows=21");
     release_boot(&b);
 }
+
+/* ---- psg_random_regs (plan 05-07 Task 3; D-195, D-201, D-212, T-05-25; the kind_vdc_random_regs shape, E0) ---- */
+
+#define PR_PROGRAMS_MAX 64u
+#define PR_RANDOM_WRITES 40u
+#define PR_WRITES_MAX 64u
+
+/* the program image of index pi: MPR0 = $FF (LDA #$FF; TAM #$01), then PSG writes LDA #v; STA $08rr, some after a short delay (LDX #n; DEX; BNE), then a spin loop (the randprog.c layout: bank 0 at $E000, every vector at the spin loop $FFF0, the reset vector $E000).
+ * Programs 0..3 open with the forced edges: F = 0 at select 0 keyed on; NFc = 0 at select 4 with NE (R7 $9F); FLF = 0 with LFO CTL 1 and selects 0 and 1 on; F1 = FLF = 1. Every program then writes 40 random bytes to random registers 0..15. The count of window writes is returned */
+static unsigned pr_build(unsigned char *img, unsigned pi, uint64_t seed)
+{
+    static const uint8_t forced[4][24] = {
+        {0, 0x00, 2, 0x00, 3, 0x00, 1, 0xFF, 5, 0xFF, 4, 0x9F, 0xFF},
+        {0, 0x04, 7, 0x9F, 1, 0xFF, 5, 0xFF, 4, 0x9F, 0xFF},
+        {8, 0x00, 0, 0x00, 4, 0x9F, 0, 0x01, 4, 0x9F, 9, 0x01, 0xFF},
+        {8, 0x01, 0, 0x01, 2, 0x01, 3, 0x00, 4, 0x9F, 0, 0x00, 2, 0x01, 3, 0x00, 4, 0x9F, 9, 0x01, 0xFF},
+    };
+    uint64_t s = seed;
+    size_t at = 0u;
+    unsigned n = 0u;
+    unsigned j;
+    unsigned v;
+
+    memset(img, 0, RP_IMAGE_BYTES);
+    img[at++] = 0xA9u;
+    img[at++] = 0xFFu;
+    img[at++] = 0x53u;
+    img[at++] = 0x01u;
+    for (j = 0u; pi < 4u && forced[pi][j] != 0xFFu; j += 2u) {
+        img[at++] = 0xA9u;
+        img[at++] = forced[pi][j + 1u];
+        img[at++] = 0x8Du;
+        img[at++] = forced[pi][j];
+        img[at++] = 0x08u;
+        n++;
+    }
+    for (j = 0u; j < PR_RANDOM_WRITES; j++) {
+        uint64_t r = pf_next(&s);
+
+        if ((r & 3u) == 0u) { /* a delay of 1..255 passes of DEX and BNE */
+            img[at++] = 0xA2u;
+            img[at++] = (unsigned char)(1u + (unsigned)((r >> 8) % 255u));
+            img[at++] = 0xCAu;
+            img[at++] = 0xD0u;
+            img[at++] = 0xFDu;
+        }
+        img[at++] = 0xA9u;
+        img[at++] = (unsigned char)((r >> 24) & 0xFFu);
+        img[at++] = 0x8Du;
+        img[at++] = (unsigned char)((r >> 40) % 16u);
+        img[at++] = 0x08u;
+        n++;
+    }
+    img[at++] = 0x4Cu; /* JMP $FFF0 */
+    img[at++] = 0xF0u;
+    img[at++] = 0xFFu;
+    img[0x1FF0u] = 0x80u; /* BRA to itself */
+    img[0x1FF1u] = 0xFEu;
+    for (v = 0u; v < 4u; v++) {
+        img[0x1FF6u + 2u * v] = 0xF0u;
+        img[0x1FF7u + 2u * v] = 0xFFu;
+    }
+    img[0x1FFEu] = 0x00u;
+    img[0x1FFFu] = 0xE0u;
+    return n;
+}
+
+/* psg_random_regs: expect programs=N;seed=N. Each program runs to until_mclk with a psg sink of exactly its window-write count and a pcm sink of the D-201 capacity ceil((until - T0 + ds_max_step_mclk()) / 192) + 1: it must stop at the deadline (it terminates), lose
+ * nothing (lost 0 on both sinks), log every write (count = the writes) and emit seq = ceil(T1 / 192) - ceil(T0 / 192) frames; the sanitizer build of the gate runs the same case, so an index out of range is a red (the noise distance of NFc = 0 is 192 master clocks) */
+void kind_psg_random_regs(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    char list[PK_LIST_MAX];
+    char *rest = list;
+    char *item;
+    unsigned seen = 0u;
+    unsigned programs = 0u;
+    uint64_t seed0 = 0u;
+    uint64_t until = 0u;
+    uint64_t frames = 0u;
+    uint64_t writes = 0u;
+    unsigned char *img;
+    unsigned pi;
+    uint8_t prev[DS_DIGEST_BYTES];
+
+    memset(prev, 0, sizeof prev);
+    if (!k->has[K_EXPECT] || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until < 100000u || until > 2000000u || pk_copy_text(k->val[K_EXPECT], list, sizeof list) != 0) {
+        harness_error(c, "a psg_random_regs case needs until_mclk (100,000 to 2,000,000) and expect = programs=N;seed=N");
+        return;
+    }
+    while ((item = pk_next_item(&rest, ';')) != NULL) {
+        uint64_t v = 0u;
+
+        if (strncmp(item, "programs=", 9u) == 0 && (seen & 1u) == 0u && parse_u64(item + 9, &v) == 0 && v >= 4u && v <= PR_PROGRAMS_MAX) {
+            programs = (unsigned)v;
+            seen |= 1u;
+        } else if (strncmp(item, "seed=", 5u) == 0 && (seen & 2u) == 0u && parse_u64(item + 5, &seed0) == 0) {
+            seen |= 2u;
+        } else {
+            seen = 0u;
+            break;
+        }
+    }
+    if (seen != 3u) {
+        harness_error(c, "a psg_random_regs case needs expect = programs=N (4 to 64);seed=N");
+        return;
+    }
+    img = (unsigned char *)malloc(RP_IMAGE_BYTES);
+    if (img == NULL) {
+        harness_error(c, "out of memory for the random program image");
+        return;
+    }
+    for (pi = 0u; pi < programs && !c->harness; pi++) {
+        struct booted b;
+        const struct ds_instance *ci = NULL;
+        struct ds_run_request rq;
+        struct ds_run_result res;
+        struct ds_psg_sink psk;
+        struct ds_pcm_sink fsk;
+        uint8_t *recs;
+        uint8_t *fr;
+        uint64_t sx = seed0 + (uint64_t)pi * UINT64_C(0xD6E8FEB86659FD93);
+        unsigned nw = pr_build(img, pi, pf_next(&sx));
+        uint64_t span;
+        uint64_t pcap;
+        uint64_t t0;
+        uint8_t dig[DS_DIGEST_BYTES];
+        const char *err = boot_random(img, "", &b, &ci);
+        uint32_t reason;
+        char msg[300];
+
+        if (err != NULL) {
+            harness_error(c, err);
+            break;
+        }
+        t0 = ci->machine_time;
+        span = until - t0 + ds_max_step_mclk();
+        pcap = span / 192u + (span % 192u != 0u ? 1u : 0u) + 1u;
+        recs = (uint8_t *)calloc((size_t)nw, 24u);
+        fr = (uint8_t *)calloc((size_t)pcap, 8u);
+        if (recs == NULL || fr == NULL) {
+            free(recs);
+            free(fr);
+            release_boot(&b);
+            harness_error(c, "out of memory for the sinks of the psg_random_regs kind");
+            break;
+        }
+        memset(&psk, 0, sizeof psk);
+        memset(&fsk, 0, sizeof fsk);
+        psk.records = recs;
+        psk.capacity = nw;
+        fsk.frames = fr;
+        fsk.capacity = (uint32_t)pcap;
+        memset(&rq, 0, sizeof rq);
+        rq.struct_size = (uint32_t)sizeof rq;
+        rq.until_mclk = until;
+        rq.psg = &psk;
+        rq.pcm = &fsk;
+        memset(&res, 0, sizeof res);
+        reason = ds_run((struct ds_instance *)(void *)b.mem, &rq, &res);
+        snprintf(msg, sizeof msg, "program %u: ds_run did not stop at the deadline (stop reason %u, machine time %llu): the program must terminate", pi, (unsigned)reason, (unsigned long long)res.machine_time);
+        check(c, reason == (uint32_t)DS_RUN_REASON_UNTIL && res.machine_time >= until, msg);
+        snprintf(msg, sizeof msg, "program %u: the psg sink of exactly its %u window writes reads count %u, lost %u, seq %llu", pi, nw, (unsigned)pf_u32(psk.header), (unsigned)pf_u32(psk.header + 4), (unsigned long long)((uint64_t)pf_u32(psk.header + 8) | ((uint64_t)pf_u32(psk.header + 12) << 32)));
+        check(c, pf_u32(psk.header) == nw && pf_u32(psk.header + 4) == 0u && pf_u32(psk.header + 8) == nw && pf_u32(psk.header + 12) == 0u, msg);
+        {
+            uint64_t seq = (uint64_t)pf_u32(fsk.header + 8) | ((uint64_t)pf_u32(fsk.header + 12) << 32);
+            uint64_t first = (uint64_t)pf_u32(fsk.header + 16) | ((uint64_t)pf_u32(fsk.header + 20) << 32);
+
+            snprintf(msg, sizeof msg, "program %u: the pcm sink of the D-201 capacity %llu lost %u frames, or count %u, seq %llu are not ceil(T1 / 192) - ceil(T0 / 192) from first %llu", pi, (unsigned long long)pcap, (unsigned)pf_u32(fsk.header + 4), (unsigned)pf_u32(fsk.header),
+                     (unsigned long long)seq, (unsigned long long)first);
+            check(c, pf_u32(fsk.header + 4) == 0u && (uint64_t)pf_u32(fsk.header) == seq && first == (t0 + 191u) / 192u && seq == (res.machine_time + 191u) / 192u - first, msg);
+            frames += seq;
+        }
+        snprintf(msg, sizeof msg, "program %u: the digest of the instance was refused, or equals that of the program before it (a vacuous run)", pi);
+        check(c, ds_digest(ci, dig) == 0u && (pi == 0u || memcmp(dig, prev, DS_DIGEST_BYTES) != 0), msg);
+        memcpy(prev, dig, DS_DIGEST_BYTES);
+        writes += nw;
+        if (pi == 0u) {
+            note_run(c, res.machine_time, res.reason);
+        }
+        free(recs);
+        free(fr);
+        release_boot(&b);
+    }
+    free(img);
+    snprintf(got, gotcap, "programs=%u writes=%llu frames=%llu E0", programs, (unsigned long long)writes, (unsigned long long)frames);
+}
