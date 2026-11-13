@@ -472,6 +472,10 @@ Community and prior art (evidence class E4 at best, agreement is not correctness
 - **D-229 (corrects D-216, plan-check blocker 8).** The stop rule is "about 80 percent of the context budget", as the standing executor brief calibrated it after the two Phase 4 early-stop splits; D-216's 60 percent is superseded. Plans 05-03 and 05-04 still expect a split (reserved 05-11, 05-12); a sixth split in the phase stops the run and goes to the orchestrator for a plan revision.
 - **D-230 (amends D-207, plan-check 2 blocker 3).** The `.aexp` reader cap is 32768 bytes per file (the Phase 4 `.vexp` cap of 16384 stays for video), set by one named constant in the audio-check reader with a control that a 32769-byte file is refused (harness error, fail closed). Plans carry a byte
   budget per `.aexp` and a `wc -c` check under 32768 in every task that grows one; scenes move to another ROM only for CODE overflow (D-212).
+- **D-231 (amends D-203, plan-check 3 blocker 2).** The restore rule "TRG set implies the select-1 wave index is 0" is dropped. An R9 write with TRG = 1 still sets the select-1 index to 0 at the write, but later R6 writes (uploading the table under TRG = 1) advance it by the normal rule and that
+  state is legal and restorable (index 0..31). The held modulation value is wave[1][0] - 16 whatever the index is [MAN img P8-6 text: the data of address 0]. The refusal row for "TRG with non-zero index" is removed and an accepted row for it is added in 05-03; 05-09 keeps its restore stop between TRG
+  1 and 0 and expects it to be accepted.
+- **D-232 (plan-check 3 warning).** The D-230 oversized-`.aexp` control is an exit-2 control checked with the `pf_empty_path_control` pattern (expect exit 2, never exit 1); the `run_controls` copy of the z7d selftest keeps its exit 0 / exit 1 expectations for the other controls.
 </errata>
 
 <specifics>
