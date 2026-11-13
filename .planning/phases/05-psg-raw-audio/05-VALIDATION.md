@@ -130,6 +130,6 @@ None expected: every behaviour is checked by the gate (AGENTS.md "Verify phases"
 - [ ] Sampling continuity: no three consecutive tasks without an automated verify
 - [ ] Every negative control seen red (seven audio toys, or six after a cut; every audio_fault_sweep; audio_tone_sel0_d3; the twin; null-synth rows; aud_poweron_policy_diff; audio-check mini-roots and selftests; hostile restore rows; docs and fixture-lint controls)
 - [ ] No watch-mode flags
-- [ ] `nyquist_compliant: true` set only by plan 05-10
+- [ ] the nyquist flag in the frontmatter is set true only by plan 05-10
 
 **Approval:** pending
