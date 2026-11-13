@@ -629,11 +629,11 @@ Missing with no fallback: none.
 | A5 | The kill matrix of section 7 (beyond the locked AF list) | 7 | groups found vacuous at 05-05; verified by running |
 | A6 | `ds_resolve` refuses an unbound OPEN field, so the divisor string is always "3" or "6" (beam.c comment at 295-296 for the line count) | RF-3 | a third value would need a refusal in the helper |
 
-## Open Questions
+## Open Questions (RESOLVED: 1 by D-223, 2 by D-219, 3 by D-222)
 
-1. **Divisor and restore (RF-3).** Known: D-202 has no divisor member; the grid rule uses the restoring instance's d. Unclear: whether a cross-binding restore must be refused. Recommendation: accept for Phase 5 (no layout change), name it in LED-AUD-0012's withheld text; a cached byte refused as `profile` is the alternative and changes D-202's byte count.
-2. **RF-4 TRG ruling.** Needs the orchestrator to adopt it as an erratum (it reconciles D-192 with D-208 and P8-6); without it `lfo_static` cannot be MAN and green at once.
-3. **RF-2 carrier.** A pointer member of `struct ds_bus` is the smallest change; an out-parameter of `cpu_step_body` is equivalent. Either must reach `block_step` and `interrupt_entry`.
+1. **Divisor and restore (RF-3). RESOLVED by D-223.** Known: D-202 has no divisor member; the grid rule uses the restoring instance's d. Unclear: whether a cross-binding restore must be refused. Recommendation: accept for Phase 5 (no layout change), name it in LED-AUD-0012's withheld text; a cached byte refused as `profile` is the alternative and changes D-202's byte count.
+2. **RF-4 TRG ruling. RESOLVED by D-219.** Needs the orchestrator to adopt it as an erratum (it reconciles D-192 with D-208 and P8-6); without it `lfo_static` cannot be MAN and green at once.
+3. **RF-2 carrier. RESOLVED by D-222 (plan-time ruling PR-1: the F-64 reading).** A pointer member of `struct ds_bus` is the smallest change; an out-parameter of `cpu_step_body` is equivalent. Either must reach `block_step` and `interrupt_entry`.
 
 ## Sources
 
