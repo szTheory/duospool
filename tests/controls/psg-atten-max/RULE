@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Toy control (D-210, PR-15, F-4, F-72, R5; an audio toy of plan 05-06): the attenuation of one side taken as the largest of its three terms instead of their sum (D-194, MAN:P8-3+P8-4+P8-10), made from the live src/core/psg.c by scripts/control-mutate. The anchor is the one statement
+# of side_att; the replacement returns the largest of 2(15 - MAL), 31 - AL and 2(15 - LAL). The case audio_tone_atten must come out guest_failure: its silent rows at the P8-10 sums 15 (R1 $C8, AL $1D, R5 $F8: terms 14, 2, 14) and 16 (R1 $C7: 16, 2, 14) read the largest term, below 30,
+# so that side sounds (sil_P2_R, sil_P3_R), and the exact peak of the P8-10 example reads att 6 for att 8 (lev_P2). The cases with the second column pass must STAY pass (F-4): audio_tone_sel0 judges S = 0 rows only (every term 0), and audio_tone_pan01's rows sit at S = 0, at S = 1
+# (terms 0, 2, 0: the largest equals the sum) and at S = 16 with RAL or LAL 0 (a term of 30: still silent). The real core passes all three (REQUIRED cases).
+tag=rule-psg-atten-max
+file=src/core/psg.c
+anchor=return 2u * (15u - mal) + (31u - al) + 2u * (15u - lal);
+replace=return (2u * (15u - mal) > (31u - al) ? 2u * (15u - mal) : (31u - al)) > 2u * (15u - lal) ? (2u * (15u - mal) > (31u - al) ? 2u * (15u - mal) : (31u - al)) : 2u * (15u - lal);

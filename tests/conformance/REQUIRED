@@ -347,6 +347,8 @@ psg_wave_ptr
 psg_lfo_trg
 psg_poweron
 psg_restore_divisor
+psg_vol_table
+psg_pure_function
 psg_tone
 audio_tone_sel0
 audio_tone_sel0_d3
@@ -360,6 +362,8 @@ audio_tone_pan45
 audio_fault_sweep_tone_pan01
 audio_fault_sweep_tone_pan23
 audio_fault_sweep_tone_pan45
+audio_tone_atten
+audio_fault_sweep_tone_atten
 aud_noninterference
 psg_dev_join
 snapshot_restore_audio

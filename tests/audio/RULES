@@ -36,13 +36,13 @@ aud06-c	LED-AUD-0006	later:05-09	lfo_dynamic	an LFO-coupled select-1 step of 6 x
 aud07-a	LED-AUD-0007	limit	disputed-zero	F = 0 as 4096, FLF = 0 as 256 and NFc = 0 as a noise clock of 32 ticks are disputed points (ER-15): ASSUMED rows only, no MAN row is owed; psg_decode and psg_lfo_trg cover the stores
 aud07-b	LED-AUD-0007	later:05-09	lfo_static	the modulated select-0 value masked to 12 bits with 0 read as 4096 (the LFO wrap is a disputed point)
 aud08-a	LED-AUD-0008	row	silent	a side is silent when chON is 0
-aud08-b	LED-AUD-0008	later:05-06	silent	a side is silent when R1 or R5 is $00 (the byte-zero clause of P8-10)
+aud08-b	LED-AUD-0008	row	silent	a side is silent when R1 or R5 is $00 (the byte-zero clause of P8-10): sil_P4 and sil_P5 of tone_atten (05-06)
 aud08-c	LED-AUD-0008	row	silent	a side is silent when the P8-10 sum is 16 or more (15 is a disputed point): the sil_C1_R and sil_C2_L groups of the pan scenes (05-06)
-aud08-d	LED-AUD-0008	later:05-06	atten_order	the level strictly decreases per one-step decrease of the R1, R4 and R5 fields
+aud08-d	LED-AUD-0008	row	atten_order	the level strictly decreases per one-step decrease of the R1, R4 and R5 fields: ao_r1, ao_al and ao_lal of tone_atten (05-06)
 aud09-a	LED-AUD-0009	row	cycle_order	each channel is an unsigned 5-bit level, the wave word when chON 1, DDA 0 and NE 0 (the plateaus rank as the words)
 aud09-b	LED-AUD-0009	later:05-07	dda_hold,two_level	the level is the latch in DDA mode and the noise level under NE
-aud09-c	LED-AUD-0009	later:05-06	levels_exact	scaled per side by VOL[att] for att < 30 and 0 above (the Q15 curve is ASSUMED)
-aud09-d	LED-AUD-0009	later:05-06	levels_exact,period	summed linearly over six channels into unsigned L and R, no DC removal or filter
+aud09-c	LED-AUD-0009	row	levels_exact	scaled per side by VOL[att] for att < 30 and 0 above (the Q15 curve is ASSUMED): lev_P1 and lev_P2 of tone_atten; psg_vol_table at att 29, 30 and 91 (05-06)
+aud09-d	LED-AUD-0009	later:05-07	levels_exact,period	summed linearly over six channels into unsigned L and R, no DC removal or filter (05-06 judges one channel per side only; a same-side sum of two DDA levels is the plan of 05-07)
 aud09-e	LED-AUD-0009	limit	huc6280-only	HuC6280 only, not HuC6280A: no HuC6280A profile exists in Phase 5
 aud10-a	LED-AUD-0010	later:05-07	two_level	each noise channel outputs level 31 or 0 (the bit shifted out of an 18-bit LFSR)
 aud10-b	LED-AUD-0010	later:05-07	noise_seq	new bit 17 = XOR of bits 0, 1, 11, 12, 17 (psg_lfsr_taps 137219), reset to 1 under every policy
@@ -96,8 +96,8 @@ d191-c	D-191	later:05-07	dda_hold,dda_order	DDA 1 gives the latch
 d191-d	D-191	later:05-07	two_level	NE at select 4 or 5 gives the noise level
 d192-a	D-192	later:05-09	lfo_static,lfo_dynamic	the LFO acts while CTL != 0 with select 0 and 1 on (amended by D-219, D-231)
 d193-a	D-193	later:05-07	noise_seq,two_level	two 18-bit LFSRs, output bit 0 as 31 or 0, reset 1 under every policy, clocking from time 0; period 131,071
-d194-a	D-194	later:05-06	levels_exact	att = 2(15 - MAL) + (31 - AL) + 2(15 - LAL); contribution level x VOL[att]; L and R plain unsigned sums
-d194-b	D-194	later:05-06	silent	silent at att >= 30 (S >= 15; the sum 15 is disputed, MAN rows sit at S >= 16)
+d194-a	D-194	row	levels_exact	att = 2(15 - MAL) + (31 - AL) + 2(15 - LAL); contribution level x VOL[att]; L and R plain unsigned sums: lev_P1 (att 0) and lev_P2 (att 8) of tone_atten (05-06)
+d194-b	D-194	row	silent	silent at att >= 30 (S >= 15; the sum 15 is disputed, MAN rows sit at S >= 16): sil_P3_R (MAN, S = 16) and sil_P2_R (ASSUMED, S = 15) of tone_atten (05-06)
 d196-a	D-196	row	ev_value,ev_decode	DSPE v1: one 24-byte record per window-2 write with the effect bits of psg_effects.def (a definition, ER-19)
 d197-a	D-197	row	case:pcm_cadence	DSPA v1: frames of u32 L and u32 R under the header count, lost, seq, first, sample_mclk, frame_bytes 8, version 1, format 1
 d197-b	D-197	row	header	the DSPA header reads sample_mclk 192, frame_bytes 8, version 1 and format 1 and counts the frames delivered (definitions, ER-19)

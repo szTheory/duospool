@@ -1070,6 +1070,8 @@ static const struct {
     {"psg_lfo_trg", kind_psg_lfo_trg, 0},
     {"psg_poweron", kind_psg_poweron, 0},
     {"psg_restore_divisor", kind_psg_restore_divisor, 0},
+    {"psg_vol_table", kind_psg_vol_table, 0},
+    {"psg_pure_function", kind_psg_pure_function, 0},
     {"model_param_vdc", kind_model_param_vdc, 0},
     {"vdc_irq_agree", kind_vdc_irq_agree, 0},
     {"vdc_advance_pure", kind_vdc_advance_pure, 0},

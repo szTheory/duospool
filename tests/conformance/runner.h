@@ -425,6 +425,8 @@ void kind_psg_wave_ptr(const struct kase *k, struct ctx *c, char *got, size_t go
 void kind_psg_lfo_trg(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_psg_poweron(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_psg_restore_divisor(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_psg_vol_table(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_psg_pure_function(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 /* audiokinds.c (plan 05-04): the audio kind, a guest ROM run with a psg, a pcm and a dev sink under the zero policy and seeded-prng-v4 seed 1, its DSV1 verdict, the DSPE records and DSPA frames judged by group against the hand literals of NAME.aexp (EV and ROWS forms),
  * the expect_red binding of D-211 and the stream digests beside them (E0) */
 void kind_audio(const struct kase *k, struct ctx *c, char *got, size_t gotcap);

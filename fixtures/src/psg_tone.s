@@ -22,6 +22,8 @@
 ;   Scenes tone_pan01, tone_pan23, tone_pan45 (selects a, b = 0, 1; 2, 3; 4, 5 at F = 128, 192; 256, 320; 384, 448): set-up of each channel (R0, R4 $40, R4 $00, the TIN upload, R2, R3; R7 $00 at select 4 and 5), R1 $FF, then five sub-phases A, B, C1, C2, C3, each opened by
 ;   R4 $40 (the wave index 0, D-190) and R4 $1F or $1D of its channel(s), then R5, then the key-on; a delay of n units (13, 21, 29: at least 6.1 cycles of the slower channel + 2,000 master clocks) and the key-off. A: a solo (R5 $FF, R4 $9F); B: b solo;
 ;   C1: a alone hard left (R5 $F0, R4 $9D); C2: b alone hard right (R5 $0F, R4 $9D); C3: both, as in C1 and C2. The literals and their derivation are in fixtures/src/psg_tone.aexp. Checks 5..10: each channel table sums to 496 two ways (GUEST).
+;   Scene tone_atten (sc_atten): select 2 (table 2, F = 256) keyed on once at S = 0 (P1, 17 units) and kept playing; Y (9 units): select 3 fully programmed with chON 0 (R4 $40, $00, table 3, F = 320, R5 $FF, R4 $1F); then each phase writes, last, the register its windows anchor on:
+;   P2 R1 $C8, R4 $9D, R5 $F8 (the P8-10 example, 17 units); P3 R1 $C7; P4 R1 $FF, R5 $00; P5 R5 $FF, R1 $00; P6 R1 $FF, R4 $9F, R5 $EF; P7 R5 $DF; P8 R5 $FF, R4 $9E; P9 R4 $9F, R1 $EF (6 units each, at least 2.1 cycles + 2,000 master clocks); then R1 $FF and the key-off.
         .setcpu "huc6280"
 
 DSV_ID = 27
@@ -103,6 +105,19 @@ sc_pan23:
         PAN_SCENE 2, 3, 256, 320, 21, 0
 sc_pan45:
         PAN_SCENE 4, 5, 384, 448, 29, 1
+sc_atten:                               ; tone_atten (see the header): select 2 keyed on once, its attenuation changed phase by phase
+        .byte 0, 2, 4, $40, 4, $00, SC_UP + 2, 2, $00, 3, $01                           ; set-up: select 2, the wave index 0, table 2, F = 256
+        .byte 1, $FF, 5, $FF, 4, $9F, SC_DLY + 17                                       ; P1: key-on at S = 0 on both sides
+        .byte 0, 3, 4, $40, 4, $00, SC_UP + 3, 2, $40, 3, $01, 5, $FF, 4, $1F, 0, 2, SC_DLY + 9    ; Y: select 3 programmed with chON 0 while select 2 plays
+        .byte 1, $C8, 4, $9D, 5, $F8, SC_DLY + 17                                       ; P2: left S = 4 (att 8), right S = 15
+        .byte 1, $C7, SC_DLY + 6                                                        ; P3: right S = 16
+        .byte 1, $FF, 5, $00, SC_DLY + 6                                                ; P4: R5 $00
+        .byte 5, $FF, 1, $00, SC_DLY + 6                                                ; P5: R1 $00
+        .byte 1, $FF, 4, $9F, 5, $EF, SC_DLY + 6                                        ; P6: LAL E (left att 2)
+        .byte 5, $DF, SC_DLY + 6                                                        ; P7: LAL D (left att 4)
+        .byte 5, $FF, 4, $9E, SC_DLY + 6                                                ; P8: AL $1E (att 1)
+        .byte 4, $9F, 1, $EF, SC_DLY + 6                                                ; P9: LMAL E (left att 2)
+        .byte 1, $FF, 4, $1F, SC_END                                                    ; R1 $FF and the key-off
         .popseg
 
 ; PLAY script: the script player run over one script of RODATA
@@ -159,6 +174,7 @@ tone_i: dex
         PLAY sc_pan01
         PLAY sc_pan23
         PLAY sc_pan45
+        PLAY sc_atten
 ; (h) check 1 and 2: the sum of the 32 words by a table walk against the sum of the counter 0..31, two computations of 496 = $01F0 (the table is a permutation of 0..31)
         stz a:TS_SUM_LO
         stz a:TS_SUM_HI

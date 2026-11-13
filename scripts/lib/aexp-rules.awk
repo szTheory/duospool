@@ -91,7 +91,7 @@ BEGIN {
   # the closed keys: selector items and literal items (the judged keys of the runner kinds and the lint inputs; plan check 3 info 5)
   split("anchor reg val nth ev from to side stream", sk, " ")
   for (i = 1; i in sk; i++) selkey[sk[i]] = 1
-  split("f k d nf g f2 flf step w w1 w2 shift set m n r1 al r5 side chon p0 p1 words minrun reg val vals chan effect wave_idx post sample_mclk frame_bytes version format mark", lkk, " ")
+  split("f k d nf g f2 flf step w w1 w2 shift set m n r1 al r5 side chon p0 p1 words minrun reg val vals chan effect wave_idx post sample_mclk frame_bytes version format mark peak", lkk, " ")
   for (i = 1; i in lkk; i++) litkey[lkk[i]] = 1
   nrec = 0; nsent = 0; nfiles = 0; ns = 0; ng = 0; nr = 0; nviol = 0; nrl = 0; nexempt = 0
   toy_active = 0; inv_active = 0; rules_active = 0

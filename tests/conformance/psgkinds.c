@@ -8,6 +8,8 @@
  *   psg_lfo_trg          expect rows=all: R9 TRG reset and freeze, the TRG release restart, UNMODELLED, the D-231 TRG state with widx[1] = 5 restored
  *   psg_poweron          expect rows=all: the PSG power-on state under zero, v1, v2, v3 and v4 (seeds 1, 2), the v4 wave draw, the noise counters from time 0
  *   psg_restore_divisor  expect rows=all: a psg_tick_divisor=3 snapshot is refused by a default instance as snapshot.profile and restored by a d = 3 one (D-223)
+ *   psg_vol_table        expect rows=all: the 30 rows of psg_vol.def strictly decrease from 32768 to 219, and att 29, 30 and 91 contribute 31 x 219, 0 and 0 (plan 05-06)
+ *   psg_pure_function    expect rows=all: widx(T + 6F) = widx(T) + 1 and widx(T + 192F) = widx(T) for four F, the noise distance periodic with 384 x NFc for three NFc (plan 05-06)
  * (later plans add psg_fold and others to this file.) Test code only, never installed. Includes the core's private ds_psg.h as vdckinds.c includes ds_vdc.h.
  */
 #include <stddef.h>
@@ -789,4 +791,142 @@ void kind_psg_fold(const struct kase *k, struct ctx *c, char *got, size_t gotcap
     free(p1);
     free(p2);
     snprintf(got, gotcap, "writes=%u partitions=%llu steps=%llu d=%u", np, (unsigned long long)parts, (unsigned long long)steps, (unsigned)d);
+}
+
+/* ---- plan 05-06: psg_vol_table and psg_pure_function ---- */
+
+/* the volume curve as the core holds it, through the X-macro of src/core/psg_vol.def (never re-derived here; LED-AUD-0009) */
+static const uint32_t pk_vol[] = {
+#define DS_PSG_VOL(a, value) (uint32_t)(value),
+#include "psg_vol.def"
+#undef DS_PSG_VOL
+};
+
+/*
+ * kind psg_vol_table (plan 05-06; D-194, D-195, D-205, D-206; ASSUMED:LED-AUD-0009): expect rows=all. The 30 rows of psg_vol.def strictly decrease from VOL[0] = 32768 to VOL[29] = 219 (the handbook literals), the table holds exactly
+ * psg_silence_att = 30 rows, and through ds_psg_sample a select-2 channel with DDA 1 and the latch 31 contributes 31 x 219 = 6,789 at att 29 (R1 $FF, R5 $FF, AL 2) and 0 at att 30 (AL 1) and at att 91 (R1 $00, R5 $00, AL 0): no index of 30 or more is read.
+ */
+void kind_psg_vol_table(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    struct booted b;
+    struct ds_instance *w;
+    struct ds_psg_write_info info;
+    uint32_t i;
+    uint32_t l = 0u;
+    uint32_t r = 0u;
+    unsigned bad = 0u;
+    char msg[200];
+
+    if (!pk_rows_all(k, c, "psg_vol_table")) {
+        return;
+    }
+    w = pk_boot(c, k->val[K_FIXTURE], k->has[K_REQUEST] ? k->val[K_REQUEST] : "", &b);
+    if (w == NULL) {
+        return;
+    }
+    check(c, sizeof pk_vol / sizeof pk_vol[0] == 30u && (uint32_t)DS_CONST_psg_silence_att == 30u, "psg_vol.def does not hold exactly psg_silence_att = 30 rows");
+    for (i = 1u; i < (uint32_t)(sizeof pk_vol / sizeof pk_vol[0]); i++) {
+        bad += pk_vol[i] < pk_vol[i - 1u] ? 0u : 1u;
+    }
+    snprintf(msg, sizeof msg, "the volume curve is not strictly decreasing (%u rows out of order)", bad);
+    check(c, bad == 0u, msg);
+    check(c, pk_vol[0] == 32768u && pk_vol[29] == 219u, "VOL[0] is not 32768 or VOL[29] is not 219 (the handbook literals of LED-AUD-0009)");
+    pk_reset(w);
+    (void)ds_psg_write(w, 0u, 2u, 0u, &info);
+    (void)ds_psg_write(w, 4u, 0xC2u, 0u, &info);
+    (void)ds_psg_write(w, 6u, 0x1Fu, 0u, &info);
+    (void)ds_psg_write(w, 1u, 0xFFu, 0u, &info);
+    (void)ds_psg_write(w, 5u, 0xFFu, 0u, &info);
+    ds_psg_sample(w, &l, &r);
+    snprintf(msg, sizeof msg, "att 29 (AL 2) reads L %u R %u, not 31 x 219 = 6,789 on both sides", (unsigned)l, (unsigned)r);
+    check(c, l == 6789u && r == 6789u, msg);
+    (void)ds_psg_write(w, 4u, 0xC1u, 0u, &info);
+    ds_psg_sample(w, &l, &r);
+    snprintf(msg, sizeof msg, "att 30 (AL 1) reads L %u R %u, not 0: an index of 30 was read", (unsigned)l, (unsigned)r);
+    check(c, l == 0u && r == 0u, msg);
+    (void)ds_psg_write(w, 4u, 0xC0u, 0u, &info);
+    (void)ds_psg_write(w, 1u, 0x00u, 0u, &info);
+    (void)ds_psg_write(w, 5u, 0x00u, 0u, &info);
+    ds_psg_sample(w, &l, &r);
+    check(c, l == 0u && r == 0u, "att 91 (R1 $00, R5 $00, AL 0) does not read 0");
+    snprintf(got, gotcap, "rows=6");
+    release_boot(&b);
+}
+
+/*
+ * kind psg_pure_function (plan 05-06; D-212; MAN:P8-9+P8-12+H8-23 for 6F, 192F and 384 x NFc, the tick phase ASSUMED:LED-AUD-0012 does not enter): expect rows=all. On a fresh d = 6 state at machine time 0 driven by direct ds_psg_write and ds_psg_advance calls,
+ * for F in {1, 254 (P8-12 A4), 3421 (P8-12 C1), 4095} select 0 keyed on at 1,000 shows widx(T + 6F) = widx(T) + 1 mod 32 and widx(T + 192F) = widx(T) at three T after its first step (6F = 6, 1,524, 20,526, 24,570; 192F = 192, 48,768, 656,832, 786,240),
+ * and for NFc in {1, 7, 31} (R7 $1E, $18, $00 at select 4) the distance to the next noise event is periodic with period 384 x NFc (384, 2,688, 11,904). Relations only: no key-on phase, no LFSR model.
+ */
+void kind_psg_pure_function(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    static const uint32_t fs[4] = {1u, 254u, 3421u, 4095u};
+    static const uint64_t step[4] = {6u, 1524u, 20526u, 24570u};
+    static const uint64_t cyc[4] = {192u, 48768u, 656832u, 786240u};
+    static const uint32_t r7[3] = {0x1Eu, 0x18u, 0x00u};
+    static const uint64_t nper[3] = {384u, 2688u, 11904u};
+    struct booted b;
+    struct ds_instance *w;
+    struct ds_psg_write_info info;
+    unsigned i;
+    unsigned j;
+    unsigned bad = 0u;
+    char msg[240];
+
+    if (!pk_rows_all(k, c, "psg_pure_function")) {
+        return;
+    }
+    w = pk_boot(c, k->val[K_FIXTURE], k->has[K_REQUEST] ? k->val[K_REQUEST] : "", &b);
+    if (w == NULL) {
+        return;
+    }
+    for (i = 0u; i < 4u; i++) {
+        uint64_t t = 1000u + step[i] + 7u; /* past the first step (at most 1,000 + 6F) */
+
+        pk_reset(w);
+        (void)pk_w(w, 0u, 0u, 10u, &info);
+        (void)pk_w(w, 2u, fs[i] & 0xFFu, 20u, &info);
+        (void)pk_w(w, 3u, fs[i] >> 8, 30u, &info);
+        (void)pk_w(w, 4u, 0x9Fu, 1000u, &info);
+        for (j = 0u; j < 3u; j++) {
+            uint32_t a;
+            uint32_t b1;
+            uint32_t b2;
+
+            ds_psg_advance(w, t, 0u, NULL);
+            a = w->psg_widx[0];
+            ds_psg_advance(w, t + step[i], 0u, NULL);
+            b1 = w->psg_widx[0];
+            ds_psg_advance(w, t + cyc[i], 0u, NULL);
+            b2 = w->psg_widx[0];
+            if (b1 != ((a + 1u) & 31u) || b2 != a) {
+                bad++;
+                snprintf(msg, sizeof msg, "F = %u at T = %llu: widx(T) %u, widx(T + 6F) %u, widx(T + 192F) %u", (unsigned)fs[i], (unsigned long long)t, (unsigned)a, (unsigned)b1, (unsigned)b2);
+                check(c, 0, msg);
+            }
+            t += cyc[i] + 3u * (uint64_t)(j + 1u);
+        }
+    }
+    check(c, bad == 0u, "a wave index relation widx(T + 6F) = widx(T) + 1, widx(T + 192F) = widx(T) failed");
+    for (i = 0u; i < 3u; i++) {
+        uint64_t t = 30000u;
+
+        pk_reset(w);
+        (void)pk_w(w, 0u, 4u, 10u, &info);
+        (void)pk_w(w, 7u, r7[i], 20u, &info);
+        for (j = 0u; j < 3u; j++) {
+            uint64_t d1;
+            uint64_t d2;
+
+            ds_psg_advance(w, t, 0u, NULL);
+            d1 = (uint64_t)w->psg_nrem[0] - 1u - t;
+            ds_psg_advance(w, t + nper[i], 0u, NULL);
+            d2 = (uint64_t)w->psg_nrem[0] - 1u - (t + nper[i]);
+            snprintf(msg, sizeof msg, "NFc %u: the distance to the next noise event is %llu at T = %llu and %llu at T + %llu", (unsigned)(nper[i] / 384u), (unsigned long long)d1, (unsigned long long)t, (unsigned long long)d2, (unsigned long long)nper[i]);
+            check(c, d1 == d2 && d1 < nper[i], msg);
+            t += nper[i] + 1001u;
+        }
+    }
+    snprintf(got, gotcap, "rows=21");
+    release_boot(&b);
 }

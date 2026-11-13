@@ -22,6 +22,7 @@
  * pins the digests of a golden scene; class DEF:<LED ids> marks a definition (ER-19); selector items stream=dspa|dspe (the STRUCT header rows) and nth=N+M on the end anchor (an offset of M master clocks, PR-13); an expect_red scene (D-211, D-225) carries twin= and expect_red= and the
  * case judging it takes the red list from the scene row. Forms added in 05-05: REL (period_ratio, same, atten_order, atten_equal over the windows of a group's rows in order), STRUCT (header, count) and the ROWS kind live (two rising crossings and at least 3 distinct levels between them).
  * The kind audio_fault_sweep applies AF0..AF9 of D-209 in memory to copies of the captured streams of one run; audio_judge_forms shows every form able to fail (05-05).
+ * levels_exact (05-06): the largest sample of the window on that side equals the literal peak (ASSUMED:LED-AUD-0009).
  * Kinds judged here (05-04): ev_value (reg and val, or reg and vals for consecutive records), ev_decode (chan, effect, wave_idx, post of one record: the core's decode against the row, never a judge-side decode), period (the rising crossings of the window: threshold (min + max) / 2
  * of the window on that side, a crossing is the first sample with 2x >= min + max after one with 2x < min + max; fewer than k + 1 crossings is a fail; the distance from the first to the (k+1)-th must be d), cycle_order (the samples between the first two crossings run-collapsed
  * into plateaus, ranked, and compared with the ranks of words up to rotation; RF-14) and silent (every sample of the window on that side is 0, ER-19). An anchor that is not found or a window past the end of the stream fails its row; an empty window is harness_failure.
@@ -307,7 +308,7 @@ static const struct au_kind_def {
 } au_kinds[] = {
     {"ev_value", AX_FORM_EV, NULL},           {"ev_decode", AX_FORM_EV, NULL},         {"ev_edge", AX_FORM_EV, NULL},           {"period", AX_FORM_ROWS, NULL},
     {"period_ratio", AX_FORM_REL, NULL},      {"cycle_order", AX_FORM_ROWS, NULL},     {"cycle_phase", AX_FORM_ROWS, "05-07"},  {"cycle_linear", AX_FORM_ROWS, "05-07"},
-    {"levels_exact", AX_FORM_ROWS, "05-06"},  {"silent", AX_FORM_ROWS, NULL},          {"live", AX_FORM_ROWS, NULL},            {"same", AX_FORM_REL, NULL},
+    {"levels_exact", AX_FORM_ROWS, NULL},     {"silent", AX_FORM_ROWS, NULL},          {"live", AX_FORM_ROWS, NULL},            {"same", AX_FORM_REL, NULL},
     {"atten_order", AX_FORM_REL, NULL},       {"atten_equal", AX_FORM_REL, NULL},      {"dda_hold", AX_FORM_ROWS, "05-07"},     {"dda_order", AX_FORM_ROWS, "05-07"},
     {"dda_ram_kept", AX_FORM_ROWS, "05-07"},  {"dda_equals_wave", AX_FORM_REL, "05-07"}, {"dda_level_exact", AX_FORM_ROWS, "05-07"}, {"two_level", AX_FORM_ROWS, "05-07"},
     {"run_grid", AX_FORM_ROWS, "05-07"},      {"noise_ratio", AX_FORM_REL, "05-07"},   {"run_min", AX_FORM_ROWS, "05-07"},      {"noise_seq", AX_FORM_ROWS, "05-07"},
@@ -1067,7 +1068,7 @@ struct au_lit {
 };
 
 /* the closed literal keys: the judged keys of the 05-04 kinds and the inputs of the 05-05 arithmetic lint (plan check 3 info 5) */
-static const char *const au_keys[] = {"f", "k", "d", "nf", "g", "f2", "flf", "step", "w", "w1", "w2", "shift", "set", "m", "n", "r1", "al", "r5", "chon", "p0", "p1", "words", "minrun", "reg", "val", "vals", "chan", "effect", "wave_idx", "post", "sample_mclk", "frame_bytes", "version", "format", "mark"};
+static const char *const au_keys[] = {"f", "k", "d", "nf", "g", "f2", "flf", "step", "w", "w1", "w2", "shift", "set", "m", "n", "r1", "al", "r5", "chon", "p0", "p1", "words", "minrun", "reg", "val", "vals", "chan", "effect", "wave_idx", "post", "sample_mclk", "frame_bytes", "version", "format", "mark", "peak"};
 
 static const char *au_lit_parse(const char *text, struct au_lit *l)
 {
@@ -1272,7 +1273,9 @@ static unsigned au_rank(const uint64_t *a, unsigned n, uint64_t v)
     return r;
 }
 
-/* perturb (AF0 of D-209, the first row of a group only): the judge reads a perturbed literal (silent: every sample 1; period: d + 1; cycle_order: the first two words swapped), so a live comparison must fail */
+static uint32_t au_peak(const struct au_cap *cp, uint64_t i0, uint64_t i1, int side);
+
+/* perturb (AF0 of D-209, the first row of a group only): the judge reads a perturbed literal (silent: every sample 1; period: d + 1; cycle_order: the first two words swapped; levels_exact: peak + 1), so a live comparison must fail */
 static int au_rows_row(const struct au_cap *cp, const struct ax_group *g, const struct au_sel *s, const struct au_lit *l, int perturb, char *why, size_t cap)
 {
     uint64_t i0 = 0u;
@@ -1339,6 +1342,20 @@ static int au_rows_row(const struct au_cap *cp, const struct ax_group *g, const 
         }
         snprintf(why, cap, "crossings %llu and %llu (the first and the %llu-th after it) are %llu samples apart, the literal is %llu", (unsigned long long)cx[0], (unsigned long long)cx[k], (unsigned long long)k, (unsigned long long)(cx[k] - cx[0]), (unsigned long long)d);
         return cx[k] - cx[0] == d ? AU_PASS : AU_FAIL;
+    }
+    if (g->kind == AK_LEVELS_EXACT) {
+        /* levels_exact (plan 05-06; D-194, D-206, ASSUMED:LED-AUD-0009): the largest sample of the window on that side equals the hand literal peak (31 x VOL[att] for a channel whose table holds the word 31) */
+        uint64_t want = 0u;
+        uint32_t pk;
+
+        if (au_lit_get(l, "peak") == NULL || au_num(au_lit_get(l, "peak"), &want) != 0) {
+            snprintf(why, cap, "aexp-malformed: a levels_exact row needs peak");
+            return AU_HARNESS;
+        }
+        want += perturb ? 1u : 0u;
+        pk = au_peak(cp, i0, i1, s->side);
+        snprintf(why, cap, "the peak of the window [%llu, %llu) on side %c is %u, the literal is %llu", (unsigned long long)i0, (unsigned long long)i1, s->side == 1 ? 'L' : 'R', (unsigned)pk, (unsigned long long)want);
+        return (uint64_t)pk == want ? AU_PASS : AU_FAIL;
     }
     if (g->kind != AK_CYCLE_ORDER) {
         snprintf(why, cap, "the kind %s is parsed but judged from plan %s", au_kinds[g->kind - 1].name, au_kinds[g->kind - 1].later != NULL ? au_kinds[g->kind - 1].later : "05-05");
@@ -2500,7 +2517,7 @@ static int aj_eval(struct aj_ctx *j, const char *form, const char *kind, const c
 
 static void aj_forms(struct aj_ctx *j, const struct au_cap *x)
 {
-    /* ROWS: period, cycle_order, silent, live (hand-derived from the construction: one rising crossing per 128-sample cycle at samples 64 + 128 m) */
+    /* ROWS: period, cycle_order, silent, live, levels_exact (hand-derived from the construction: one rising crossing per 128-sample cycle at samples 64 + 128 m; the word 31 at x 1000 in A and x 500 in B) */
     aj_want(j, "ROWS period k=4 d=512 passes", aj_eval(j, "ROWS", "period", AJ_A ";side=L", "f=64;k=4;d=512", NULL, NULL, x, 0), AU_PASS);
     aj_want(j, "ROWS period d=511 fails", aj_eval(j, "ROWS", "period", AJ_A ";side=L", "f=64;k=4;d=511", NULL, NULL, x, 0), AU_FAIL);
     aj_want(j, "ROWS period AF0 (d + 1) fails", aj_eval(j, "ROWS", "period", AJ_A ";side=L", "f=64;k=4;d=512", NULL, NULL, x, 1), AU_FAIL);
@@ -2518,6 +2535,10 @@ static void aj_forms(struct aj_ctx *j, const struct au_cap *x)
     aj_want(j, "ROWS live over the tone passes", aj_eval(j, "ROWS", "live", AJ_B ";side=L", "r1=$FF", NULL, NULL, x, 0), AU_PASS);
     aj_want(j, "ROWS live AF0 (the rule inverted) fails", aj_eval(j, "ROWS", "live", AJ_B ";side=L", "r1=$FF", NULL, NULL, x, 1), AU_FAIL);
     aj_want(j, "ROWS live over silence fails", aj_eval(j, "ROWS", "live", AJ_Q ";side=L", "r1=$FF", NULL, NULL, x, 0), AU_FAIL);
+    aj_want(j, "ROWS levels_exact peak 31 x 1000 of A passes", aj_eval(j, "ROWS", "levels_exact", AJ_A ";side=L", "peak=31000", NULL, NULL, x, 0), AU_PASS);
+    aj_want(j, "ROWS levels_exact AF0 (peak + 1) fails", aj_eval(j, "ROWS", "levels_exact", AJ_A ";side=L", "peak=31000", NULL, NULL, x, 1), AU_FAIL);
+    aj_want(j, "ROWS levels_exact peak 31 x 1000 of B (31 x 500) fails", aj_eval(j, "ROWS", "levels_exact", AJ_B ";side=L", "peak=31000", NULL, NULL, x, 0), AU_FAIL);
+    aj_want(j, "ROWS levels_exact without peak is harness", aj_eval(j, "ROWS", "levels_exact", AJ_A ";side=L", "r1=$FF", NULL, NULL, x, 0), AU_HARNESS);
     aj_want(j, "ROWS a kind judged from a later plan (two_level) is harness", aj_eval(j, "ROWS", "two_level", AJ_A ";side=L", "r1=$FF", NULL, NULL, x, 0), AU_HARNESS);
     aj_want(j, "ROWS an unknown kind is refused", aj_eval(j, "ROWS", "loud", AJ_A ";side=L", "r1=$FF", NULL, NULL, x, 0), AU_HARNESS);
     aj_want(j, "ROWS the kind period under form REL is refused", aj_eval(j, "REL", "period", AJ_A ";side=L", "f=64;k=4;d=512", NULL, NULL, x, 0), AU_HARNESS);

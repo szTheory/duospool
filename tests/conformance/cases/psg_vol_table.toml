@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The volume curve (plan 05-06; D-194, D-195, D-205, D-206; kind psg_vol_table of psgkinds.c). The 30 rows of src/core/psg_vol.def, read through its X-macro and never re-derived, strictly decrease, VOL[0] = 32768 and VOL[29] = 219 (the handbook literals), and the table holds exactly
+# psg_silence_att = 30 rows [ASSUMED:LED-AUD-0009]. Through ds_psg_sample a select-2 channel with DDA 1 and the latch 31 contributes 31 x 219 = 6,789 at att 29 (R1 $FF, R5 $FF, AL 2) and 0 at att 30 (AL 1) and att 91 (R1 $00, R5 $00, AL 0): no index of 30 or more is read
+# [att and the threshold MAN:P8-3+P8-4+P8-10, the values ASSUMED:LED-AUD-0009, so the rows are ASSUMED]. Evidence tier E0.
+id = "psg_vol_table"
+kind = "psg_vol_table"
+fixture = "plain-256k"
+request = ""
+expect = "rows=all"
+meaning = "The volume curve of the core strictly decreases from 32768 to 219 over its 30 rows and an attenuation of 30 or more contributes 0, so no row past the table is read (E0, ASSUMED:LED-AUD-0009)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
