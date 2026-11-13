@@ -27,7 +27,7 @@ enum ds_snapshot_refusal {
 /* "snapshot.NAME" for a refusal number, "ok" for DS_SNAPREF_NONE, NULL for a number that is not a member */
 const char *ds_snapshot_refusal_name(uint32_t number);
 
-/* the exact size in bytes of every snapshot: the prefix, the version and the frame (tag, length) and payload of every region, a pure sum of the fixed lengths of the region table (92255 bytes at serial version 8) */
+/* the exact size in bytes of every snapshot: the prefix, the version and the frame (tag, length) and payload of every region, a pure sum of the fixed lengths of the region table (92553 bytes at serial version 9: 92255 at version 8 plus the frames PSG0, PSGW and PSGT, 3 x 8 + 42 + 192 + 40 = 298 bytes) */
 size_t ds_snapshot_size(void);
 
 /* write the snapshot of a booted instance into buf (cap bytes) and the number of bytes written to *written (when not NULL): DS_SNAPREF_NONE, or a refusal (argument, overlap, capacity) with nothing written */

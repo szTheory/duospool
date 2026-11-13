@@ -18,6 +18,7 @@
 #include "ds_core.h"
 #include "ds_mapper.h"
 #include "ds_poweron.h"
+#include "ds_psg.h"
 #include "ds_sha256.h"
 #include "ds_vdc.h"
 
@@ -358,6 +359,7 @@ uint32_t ds_boot(void *mem, size_t cap, const struct ds_boot_request *request, s
     ds_poweron_apply(inst);
     ds_io_poweron(inst); /* the I/O port latch is $FF and port 1 holds the profile's pad under every policy (plan 03-27; D-114, R-5): constants, never drawn */
     ds_vdc_poweron(inst); /* the RCR counter, the frame length and display_k are the only non-zero VDC, VCE and beam bytes, under every policy (plan 04-03; D-167, F-11, F-48) */
+    ds_psg_poweron(inst); /* the PSG registers, indices and channel distances 0, the noise distances 1 and the LFSRs psg_lfsr_reset under every policy (plan 05-03; D-193, D-204, RF-15) */
     __builtin_memcpy(inst->rom, request->content, request->len);
     /* reset (D-92, D-114): the CPU takes its vector through the normal bus path at machine time 0, so the ROM must already be in place */
     ds_cpu_reset(inst);

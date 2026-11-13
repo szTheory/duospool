@@ -369,7 +369,8 @@ static void emit_withheld(struct out *o, const struct ds_profile *p)
         const char *id = ds_profile_unresolved(i);
         bad |= id == NULL || idset_add_list(&set, id) != 0;
     }
-    bad |= idset_add_list(&set, "LED-LOAD-0003|LED-LOAD-0005|LED-PROF-0002") != 0;
+    /* LED-AUD-0009 (the volume curve, psg_vol.def from plan 05-04) has no constants row, so it is named here like the load and profile ids (plan 05-03, PR-8, F-54); its twin is withheld_expected of reckinds.c */
+    bad |= idset_add_list(&set, "LED-AUD-0009|LED-LOAD-0003|LED-LOAD-0005|LED-PROF-0002") != 0;
     for (i = 0u; i < (uint32_t)DS_MODEL_COUNT; i++) { /* every model row is printed, so its ledger id bounds the run whether the value is the default or was requested (D-113) */
         const char *ledger = ds_model_ledger(i);
         bad |= ledger == NULL || idset_add_list(&set, ledger) != 0;

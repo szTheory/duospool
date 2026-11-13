@@ -340,3 +340,5 @@ chunk_equiv_video_spr_limit
 vid_noninterference_spr_limit
 observer_spr_limit
 snapshot_restore_video_spr
+snapshot_refusal_psg
+snapshot_refusal_psgt

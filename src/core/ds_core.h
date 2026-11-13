@@ -19,7 +19,7 @@
 #define DS_MAPPER_NAME_MAX 16u
 #define DS_CONTENT_ID_BYTES 32u
 /* behaviour epoch (D-53): bumped by any change that can alter what a run observes; goldens compare it, never a build id */
-#define DS_BEHAVIOUR_EPOCH 5u
+#define DS_BEHAVIOUR_EPOCH 6u /* 6: plan 05-03, the PSG state, register decode and the always-running noise counters (D-202) */
 /* the version of the power-on policy table that the record prints next to the policy name is ds_policy_version() of ds_poweron.h (D-50, D-134): 1 for zero and seeded-prng-v1, 2 for seeded-prng-v2, 3 for seeded-prng-v3 */
 /* field_index of a result that names no profile field */
 #define DS_NO_FIELD 0xffffffffu
@@ -246,6 +246,26 @@ struct ds_instance {
     uint8_t vdc_satb[DS_SATB_BYTES];
     /* explicit trailing padding of the Phase 4 block (the block is 67,178 bytes, which is 2 modulo 8): in no region of the stream, zero from the zeroing of ds_boot, an identity member of the restore evidence like tail_pad */
     uint8_t vid_pad[6];
+    /*
+     * The PSG block (plan 05-03; D-202, D-203, F-59), 280 bytes after vid_pad, no implicit padding. PSG0, 42 bytes: the 12-bit frequency of each channel (R2/R3), the select (R0 & 7), the main balance (R1), the LFO frequency (R8) and control (R9 & $83), and per
+     * channel R4 & $DF, R5, the wave index (0..31), the DDA latch (5 bits) and per noise channel (select 4, 5) R7 & $9F. psg_pad: explicit padding in no region. PSGW: the wave RAM, byte ch x 32 + i, each 0..31. PSGT, 40 bytes at block offset 240: the counter
+     * distances of D-186 (r = next event - (machine_time - 1), 0 = frozen) of the six channels and the two noise counters, and the two 18-bit noise LFSRs.
+     */
+    uint16_t psg_freq[6];
+    uint8_t psg_select;
+    uint8_t psg_main_bal;
+    uint8_t psg_lfo_freq;
+    uint8_t psg_lfo_ctl;
+    uint8_t psg_ctl[6];
+    uint8_t psg_bal[6];
+    uint8_t psg_widx[6];
+    uint8_t psg_dda[6];
+    uint8_t psg_noise[2];
+    uint8_t psg_pad[6];
+    uint8_t psg_wave[192];
+    uint32_t psg_rem[6];
+    uint32_t psg_nrem[2];
+    uint32_t psg_lfsr[2];
 };
 
 /* the stimulus arrays, the timer block, the controller bytes, the CPU block, the bus block and the block transfer state have no padding and sit in the order of the declarations (the digest regions IRQS, TIMR, IRQC, CPU0, BUS0 and BLKT are each one live span, serial.c): the stimulus times follow the power-up seed, and the ROM array follows the block transfer state */
@@ -292,12 +312,17 @@ _Static_assert(offsetof(struct ds_instance, rom) == offsetof(struct ds_instance,
     X(stage) X(v_state) X(burst) X(line_idx) X(v_togo) X(display_k) X(rcr_counter) X(frame_lines) X(bg_y) X(mwr_active) X(vd_off) X(rcr_off) \
     X(line_dirty) X(sprite_pend) X(lat_div) X(vd_pending) X(vd_irq_phase) X(rcr_origin) \
     X(satb_pending) X(satb_done_valid) X(satb_done_at) X(dma_start) X(dma_done) X(dma_word_mclk) X(dma_state) \
-    X(vce_cr) X(vce_cta) X(vce_pal) X(vdc_vram) X(vdc_satb) X(vid_pad)
+    X(vce_cr) X(vce_cta) X(vce_pal) X(vdc_vram) X(vdc_satb) X(vid_pad) \
+    X(psg_freq) X(psg_select) X(psg_main_bal) X(psg_lfo_freq) X(psg_lfo_ctl) X(psg_ctl) X(psg_bal) X(psg_widx) X(psg_dda) X(psg_noise) \
+    X(psg_pad) X(psg_wave) X(psg_rem) X(psg_nrem) X(psg_lfsr)
 #define DS_TILING_SIZE(m) +sizeof(((struct ds_instance *)0)->m)
 _Static_assert(0u DS_INSTANCE_TILING(DS_TILING_SIZE) == sizeof(struct ds_instance), "the tiling list does not account for every byte of struct ds_instance: a member without an entry, an entry without a member, or implicit padding");
 _Static_assert(offsetof(struct ds_instance, tail_pad) == offsetof(struct ds_instance, rom) + DS_ROM_CAP, "padding between the ROM and the tail padding");
 _Static_assert(offsetof(struct ds_instance, vdc_reg) == offsetof(struct ds_instance, tail_pad) + 6u && offsetof(struct ds_instance, vdc_reg) % 8u == 0u, "the Phase 4 block does not follow tail_pad at an 8-aligned offset");
-_Static_assert(offsetof(struct ds_instance, vid_pad) + sizeof(((struct ds_instance *)0)->vid_pad) == sizeof(struct ds_instance), "vid_pad is not the last member of the instance");
+_Static_assert(offsetof(struct ds_instance, psg_freq) == offsetof(struct ds_instance, vid_pad) + 6u && offsetof(struct ds_instance, psg_freq) % 8u == 0u, "the PSG block does not follow vid_pad at an 8-aligned offset");
+_Static_assert(offsetof(struct ds_instance, psg_pad) == offsetof(struct ds_instance, psg_freq) + 42u, "PSG0 is not 42 bytes");
+_Static_assert(offsetof(struct ds_instance, psg_rem) == offsetof(struct ds_instance, psg_freq) + 240u, "PSGT is not at offset 240 of the PSG block");
+_Static_assert(offsetof(struct ds_instance, psg_lfsr) + sizeof(((struct ds_instance *)0)->psg_lfsr) == sizeof(struct ds_instance), "psg_lfsr is not the last member of the instance");
 
 struct ds_boot_request {
     uint32_t struct_size; /* sizeof(struct ds_boot_request) */

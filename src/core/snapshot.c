@@ -16,6 +16,7 @@
 #include "ds_core.h"
 #include "ds_mapper.h"
 #include "ds_poweron.h"
+#include "ds_psg.h"
 #include "ds_serial.h"
 #include "ds_snapshot.h"
 #include "ds_vdc.h"
@@ -195,6 +196,8 @@ static uint32_t model_values(uint32_t index)
 struct vctx {
     uint8_t slot_type[DS_PORT_COUNT];
     uint64_t time;
+    uint8_t psg_ctl[6]; /* PSG0, judged before PSGT: which channel counters are frozen (plan 05-03, D-203) */
+    uint8_t psg_lfo_ctl;
 };
 
 /* a decoder reads its region from r in stream order and, when commit is nonzero, stores every field into inst and returns DS_SNAPREF_NONE; otherwise it writes nothing and returns the refusal of the first field outside its domain */
@@ -810,6 +813,156 @@ static uint32_t dec_satb(struct ds_instance *inst, struct vctx *v, struct rd *r,
     return (uint32_t)DS_SNAPREF_NONE;
 }
 
+/*
+ * The PSG regions (plan 05-03; D-202, D-203, D-231, F-59). Pass 1 refuses as field, before any arithmetic, every PSG0 byte outside its register mask (the one table ds_psg_reg_mask of psg.c that the write path stores through), a wave index or DDA latch
+ * above 31, a DDA channel whose wave index is not 0 (R4 with DDA 1 resets it), every wave byte above 31, an LFSR outside 1..$3FFFF (0 is the locked state no step leaves), a channel distance that is not 0 exactly when the channel is frozen (chON 0, DDA 1, or
+ * select 1 under TRG), a running distance outside 1..24,576 (1..6,291,456 for select 1, the coupled bound), a noise distance outside 1..11,904, and a running or noise counter whose next event machine_time + r - 1 is off the tick grid of the restoring
+ * instance's d (computed only once r >= 1 is known, so it never wraps). D-231 dropped the rule "TRG implies widx[1] = 0": R6 writes under TRG 1 advance widx[1] legally. The PSG0 values pass 1 has read are kept in struct vctx for the PSGT judgement.
+ */
+static uint32_t psg_frozen(const struct vctx *v, uint32_t ch)
+{
+    return (v->psg_ctl[ch] & 0x80u) == 0u || (v->psg_ctl[ch] & 0x40u) != 0u || (ch == 1u && (v->psg_lfo_ctl & 0x80u) != 0u) ? 1u : 0u;
+}
+
+static uint32_t dec_psg0(struct ds_instance *inst, struct vctx *v, struct rd *r, int commit)
+{
+    uint16_t freq[6];
+    uint8_t sel;
+    uint8_t main_bal;
+    uint8_t lfo_freq;
+    uint8_t lfo_ctl;
+    uint8_t ctl[6];
+    uint8_t bal[6];
+    uint8_t widx[6];
+    uint8_t dda[6];
+    uint8_t noise[2];
+    uint32_t ch;
+    uint32_t bad = 0u;
+
+    for (ch = 0u; ch < 6u; ch++) {
+        freq[ch] = r_u16(r);
+    }
+    sel = r_u8(r);
+    main_bal = r_u8(r);
+    lfo_freq = r_u8(r);
+    lfo_ctl = r_u8(r);
+    for (ch = 0u; ch < 6u; ch++) {
+        ctl[ch] = r_u8(r);
+    }
+    for (ch = 0u; ch < 6u; ch++) {
+        bal[ch] = r_u8(r);
+    }
+    for (ch = 0u; ch < 6u; ch++) {
+        widx[ch] = r_u8(r);
+    }
+    for (ch = 0u; ch < 6u; ch++) {
+        dda[ch] = r_u8(r);
+    }
+    noise[0] = r_u8(r);
+    noise[1] = r_u8(r);
+    if (commit) {
+        for (ch = 0u; ch < 6u; ch++) {
+            inst->psg_freq[ch] = freq[ch];
+            inst->psg_ctl[ch] = ctl[ch];
+            inst->psg_bal[ch] = bal[ch];
+            inst->psg_widx[ch] = widx[ch];
+            inst->psg_dda[ch] = dda[ch];
+        }
+        inst->psg_select = sel;
+        inst->psg_main_bal = main_bal;
+        inst->psg_lfo_freq = lfo_freq;
+        inst->psg_lfo_ctl = lfo_ctl;
+        inst->psg_noise[0] = noise[0];
+        inst->psg_noise[1] = noise[1];
+        return (uint32_t)DS_SNAPREF_NONE;
+    }
+    bad |= ((uint32_t)sel & ~ds_psg_reg_mask(0u)) != 0u ? 1u : 0u;      /* select > 7 */
+    bad |= ((uint32_t)lfo_ctl & ~ds_psg_reg_mask(9u)) != 0u ? 1u : 0u;  /* lfo_ctl & $7C */
+    for (ch = 0u; ch < 6u; ch++) {
+        bad |= (((uint32_t)freq[ch] >> 8) & ~ds_psg_reg_mask(3u)) != 0u ? 1u : 0u; /* freq > $FFF */
+        bad |= ((uint32_t)ctl[ch] & ~ds_psg_reg_mask(4u)) != 0u ? 1u : 0u;          /* ctl & $20 */
+        bad |= ((uint32_t)widx[ch] & ~ds_psg_reg_mask(6u)) != 0u ? 1u : 0u;         /* widx > 31 */
+        bad |= ((uint32_t)dda[ch] & ~ds_psg_reg_mask(6u)) != 0u ? 1u : 0u;          /* dda > 31 */
+        bad |= (ctl[ch] & 0x40u) != 0u && widx[ch] != 0u ? 1u : 0u;                 /* DDA set with widx != 0 */
+        v->psg_ctl[ch] = ctl[ch];
+    }
+    bad |= ((uint32_t)noise[0] & ~ds_psg_reg_mask(7u)) != 0u ? 1u : 0u; /* noise & $60 */
+    bad |= ((uint32_t)noise[1] & ~ds_psg_reg_mask(7u)) != 0u ? 1u : 0u;
+    v->psg_lfo_ctl = lfo_ctl;
+    return bad != 0u ? (uint32_t)DS_SNAPREF_field : (uint32_t)DS_SNAPREF_NONE;
+}
+
+static uint32_t dec_psgw(struct ds_instance *inst, struct vctx *v, struct rd *r, int commit)
+{
+    uint32_t i;
+    uint32_t bad = 0u;
+
+    (void)v;
+    for (i = 0u; i < 192u; i++) {
+        uint8_t b = r_u8(r);
+
+        if (commit) {
+            inst->psg_wave[i] = b;
+        } else {
+            bad |= ((uint32_t)b & ~ds_psg_reg_mask(6u)) != 0u ? 1u : 0u; /* a wave byte > 31 */
+        }
+    }
+    return bad != 0u ? (uint32_t)DS_SNAPREF_field : (uint32_t)DS_SNAPREF_NONE;
+}
+
+/* the next event machine_time + r - 1 of a counter with r >= 1 lies on the tick grid of d (D-185, D-203) */
+static uint32_t psg_on_grid(const struct vctx *v, uint32_t rem, uint32_t d)
+{
+    return (v->time + (uint64_t)rem - 1u) % d == 0u ? 1u : 0u;
+}
+
+static uint32_t dec_psgt(struct ds_instance *inst, struct vctx *v, struct rd *r, int commit)
+{
+    uint32_t rem[6];
+    uint32_t nrem[2];
+    uint32_t lfsr[2];
+    uint32_t k;
+    uint32_t d;
+    uint32_t bad = 0u;
+
+    for (k = 0u; k < 6u; k++) {
+        rem[k] = r_u32(r);
+    }
+    nrem[0] = r_u32(r);
+    nrem[1] = r_u32(r);
+    lfsr[0] = r_u32(r);
+    lfsr[1] = r_u32(r);
+    if (commit) {
+        for (k = 0u; k < 6u; k++) {
+            inst->psg_rem[k] = rem[k];
+        }
+        for (k = 0u; k < 2u; k++) {
+            inst->psg_nrem[k] = nrem[k];
+            inst->psg_lfsr[k] = lfsr[k];
+        }
+        return (uint32_t)DS_SNAPREF_NONE;
+    }
+    d = ds_psg_divisor(inst);
+    for (k = 0u; k < 6u; k++) {
+        if (psg_frozen(v, k) != 0u) {
+            bad |= rem[k] != 0u ? 1u : 0u; /* a frozen counter has no pending event */
+        } else if (rem[k] == 0u || rem[k] > (k == 1u ? DS_PSG_COUPLED_REM_MAX : DS_PSG_CHAN_REM_MAX)) {
+            bad |= 1u; /* a running counter has one, within its largest period */
+        } else {
+            bad |= psg_on_grid(v, rem[k], d) == 0u ? 1u : 0u;
+        }
+    }
+    for (k = 0u; k < 2u; k++) {
+        if (nrem[k] == 0u || nrem[k] > DS_PSG_NOISE_REM_MAX) {
+            bad |= 1u;
+        } else {
+            bad |= psg_on_grid(v, nrem[k], d) == 0u ? 1u : 0u;
+        }
+        bad |= lfsr[k] == 0u || lfsr[k] > DS_PSG_LFSR_MASK ? 1u : 0u; /* LFSR outside 1..$3FFFF */
+    }
+    return bad != 0u ? (uint32_t)DS_SNAPREF_field : (uint32_t)DS_SNAPREF_NONE;
+}
+
 /* the decoders in the order of the region table of serial.c; the tag is checked against that table at every step, so a table that drifts from the stream fails closed */
 static const struct {
     const char tag[5];
@@ -818,6 +971,7 @@ static const struct {
     {"PROF", dec_prof}, {"CONT", dec_cont}, {"POWR", dec_powr}, {"TIME", dec_time}, {"RAM8", dec_ram8}, {"MPRS", dec_mprs}, {"CPU0", dec_cpu0},
     {"BUS0", dec_bus0}, {"TIMR", dec_timr}, {"IRQC", dec_irqc}, {"IRQS", dec_irqs}, {"BLKT", dec_blkt}, {"IOPT", dec_iopt}, {"SCHD", dec_schd},
     {"VCE0", dec_vce0}, {"PALT", dec_palt}, {"VDC0", dec_vdc0}, {"BEAM", dec_beam}, {"VDMA", dec_vdma}, {"VRAM", dec_vram}, {"SATB", dec_satb},
+    {"PSG0", dec_psg0}, {"PSGW", dec_psgw}, {"PSGT", dec_psgt},
 };
 
 /* one walk over the stream: pass 1 (commit 0) checks the prefix, the version, every frame and every field; pass 2 (commit 1) repeats the walk and stores. The frame checks are made in both passes, but in pass 2 they cannot fail: pass 1 has accepted these same bytes. */
@@ -835,6 +989,10 @@ static uint32_t walk(struct ds_instance *inst, const uint8_t *buf, int commit)
         v.slot_type[k] = 0u;
     }
     v.time = 0u;
+    for (k = 0u; k < 6u; k++) {
+        v.psg_ctl[k] = 0u;
+    }
+    v.psg_lfo_ctl = 0u;
     for (i = 0u; i < prefix_len; i++) {
         if (r_u8(&r) != (uint8_t)prefix[i]) {
             return (uint32_t)DS_SNAPREF_prefix;

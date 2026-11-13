@@ -72,3 +72,23 @@ DS_CONST(vdc_bsy_level, 0, "LED-VID-0015")
 DS_CONST(vdc_dma_dots_per_word, 4, "LED-VID-0014")
 DS_CONST(bg_off_index, 0, "LED-VID-0010")
 DS_CONST(vid_cgy2_as, 3, "LED-VID-0011")
+/*
+ * The PSG rows (plan 05-03; D-184, D-185, D-187, D-193, D-194, D-205, D-220, D-228, PR-3): 15 rows, all assumed. The sample grid is a definition of the record (LED-AUD-0014), the tick phase an assumption (LED-AUD-0012); the zero-value conventions of F, FLF and
+ * NFRQ (LED-AUD-0007), the LFSR reset, taps (137219 = $21803, bits 0, 1, 11, 12 and 17) and the high output level (LED-AUD-0010), the silence threshold (LED-AUD-0008) and the register-side conventions (LED-AUD-0004: select 6/7 dropped, R6 stores while the
+ * channel is on, key-on keeps the wave index, DDA 1 -> 0 and TRG 1 -> 0 restart the counter) are the project's readings of P8-2..P8-10 and H8-23, cited in the ledger entries.
+ */
+DS_CONST(psg_mclk_per_sample, 192, "LED-AUD-0014")
+DS_CONST(psg_sample_phase_mclk, 0, "LED-AUD-0014")
+DS_CONST(psg_tick_phase_mclk, 0, "LED-AUD-0012")
+DS_CONST(psg_f0_as, 4096, "LED-AUD-0007")
+DS_CONST(psg_lfo_f0_as, 256, "LED-AUD-0007")
+DS_CONST(psg_noise_nf0_ticks, 32, "LED-AUD-0007")
+DS_CONST(psg_lfsr_reset, 1, "LED-AUD-0010")
+DS_CONST(psg_lfsr_taps, 137219, "LED-AUD-0010")
+DS_CONST(psg_noise_high_level, 31, "LED-AUD-0010")
+DS_CONST(psg_silence_att, 30, "LED-AUD-0008")
+DS_CONST(psg_select_67_drop, 1, "LED-AUD-0004")
+DS_CONST(psg_wave_write_when_on, 1, "LED-AUD-0004")
+DS_CONST(psg_keyon_widx_step, 0, "LED-AUD-0004")
+DS_CONST(psg_dda_release_restart, 1, "LED-AUD-0004")
+DS_CONST(psg_trg_release_restart, 1, "LED-AUD-0004")

@@ -24,12 +24,14 @@
 # core, then set the version to 8 and appended the seven frames written by hand from the D-165 layout (VCE0 3, PALT 1024, VDC0 45, BEAM 33, VDMA 25, VRAM 65536 and SATB 512 bytes, all zero except BEAM, whose rcr_counter 16384 (bytes
 # 00 40 at payload offset 14), frame_lines 262 (06 01 at 16) and display_k 0xFFFF (FF FF at 12) are the boot values of the rules, F-11); the 92255-byte stream it wrote hashes to the new literal under shasum -a 256. Evidence tier E0:
 # it pins the encoding and shows repeatability, never that the state is right.
+# Plan 05-03 (serial 8 to 9, D-202): the version 8 stream of this case was dumped by a scratch copy of the version 8 tree and its shasum -a 256 equalled the old literal 588a0c69... first; a throwaway python script outside the repository, which never called the new core,
+# set the version to 9 and appended PSG0 (42 zero bytes), PSGW (192 zero bytes: seeded-prng-v1 draws no wave) and PSGT (24 zero bytes, then 01 00 00 00 four times: noise distances 1 and LFSRs 1 at time 0); shasum -a 256 of that 92553-byte stream is the digest literal.
 id = "digest_stream_prefix"
 kind = "digest_stream"
 fixture = "plain-256k"
 request = "bind.powerup_policy=seeded-prng-v1;seed=42"
-expect = "version=8;frames=PROF:32,CONT:40,POWR:16,TIME:8,RAM8:8192,MPRS:8,CPU0:8,BUS0:3,TIMR:11,IRQC:3,IRQS:160,BLKT:11,IOPT:6,SCHD:16392,VCE0:3,PALT:1024,VDC0:45,BEAM:33,VDMA:25,VRAM:65536,SATB:512;size=262144;enum=1;digest=588a0c69fd755911f50a7d810ab7e10387da7862f67b7ff921a0eb28dd4a8249"
-meaning = "The digest stream is the framed, little-endian stream of twenty-one regions behind the prefix and version, its payloads match the instance, and ds_digest is the SHA-256 of exactly that stream and of the independently derived literal"
+expect = "version=9;frames=PROF:32,CONT:40,POWR:16,TIME:8,RAM8:8192,MPRS:8,CPU0:8,BUS0:3,TIMR:11,IRQC:3,IRQS:160,BLKT:11,IOPT:6,SCHD:16392,VCE0:3,PALT:1024,VDC0:45,BEAM:33,VDMA:25,VRAM:65536,SATB:512,PSG0:42,PSGW:192,PSGT:40;size=262144;enum=1;digest=1e72766e7786f92e385cc753d9d8d370293836fbe6b1a2932d77df3c3cb6cc20"
+meaning = "The digest stream is the framed, little-endian stream of twenty-four regions behind the prefix and version, its payloads match the instance, and ds_digest is the SHA-256 of exactly that stream and of the independently derived literal"
 required = true
 control = false
 expect_outcome = "pass"
