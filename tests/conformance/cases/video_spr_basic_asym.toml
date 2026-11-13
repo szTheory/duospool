@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
 # The asymmetric sprite scene (plan 04.1-01; D-155, D-159, D-168, D-169, D-171, D-172, ER-10, ER-11, ER-12): the authored fixture fixtures/src/spr_basic.s draws an asymmetric 16 x 16 pattern (a diagonal in plane SG0 and the left half in plane SG1) without a flip, with an X flip, a Y flip and both (the pixel bit order inside a pattern row and the flips), a pair of cells with an
-# X flip, a 64 line stack drawn with the CGY field 2 (the cell order of a stack and the height of CGY 2) and sprites cut by the left, the right and the top edge of the display, and the runner kind video judges the line records of frame 5 by group with the rows of fixtures/src/spr_basic.vexp.
+# X flip, a 32 line stack with a Y flip (the flip mirrors the whole height), a 64 line stack drawn with the CGY field 2 (the cell order of a stack and the height of CGY 2) and sprites cut by the left, the right and the top edge of the display, and the runner kind video judges the line records of frame 5 by group with the rows of fixtures/src/spr_basic.vexp.
 # Class: every row is ASSUMED LED-VID-0011 (no page held prints which dot of a pattern row is leftmost, how a flip reads an asymmetric pattern, how the CGY field 2, which H7-23 marks not used, is drawn, the top to bottom order of the cells of a stack, or the clipping at the edges; the plane significance and the cell offsets are page-stated, H7-21 to H7-24, and are judged by
 # the solid scene). Role: literal (D-172). The group kills are in the vexp file.
 # The evidence text prints video_sha256=... E0 repeatability: no pixel-accurate or hardware claim, no sprite-accurate or sprite pattern addressing claim for the CGY field 2, and the word pass is not a support claim.

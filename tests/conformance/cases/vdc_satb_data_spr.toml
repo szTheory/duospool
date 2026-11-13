@@ -3,7 +3,7 @@
 #
 # The second witness of the SATB copy (plan 04.1-01; D-150, D-175 (c), ER-5, T-04-36): the runner kind vdc_satb_data runs the authored spr_basic fixture under each of the three default power-on policies to the end of its DSV1 verdict and compares the 256 SATB words of the instance, assembled byte by byte, with the 256 VRAM words of the block at word $1000 (4096) that the guest
 # copied from by DVSSR.
-# The guest's own checks 3 and 4 compare that source block, read back through VRR, with the ROM table it was uploaded from (GUEST), so the chain ROM table, VRAM source block, SATB has two links read by two paths, and the visible sprite of video_spr_basic_solid is the third witness of the same copy. The block holds 18 sprite entries and the filler words of the fixture, so a
+# The guest's own checks 3 and 4 compare that source block, read back through VRR, with the ROM table it was uploaded from (GUEST), so the chain ROM table, VRAM source block, SATB has two links read by two paths, and the visible sprite of video_spr_basic_solid is the third witness of the same copy. The block holds 19 sprite entries and the filler words of the fixture, so a
 # copy from a wrong address, with the bytes swapped or of the wrong length fails, and the kind requires at least 16 distinct words.
 # Evidence tier E0: no accuracy or hardware claim, and the word pass is not a support claim.
 id = "vdc_satb_data_spr"

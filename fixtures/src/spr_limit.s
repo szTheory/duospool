@@ -13,7 +13,8 @@
 ; S16 16 sprites of 16 dots at one line (display line 20), dots 0 to 255 side by side, palette 0 to 15. S16 again with HDR $011F (HDE 1: e = 8, 12 slots). S18 18 sprites, X step 14 (dots 14 * i, overlapping by two). S18 with HDR $051F (HDE 5: e = 12, so 2 * (e - 2) = 20 and the cap of 16 binds). S17 17 sprites, X step 15, with HDR $051F (e = 12) like the scene before it: only
 ; a cap of 16 (the formula gives 20) leaves the 17th without a slot. SPART seven 32-wide sprites, a 16-wide and a 32-wide at
 ; display line 140: 15 slots used,
-;   one left. SNAR entries 55 to 63 only (zeros before), with HDR $031B (HDW 27: d = 28, 2d + 1 = 57 entries searched). SCOL a 32-wide, 64-high sprite 0 with a collider that overlaps its transparent half (lines 36 to 51), one that overlaps its opaque half (lines 52 to 67) and two other sprites that overlap each other (lines 100 to 115).
+;   one left; the 16-wide one lies under the left cell of entry 6 (dots 192 to 207, the lower entry wins) and the 32-wide one at the dots 224 to 255, so the right cell it has no slot for would land inside the window (review fix M-02).
+; SNAR entries 55 to 63 only (zeros before), with HDR $031B (HDW 27: d = 28, 2d + 1 = 57 entries searched). SCOL a 32-wide, 64-high sprite 0 with a collider that overlaps its transparent half (lines 36 to 51), one that overlaps its opaque half (lines 52 to 67) and two other sprites that overlap each other (lines 100 to 115).
 ; The guest reads the status register after one clean frame (a read clears bits 0 to 5, H7-4) and stores it as a check: CR bit 1 (OR) enables the overflow flag and CR bit 0 the collision flag (H7-4); the status polled, not taken as IRQ1 (vdc_stat judges the level). Nothing here is read from a DuoSpool run. No HuC, PCEAS, emulator or cc65 library code.
         .setcpu "huc6280"
 
@@ -177,8 +178,8 @@ fixture_main:
         VDC_REG BG_R_HDR, HDR_A
         SATB_START
         BAND 7, 204, 32, 32, $104, SPR_CGX
-        BAND 1, 204, 256, 0, $100, 7
-        BAND 1, 204, 272, 0, $104, SPR_CGX | 8
+        BAND 1, 204, 224, 0, $100, 7    ; dots 192 to 207, under the left cell of entry 6
+        BAND 1, 204, 256, 0, $104, SPR_CGX | 8 ; dots 224 to 255: the left cell takes the last slot, the right cell (240 to 255) has none
         ZFILL 220
         SPR_SATB_GO
         BG_FRAME

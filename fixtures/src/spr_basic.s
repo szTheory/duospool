@@ -9,7 +9,7 @@
 ; the right cell pixel 3 (PC $104, CGX); $2100 and $2180 two cells of pixel 10 (a 32-high stack, PC $108, CGY 1);
 ; $2200, $2280, $2300 and $2380 four cells of pixel 5 (a 64-high stack, PC $110, CGY 3); $2400 and $2440 a pair, the left cell pixel 15 and the right cell pixel 0 (PC $120). The second group (asymmetric, ASSUMED LED-VID-0011): $2480 one cell, the asymmetric pattern spr_asym (PC $124); $2600, $2680, $2700 and $2780 four cells of pixel 1, 2, 4 and 8 (a stack drawn with the CGY
 ; field 2, PC $130).
-; The SATB source block of 256 words is at VRAM word $1000: 18 sprite entries (spr_satb below, listed in the vexp comments with the lines and dots each covers) and, for the other 46 entries, the words ($03C0 + $0400 * w) & $FFFF (w is the word number: Y = X = 960 in the low 10 bits, which no display line reaches). A write of the high byte of DVSSR arms the copy at the next
+; The SATB source block of 256 words is at VRAM word $1000: 19 sprite entries (spr_satb below, listed in the vexp comments with the lines and dots each covers) and, for the other 45 entries, the words ($03C0 + $0400 * w) & $FFFF (w is the word number: Y = X = 960 in the low 10 bits, which no display line reaches). A write of the high byte of DVSSR arms the copy at the next
 ; vertical blanking (H7-12), one frame of delay lets it run, then CR = $00C0 (BB and SB set)
 ; draws the sprites from the next frame and six frame delays (BG_FRAME of bg.inc, counted loops that read no register) hold the scene. The frame numbers the vexp judges are measured from this sequence, not computed: a frame that is not the intended one fails its rows, it never passes them. At most 4 sprites cover any display line, so no slot limit binds (plan 04.1-02 owns the limit).
 ; Nothing here is read from a DuoSpool run. No HuC, PCEAS, emulator or cc65 library code.
@@ -79,7 +79,7 @@ spr_asym:
         .repeat 32
         .word $0000
         .endrepeat
-; the SATB source block: 18 entries (Y, X, PC, attributes), then the filler words. Y = display line + 64 and X = dot + 32 (H7-13); PC = pattern word address >> 5 (H7-21); the attributes are the sums of the SPR_ bits of spr.inc and the palette bank
+; the SATB source block: 19 entries (Y, X, PC, attributes), then the filler words. Y = display line + 64 and X = dot + 32 (H7-13); PC = pattern word address >> 5 (H7-21); the attributes are the sums of the SPR_ bits of spr.inc and the palette bank
 spr_satb:
         SPR_ENTRY 84, 72, $100, $0002                   ; 0  S0 16 x 16 pixel 15, palette 2: display lines 20 to 35, dots 40 to 55
         SPR_ENTRY 84, 132, $104, SPR_CGX | 5            ; 1  S1 32 x 16 pair pixel 12 then 3, palette 5: lines 20 to 35, dots 100 to 131
@@ -99,8 +99,9 @@ spr_satb:
         SPR_ENTRY 124, 280, $124, 1                     ; 15 A6 asymmetric cell, no flip, at X = 280: dots 248 to 263 (right edge clip), lines 60 to 75
         SPR_ENTRY 56, 72, $124, 1                       ; 16 A7 asymmetric cell at Y = 56: lines -8 to 7 (top clip), dots 40 to 55
         SPR_ENTRY 214, 132, $104, SPR_CGX | SPR_XFLIP | 5 ; 17 A8 the pair of S1 with X flip: lines 150 to 165, dots 100 to 131
-        .repeat 184, i
-        .word ($03C0 + $0400 * (i + 72)) & $FFFF
+        SPR_ENTRY 230, 232, $130, SPR_YFLIP | SPR_CGY1 | 10 ; 18 A9 16 x 32 (CGY 1), the top cell pixel 1 and the bottom cell pixel 2 of the A4 stack, Y flip, palette 10: lines 166 to 197, dots 200 to 215 (review fix M-02)
+        .repeat 180, i
+        .word ($03C0 + $0400 * (i + 76)) & $FFFF
         .endrepeat
         .popseg
 
@@ -159,7 +160,7 @@ fixture_main:
         SPR_PAT $2400, spr_c15          ; the pair of S8 (PC $120): the left cell pixel 15
         SPR_PAT $2440, spr_c0           ; the right cell, pixel 0
         SPR_PAT $2480, spr_asym         ; the asymmetric cell (PC $124)
-        SPR_PAT $2600, spr_c1           ; the stack of A4 (PC $130): pixel 1, 2, 4 and 8 from the top
+        SPR_PAT $2600, spr_c1           ; the stack of A4 (PC $130): pixel 1, 2, 4 and 8 from the top; A9 draws the first two as a 32-high stack
         SPR_PAT $2680, spr_c2
         SPR_PAT $2700, spr_c4
         SPR_PAT $2780, spr_c8

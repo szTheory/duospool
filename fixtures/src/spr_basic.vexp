@@ -34,6 +34,8 @@
 #   A4 entry 13: CGY field 2 (drawn as 64 lines high, vid_cgy2_as), palette 3, cells pixel 1, 2, 4 and 8 from the top (indices 305, 306, 308 and 312), lines 100 to 163, dots 188 to 203. A5 entry 14: the cell with X flip at X = 24, so the dots -8 to 7: the dots 0 to 7 show the source columns 7 down to 0; A6 entry 15: no flip at X = 280, dots 248 to 263: the dots 248 to 255 show
 # the columns 0 to 7;
 #   A7 entry 16: at Y = 56, lines -8 to 7: the display line k shows the row k + 8. Rows are chosen where two non-zero pixel values and the transparent dots show (the non-vacuity rule of D-171).
+#   A9 entry 18 (review fix M-02): 16 x 32 (CGY 1) at PC $130, so the cells $2600 (pixel 1, top) and $2680 (pixel 2, bottom) of the A4 stack, Y flip, palette 10 (indices 417 and 418), lines 166 to 197, dots 200 to 215. The Y flip mirrors the whole height (H7-23: the flip inverts the stack up-down; the
+# reading is ASSUMED LED-VID-0011): the display row j shows the source row 31 - j, so the first line (166, j = 0) shows the bottom cell (418) and the 17th line (182, j = 16) the top cell (417); a flip of each cell on its own would show 417 then 418. Both rows also hold the opaque background stripe at the dots 176 to 183 (index 15).
 # Derived rows (display row j of the source pattern; px(r, c) as above): A0 row 0 is [275, 274 x 7, 0 x 8], row 9 is [274 x 8, 0, 273, 0 x 6]. A1 row 0 mirrored: [0 x 8, 274 x 7, 275], row 9: [0 x 6, 273, 0, 274 x 8]. A2 row 0 is the source row 15, [274 x 8, 0 x 7, 273], row 9 the source row 6, [274 x 6, 275, 274, 0 x 8]. A3 row 0 is the source row 15 mirrored, [273, 0 x 7,
 # 274 x 8], row 9 the source row 6 mirrored, [0 x 8, 274, 275, 274 x 6].
 scene	video_spr_basic_solid	case=video_spr_basic_solid	role=literal
@@ -76,6 +78,8 @@ row	video_spr_basic_asym	flips	line=active+209;x=70..89;frame=5	index=2*0,6*274,
 row	video_spr_basic_asym	flips	line=active+200;x=102..121;frame=5	index=2*0,273,7*0,8*274,2*0
 row	video_spr_basic_asym	flips	line=active+209;x=102..121;frame=5	index=10*0,274,275,6*274,2*0
 row	video_spr_basic_asym	flips	line=active+150;x=96..135;frame=5	index=4*0,16*339,16*348,4*0
+row	video_spr_basic_asym	flips	line=active+166;x=180..219;frame=5	index=4*15,16*0,16*418,4*0
+row	video_spr_basic_asym	flips	line=active+182;x=180..219;frame=5	index=4*15,16*0,16*417,4*0
 group	video_spr_basic_asym	cgy2	form=ROWS	class=ASSUMED:LED-VID-0011	sym=asym	kills=F0,F1,F2,F7
 row	video_spr_basic_asym	cgy2	line=active+100;x=176..207;frame=5	index=8*15,4*335,16*305,4*0
 row	video_spr_basic_asym	cgy2	line=active+116;x=176..207;frame=5	index=8*15,4*0,16*306,4*0
@@ -93,4 +97,7 @@ row	video_spr_basic_asym	clip	line=active+1;x=38..57;frame=5	index=2*0,8*274,0,2
 # cc16b853bcdc1a71cece91b8fe7436a8a1234ecf7fc8677febc8c5d36a3f7cfd, new digest eaf53309d6f8640701406fdfbdb395c0b76d27d8c0c01c481d5a464793db0f66.
 # The literal cases video_spr_basic_solid and video_spr_basic_asym passed on the new stream first; the new digest was recomputed outside the core with shasum -a 256 over the --video-out file of video_spr_basic_solid and equals the digest the core prints. E0 repeatability, a change detector and no
 # verdict (ER-11).
-golden	video_spr_basic_solid	sha256=eaf53309d6f8640701406fdfbdb395c0b76d27d8c0c01c481d5a464793db0f66
+# Repinned by the Phase 4.1 review fix M-02 in the same commit as the change: SATB entry 18 (A9, a 16 x 32 sprite with Y flip at lines 166 to 197, dots 200 to 215) replaces four filler words, so the records of those lines change. Old digest eaf53309d6f8640701406fdfbdb395c0b76d27d8c0c01c481d5a464793db0f66,
+# new digest dbb97fefdae473de71c4470de269b5cba3c30aaf158bea916dc7d139dc1f287a. The literal cases video_spr_basic_solid and video_spr_basic_asym (with the two new A9 rows) passed on the new stream first; the new digest was recomputed outside the core with shasum -a 256 over the --video-out file of
+# video_spr_basic_solid and equals the digest the core prints. E0 repeatability, a change detector and no verdict (ER-11).
+golden	video_spr_basic_solid	sha256=dbb97fefdae473de71c4470de269b5cba3c30aaf158bea916dc7d139dc1f287a

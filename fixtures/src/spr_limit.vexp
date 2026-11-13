@@ -17,7 +17,8 @@
 # The scenes (frames read from the guest's own sequence on one run, as a calibration and never as a literal; the author's mark held=F says the literal does not rest on the number, a neighbouring frame shows the same page values or fails):
 # F4 16 sprites, entry i at dots 16 i to 16 i + 15 (Y 84: display lines 20 to 35), palette i, pixel 15: index 271 + 16 i. F5 the same with HDE 1 (e = 8: 12 slots). F7 18 sprites at X step 14 (the sprite i covers the dots 14 i to 14 i + 15, so the lower entry wins two dots of each overlap), F8 the same with HDE 5 (e = 12: 20 by the formula, 16 by the cap). F10 17 sprites at X
 # step 15 with HDE 5 (e = 12), so that only the cap of 16 leaves the 17th without a slot.
-# F12 seven 32-wide sprites (cells pixel 12 then pixel 3, palette i) at dots 32 i to 32 i + 31, a 16-wide sprite (palette 7) at dots 224 to 239 and a 32-wide sprite (palette 8) at dots 240 to 271, display lines 140 to 155: 7 * 2 + 1 = 15 slots are used and one is left. F14 HDR $031B (HDW 27: d = 28, active_w 224, 2d + 1 = 57 entries searched), the SATB zero before entry 55 and
+# F12 seven 32-wide sprites (cells pixel 12 then pixel 3, palette i) at dots 32 i to 32 i + 31, a 16-wide sprite (palette 7) at dots 192 to 207 (under the left cell of entry 6, which wins) and a 32-wide sprite (palette 8) at dots 224 to 255, display lines 140 to 155:
+# 7 * 2 + 1 = 15 slots are used and one is left (review fix M-02: the right cell of the half-taken sprite lies inside the window, so the left-cell-only rule can fail). F14 HDR $031B (HDW 27: d = 28, active_w 224, 2d + 1 = 57 entries searched), the SATB zero before entry 55 and
 # nine sprites of 16 dots at the dots 0, 16, ... from entry 55 (palette 3 + i, i = entry - 55).
 # F16 and F18 the scene of sprite 0: a 32-wide, 64-high sprite (cells (cx, cy) at $3000 + $40 cx + $80 cy; cy 0 pixels 12 and 3, cy 1 pixels 5 and 0, cy 2 pixels 6 and 0, cy 3 pixels 9 and 9; palette 1; Y 84: display lines 20 to 83, dots 40 to 71), entry 1 (palette 2, display lines 36 to 51, dots 56 to 71: over the transparent right cell of cy 1), entry 2 (palette 3, display
 # lines 52 to 67, dots 48 to 63: over the opaque left cell of cy 2) and entries 3 and 4 (palettes 4 and 5, lines 100 to 115, dots 40 to 55 and 48 to 63, overlapping each other, sprite 0 not on the line).
@@ -26,8 +27,8 @@
 # 239: entry 13 wins the dots 196 and 197 (479), entry 14 shows 198 to 211 (495),
 # entry 15 shows 212 to 225 (511), entries 16 and 17 (palettes 0 and 1: 271 and 287 at 224 to 239 and 238 to 253) are dropped, so 226 to 239 are 0; slots_used 16, covering 18, OVERFLOW 1 and COLLISION 1 (sprite 0 is opaque at the dots 14 and 15, where entry 1 is also opaque: H7-4(a)). F8 the same dots and counts under the cap. F10 line 20, dots 222 to 255: entry 14 shows 211
 # to 225 (495) so 222 to 225 are 495, entry 15 shows 226 to 240 (511),
-# entry 16 (dots 240 to 255, 271 if it were drawn) is dropped so 241 to 255 are 0; slots_used 16, covering 17, OVERFLOW 1, COLLISION 1. F12 line 140, dots 200 to 255: entry 6 (palette 6) has its left cell at the dots 192 to 207 (pixel 12: 364) and its right cell at 208 to 223 (pixel 3: 355), entry 7 shows 224 to 239 (256 + 112 + 15 = 383), entry 8 has one slot, so only its
-# left cell (pixel 12: 256 + 128 + 12 = 396) at 240 to 255; slots_used 16, covering 9, OVERFLOW 1.
+# entry 16 (dots 240 to 255, 271 if it were drawn) is dropped so 241 to 255 are 0; slots_used 16, covering 17, OVERFLOW 1, COLLISION 1. F12 line 140, dots 200 to 255: entry 6 (palette 6) has its left cell at the dots 192 to 207 (pixel 12: 364) and its right cell at 208 to 223 (pixel 3: 355), entry 7 (256 + 112 + 15 = 383 if it were shown) lies under the left cell of entry 6,
+# which wins, entry 8 has one slot, so only its left cell (pixel 12: 256 + 128 + 12 = 396) at 224 to 239, and its right cell (pixel 3: 387 if it were drawn) is not drawn, so 240 to 255 are 0; slots_used 16, covering 9, OVERFLOW 1, COLLISION 0 (sprite 0 overlaps no other sprite).
 # F14 line 20: the entries 55 and 56 are taken (palettes 3 and 4: 319 and 335 at the dots 0 to 15 and 16 to 31), the entries 57 to 63 are at the dots 32 to 127 and are never searched, so the dots 32 to 63 are 0; slots_used 2, covering 2 (the covering count of the searched entries). F16 and F18: sprite 0 is 2 slots and a collider is one, so slots_used 3 where one collider is on
 # the line and 2 where sprite 0 or two colliders are: lines 20 to 35 (sprite 0 alone: 2 slots, covering 1), 36 to 51 (3, 2: entry 1 over the
 # transparent right cell, so the two never share an opaque dot), 52 to 67 (3, 2: entry 2 over the opaque left cell: the COLLISION flag), 68 to 83 (2, 1) and 100 to 115 (entries 3 and 4: 2, 2, sprite 0 not on the line so no collision). Rows: line 36 dots 36 to 75: 277 (palette 1, pixel 5) at 40 to 55, then entry 1 (303) at 56 to 71; line 52 dots 36 to 71: 278 (pixel 6) at 40 to
@@ -66,7 +67,7 @@ row	video_spr_limit	lim17	line=active+20;x=222..255;held=10	index=4*495,15*511,1
 group	video_spr_limit	slots17	form=STRUCT	class=ASSUMED:LED-VID-0012	sym=none	kills=F0,F4,F8
 row	video_spr_limit	slots17	check=spr_line	slots=16;covering=17;ovf=1;col=1;k=20;held=10
 group	video_spr_limit	half	form=ROWS	class=ASSUMED:LED-VID-0011	sym=order	kills=F0,F1,F7
-row	video_spr_limit	half	line=active+140;x=200..255;held=12	index=8*364,16*355,16*383,16*396
+row	video_spr_limit	half	line=active+140;x=200..255;held=12	index=8*364,16*355,16*396,16*0
 group	video_spr_limit	halfcnt	form=STRUCT	class=ASSUMED:LED-VID-0011	sym=none	kills=F0,F4,F8
 row	video_spr_limit	halfcnt	check=spr_line	slots=16;covering=9;ovf=1;col=0;k=140;held=12
 group	video_spr_limit	search	form=ROWS	class=MAN:H7-19	sym=order	kills=F0,F1,F7
