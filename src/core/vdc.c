@@ -13,7 +13,7 @@
  * A write operation stores (msb << 8) | latch at word MAWR through the accessor and then adds the IW increment (1, $20, $40, $80 for CR bits 12 and 11, MAN H7-7) to MAWR, even when the store is dropped. A read operation loads the buffer from VRAM[MARR] and then adds the same increment to MARR; the CPU receives the buffer as it was BEFORE
  * the new operation (MAN H7-5 and H7-25: the high byte write of MARR starts the read, the high byte read of VRR triggers the next word). All address arithmetic is unsigned and wraps modulo 65,536 (D-147).
  * VRAM is 65,536 bytes, word w = byte 2w | byte 2w+1 << 8, and every access goes through the ONE accessor pair below: a read at a word address at or above DS_CONST_vdc_vram_words returns DS_CONST_vdc_oob_read and a write there is dropped (ASSUMED LED-VID-0007). The status read returns the flag bits 0 to 5 with bit 6 (BSY) the named constant
- * and bit 7 zero, and clears bits 0 to 5 (MAN H7-4); ds_vdc_flag is the single status setter, with the enable gate of D-144 (its callers are the events of the ladder in beam.c since plan 04-08: VD and RR, and DS and DV since plan 04-10; OR and CR follow in plan 04.1-02 of Phase 4.1). A register write sets the line_dirty bits of D-161.
+ * and bit 7 zero, and clears bits 0 to 5 (MAN H7-4); ds_vdc_flag is the single status setter, with the enable gate of D-144 (its callers are the events of the ladder in beam.c since plan 04-08: VD and RR, and DS and DV since plan 04-10; and OR and CR since plan 04.1-02 of Phase 4.1: the sprite flags of a display line, raised at its EV_RCR). A register write sets the line_dirty bits of D-161.
  */
 #include <stddef.h>
 #include <stdint.h>

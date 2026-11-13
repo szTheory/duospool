@@ -405,8 +405,10 @@ int list_fixtures(const size_t *sweep, size_t nsweep);
 
 /* the kinds added after the Phase 3 code review (reviewkinds.c): brk_irq_sample (WR-01, BRK with an interrupt pending, both values of irq_i_sample) and dev_record_pc (WR-02, the pc field of the dev records of a block transfer) */
 /* the VDC and VCE C-level kinds (vdckinds.c, plan 04-05): vdc_fold (random partitions of the fold against one jump, the tie rule through the bus write path, the next-event invariant), vid_noninterference (a vid-only sink in four shapes against no sink under three policies) and snapshot_restore_video (restores at the stops of the video schedules, the concatenated stream
- * compared); vd_policy_request appends policy fragment i (0 zero, 1 and 2 seeded-prng-v3 seeds 1 and 2) to a case's request, as kind_guest does for its default list */
+ * compared); vd_policy_request appends policy fragment i (0 zero, 1 and 2 seeded-prng-v3 seeds 1 and 2) to a case's request, as kind_guest does for its default list. VD_POLICIES_VIDEO is the number of policies (zero and seed 1) that the video noninterference and restore runs use since lever (2) of D-176 (plan 04.1-01):
+ * the power-on dimension of the video fixtures is carried by vdc_poweron_policy_diff, which keeps all of VD_POLICIES */
 #define VD_POLICIES 3u
+#define VD_POLICIES_VIDEO 2u
 void kind_vdc_fold(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_vid_noninterference(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_snapshot_restore_video(const struct kase *k, struct ctx *c, char *got, size_t gotcap);

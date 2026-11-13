@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The only external dependency is the pinned checkout action (record 0006, D-62): one monthly, grouped update for all actions.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      all-actions:
+        patterns:
+          - "*"

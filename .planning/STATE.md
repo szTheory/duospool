@@ -1,20 +1,20 @@
 ---
 gsd_state_version: "1.0"
-current_phase: "04.1"
-current_phase_name: VDC Sprites
+current_phase: 5
+current_phase_name: PSG Raw Audio
 current_plan: Not started
-status: executing
-stopped_at: Phase 4 complete, ready to execute Phase 04.1
-last_updated: "2026-11-12T17:42:44.103Z"
+status: planning
+stopped_at: Phase 04.1 complete, ready to plan Phase 5
+last_updated: "2026-11-13T02:08:07.491Z"
 last_activity: 2026-11-12
-last_activity_desc: Phase 4 complete, transitioned to Phase 04.1
-state_head: 5ccd69784869345d88b0c14c9b5576928ca567f3
+last_activity_desc: Phase 04.1 complete, transitioned to Phase 5
+state_head: 9909561642c7635af558ea8f291dcc121b82e524
 progress:
   total_phases: 7
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 91
-  completed_plans: 88
-  percent: 57
+  completed_plans: 91
+  percent: 71
 ---
 
 # Project State
@@ -28,18 +28,18 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 
 ## Current Position
 
-Phase: 04.1 — VDC Sprites
+Phase: 5 — PSG Raw Audio
 Current Plan: Not started
 Total Plans in Phase: 3
-Status: Ready to execute
-Last activity: 2026-11-12 — Phase 4 complete, transitioned to Phase 04.1
+Status: Ready to plan
+Last activity: 2026-11-12 — Phase 04.1 complete, transitioned to Phase 5
 
-Progress: [██████░░░░] 57%
+Progress: [███████░░░] 71%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 88
+- Total plans completed: 91
 - Average duration: -
 - Total execution time: 0.0 hours
 
@@ -51,6 +51,7 @@ Progress: [██████░░░░] 57%
 | 2 | 22 | - | - |
 | 3 | 38 | - | - |
 | 4 | 16 | - | - |
+| 04.1 | 3 | - | - |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -147,6 +148,9 @@ Progress: [██████░░░░] 57%
 | Phase 04 P11 | about 50 min | 3 tasks | 30 files |
 | Phase 4 P12 | 1h | 3 tasks | 30 files |
 | Phase 04 P13 | 4h | 3 tasks | 22 files |
+| Phase 04.1 P01 | 57min | 4 tasks | 36 files |
+| Phase 04.1 P02 | about 1.7 h (local) | 3 tasks | 27 files |
+| Phase 04.1 P03 | about 1.9 hours | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -324,6 +328,14 @@ Recent decisions affecting current work:
 - [Phase 4]: 04-12: the burst frame and the backdrop index are classed ASSUMED LED-VID-0010, not MAN H7-6 (burst timing and backdrop colour are withheld words)
 - [Phase 04]: 04-13: the quiet-gate cut-line trigger fired (262 to 374 s user CPU against 150 s, load-dependent) and the cut is recommended; D-176 lever 1 applied (toy object libraries), levers 2 to 4 recorded
 - [Phase 04]: 04-13: seven page-scoped entries (LED-VID-0006, 0008, 0009, 0013, 0014, 0016, 0017) promoted to supported under ER-2; LED-VID-0011 stays assumed
+- [Phase 04.1]: Sprites are drawn from the SATB by the STATE and PIXEL split of D-155: ds_vid_sprites at every EV_LINE, composition only with a sink
+- [Phase 04.1]: Plan 04.1-01 levers: (2) video noninterference, restore and observer runs under two policies, (3) schedule 3072 dropped from the video chunk cases, (4) recorded not applied
+- [Phase 04.1]: bg_enab zeroes its SATB before SB is first set: a seeded power-on SATB draws random sprites (found by vdc_poweron_policy_diff)
+- [Phase 04.1]: Overflow is set when a covering sprite or half is dropped for lack of slots (a 17th sets it, ASSUMED LED-VID-0012); fixtures assert 16 and 18 as MAN H7-19 rows and 17 as an ASSUMED row
+- [Phase 04.1]: The record covering counts the covering entries among the searched ones; a narrow display searches 2d + 1 entries (MAN H7-19)
+- [Phase 04.1]: COLLISION is sprite 0 against a taken entry of another SATB index, both opaque at a dot of the window; the flag is in the record with the IE bits clear and in the status only through ds_vdc_flag at the EV_RCR of the displayed line
+- [Phase 04.1]: The cap of 16 shows only where 2 * (e - 2) exceeds 16, so the 17 sprite scene runs with HDE 5 and carries the guest check the toy vid-spr-limit turns red
+- [Phase 04.1]: 04.1-03: no sprite entry promoted under ER-2 (LED-VID-0011 and 0012 stay assumed, 0015 deferred, 0008 not widened); README sprite paragraph states E0 and labelled assumptions only
 
 ### Pending Todos
 
@@ -347,6 +359,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12T16:12:03.728Z
-Stopped at: Phase 4 complete, ready to execute Phase 04.1
+Last session: 2026-11-12T23:36:58.502Z
+Stopped at: Phase 04.1 complete, ready to plan Phase 5
 Resume file: None

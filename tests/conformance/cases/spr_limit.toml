@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The sprite slot, overflow and collision fixture seen from the guest (plan 04.1-02; D-155, D-159, D-160, D-169, D-170, ER-4, ER-5, ER-10): the authored fixture fixtures/src/spr_limit.s is assembled by ca65 in the gate (never committed), is booted on the core, writes the 256-wide window, the palette bijection P(i) = (91 * i + 17) & 511, a 32 x 32 BAT of the transparent tile,
+# eleven solid pattern cells and
+# for each scene a 256-word SATB source block that it copies by DMA before it switches the sprites on, and after one clean frame of each scene it reads the status register into a DSV1 verdict block that the runner judges from raw RAM.
+# The case has no policies key, so the guest kind runs the ROM under its default policy list (zero, seeded-prng-v3 seed 1, seed 2) and the check bytes must be equal in all three: every value the guest reads, it wrote or the machine derives from what it wrote. Check classes: the palette GUEST (pal_bijection), the 16 sprite row MAN H7-19,
+# the CR set row MAN H7-4, the 12-slot row and the 17 sprite row ASSUMED LED-VID-0012 (H7-4 says more than 17, H7-19 says 17 or more: a named disagreement, never asserted as MAN), and the 18 sprite row and the CR gated row ASSUMED LED-VID-0008 (a flag with its enable clear stays clear, the converse; review fixes H-01 and M-01 of the Phase 4.1 review).
+# The raster, the slot counts and the flags of the records are judged by the video case video_spr_limit. Evidence tier E0: no accuracy, compatibility or hardware claim, and the word pass is not a support claim. until_mclk is a deadline above the point where the guest seals its block.
+id = "spr_limit"
+kind = "guest"
+fixture = "authored:spr-limit"
+request = ""
+expect = "id=26"
+meaning = "The authored spr_limit fixture shows 16, 17 and 18 sprites on one line with 16 slots, the same 16 with 12 slots, and sprite 0 over another sprite with the CR enable set and clear, and reads the status after each, 8 passing checks (2 GUEST, 2 MAN, 4 ASSUMED), identical under three power-on policies"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 7500000
+checks = 8

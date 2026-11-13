@@ -1389,6 +1389,35 @@ st_want() {
   [ -z "$st_sel" ] || [ "$st_sel" = "$1" ]
 }
 
+# wf_mutation_flip TAGS CONTROL...: the check behind the job-shape selftests of workflow-check (quick task 261112-ci-parallel-awk). On a fresh copy of scripts/
+# every CONTROL (a tests/workflow case that holds an EXPECT) must meet its own expectation (exit 0 and EXPECT_OK); every tag in TAGS must label exactly one line of
+# the copy of the rules; with those lines deleted every CONTROL must exit 1 (the expected code is no longer reported, so the control flipped to broken).
+# Prints nothing and returns 0 only when all three hold.
+wf_mutation_flip() {
+  wm_tags=$1
+  shift
+  rm -rf "$cp_dir"
+  cp -R "$here" "$cp_dir"
+  wm_good=1
+  for wm_c in "$@"; do
+    wm_e=$(cat "tests/workflow/$wm_c/EXPECT")
+    if sh "$cp_dir/workflow-check" --root "tests/workflow/$wm_c" --expect "$wm_e" > "$tmp/st.out" 2>&1; then wm_r=0; else wm_r=$?; fi
+    if [ "$wm_r" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then :; else wm_good=0; fi
+  done
+  for wm_t in $wm_tags; do
+    wm_n=$(grep -c "$wm_t" "$cp_dir/lib/workflow-rules.awk" || true)
+    [ "$wm_n" -eq 1 ] || wm_good=0
+    grep -v "$wm_t" "$cp_dir/lib/workflow-rules.awk" > "$cp_dir/lib/workflow-rules.mutated" || true
+    mv "$cp_dir/lib/workflow-rules.mutated" "$cp_dir/lib/workflow-rules.awk"
+  done
+  for wm_c in "$@"; do
+    wm_e=$(cat "tests/workflow/$wm_c/EXPECT")
+    if sh "$cp_dir/workflow-check" --root "tests/workflow/$wm_c" --expect "$wm_e" > "$tmp/st.out" 2>&1; then wm_r=0; else wm_r=$?; fi
+    [ "$wm_r" -eq 1 ] || wm_good=0
+  done
+  [ "$wm_good" -eq 1 ]
+}
+
 selftest() {
   cp_dir="$tmp/selftest/scripts"
   mkdir -p "$tmp/selftest"
@@ -2385,14 +2414,15 @@ selftest() {
 
   # (v2) the cc65 rule of workflow-check is what turns the no-cc65-step and cc65-after-gate controls red (D-60, D-62 amended): each control, run with
   # --expect WF_NO_CC65_STEP, is met on an unmutated copy of scripts/ (exit 0, EXPECT_OK); with the one line tagged rule-cc65-step deleted from the copy
-  # of the rules the code is no longer reported, so the same runs must exit 1: both controls flipped to broken.
+  # of the rules the code is no longer reported, so the same runs must exit 1: all three controls flipped to broken (the third, no-cc65-step-mawk, shows the
+  # rule is per job: the job gate-gawk is clean there and only gate-mawk lacks the install).
   if st_want mutation-workflow-cc65; then
     st_ran=1
     rm -rf "$cp_dir"
     cp -R "$here" "$cp_dir"
     st_alive=0
     st_dead=0
-    for wcr in tests/workflow/no-cc65-step tests/workflow/cc65-after-gate; do
+    for wcr in tests/workflow/no-cc65-step tests/workflow/cc65-after-gate tests/workflow/no-cc65-step-mawk; do
       if sh "$cp_dir/workflow-check" --root "$wcr" --expect WF_NO_CC65_STEP > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
       if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=$((st_alive + 1)); fi
     done
@@ -2400,16 +2430,50 @@ selftest() {
     grep -v 'rule-cc65-step' "$cp_dir/lib/workflow-rules.awk" > "$cp_dir/lib/workflow-rules.mutated" || true
     mv "$cp_dir/lib/workflow-rules.mutated" "$cp_dir/lib/workflow-rules.awk"
     after=$(grep -c 'rule-cc65-step' "$cp_dir/lib/workflow-rules.awk" || true)
-    for wcr in tests/workflow/no-cc65-step tests/workflow/cc65-after-gate; do
+    for wcr in tests/workflow/no-cc65-step tests/workflow/cc65-after-gate tests/workflow/no-cc65-step-mawk; do
       if sh "$cp_dir/workflow-check" --root "$wcr" --expect WF_NO_CC65_STEP > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
       if [ "$r" -eq 1 ]; then st_dead=$((st_dead + 1)); fi
     done
-    if [ "$st_alive" -eq 2 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$st_dead" -eq 2 ]; then
+    if [ "$st_alive" -eq 3 ] && [ "$before" -eq 1 ] && [ "$after" -eq 0 ] && [ "$st_dead" -eq 3 ]; then
       echo "SELFTEST mutation-workflow-cc65 PASS"
     else
       echo "SELFTEST mutation-workflow-cc65 FAIL"; failed=1
     fi
   fi
+
+  # (v3) the job-shape rules of workflow-check (a timeout per job, a runs-on, a permissions block, a checkout and a gate step per work job, and the
+  # aggregator job gate: it exists, is named gate, needs exactly the other jobs, has if: always(), tests every needed result with test "$VAR" = success, runs
+  # nothing else and skips nothing). Each row is  selftest name | rule tags to delete | controls that must flip  (see wf_mutation_flip). The row
+  # mutation-workflow-agg-skipped deletes the result and the line rule together: the aggregator that treats skipped as success is red because of both.
+  for wm_row in \
+    "mutation-workflow-timeout|rule-timeout|no-timeout-gawk timeout-too-long no-timeout-gate" \
+    "mutation-workflow-job-runner|rule-runner-missing|no-runs-on-mawk" \
+    "mutation-workflow-job-perm|rule-job-perm|no-job-permissions-mawk" \
+    "mutation-workflow-job-checkout|rule-job-checkout|no-checkout-mawk" \
+    "mutation-workflow-job-gate|rule-job-gate|no-gate-run-mawk" \
+    "mutation-workflow-agg-missing|rule-agg-missing|agg-absent" \
+    "mutation-workflow-agg-name|rule-agg-name|agg-name" \
+    "mutation-workflow-agg-if|rule-agg-if|agg-no-always" \
+    "mutation-workflow-agg-needs|rule-agg-needs|agg-needs-one" \
+    "mutation-workflow-agg-result|rule-agg-result|agg-result-missing" \
+    "mutation-workflow-agg-line|rule-agg-line|agg-early-exit" \
+    "mutation-workflow-agg-oneline|rule-agg-oneline|agg-run-oneline" \
+    "mutation-workflow-agg-step-if|rule-agg-step-if|agg-step-if" \
+    "mutation-workflow-agg-skipped|rule-agg-result rule-agg-line|agg-skipped-ok"; do
+    wm_name=${wm_row%%|*}
+    wm_rest=${wm_row#*|}
+    wm_tags=${wm_rest%%|*}
+    wm_ctls=${wm_rest#*|}
+    if st_want "$wm_name"; then
+      st_ran=1
+      # shellcheck disable=SC2086
+      if wf_mutation_flip "$wm_tags" $wm_ctls; then
+        echo "SELFTEST $wm_name PASS"
+      else
+        echo "SELFTEST $wm_name FAIL"; failed=1
+      fi
+    fi
+  done
 
   # (w) the stale-status rule of docs-check is what turns the stale-status control red (TOOL-02): the control, run with --expect DOC_STALE_STATUS, is met
   # on an unmutated copy of scripts/ (exit 0, EXPECT_OK); with the one line tagged rule-stale deleted from the copy of the checker the code is no longer

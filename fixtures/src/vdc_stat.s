@@ -5,7 +5,7 @@
 ; The guest maps the hardware page at logical $0000 (MPR0 = $FF), so the VDC status and address register is at logical $0000 and the interrupt request register $1403 at logical $1403.
 ; It installs its own IRQ1 handler into the RAM vector slot before CLI (startup.inc, F-40), sets a vertical sum of 264 lines (VPR = $0F02, VDW = 239, VCR = 4, D-139: more than the frame length, so the cycle never repeats inside a frame), HDS = 2, HDW = 31 and RCR = 100, and never asserts an absolute line or frame number (D-136).
 ; The waits are counted loops or polls of the request register, the rows judge status bytes and the order of events, not positions. The interrupt handler reads $1403, then the status, then $1403 again and the status a second time, and stores the four bytes in a log in work RAM; the foreground reads the log.
-; The RR and VD rows, then the DV and DS rows of plan 04-10 (OR and CR join in plan 04-15). A: with every enable clear and the I flag set a wait of more than two frames passes, so RCR matches and VBlanks happened with their enables clear: the status reads $00 (check 1).
+; The RR and VD rows, then the DV and DS rows of plan 04-10 (the OR and CR rows of plan 04.1-02 follow in the sections H and I). A: with every enable clear and the I flag set a wait of more than two frames passes, so RCR matches and VBlanks happened with their enables clear: the status reads $00 (check 1).
 ; B: with only CR bit 3 set (VD) the request register polled in the foreground shows the IRQ1 level (check 2), the status shows bit 5 alone although RCR matches pass with CR bit 2 clear (check 3), the read ends the level (check 4) and clears the flag (check 5). C: the next VBlank is taken as IRQ1 and the handler reads the same status and runs once (checks 6, 7).
 ; D: synchronised on that VBlank, CR bit 2 (RR) is set after the earlier RCR matches passed and the status still reads $00 (check 8: enabling later never creates a flag); the next RCR match is taken as IRQ1 and the handler sees bit 2 alone, the level, the cleared second read and the dropped level (checks 9 to 13).
 ; E: with the I flag set a wait of 1.2 frames passes with RR enabled and VD not: the flag is raised again after the acknowledge and bit 5 stays clear although a VBlank passed (check 14). Check 15: bits 6 and 7 of every status byte read are 0.
@@ -14,7 +14,7 @@
         .setcpu "huc6280"
 
 DSV_ID = 17
-DSV_CHECKS = 21
+DSV_CHECKS = 27
 
         .include "startup.inc"
         .include "verdict.inc"
@@ -44,12 +44,25 @@ DSV_CHECKS = 21
         LIT 19, $20               ; ASSUMED:LED-VID-0013 a VRAM-to-SATB copy carried out at a VBlank with DCR bit 0 clear sets no DS: after the VBlank and a wait the status is $20, VD alone (bit 5)
         LIT 20, $28               ; ASSUMED:LED-VID-0013 with DCR bit 0 set the same copy sets DS, bit 3: the status is $28, VD and DS
         LIT 21, $00               ; MAN:H7-4 the status read cleared DS and VD: the next read is $00
+        LIT 22, $00               ; ASSUMED:LED-VID-0008 (the converse of H7-4) with CR bit 1 clear 18 sprites on a line (more than 17, so too many for any slot count of this setup) set no OR flag: the status read after a wait of more than a frame is $00
+        LIT 23, $02               ; ASSUMED:LED-VID-0008 with CR bit 1 set the same line sets OR, bit 1 alone (the CR enable is clear): $02
+        LIT 24, $00               ; MAN:H7-4 the status read cleared OR: the next read is $00
+        LIT 25, $00               ; ASSUMED:LED-VID-0008 (the converse of H7-4) with CR bit 0 clear sprite 0 opaque over sprite 1 sets no CR flag: the status read after a wait of more than a frame is $00
+        LIT 26, $01               ; MAN:H7-4 with CR bit 0 set the same collision sets CR, bit 0 alone (two sprites on the line, so no OR): $01
+        LIT 27, $00               ; MAN:H7-4 the status read cleared CR: the next read is $00
 
 IRQ_REQ = $1403                 ; $1403 with MPR0 = $FF: the request register
 H_COUNT = $2440                 ; how often the IRQ1 handler ran
 H_IDX = $2441                   ; the byte offset of the next log entry
 ST_OR = $2442                   ; the OR of every status byte the foreground read
 T_ST = $2443                    ; the status byte just read
+LIM_N = $2460                   ; the SATB writer parameters of the sections H and I (plan 04.1-02): the entry count
+LIM_I = $2461                   ; the entry being written
+LIM_Y = $2462                   ; word 0 (Y), low then high byte
+LIM_X = $2464                   ; word 1 (X), low then high byte, stepped by LIM_DX after each entry
+LIM_PC = $2466                  ; word 2 (the pattern code)
+LIM_ATTR = $2468                ; word 3 (the attributes; the palette of entry i is the low nibble of the base plus i, modulo 16)
+LIM_DX = $246A                  ; the X step in dots
 LOG = $2444                     ; the log, 4 bytes per handler run: $1403 before the status read, the first status read, $1403 after it, the second status read (16 bytes)
 
 ; DELAY k: a counted delay of 6 * k CPU cycles (LDY # is 2, each DEY is 2 and each taken BNE is 4, the last BNE 2): k from 1 to 255. Clobbers Y
@@ -107,6 +120,41 @@ done:
         ora a:ST_OR
         sta a:ST_OR
         lda a:T_ST
+        .endmacro
+
+; ZFILL nwords: nwords (1 to 256) zero words by VWR (AR = VWR). Clobbers X
+        .macro ZFILL nwords
+        .local zl
+        ldx #((nwords) & 255)
+zl:     st1 #0
+        st2 #0
+        dex
+        bne zl
+        .endmacro
+
+; BAND n, ey, ex0, edx, epc, eattr: n entries (at most 255) at the VRAM write address: word 0 = ey, word 1 = ex0 + edx * i, word 2 = epc, word 3 = eattr + (i & 15). Clobbers A
+        .macro BAND n, ey, ex0, edx, epc, eattr
+        lda #(n)
+        sta a:LIM_N
+        lda #<(ey)
+        sta a:LIM_Y
+        lda #>(ey)
+        sta a:LIM_Y+1
+        lda #<(ex0)
+        sta a:LIM_X
+        lda #>(ex0)
+        sta a:LIM_X+1
+        lda #<(epc)
+        sta a:LIM_PC
+        lda #>(epc)
+        sta a:LIM_PC+1
+        lda #<(eattr)
+        sta a:LIM_ATTR
+        lda #>(eattr)
+        sta a:LIM_ATTR+1
+        lda #(edx)
+        sta a:LIM_DX
+        jsr lim_band
         .endmacro
 
 fixture_main:
@@ -220,6 +268,58 @@ zlog:   stz a:LOG,x                     ; the log is cleared: work RAM holds dra
         CHECK_LIT 20                    ; VD and DS
         READ_STATUS
         CHECK_LIT 21                    ; cleared by the read
+; ---- H: OR gated by CR bit 1 (plan 04.1-02): 18 sprites of 16 dots on display line 20 (SATB entries 0 to 17 at an X step of 14, one solid cell at VRAM $2000), the SATB copied at the next vertical blanking before SB is set. With HDE 0, HSW 0 and HDS 2 the slot count is 2 * (5 - 2) = 6, so the line overflows whatever the slot rule ----
+        VDC_REG VR_DCR, $0000           ; no DS: the SATB copies below set no flag
+        VDC_REG 5, $0000
+        VDC_REG VR_MAWR, $2000
+        VDC_SEL VR_VWR
+        ldy #4
+cell_pl:
+        lda #$FF                        ; pixel 15: every plane is $FFFF
+        ldx #16
+cell_w: sta a:VDC_LO
+        sta a:VDC_HI
+        dex
+        bne cell_w
+        dey
+        bne cell_pl
+        VDC_REG VR_MAWR, $1400
+        VDC_SEL VR_VWR
+        BAND 18, 84, 32, 14, $100, 0
+        ZFILL 184
+        VDC_REG VR_DVSSR, $1400
+        WAITK 95                        ; the copy runs at the next vertical blanking
+        VDC_REG 5, $0040                ; SB set, no enable
+        WAITK 95
+        READ_STATUS
+        CHECK_LIT 22                    ; OR gated by its enable
+        VDC_REG 5, $0042                ; the OR enable (CR bit 1)
+        READ_STATUS                     ; enabling later creates no flag: this read is not judged
+        WAITK 95
+        READ_STATUS
+        CHECK_LIT 23                    ; OR alone
+        READ_STATUS
+        CHECK_LIT 24                    ; cleared by the read
+; ---- I: CR gated by CR bit 0 (plan 04.1-02): sprite 0 (X 72) and sprite 1 (X 80) on display line 20 overlap at the dots 48 to 55, both opaque ----
+        VDC_REG 5, $0040
+        VDC_REG VR_MAWR, $1400
+        VDC_SEL VR_VWR
+        BAND 1, 84, 72, 0, $100, 1
+        BAND 1, 84, 80, 0, $100, 2
+        ZFILL 248
+        VDC_REG VR_DVSSR, $1400
+        WAITK 95
+        READ_STATUS                     ; clears what the last frames set (not judged)
+        WAITK 95
+        READ_STATUS
+        CHECK_LIT 25                    ; CR gated by its enable
+        VDC_REG 5, $0041                ; the CR enable (CR bit 0)
+        READ_STATUS                     ; enabling later creates no flag: this read is not judged
+        WAITK 95
+        READ_STATUS
+        CHECK_LIT 26                    ; CR alone
+        READ_STATUS
+        CHECK_LIT 27                    ; cleared by the read
         rts
 
 ; the IRQ1 handler: the request register, the status (the acknowledge), the request register again, the status again; the four bytes go to the log. A and X are saved, Y is not used
@@ -244,3 +344,39 @@ irq1_h:
         plx
         pla
         rti
+
+; lim_band: LIM_N entries written by VWR from the parameters (the macro BAND fills them). Clobbers A
+lim_band:
+        stz a:LIM_I
+lb_next:
+        lda a:LIM_Y
+        sta a:VDC_LO
+        lda a:LIM_Y+1
+        sta a:VDC_HI
+        lda a:LIM_X
+        sta a:VDC_LO
+        lda a:LIM_X+1
+        sta a:VDC_HI
+        lda a:LIM_PC
+        sta a:VDC_LO
+        lda a:LIM_PC+1
+        sta a:VDC_HI
+        lda a:LIM_I
+        and #$0F
+        clc
+        adc a:LIM_ATTR
+        sta a:VDC_LO
+        lda a:LIM_ATTR+1
+        sta a:VDC_HI
+        clc
+        lda a:LIM_X
+        adc a:LIM_DX
+        sta a:LIM_X
+        lda a:LIM_X+1
+        adc #0
+        sta a:LIM_X+1
+        inc a:LIM_I
+        lda a:LIM_I
+        cmp a:LIM_N
+        bne lb_next
+        rts

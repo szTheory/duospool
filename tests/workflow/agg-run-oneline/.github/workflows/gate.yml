@@ -1,0 +1,154 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# gate - the CI wrapper over the one local command (record 0006, CI-01, D-61, D-62). The gate logic lives in scripts/check;
+# this file only runs it on a clean Linux machine, which is a different machine from the owner's macOS one.
+# Block-style YAML only: scripts/workflow-check is a restricted line checker that refuses anything it cannot parse.
+#
+# The workflow earns its place by catching four failure classes the owner's machine cannot:
+#   1. sh, awk, userland and nm differences from macOS (the Linux image: dash, mawk or gawk, GNU tools, ELF symbols)
+#   2. fresh-clone history dependence (a full clone with no local branches or leftover build files; protocol-order and the range audit read history)
+#   3. gcc versus clang diagnostics and undefined behaviour (the gate runs one compiler; a build step in each job runs a compiler on its own build directory)
+#   4. awk dialect drift (the gate runs again under the other awk implementation)
+# Three jobs, no paths filter and no cache: measure first, and revisit when docs/ci-timings.md shows a step over 30 seconds.
+#   gate-gawk  checkout, tool versions, cc65, the gate under the image's default awk (gawk on the 2026-11 image), the range audit, gcc build
+#   gate-mawk  checkout, tool versions, cc65, the gate under the other awk (mawk on that image), clang build
+#   gate       the required check name (the ruleset asks for gate): a tiny job that needs both and fails unless both concluded success
+# The two work jobs run in parallel on separate runners, so the critical path is the slower of them (docs/ci-timings.md, quick task 261112-ci-parallel-awk:
+# the measured single-job path was 856 s and 1048 s; the expected parallel path is about 520 s, unverified on CI until the owner authorises a push).
+# The gate job uses if: always() and the result of each needed job, because a skipped or cancelled needed job makes a plain needs-only job skip,
+# and a skipped required check reads as passing. Only the result success passes (scripts/workflow-check enforces this shape, WF_AGGREGATOR).
+# Timeouts: 25 minutes per work job and 5 for the aggregator. The estimated work-job path is about 7 to 9 minutes (from the single-job step times in
+# docs/ci-timings.md), so 25 minutes is about three times the slower estimate; a limit only bounds a hung job. Every job needs a timeout (WF_NO_TIMEOUT)
+# and its own permissions: contents: read block (WF_NO_PERMISSIONS), though the top-level block already applies to every job.
+# First-run review items for this shape: the two critical paths against the estimate, the repeated cc65 install and checkout cost, and whether the
+# second awk needs the apt install fallback (the Tool versions step prints which awk is the default).
+name: gate
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: gate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+defaults:
+  run:
+    shell: sh -eu {0}
+jobs:
+  gate-gawk:
+    name: gate-gawk
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Tool versions
+        run: |
+          {
+            echo "image: ${ImageVersion:-unknown}"
+            cmake --version | sed -n 1p
+            ninja --version
+            gcc --version | sed -n 1p
+            clang --version | sed -n 1p
+            for t in gawk mawk awk; do command -v "$t" || echo "$t: absent"; done
+            readlink -f "$(command -v awk)"
+          } >> "$GITHUB_STEP_SUMMARY"
+      # The fixture assembler (ca65 and ld65 from cc65) comes from the Ubuntu archive with apt signature checking. The gate's preflight stage
+      # fails closed without it. Package identity is not trusted by version string: the encoding-matrix bytes and the manifest hash pins are
+      # the identity check (fixtures/lib/TOOLS.md, D-128). No action and no secret is involved (D-60, D-62).
+      - name: Install cc65
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq cc65
+      - name: Gate
+        run: sh scripts/check
+      # The base commit of the pull request reaches the command through the environment, never through the script text (D-62).
+      - name: Range audit
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: sh scripts/audit-history --range "${BASE_SHA}..HEAD"
+      - name: gcc build and conformance
+        run: sh scripts/conformance-run run --preset gate-gcc
+  gate-mawk:
+    name: gate-mawk
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Tool versions
+        run: |
+          {
+            echo "image: ${ImageVersion:-unknown}"
+            cmake --version | sed -n 1p
+            ninja --version
+            gcc --version | sed -n 1p
+            clang --version | sed -n 1p
+            for t in gawk mawk awk; do command -v "$t" || echo "$t: absent"; done
+            readlink -f "$(command -v awk)"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Install cc65
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq cc65
+      # The other awk implementation (the one that is not the image default) goes first on PATH through a symlink in a temporary directory;
+      # nothing system-wide is switched. If it is not installed, apt installs it as a fallback (a choice recorded for review, D-74).
+      # The clang step below runs under the default awk, as it did when it was a step of the single job.
+      - name: Gate under the other awk
+        run: |
+          default_awk=$(readlink -f "$(command -v awk)")
+          case $default_awk in
+            */gawk) other=mawk ;;
+            *) other=gawk ;;
+          esac
+          if ! command -v "$other" > /dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq "$other"
+          fi
+          shim="$RUNNER_TEMP/awk-shim"
+          mkdir -p "$shim"
+          ln -sf "$(command -v "$other")" "$shim/awk"
+          PATH="$shim:$PATH"
+          export PATH
+          echo "image default awk: $default_awk"
+          echo "awk for this gate run: $(readlink -f "$(command -v awk)")"
+          sh scripts/check
+      - name: clang build and conformance
+        run: sh scripts/conformance-run run --preset gate-clang
+  gate:
+    name: gate
+    permissions:
+      contents: read
+    needs:
+      - gate-gawk
+      - gate-mawk
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require both gate jobs
+        env:
+          GAWK_RESULT: ${{ needs.gate-gawk.result }}
+          MAWK_RESULT: ${{ needs.gate-mawk.result }}
+        run: |
+          echo "gate-gawk: $GAWK_RESULT"
+          echo "gate-mawk: $MAWK_RESULT"
+          test "$GAWK_RESULT" = success
+          test "$MAWK_RESULT" = success
+      - name: Done
+        run: echo done

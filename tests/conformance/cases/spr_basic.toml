@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The sprite fixture seen from the guest (plan 04.1-01; D-155, D-159, D-160, D-169, D-170, ER-4, ER-5): the authored fixture fixtures/src/spr_basic.s is assembled by ca65 in the gate (never committed), is booted on the core, sets the 256-wide window, writes the palette by the bijection P(i) = (91 * i + 17) & 511, a 32 x 32 BAT, 16 sprite pattern cells and the 256 SATB source words,
+# reads them back and copies the SATB by DMA, then holds the sprites for several frames, and writes a DSV1 verdict block that the runner judges from raw RAM.
+# The case has no policies key, so the guest kind runs the ROM under its default policy list (zero, seeded-prng-v3 seed 1, seed 2) and the check bytes must be equal in all three: every value the guest reads, it wrote. The checks are readbacks of what the guest wrote (the pattern and the SATB source against the ROM tables, the palette against an additive sum, all GUEST); the
+# raster is judged from the line records by the video cases video_spr_basic_solid and video_spr_basic_asym, and the SATB contents by vdc_satb_data_spr.
+# Evidence tier E0: no accuracy, compatibility or hardware claim, and the word pass is not a support claim. until_mclk is a deadline above the point where the guest seals its block.
+id = "spr_basic"
+kind = "guest"
+fixture = "authored:spr-basic"
+request = ""
+expect = "id=25"
+meaning = "The authored spr_basic fixture programs the window, the palette bijection, a 32 x 32 BAT, 16 sprite pattern cells and the 256 SATB source words, reads them back with expectations formed by different arithmetic than the writer, copies the SATB by DMA and holds the sprites for several frames, 6 passing GUEST checks, identical under three power-on policies"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 6000000
+checks = 6

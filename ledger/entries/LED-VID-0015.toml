@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 # The VDC and VCE behaviour Phase 4 does not model (D-135; VID-03, VID-04). Deferred, not an assumption about hardware.
+# Close-out (plan 04.1-03, 2026-11-12): stays deferred. Sprites of Phase 4.1 are drawn for SM = 0 and VM = 0 only; the sprite width modes, VRAM access slots and BSY remain unmodelled, and no later phase of the roadmap models them, so revisit_phase is left as written.
 id = "LED-VID-0015"
 statement = "deferred: VL2 slot-level VRAM access, BSY, CPU wait states, the VM and SM access width modes (R3), burst timing, DRAM refresh, CM, DR, TE and palette-access artefacts are not modelled in Phase 4; only VM = 0 and SM = 0 are rendered. Deferred, not an assumption about hardware."
 profile = "pce-hucard-2btn"

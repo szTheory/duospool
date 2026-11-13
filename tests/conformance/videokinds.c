@@ -41,6 +41,10 @@
 #define VK_O_BORDER 26u
 #define VK_O_FLAGS 31u
 #define VK_O_LINE_DIRTY 32u
+#define VK_O_SLOTS 33u
+#define VK_O_COVERING 34u
+#define VK_FLAG_OVERFLOW 0x40u
+#define VK_FLAG_COLLISION 0x80u
 #define VK_FLAG_ACTIVE 0x01u
 #define VK_FLAG_BURST 0x02u
 #define VK_FLAG_CLIPPED 0x20u
@@ -1388,6 +1392,44 @@ static int vk_s_frame_flags(struct vk_rc *rc)
     return VG_PASS;
 }
 
+/* STRUCT spr_line (plan 04.1-02; D-160, D-161; MAN H7-19 for the slot rows, ASSUMED LED-VID-0011 and LED-VID-0012 for the rows a group labels so): the display line k (the k-th record with an active window) of the frame numbered held (the author's mark, as ;held=F of a ROWS row: the literal does not rest on the frame number,
+ * a neighbouring frame shows the same values or fails) carries
+ * slots_used equal to slots, covering equal to covering, the OVERFLOW flag (flags bit 6) equal to ovf and the COLLISION flag (bit 7) equal to col.
+ * The offsets are the ones written in this file (ER-13). A frame or line the stream does not hold is a failure naming it; slots is the first item so that F0 (the first number of the literal grows by one) makes the row claim a count its own source does not say. */
+static int vk_s_spr_line(struct vk_rc *rc)
+{
+    static const char *const keys[] = {"slots", "covering", "ovf", "col", "k", "held"};
+    uint64_t v[6];
+    uint64_t lines[512];
+    unsigned nl;
+    unsigned i;
+    const uint8_t *rec;
+
+    for (i = 0u; i < 6u; i++) {
+        if (vk_need(rc, keys, 6u) != 0 || vk_num(rc, keys[i], &v[i]) != 0) {
+            return vk_bad(rc, "STRUCT spr_line needs the items slots, covering, ovf, col, k and held (decimal)");
+        }
+    }
+    if (v[0] > 255u || v[1] > 255u || v[2] > 1u || v[3] > 1u || v[4] >= 512u || v[5] > (uint64_t)UINT32_MAX) {
+        return vk_bad(rc, "STRUCT spr_line: slots and covering are bytes, ovf and col are 0 or 1, k is below 512");
+    }
+    nl = vk_active_lines(rc->w, lines, 512u, 1, (uint32_t)v[5]);
+    if ((uint64_t)nl <= v[4]) {
+        snprintf(rc->why, rc->cap, "STRUCT spr_line: frame %llu holds %u active lines, the row looks at display line %llu", (unsigned long long)v[5], nl, (unsigned long long)v[4]);
+        vk_focus(rc, rc->w->n / 2u);
+        return VG_FAIL;
+    }
+    vk_focus(rc, lines[v[4]]);
+    rec = rc->w->rec[lines[v[4]]];
+    if ((uint64_t)rec[VK_O_SLOTS] != v[0] || (uint64_t)rec[VK_O_COVERING] != v[1] || (uint64_t)((rec[VK_O_FLAGS] & VK_FLAG_OVERFLOW) != 0u ? 1u : 0u) != v[2] || (uint64_t)((rec[VK_O_FLAGS] & VK_FLAG_COLLISION) != 0u ? 1u : 0u) != v[3]) {
+        snprintf(rc->why, rc->cap, "STRUCT spr_line: display line %llu of frame %llu has slots_used %u, covering %u, OVERFLOW %u, COLLISION %u; the row says %llu, %llu, %llu, %llu",
+                 (unsigned long long)v[4], (unsigned long long)v[5], (unsigned)rec[VK_O_SLOTS], (unsigned)rec[VK_O_COVERING], (unsigned)((rec[VK_O_FLAGS] & VK_FLAG_OVERFLOW) != 0u ? 1u : 0u),
+                 (unsigned)((rec[VK_O_FLAGS] & VK_FLAG_COLLISION) != 0u ? 1u : 0u), (unsigned long long)v[0], (unsigned long long)v[1], (unsigned long long)v[2], (unsigned long long)v[3]);
+        return VG_FAIL;
+    }
+    return VG_PASS;
+}
+
 /* every dot of the record has the index idx and the record has an active window; the text of the failure names the line and the dot */
 static int vk_flat_rec(struct vk_rc *rc, const uint8_t *rec, uint64_t idx, uint64_t m)
 {
@@ -1511,6 +1553,7 @@ static const struct vk_chk vk_checks[] = {
     {"line_dirty_hv", vk_s_line_dirty_hv},
     {"cr_change", vk_s_cr_change},
     {"frame_flags", vk_s_frame_flags},
+    {"spr_line", vk_s_spr_line},
     {"flat_frame", vk_s_flat_frame},
     {"flat_at", vk_s_flat_at},
 };
@@ -3083,6 +3126,9 @@ struct jf_line {
     uint32_t border;
     uint32_t div;
     uint32_t dirty;
+    uint32_t slots;
+    uint32_t covering;
+    uint32_t flags;
     uint32_t idx[8];
     uint32_t col[8];
 };
@@ -3112,6 +3158,9 @@ static void jf_add(struct jf_stream *s, uint64_t origin, uint32_t frame, uint32_
     vk_put16(p + VK_O_ACTIVE_W, l->aw);
     vk_put16(p + VK_O_BORDER, l->border);
     p[VK_O_LINE_DIRTY] = (uint8_t)l->dirty;
+    p[VK_O_SLOTS] = (uint8_t)l->slots;
+    p[VK_O_COVERING] = (uint8_t)l->covering;
+    p[VK_O_FLAGS] = (uint8_t)l->flags;
     p[VK_O_VERSION] = 1u;
     for (j = 0u; j < l->aw; j++) {
         vk_put16(p + VK_HDR + 2u * j, l->idx[j]);
@@ -3137,6 +3186,11 @@ static void jf_base(struct jf_stream *s, int variant, uint32_t idxv)
         l.border = 5u;
         l.div = k < 8u ? 4u : 3u;
         l.dirty = k == 1u || k == 8u ? 1u : k == 2u ? 16u : 0u;
+        if (k == 2u && variant == 0) { /* the second display line of frame 0 carries a slot count, a covering count and the OVERFLOW flag (the check spr_line) */
+            l.slots = 5u;
+            l.covering = 7u;
+            l.flags = VK_FLAG_OVERFLOW;
+        }
         if (k % 4u == 1u || k % 4u == 2u) {
             l.aw = 4u;
             for (x = 0u; x < 4u; x++) {
@@ -3291,6 +3345,15 @@ static void jf_struct(struct jf_ctx *jf, const struct jf_stream *s, const struct
     jf_want(jf, "STRUCT frame_flags with a wrong literal fails", jf_eval(jf, "STRUCT", "F0", "check=frame_flags", "want=1;frame=1;bit=4", &run, 1u, 0), VG_FAIL);
     jf_want(jf, "STRUCT frame_flags with F0 on the right literal fails", jf_eval(jf, "STRUCT", "F0", "check=frame_flags", "want=0;frame=1;bit=4", &run, 1u, 1), VG_FAIL);
     jf_want(jf, "STRUCT frame_flags on a frame the stream holds in part is a fault of the case", jf_eval(jf, "STRUCT", "F0", "check=frame_flags", "want=0;frame=2;bit=4", &run, 1u, 0), VG_HARNESS);
+    jf_run1(&run, s, lg); /* spr_line: the second display line of frame 0 has slots 5, covering 7, OVERFLOW 1, COLLISION 0 and the first has none of them */
+    jf_want(jf, "STRUCT spr_line with the right literal passes", jf_eval(jf, "STRUCT", "F0", "check=spr_line", "slots=5;covering=7;ovf=1;col=0;k=1;held=0", &run, 1u, 0), VG_PASS);
+    jf_want(jf, "STRUCT spr_line with a wrong slot count fails", jf_eval(jf, "STRUCT", "F0", "check=spr_line", "slots=6;covering=7;ovf=1;col=0;k=1;held=0", &run, 1u, 0), VG_FAIL);
+    jf_want(jf, "STRUCT spr_line with a wrong covering count fails", jf_eval(jf, "STRUCT", "F0", "check=spr_line", "slots=5;covering=8;ovf=1;col=0;k=1;held=0", &run, 1u, 0), VG_FAIL);
+    jf_want(jf, "STRUCT spr_line with a wrong OVERFLOW flag fails", jf_eval(jf, "STRUCT", "F0", "check=spr_line", "slots=5;covering=7;ovf=0;col=0;k=1;held=0", &run, 1u, 0), VG_FAIL);
+    jf_want(jf, "STRUCT spr_line with a wrong COLLISION flag fails", jf_eval(jf, "STRUCT", "F0", "check=spr_line", "slots=5;covering=7;ovf=1;col=1;k=1;held=0", &run, 1u, 0), VG_FAIL);
+    jf_want(jf, "STRUCT spr_line on the line before it, which carries none, passes with zeros", jf_eval(jf, "STRUCT", "F0", "check=spr_line", "slots=0;covering=0;ovf=0;col=0;k=0;held=0", &run, 1u, 0), VG_PASS);
+    jf_want(jf, "STRUCT spr_line with F0 on the right literal fails", jf_eval(jf, "STRUCT", "F0", "check=spr_line", "slots=5;covering=7;ovf=1;col=0;k=1;held=0", &run, 1u, 1), VG_FAIL);
+    jf_want(jf, "STRUCT spr_line on a display line the frame does not hold fails", jf_eval(jf, "STRUCT", "F0", "check=spr_line", "slots=0;covering=0;ovf=0;col=0;k=5;held=0", &run, 1u, 0), VG_FAIL);
     jf_run1(&run, skew, lg); /* a stream whose origin of record 4 is one clock off: the origins check fails and the count check does not */
     jf_want(jf, "STRUCT origins on a stream with one origin moved fails", jf_eval(jf, "STRUCT", "F0", "check=origins", "step=1365", &run, 1u, 0), VG_FAIL);
     jf_want(jf, "STRUCT count on a stream with one origin moved still passes (it counts records)", jf_eval(jf, "STRUCT", "F0", "check=count", "grid=1365", &run, 1u, 0), VG_PASS);

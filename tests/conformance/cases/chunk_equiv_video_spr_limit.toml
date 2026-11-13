@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Chunk invariance of the raw video stream of the authored spr_limit fixture (Phase 4.1 review fix M-04; D-137, D-155, D-160, D-163, ER-7): the guest copies sprite attribute tables by DMA and switches the sprites on, so the sprite STATE part of every display line (the dot words, the slot scan) and the
+# pending sprite flags (sprite_pend, set at EV_LINE and consumed at EV_RCR) are live while the run is split. The kind runs the fixture once in a single call and then, on fresh boots, in calls to the deadlines of four schedules (1364 and 1366 (one clock either side of the line grid), 3072, and
+# vframe = 357630 = 262 * 1365; the 7-clock chunks of this fixture run in observer_spr_limit, whose chunk:7 mode
+# compares the vid logs too), with a vid sink on every call; the concatenated streams are compared with memcmp, never hashes (D-163), beside the verdict RAM, the machine time, the step count, the stop sequence and the digest. The deadline, 7,500,000 master clocks, is past the done state of the
+# guest (the kind compares past done, D-95) and holds every sprite scene (OVERFLOW and COLLISION pending from the EV_LINE to the EV_RCR of the covering display lines), so stops fall between those two events of lines with flags pending.
+# The uninterrupted run is also checked against the closed form floor((M - 1) / 1365) + 1 of the line count (ASSUMED LED-VID-0004 and LED-VID-0001, written in the kind). Evidence tier E0: the core compared with itself (ER-7); no literal comes from a DuoSpool run, a pass is not a support claim, and the
+# case makes no accuracy, raster, pixel, hardware or compatibility claim.
+id = "chunk_equiv_video_spr_limit"
+kind = "chunk_equiv"
+fixture = "authored:spr-limit"
+request = ""
+expect = "compare=verdict,machine_time,stops,digest,video"
+meaning = "The spr_limit fixture run with a vid sink in calls to the deadlines of four chunk schedules (1364, 1366, 3072 and one frame of 262 lines) ends with the machine time, step count, verdict RAM, stop sequence, digest and concatenated raw video stream bytes of the uninterrupted run, through sprite scenes with flags pending, E0 repeatability"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 7500000
+chunks = "1364,1366,3072,vframe"

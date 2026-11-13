@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
-# Restore at the stops of a scroll run (plan 04-12; D-137, D-121, D-122, D-163, ER-7): the runner kind snapshot_restore_video runs the authored bg_scroll fixture, under each of the three power-on policies, in calls to the deadlines of three schedules (1364 and 1366 master clocks, which fall at every phase inside a 1365-clock line, and 7) with a vid sink on
+# Restore at the stops of a scroll run (plan 04-12; D-137, D-121, D-122, D-163, ER-7): the runner kind snapshot_restore_video runs the authored bg_scroll fixture, under each of the two power-on policies of the video runs (lever (2) of D-176, plan 04.1-01: zero and seeded-prng-v3 seed 1; the third policy is carried for the video fixtures by vdc_poweron_policy_diff), in calls to
+# the deadlines of three schedules (1364 and 1366 master clocks, which fall at every phase inside a 1365-clock line, and 7) with a vid sink on
 # every call. At every stop of the schedules 1364 and 1366 (so also at the stops one clock either side of the counted BXR and BYR writes
 # of frame 4, which the run reaches at about 1.45 to 1.53 million clocks), at every stride-th stop of the schedule 7 and at every stop whose machine time is a multiple of 1365, the machine is snapshotted, restored into a fresh boot of the same image whose restorable members are poisoned, compared member by member with the source (ROM excluded) and the run goes
 # on with the restored target. The machine time, the steps,
@@ -13,7 +14,7 @@ kind = "snapshot_restore_video"
 fixture = "authored:bg-scroll"
 request = ""
 expect = "rom=bg-scroll;schedules=1364,1366,7;stride=2003"
-meaning = "Snapshots of the first 1560000 clocks of the bg_scroll run taken at every stop of the 1364 and 1366 schedules and at strided and line-event stops of the 7 schedule, restored into a fresh poisoned instance and continued, give the machine time, steps, verdict RAM, digest and raw video stream of the uninterrupted run under three policies"
+meaning = "Snapshots of the first 1560000 clocks of the bg_scroll run taken at every stop of the 1364 and 1366 schedules and at strided and line-event stops of the 7 schedule, restored into a fresh poisoned instance and continued, give the machine time, steps, verdict RAM, digest and raw video stream of the uninterrupted run under two policies (zero and seeded-prng-v3 seed 1)"
 required = true
 control = false
 expect_outcome = "pass"

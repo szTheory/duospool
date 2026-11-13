@@ -136,6 +136,7 @@ BEGIN {
   ck["line_dirty_hv"] = "hv_bit"
   ck["cr_change"] = "div_a,crw,hvw,div_b,w_a,w_b,x_a,x_b,margin"
   ck["frame_flags"] = "want,frame,bit"
+  ck["spr_line"] = "slots,covering,ovf,col,k,held"   # plan 04.1-02: slots_used, covering and the OVERFLOW and COLLISION flags of display line k of the frame the author marks held; not a grid check (the line is counted from the first active record of the frame, the frame is the author's mark as ;held= of a ROWS row)
   ck["flat_frame"] = "index,frame,from,count,burst"
   ck["flat_at"] = "index,reg,wr,d,count"
   # the checks that use the 1365-clock grid, the frame length, the window origin or the join of a write stamp to the grid: their class is ASSUMED (ER-10, the weakest class of the inputs wins)

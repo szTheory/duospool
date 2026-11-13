@@ -13,7 +13,7 @@
 # Output records, one per line:  V TAB CODE TAB LINE TAB DETAIL   and a single last  E TAB LINES  (a run that prints no E line is dead).
 # Codes owned here: WF_NO_PERMISSIONS WF_EXCESS_PERMISSION WF_UNPINNED_ACTION WF_UNEXPECTED_ACTION WF_FORBIDDEN_TRIGGER
 #   WF_MISSING_FETCH_DEPTH WF_PERSIST_CREDENTIALS WF_SHELL WF_RUNNER WF_NO_GATE_STEP WF_EXPR_IN_RUN WF_UNTRUSTED_EXPR
-#   WF_FORBIDDEN_KEY WF_CONCURRENCY WF_NO_CC65_STEP WF_UNPARSABLE.
+#   WF_FORBIDDEN_KEY WF_CONCURRENCY WF_NO_CC65_STEP WF_NO_TIMEOUT WF_AGGREGATOR WF_UNPARSABLE.
 # The expression rules read every ${{ }} on every line that is not a YAML comment (the content of a run block included, a shell comment
 # in it too: the runner expands it before the shell sees the text). An expression inside a run value or run block is WF_EXPR_IN_RUN;
 # an expression anywhere that is not on the allowlist is WF_UNTRUSTED_EXPR (D-62, T-02-38). Allowed: github.event.pull_request.base.sha,
@@ -22,8 +22,18 @@
 # continue-on-error key, or a failure swallowed in a run block with || true or || : (the gate must be able to fail, D-62).
 # WF_CONCURRENCY: the top-level concurrency block must carry group gate-${{ github.workflow }}-${{ github.ref }} and cancel-in-progress
 # ${{ github.event_name == 'pull_request' }} exactly (a push to main is never cancelled by a later one).
-# WF_NO_CC65_STEP: a step before the Gate step must run an apt-get install command that names cc65 (the fixture assembler, D-60, D-62
-# amended); the Gate step's preflight fails closed without it. A comment line in the run block does not count.
+# WF_NO_CC65_STEP: in every job that runs the gate command (a step whose run is, or whose run block holds a line, exactly sh scripts/check) a step
+# before it must run an apt-get install command that names cc65 (the fixture assembler, D-60, D-62 amended); the preflight stage fails closed
+# without it. A comment line in the run block does not count.
+# Job shape (quick task 261112-ci-parallel-awk; gate.yml only unless noted): every job needs timeout-minutes, a whole number from 1 to 30
+# (WF_NO_TIMEOUT, every file), a runs-on (WF_RUNNER, every file), its own permissions block with contents: read (WF_NO_PERMISSIONS), and, unless it is
+# the job gate, an actions/checkout step (WF_MISSING_FETCH_DEPTH) and a step that runs the gate command (WF_NO_GATE_STEP).
+# WF_AGGREGATOR: the job with the id gate is the required check. It must exist and be named gate (and no other job may be named gate); its needs list
+# must be exactly the other jobs; its if must be exactly always(); a skipped or cancelled needed job reads as passing to a required check unless
+# the job runs and fails on it. Each needed job needs an env entry set to the expression needs.JOB.result and a run block line that is exactly
+# test "$VAR" = success for that entry (only the result success passes). Nothing else may run in that job: its run block may hold only those test
+# lines and plain echo lines, it may not carry a one-line run value, and no step in it may carry an if key (each of those could end the job early).
+# The expression needs.JOB.result is allowed in the job gate only.
 # Every rule is one self-contained statement ending in a tag comment (rule-NAME), so a selftest can delete the line and show the
 # control that depends on it flip. Awk dialect: no regex intervals, no gensub, no length of an array (BWK, mawk and gawk all read it).
 
@@ -55,6 +65,7 @@ function clear_from(k,   j) {
 # expr_ok: an expression body this checker allows: an allowlisted context, or one compared with == to a quoted lowercase word
 function expr_ok(e,   n) {
   if (e in allow) return 1
+  if (jobid == "gate" && e ~ /^needs\.[A-Za-z_][A-Za-z0-9_-]*\.result$/) return 1
   n = index(e, " == ")
   if (n == 0) return 0
   return ((substr(e, 1, n - 1) in allow) && substr(e, n + 4) ~ /^'[a-z_]+'$/)
@@ -111,16 +122,75 @@ function cc65_line(s,   t) {
   return (t ~ /^(sudo )?apt-get install[ ]/ && s ~ /(^|[ ])cc65([ ]|$)/)
 }
 
+# agg_mark: remember the variable of a run block line that is exactly  test "$VAR" = success  (the length arithmetic: 7 characters before the name, 11 after it)
+function agg_mark(t) {
+  if (t ~ /^test "\$[A-Z][A-Z_]*" = success$/) amark[substr(t, 8, length(t) - 18)] = 1
+}
+
+# agg_line_ok: 1 when a run block line of the job gate is a test line of that exact shape or a plain echo line (no quote, backtick, semicolon, ampersand, pipe, parenthesis, backslash or redirection inside)
+function agg_line_ok(t,   i) {
+  if (t ~ /^test "\$[A-Z][A-Z_]*" = success$/) return 1
+  if (substr(t, 1, 6) != "echo \"" || substr(t, length(t), 1) != "\"" || length(t) < 8) return 0
+  t = substr(t, 7, length(t) - 7)
+  for (i = 1; i <= length(t); i++) {
+    if (index("\"`;&|()\\<>", substr(t, i, 1)) > 0) return 0
+  }
+  return 1
+}
+
+# agg_needs_ok: the needs list of the job gate is exactly the set of the other jobs (and there is at least one other job)
+function agg_needs_ok(   id, n) {
+  n = 0
+  for (id in jid) {
+    if (id == "gate") continue
+    n++
+    if (!(id in aneed)) return 0
+  }
+  for (id in aneed) {
+    if (!(id in jid) || id == "gate") return 0
+  }
+  return n > 0
+}
+
+# agg_results_ok: every other job has an env entry set to its needs.JOB.result expression and a test line on that entry's variable
+function agg_results_ok(   id, v, ok) {
+  for (id in jid) {
+    if (id == "gate") continue
+    ok = 0
+    for (v in aenv) {
+      if (aenv[v] == id && (v in amark)) ok = 1
+    }
+    if (!ok) return 0
+  }
+  return 1
+}
+
+# job_end: the per-job rules, evaluated when the job closes (the last step of the job has already been closed)
+function job_end() {
+  if (jobid == "") return
+  if (jtimeout !~ /^[0-9]+$/ || jtimeout + 0 < 1 || jtimeout + 0 > 30) viol("WF_NO_TIMEOUT", jobline, "job " jobid " needs timeout-minutes, a whole number from 1 to 30")  # rule-timeout
+  if (!jruns) viol("WF_RUNNER", jobline, "job " jobid " has no runs-on")  # rule-runner-missing
+  if (needgate && !jperm) viol("WF_NO_PERMISSIONS", jobline, "job " jobid " has no permissions block with contents: read")  # rule-job-perm
+  if (needgate && jobid != "gate" && !jcheckout) viol("WF_MISSING_FETCH_DEPTH", jobline, "job " jobid " has no actions/checkout step: the gate needs the full history")  # rule-job-checkout
+  if (needgate && jobid != "gate" && !jcheck) viol("WF_NO_GATE_STEP", jobline, "job " jobid " runs no step with the gate command sh scripts/check")  # rule-job-gate
+  if (needgate && jcheck && jcc65bad) viol("WF_NO_CC65_STEP", jobline, "job " jobid " runs the gate command with no apt-get install of cc65 before it")  # rule-cc65-step
+  if (needgate && ((jobid == "gate" && jname != "gate") || (jobid != "gate" && jname == "gate"))) viol("WF_AGGREGATOR", jobline, "only the job gate may be named gate, and it must be")  # rule-agg-name
+  if (needgate && jobid == "gate" && jif != "always()") viol("WF_AGGREGATOR", jobline, "the job gate needs if: always() (a skipped job reads as passing)")  # rule-agg-if
+}
+
 # step_end: the per-step rules, evaluated when the step closes
 function step_end(   ischeckout) {
   if (!instep) return
   ischeckout = (index(suses, "actions/checkout@") == 1)
-  if (ischeckout) havecheckout = 1
+  if (ischeckout) jcheckout = 1
   if (ischeckout && sfd != "0") viol("WF_MISSING_FETCH_DEPTH", stepline, "the checkout step needs fetch-depth: 0 (the gate reads history)")  # rule-fetch-depth
   if (ischeckout && spc != "false") viol("WF_PERSIST_CREDENTIALS", stepline, "the checkout step needs persist-credentials: false")  # rule-persist
   if (sname == "Gate" && srun == "sh scripts/check") gatefound = 1  # rule-gate-found
-  if (sname == "Gate" && cc65seen) cc65ok = 1
-  if (scc65) cc65seen = 1
+  if (scheck || srun == "sh scripts/check") {
+    jcheck = 1
+    if (!jcc65seen) jcc65bad = 1
+  }
+  if (scc65) jcc65seen = 1
 }
 
 BEGIN {
@@ -128,6 +198,7 @@ BEGIN {
   cr = sprintf("%c", 13)
   stepsk = -1
   stepind = -1
+  jobid = ""
   maxind = 0
   nsc = 0
   cid[0] = 0
@@ -151,6 +222,9 @@ BEGIN {
   if (bs) {
     if (ind > bsk) {
       if (instep && bskey == "run" && cc65_line(text)) scc65 = 1
+      if (instep && bskey == "run" && text == "sh scripts/check") scheck = 1
+      if (jobid == "gate" && bskey == "run") agg_mark(text)
+      if (needgate && jobid == "gate" && bskey == "run" && !agg_line_ok(text)) viol("WF_AGGREGATOR", ln, "the job gate may run only test lines of the form test \"$VAR\" = success and plain echo lines")  # rule-agg-line
       scan_text(text, ln, bskey == "run")
       scan_exprs(text, ln, bskey == "run")
       next
@@ -222,6 +296,8 @@ BEGIN {
   if (instep && ind <= stepsk) {
     step_end()
     instep = 0
+    stepsk = -1
+    stepind = -1
   }
   if (isdash && ind == stepind) {
     step_end()
@@ -232,12 +308,14 @@ BEGIN {
     sfd = ""
     spc = ""
     scc65 = 0
+    scheck = 0
     stepline = ln
   }
 
   if (!haskey) {
     # a scalar list item
     if (inperm) viol("WF_EXCESS_PERMISSION", ln, "a list item inside a permissions block")  # rule-perm-scope
+    if (top == "jobs" && jobid == "gate" && ind == 6 && ((ind - 2) in par) && par[ind - 2] == "needs") aneed[val] = 1
     if (top == "on" && (val == "pull_request_target" || val == "workflow_run")) viol("WF_FORBIDDEN_TRIGGER", ln, val " is a forbidden trigger")  # rule-trigger
     next
   }
@@ -251,6 +329,34 @@ BEGIN {
     cid[ki + 2] = ++nsc
   }
   if (ki == 0) top = key
+  if (top == "jobs" && ki == 2 && kopen) {
+    job_end()
+    jobid = key
+    jobline = ln
+    jid[key] = 1
+    if (key == "gate") havegate = 1
+    jname = ""
+    jif = ""
+    jtimeout = ""
+    jruns = 0
+    jperm = 0
+    jcheckout = 0
+    jcheck = 0
+    jcc65seen = 0
+    jcc65bad = 0
+    stepsk = -1
+    stepind = -1
+  }
+  if (top == "jobs" && ki == 4 && jobid != "") {
+    if (key == "name") jname = val
+    if (key == "if") jif = val
+    if (key == "timeout-minutes") jtimeout = val
+    if (key == "runs-on") jruns = 1
+  }
+  if (top == "jobs" && inperm && key == "contents" && val == "read") jperm = 1
+  if (jobid == "gate" && substr(val, 1, 10) == "${{ needs." && substr(val, length(val) - 9) == ".result }}") aenv[key] = substr(val, 11, length(val) - 20)
+  if (needgate && jobid == "gate" && key == "if" && ki != 4) viol("WF_AGGREGATOR", ln, "no step of the job gate may carry an if key (it could skip the check)")  # rule-agg-step-if
+  if (needgate && jobid == "gate" && key == "run" && !kopen && !bs) viol("WF_AGGREGATOR", ln, "the job gate may not carry a one-line run value")  # rule-agg-oneline
 
   # permissions: a top-level block exists and nothing grants more than contents: read
   if (inperm && (isdash || !(key == "contents" && val == "read"))) viol("WF_EXCESS_PERMISSION", ln, key ": " val " is more than contents: read")  # rule-perm-scope
@@ -275,7 +381,6 @@ BEGIN {
   # shell and runner
   if (key == "shell" && val != "sh -eu {0}") viol("WF_SHELL", ln, "shell must be sh -eu {0}")  # rule-shell
   if (key == "shell" && val == "sh -eu {0}" && top == "defaults") shellok = 1
-  if (key == "runs-on") runson = 1
   if (key == "runs-on" && val != "ubuntu-24.04") viol("WF_RUNNER", ln, "runs-on must be ubuntu-24.04")  # rule-runner
 
   # actions
@@ -305,12 +410,13 @@ END {
     exit 0
   }
   step_end()
+  job_end()
   if (!haveperm) viol("WF_NO_PERMISSIONS", 0, "no top-level permissions block")  # rule-perm-missing
   if (!shellok) viol("WF_SHELL", 0, "defaults.run.shell: sh -eu {0} is not set")  # rule-shell-missing
   if (!cgroup || !ccancel) viol("WF_CONCURRENCY", 0, "concurrency needs group gate-${{ github.workflow }}-${{ github.ref }} and cancel-in-progress ${{ github.event_name == 'pull_request' }}")  # rule-concurrency
-  if (!runson) viol("WF_RUNNER", 0, "no runs-on")  # rule-runner-missing
-  if (needgate && !havecheckout) viol("WF_MISSING_FETCH_DEPTH", 0, "no actions/checkout step: the gate needs the full history")  # rule-checkout-missing
+  if (needgate && !havegate) viol("WF_AGGREGATOR", 0, "no job with the id gate (the required check)")  # rule-agg-missing
+  if (needgate && havegate && !agg_needs_ok()) viol("WF_AGGREGATOR", 0, "the needs list of the job gate must be exactly the other jobs")  # rule-agg-needs
+  if (needgate && havegate && !agg_results_ok()) viol("WF_AGGREGATOR", 0, "the job gate must test the result of every needed job with test \"$VAR\" = success")  # rule-agg-result
   if (needgate && !gatefound) viol("WF_NO_GATE_STEP", 0, "no step named Gate that runs exactly: sh scripts/check")  # rule-gate-step
-  if (needgate && gatefound && !cc65ok) viol("WF_NO_CC65_STEP", 0, "no step before the Gate step runs apt-get install with cc65")  # rule-cc65-step
   printf "E\t%d\n", NR
 }

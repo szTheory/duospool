@@ -11,11 +11,12 @@
  *                                         line (the tie rule of D-138, ASSUMED LED-VID-0004, and the divider values of CR 0 and 1, MAN H6-3); line_dirty bit 0 is on exactly the record that carries the change.
  *                             invariant   the fixture runs under a stop callback that is called before the first step and after every step: at every call the pending event time (ds_vdc_pending_time, valid) is at least the machine time (D-137: no event older than machine_time) and the next line index equals the closed
  *                                         form of the lines due at the machine time; the same run is repeated in 64 calls to seeded random deadlines, so the property holds after every ds_run stop. A pure query is made only at a folded point and never ds_irq_pending_query (F-21).
- *   vid_noninterference       expect = rom=NAME;compare=verdict,machine_time,steps,digest (until_mclk needed): for each of the three power-on policies (zero, seeded-prng-v3 seeds 1 and 2) the fixture runs with no vid sink and with a vid sink only in four shapes (large, 4 records drop-newest taken from the sizes of the large
+ *   vid_noninterference       expect = rom=NAME;compare=verdict,machine_time,steps,digest (until_mclk needed): for each of the two power-on policies of VD_POLICIES_VIDEO (zero and seeded-prng-v3 seed 1; lever (2) of D-176, plan 04.1-01) the fixture runs with no vid sink and with a vid sink only in four shapes (large, 4 records drop-newest taken from the sizes of the large
  *                             run, capacity 0 and capacity 1): the machine time, the steps, the verdict RAM and the digest equal those of the run with no sink, the header counts whole records stored, lost = seq - count, bytes is their sum, seq is the closed-form line count, and the bytes past the count are untouched (D-164, F-2).
  *   snapshot_restore_video    expect = rom=NAME;schedules=1364,1366,7;stride=N (until_mclk needed): the fixture is run on each schedule (calls to the deadlines j * size) with a vid sink on every call; at every stop of the schedules 1364 and 1366, which fall at every phase inside a line, and at every stride-th stop and
  *                             at every stop whose machine time is a multiple of 1365 (a pending line event at the machine time itself) of the schedule 7, the machine is snapshotted, restored into a fresh poisoned boot of the same image (member by member equal to the source) and the run goes on with the target. The concatenated
  *                             stream bytes, the digest, the machine time, the steps and the verdict RAM of every schedule equal those of the uninterrupted run (D-137). A case that restored at no stop at a multiple of 1365 is a guest_failure: the tie would be untested.
+ *                             The optional item ;sprite-pend (Phase 4.1 review fix M-04) also requires, for every policy and schedule, a restore at a stop where the source holds sprite flags pending (sprite_pend non-zero, between the EV_LINE and the EV_RCR of a display line with OVERFLOW or COLLISION).
  *   vdc_random_regs           expect = programs=N;seed=N (until_mclk needed; plan 04-13, D-175, T-04-44): N in-process programs (rp_build_vdc in randprog.c) that write random values to every VDC register through AR and the data port,
  *                             to the VCE window, to the DMA triggers and through block transfers, with random waits, each run to the deadline with a vid sink of the closed-form capacity: ds_run stops at the deadline, no record is lost, the count equals
  *                             floor((M - 1) / 1365) + 1, every record is whole and every border, index and colour value is below 512. Meant for the sanitizer preset as much as the gate preset; E0 (no crash, no out-of-range value, termination), nothing is
@@ -794,7 +795,7 @@ void kind_vid_noninterference(const struct kase *k, struct ctx *c, char *got, si
         harness_error(c, "a vid_noninterference case needs until_mclk and expect = rom=NAME;compare=verdict,machine_time,steps,digest");
         return;
     }
-    for (p = 0u; p < VD_POLICIES && !c->harness; p++) {
+    for (p = 0u; p < VD_POLICIES_VIDEO && !c->harness; p++) {
         char request[256];
         struct vn_run run[VN_SHAPES];
         unsigned s;
@@ -859,7 +860,7 @@ void kind_vid_noninterference(const struct kase *k, struct ctx *c, char *got, si
             free(run[s].stream);
         }
     }
-    snprintf(got, gotcap, "policies=%u runs=%u", (unsigned)VD_POLICIES, runs);
+    snprintf(got, gotcap, "policies=%u runs=%u", (unsigned)VD_POLICIES_VIDEO, runs);
 }
 
 /* ---- kind snapshot_restore_video ---- */
@@ -883,6 +884,7 @@ struct sv_stats {
     unsigned restores;
     unsigned at_grid;   /* restores at a stop whose machine time is a multiple of 1365: the next line event is pending at the machine time itself */
     unsigned mid_line;
+    unsigned pend;      /* restores at a stop where the source held sprite flags pending (sprite_pend non-zero) */
 };
 
 /* run the fixture under the request on a schedule (size 0 = the uninterrupted run: one call to until), restoring as the schedule says; 0 on success, -1 after a harness error */
@@ -977,6 +979,7 @@ static int sv_exec(struct ctx *c, const char *rom, const char *request, uint64_t
                     break;
                 }
                 st->restores++;
+                st->pend += w->sprite_pend != 0u ? 1u : 0u;
                 st->at_grid += grid ? 1u : 0u;
                 st->mid_line += grid ? 0u : 1u;
                 diff = snap_first_diff(nw, w);
@@ -1021,9 +1024,10 @@ void kind_snapshot_restore_video(const struct kase *k, struct ctx *c, char *got,
     unsigned total = 0u;
     unsigned grid = 0u;
     unsigned mid = 0u;
+    unsigned pend = 0u;
 
     if (!k->has[K_EXPECT] || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until < 1000u || vd_stream_cap(until) == 0u || pk_copy_text(k->val[K_EXPECT], list, sizeof list) != 0) {
-        harness_error(c, "a snapshot_restore_video case needs until_mclk and expect = rom=NAME;schedules=1364,1366,7;stride=N");
+        harness_error(c, "a snapshot_restore_video case needs until_mclk and expect = rom=NAME;schedules=1364,1366,7;stride=N[;sprite-pend]");
         return;
     }
     while ((item = pk_next_item(&rest, ';')) != NULL) {
@@ -1048,16 +1052,18 @@ void kind_snapshot_restore_video(const struct kase *k, struct ctx *c, char *got,
             seen |= nsched > 0u ? 2u : 0u;
         } else if (strncmp(item, "stride=", 7u) == 0 && (seen & 4u) == 0u && parse_u64(item + 7, &stride) == 0 && stride >= 1u && stride <= 100000u) {
             seen |= 4u;
+        } else if (strcmp(item, "sprite-pend") == 0 && (seen & 8u) == 0u && (seen & 7u) != 0u) {
+            seen |= 8u;
         } else {
             seen = 0u;
             break;
         }
     }
-    if (seen != 7u) {
-        harness_error(c, "a snapshot_restore_video case needs until_mclk and expect = rom=NAME;schedules=1364,1366,7;stride=N");
+    if ((seen & 7u) != 7u) {
+        harness_error(c, "a snapshot_restore_video case needs until_mclk and expect = rom=NAME;schedules=1364,1366,7;stride=N[;sprite-pend]");
         return;
     }
-    for (p = 0u; p < VD_POLICIES && !c->harness; p++) {
+    for (p = 0u; p < VD_POLICIES_VIDEO && !c->harness; p++) {
         char request[256];
         struct sv_out ref;
         struct sv_stats st;
@@ -1085,6 +1091,7 @@ void kind_snapshot_restore_video(const struct kase *k, struct ctx *c, char *got,
             char msg[240];
             unsigned before = st.restores;
             unsigned grid_before = st.at_grid;
+            unsigned pend_before = st.pend;
 
             if (sv_exec(c, rom, request, until, &sched[s], (unsigned)stride, &o, &st) != 0) {
                 break;
@@ -1110,14 +1117,19 @@ void kind_snapshot_restore_video(const struct kase *k, struct ctx *c, char *got,
                 snprintf(msg, sizeof msg, "policy %s, schedule %llu: no restore fell at a stop whose machine time is a multiple of 1365 (a line event pending at the machine time): the tie would be untested", vd_policy_name(p), (unsigned long long)sched[s].size);
                 check(c, st.at_grid > grid_before, msg);
             }
+            if ((seen & 8u) != 0u) {
+                snprintf(msg, sizeof msg, "policy %s, schedule %llu: no restore fell at a stop where the source held sprite flags pending (sprite_pend non-zero): the sprite state across a restore would be untested", vd_policy_name(p), (unsigned long long)sched[s].size);
+                check(c, st.pend > pend_before, msg);
+            }
             vd_stream_free(&o.vs);
         }
         total += st.restores;
         grid += st.at_grid;
         mid += st.mid_line;
+        pend += st.pend;
         vd_stream_free(&ref.vs);
     }
-    snprintf(got, gotcap, "restores=%u at_grid=%u mid_line=%u", total, grid, mid);
+    snprintf(got, gotcap, "restores=%u at_grid=%u mid_line=%u sprite_pend=%u", total, grid, mid, pend);
 }
 
 /* ---- vdc_vram (plan 04-06; D-148, D-175 (c), T-04-23) ---- */
@@ -1650,7 +1662,8 @@ void kind_vdc_regmask(const struct kase *k, struct ctx *c, char *got, size_t got
  *   In each run the status reads of the VDC window ($1FE000, kind R, with the stamp of the access) are taken from the dev log: the VD stamp is the stamp of the LAST read whose value has bit 5 set (the read in the IRQ1 handler of the VBlank interrupt; the foreground read before it also has bit 5), the RR stamp that of the FIRST read whose value has bit 2 set (the read in the
  *   handler of the RCR interrupt).
  *   The stamps are judged from the dev log and the literals of the case, never from a literal copied out of the core: the VD stamp of run A minus that of the default run is vd_shift (+96: the window start of HDS = 2 at divider 4 is (2 + 1) * 8 * 4 master clocks after the line start, ASSUMED LED-IRQ-0001) and the RR stamp of run B minus that of the default run is rr_shift (-1365: the
- *   origin line is one line earlier, so the same RCR value matches one line sooner, ASSUMED LED-IRQ-0010), each within plus or minus tol master clocks. tol is the longest instruction of the foreground wait loop of the fixture, lda abs of 5 cycles at 3 master clocks (15): an interrupt is taken at the first instruction boundary after the event, so the stamp of the handler read moves by the shift
+ *   origin line is one line earlier, so the same RCR value matches one line sooner, ASSUMED LED-IRQ-0010), each within plus or minus tol master clocks. tol is the longest instruction of the foreground wait loop of the fixture, lda abs of 5 cycles at 3 master clocks (15): an interrupt is taken at the first instruction boundary after the event, so the stamp of the handler read
+ * moves by the shift
  *   less than one instruction. The two cross rows hold the other parameter fixed: the VD stamp of run B and the RR stamp of run A equal those of the default run within tol (each parameter moves its own event only). Evidence E0: the model compared with the case's own literals; no hardware or accuracy claim.
  */
 #define MV_DEV_CAP 512u
@@ -2191,6 +2204,9 @@ void kind_vdc_advance_pure(const struct kase *k, struct ctx *c, char *got, size_
  * vdc_satb_data: the SATB words the VRAM-to-SATB copy stored, read from the instance bytes (D-175 (c)). The SATB is not CPU-readable (MAN H7-20), so the guest judges only the DS flag and this kind reads the 512 SATB bytes: expect = rom=NAME;satb=W0:STEP:COUNT, the words (W0 + STEP * i) & $FFFF for i below COUNT (256), the multiplication the assembler of the
  * fixture forms its pattern with (restated from fixtures/src/vdc_satb.s; the guest's own check is the DS flag). The fixture runs to the end of its DSV1 verdict under each of the three default power-on policies and every word, assembled here byte by byte (word i = byte 2i | byte 2i+1 << 8, no accessor and no port path), must equal the pattern: a copy that did not run, ran from
  * the wrong address, stored the bytes swapped or from the first pattern instead of the rewritten source fails. Evidence tier E0; no accuracy or hardware claim.
+ * Plan 04.1-01 adds the second form expect = rom=NAME;satb=vram:ADDR:256 for a guest whose 256 SATB source words are sprite entries, not an arithmetic progression (the spr_basic fixture): the expected word j is the VRAM word ADDR + j of the instance at the end of the verdict, assembled here byte by byte from the instance's VRAM bytes (no accessor, no port path),
+ * so the SATB must equal the source block the guest copied from, in every power-on policy of the list. The guest's own checks 3 and 4 compare that source block, read back through VRR, with the ROM table it was uploaded from (GUEST), so the chain ROM table, VRAM source block, SATB has two links read by two different paths. The block must hold at least 16 distinct words, so a
+ * copy of an all-equal region cannot pass.
  */
 void kind_vdc_satb_data(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
 {
@@ -2198,13 +2214,23 @@ void kind_vdc_satb_data(const struct kase *k, struct ctx *c, char *got, size_t g
     unsigned long long w0 = 0u;
     unsigned long long step = 0u;
     unsigned long long count = 0u;
+    unsigned long long vaddr = 0u;
+    int from_vram = 0;
     uint64_t until = 0u;
     unsigned p;
     unsigned words = 0u;
     const char *e = k->has[K_EXPECT] ? k->val[K_EXPECT] : "";
 
-    if (!k->has[K_EXPECT] || sscanf(e, "rom=%47[a-z0-9-];satb=%llu:%llu:%llu", rom, &w0, &step, &count) != 4 || w0 > 0xFFFFu || step > 0xFFFFu || count != 256u || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until < 1000u) {
-        harness_error(c, "a vdc_satb_data case needs until_mclk and expect = rom=NAME;satb=W0:STEP:256 (decimal numbers: the first word, the step and the word count)");
+    int parsed = k->has[K_EXPECT];
+
+    if (parsed && strstr(e, ";satb=vram:") != NULL) { /* the second form: the source block in the instance's VRAM (plan 04.1-01) */
+        parsed = sscanf(e, "rom=%47[a-z0-9-];satb=vram:%llu:%llu", rom, &vaddr, &count) == 3 && count == 256u && vaddr + count <= 0x8000u;
+        from_vram = parsed;
+    } else if (parsed) {
+        parsed = sscanf(e, "rom=%47[a-z0-9-];satb=%llu:%llu:%llu", rom, &w0, &step, &count) == 4 && w0 <= 0xFFFFu && step <= 0xFFFFu && count == 256u;
+    }
+    if (!parsed || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until < 1000u) {
+        harness_error(c, "a vdc_satb_data case needs until_mclk and expect = rom=NAME;satb=W0:STEP:256 (decimal numbers: the first word, the step and the word count) or rom=NAME;satb=vram:ADDR:256 (the source block at the VRAM word ADDR, below $8000)");
         return;
     }
     for (p = 0u; p < (unsigned)VD_POLICIES && !c->harness; p++) {
@@ -2241,8 +2267,23 @@ void kind_vdc_satb_data(const struct kase *k, struct ctx *c, char *got, size_t g
             harness_error(c, "the guest of a vdc_satb_data case did not reach the end of its DSV1 verdict before until_mclk: its SATB is not final");
             return;
         }
+        if (from_vram) { /* the block must not be a copy of an all-equal region: at least 16 distinct words (a vacuity guard) */
+            unsigned distinct = 0u;
+
+            for (j = 0u; j < (unsigned)count; j++) {
+                uint32_t wj = (uint32_t)ci->vdc_vram[2u * (vaddr + j)] | ((uint32_t)ci->vdc_vram[2u * (vaddr + j) + 1u] << 8u);
+                unsigned m;
+                int seen = 0;
+
+                for (m = 0u; m < j && !seen; m++) {
+                    seen = wj == ((uint32_t)ci->vdc_vram[2u * (vaddr + m)] | ((uint32_t)ci->vdc_vram[2u * (vaddr + m) + 1u] << 8u));
+                }
+                distinct += seen ? 0u : 1u;
+            }
+            check(c, distinct >= 16u, "the source block of a vdc_satb_data case in the second form holds fewer than 16 distinct words: the case could pass on an empty copy");
+        }
         for (j = 0u; j < (unsigned)count; j++) {
-            uint32_t want = (uint32_t)((w0 + step * (unsigned long long)j) & 0xFFFFu);
+            uint32_t want = from_vram ? ((uint32_t)ci->vdc_vram[2u * (vaddr + j)] | ((uint32_t)ci->vdc_vram[2u * (vaddr + j) + 1u] << 8u)) : (uint32_t)((w0 + step * (unsigned long long)j) & 0xFFFFu);
             uint32_t have = (uint32_t)ci->vdc_satb[2u * j] | ((uint32_t)ci->vdc_satb[2u * j + 1u] << 8u);
             char msg[200];
 

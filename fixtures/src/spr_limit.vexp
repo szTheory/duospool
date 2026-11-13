@@ -1,0 +1,88 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# spr_limit.vexp - the hand-derived literal rows of the spr_limit video scene (plan 04.1-02; D-155, D-159, D-160, D-161, D-169, D-171, D-172, ER-10, ER-11, ER-12, F-13).
+# scripts/fixture-build writes this file, comments dropped, as build/gate/fixtures/spr-limit.vexp.tsv; the runner kind video (tests/conformance/videokinds.c) reads only that file. One source holds the literals: no expected value lives in a case file, and none comes from a run of DuoSpool, another emulator or a hash.
+# The grammar is the one of spr_basic.vexp (scripts/lib/vexp-rules.awk) plus the STRUCT check spr_line of this plan: slots_used, covering and the OVERFLOW and COLLISION flags of display line k of the frame the author marks held (the line is counted from the first record with an active window of that frame; ;held=F is the author's mark that the literal does not rest on the
+# frame number).
+# The fixture (fixtures/src/spr_limit.s) sets HSR $0202 and HDR $031F (HDS 2, HSW 2, HDE 3, HDW 31: d = HDW + 1 = 32, e = HDE + HSW + HDS + 3 = 10, active_x 24 and active_w 256 dots), MWR 0, BXR = BYR = 0, the palette P(i) = (91 * i + 17) & 511 and a BAT of the transparent tile (index 0 whatever the bank, H7-18), so a dot no sprite covers has the index 0. Display line K is the
+# K-th record with an
+# active window of a frame (VDS 15, so the display line 0 is frame line 17 and the lines in the frame are not asserted). Sprite coordinates (32, 64) are the display top-left (H7-13): a sprite of Y covers the display lines Y - 64 to Y - 64 + height - 1 and dots X - 32 to X - 32 + width - 1. The sprite index is 256 + 16 * palette + pixel (H7-24); every pattern cell is solid, so
+# no bit order or flip is read (ER-12).
+# The slot rules (MAN H7-19, the table for SM = 0): d = HDW + 1 and e = HDE + HSW + HDS + 3 give 64 entries searched when d >= 32 and 2d + 1 when d <= 31, and slots 2(e - 2) at most 16 (e = 10 gives 16, e = 8 gives 12, e = 12 gives 20 and so the cap of 16). A 16-wide sprite takes one slot; entries are taken in index order, and one that finds no slot is dropped and OVERFLOW is
+# set. The two pages disagree
+# on the count (H7-19: 17 or more shows the 16 of higher priority; H7-4: more than 17): the points 16 (no overflow) and 18 (overflow) are MAN and 17 is ASSUMED LED-VID-0012. Counting one 16-wide sprite as one of the 2(e - 2) slots is a reading (H7-19 does not state it per sprite), so the 12-slot rows of e = 8 are ASSUMED
+# LED-VID-0011 (the pixels) and LED-VID-0012 (OR with 16 covering sprites, set by a dropped sprite: a model reading). A 32-wide sprite takes two slots and, with one slot left, only its left cell (ASSUMED LED-VID-0011). COLLISION: sprite 0 and a taken sprite of another SATB index are both opaque at one dot of the window
+# (H7-4(a), position ASSUMED LED-VID-0012); the flag is in the record whatever the IE bits say.
+# The scenes (frames read from the guest's own sequence on one run, as a calibration and never as a literal; the author's mark held=F says the literal does not rest on the number, a neighbouring frame shows the same page values or fails):
+# F4 16 sprites, entry i at dots 16 i to 16 i + 15 (Y 84: display lines 20 to 35), palette i, pixel 15: index 271 + 16 i. F5 the same with HDE 1 (e = 8: 12 slots). F7 18 sprites at X step 14 (the sprite i covers the dots 14 i to 14 i + 15, so the lower entry wins two dots of each overlap), F8 the same with HDE 5 (e = 12: 20 by the formula, 16 by the cap). F10 17 sprites at X
+# step 15 with HDE 5 (e = 12), so that only the cap of 16 leaves the 17th without a slot.
+# F12 seven 32-wide sprites (cells pixel 12 then pixel 3, palette i) at dots 32 i to 32 i + 31, a 16-wide sprite (palette 7) at dots 192 to 207 (under the left cell of entry 6, which wins) and a 32-wide sprite (palette 8) at dots 224 to 255, display lines 140 to 155:
+# 7 * 2 + 1 = 15 slots are used and one is left (review fix M-02: the right cell of the half-taken sprite lies inside the window, so the left-cell-only rule can fail). F14 HDR $031B (HDW 27: d = 28, active_w 224, 2d + 1 = 57 entries searched), the SATB zero before entry 55 and
+# nine sprites of 16 dots at the dots 0, 16, ... from entry 55 (palette 3 + i, i = entry - 55).
+# F16 and F18 the scene of sprite 0: a 32-wide, 64-high sprite (cells (cx, cy) at $3000 + $40 cx + $80 cy; cy 0 pixels 12 and 3, cy 1 pixels 5 and 0, cy 2 pixels 6 and 0, cy 3 pixels 9 and 9; palette 1; Y 84: display lines 20 to 83, dots 40 to 71), entry 1 (palette 2, display lines 36 to 51, dots 56 to 71: over the transparent right cell of cy 1), entry 2 (palette 3, display
+# lines 52 to 67, dots 48 to 63: over the opaque left cell of cy 2) and entries 3 and 4 (palettes 4 and 5, lines 100 to 115, dots 40 to 55 and 48 to 63, overlapping each other, sprite 0 not on the line).
+#   F16 has CR bit 0 set (the CR enable) and F18 has it clear (CR = $00C0).
+# Derivations (index = 256 + 16 palette + pixel): F4 line 20: entry i shows the dots 16 i to 16 i + 15 as 271 + 16 i, so 271, 287, ..., 511 in runs of 16; slots_used 16, covering 16, no overflow. F5 line 20, dots 160 to 223: entries 10 and 11 (431, 447) and then entries 12 and 13 dropped (12 slots): 32 dots of 0; slots_used 12, covering 16, OVERFLOW 1. F7 line 20, dots 196 to
+# 239: entry 13 wins the dots 196 and 197 (479), entry 14 shows 198 to 211 (495),
+# entry 15 shows 212 to 225 (511), entries 16 and 17 (palettes 0 and 1: 271 and 287 at 224 to 239 and 238 to 253) are dropped, so 226 to 239 are 0; slots_used 16, covering 18, OVERFLOW 1 and COLLISION 1 (sprite 0 is opaque at the dots 14 and 15, where entry 1 is also opaque: H7-4(a)). F8 the same dots and counts under the cap. F10 line 20, dots 222 to 255: entry 14 shows 211
+# to 225 (495) so 222 to 225 are 495, entry 15 shows 226 to 240 (511),
+# entry 16 (dots 240 to 255, 271 if it were drawn) is dropped so 241 to 255 are 0; slots_used 16, covering 17, OVERFLOW 1, COLLISION 1. F12 line 140, dots 200 to 255: entry 6 (palette 6) has its left cell at the dots 192 to 207 (pixel 12: 364) and its right cell at 208 to 223 (pixel 3: 355), entry 7 (256 + 112 + 15 = 383 if it were shown) lies under the left cell of entry 6,
+# which wins, entry 8 has one slot, so only its left cell (pixel 12: 256 + 128 + 12 = 396) at 224 to 239, and its right cell (pixel 3: 387 if it were drawn) is not drawn, so 240 to 255 are 0; slots_used 16, covering 9, OVERFLOW 1, COLLISION 0 (sprite 0 overlaps no other sprite).
+# F14 line 20: the entries 55 and 56 are taken (palettes 3 and 4: 319 and 335 at the dots 0 to 15 and 16 to 31), the entries 57 to 63 are at the dots 32 to 127 and are never searched, so the dots 32 to 63 are 0; slots_used 2, covering 2 (the covering count of the searched entries). F16 and F18: sprite 0 is 2 slots and a collider is one, so slots_used 3 where one collider is on
+# the line and 2 where sprite 0 or two colliders are: lines 20 to 35 (sprite 0 alone: 2 slots, covering 1), 36 to 51 (3, 2: entry 1 over the
+# transparent right cell, so the two never share an opaque dot), 52 to 67 (3, 2: entry 2 over the opaque left cell: the COLLISION flag), 68 to 83 (2, 1) and 100 to 115 (entries 3 and 4: 2, 2, sprite 0 not on the line so no collision). Rows: line 36 dots 36 to 75: 277 (palette 1, pixel 5) at 40 to 55, then entry 1 (303) at 56 to 71; line 52 dots 36 to 71: 278 (pixel 6) at 40 to
+# 55 and entry 2 (319) at 56 to 63, because the right cell is transparent.
+# Classes (ER-10, the weakest class of the inputs of a row wins): lim16, lim18, cap and search are MAN H7-19 (with H7-13 and H7-24 for the coordinates and the index); slots is MAN H7-19 for the 16 and 18 sprite lines at e = 10 and e = 12 and the flags that follow from H7-4(a) (the covering count is arithmetic over the SATB the guest wrote);
+# lim12 (ASSUMED LED-VID-0011) and slots12 (ASSUMED LED-VID-0012) are the 12-slot rows of e = 8 (review fix H-01 of the Phase 4.1 review: both ledger entries record the slot unit and OR below 17 sprites as readings); lim17 and slots17 are ASSUMED LED-VID-0012;
+# the 32-wide rows (half, halfcnt, searchcnt where d = 28 limits the count, and the collision rows that count the two slots of sprite 0 and the
+# cell addressing of a 32-wide, 64-high sprite, which no page prints) are ASSUMED LED-VID-0011 or LED-VID-0012. The structure rows use the grid and the frame length (ASSUMED LED-VID-0004).
+# Kills (D-172): F1 shifts the dots of the focus line one dot to the right (a transition inside the x range turns the row red), F7 zeroes every non-zero index of that line, F0 perturbs the first number of the first row (the slot count of a spr_line row, the run length of a ROWS row); F4 puts a copy of the record before the focus in its place and F8 swaps the focus record with
+# the one before it, and the line before the first covering line of every band carries other values, so the spr_line rows of
+# a first row at the first covering line turn red. F3 is not declared by the spr_line groups (the line after the focus holds the same values). F2 cannot act on the first row of any group here (a run of 271, 364 and 319 has equal low bits).
+scene	video_spr_limit	case=video_spr_limit	role=literal
+group	video_spr_limit	struct	form=STRUCT	class=ASSUMED:LED-VID-0004	sym=none	kills=F4,F8,F9
+row	video_spr_limit	struct	check=count	grid=1365
+row	video_spr_limit	struct	check=origins	step=1365
+row	video_spr_limit	struct	check=rec_bytes	header=64;version=1;max_w=682
+row	video_spr_limit	struct	check=values_below_512	limit=512
+group	video_spr_limit	lim16	form=ROWS	class=MAN:H7-19	sym=order	kills=F0,F1,F7
+row	video_spr_limit	lim16	line=active+20;x=0..255;held=4	index=16*271,16*287,16*303,16*319,16*335,16*351,16*367,16*383,16*399,16*415,16*431,16*447,16*463,16*479,16*495,16*511
+group	video_spr_limit	lim12	form=ROWS	class=ASSUMED:LED-VID-0011	sym=order	kills=F0,F1,F7
+row	video_spr_limit	lim12	line=active+20;x=160..223;held=5	index=16*431,16*447,32*0
+group	video_spr_limit	lim18	form=ROWS	class=MAN:H7-19	sym=order	kills=F0,F1,F7
+row	video_spr_limit	lim18	line=active+20;x=196..239;held=7	index=2*479,14*495,14*511,14*0
+group	video_spr_limit	cap	form=ROWS	class=MAN:H7-19	sym=order	kills=F0,F1,F7
+row	video_spr_limit	cap	line=active+20;x=196..239;held=8	index=2*479,14*495,14*511,14*0
+group	video_spr_limit	slots	form=STRUCT	class=MAN:H7-19	sym=none	kills=F0,F4,F8
+row	video_spr_limit	slots	check=spr_line	slots=16;covering=16;ovf=0;col=0;k=20;held=4
+row	video_spr_limit	slots	check=spr_line	slots=16;covering=18;ovf=1;col=1;k=20;held=7
+row	video_spr_limit	slots	check=spr_line	slots=16;covering=18;ovf=1;col=1;k=20;held=8
+row	video_spr_limit	slots	check=spr_line	slots=0;covering=0;ovf=0;col=0;k=19;held=4
+row	video_spr_limit	slots	check=spr_line	slots=0;covering=0;ovf=0;col=0;k=36;held=4
+group	video_spr_limit	slots12	form=STRUCT	class=ASSUMED:LED-VID-0012	sym=none	kills=F0,F4,F8
+row	video_spr_limit	slots12	check=spr_line	slots=12;covering=16;ovf=1;col=0;k=20;held=5
+group	video_spr_limit	lim17	form=ROWS	class=ASSUMED:LED-VID-0012	sym=order	kills=F0,F1,F7
+row	video_spr_limit	lim17	line=active+20;x=222..255;held=10	index=4*495,15*511,15*0
+group	video_spr_limit	slots17	form=STRUCT	class=ASSUMED:LED-VID-0012	sym=none	kills=F0,F4,F8
+row	video_spr_limit	slots17	check=spr_line	slots=16;covering=17;ovf=1;col=1;k=20;held=10
+group	video_spr_limit	half	form=ROWS	class=ASSUMED:LED-VID-0011	sym=order	kills=F0,F1,F7
+row	video_spr_limit	half	line=active+140;x=200..255;held=12	index=8*364,16*355,16*396,16*0
+group	video_spr_limit	halfcnt	form=STRUCT	class=ASSUMED:LED-VID-0011	sym=none	kills=F0,F4,F8
+row	video_spr_limit	halfcnt	check=spr_line	slots=16;covering=9;ovf=1;col=0;k=140;held=12
+group	video_spr_limit	search	form=ROWS	class=MAN:H7-19	sym=order	kills=F0,F1,F7
+row	video_spr_limit	search	line=active+20;x=0..63;held=14	index=16*319,16*335,32*0
+group	video_spr_limit	searchcnt	form=STRUCT	class=ASSUMED:LED-VID-0011	sym=none	kills=F0,F4,F8
+row	video_spr_limit	searchcnt	check=spr_line	slots=2;covering=2;ovf=0;col=0;k=20;held=14
+group	video_spr_limit	colpix	form=ROWS	class=ASSUMED:LED-VID-0011	sym=order	kills=F0,F1,F7
+row	video_spr_limit	colpix	line=active+52;x=36..71;held=16	index=4*0,16*278,8*319,8*0
+row	video_spr_limit	colpix	line=active+36;x=36..75;held=16	index=4*0,16*277,16*303,4*0
+group	video_spr_limit	colmain	form=STRUCT	class=ASSUMED:LED-VID-0012	sym=none	kills=F0,F4,F8
+row	video_spr_limit	colmain	check=spr_line	slots=3;covering=2;ovf=0;col=1;k=52;held=16
+group	video_spr_limit	colneg	form=STRUCT	class=ASSUMED:LED-VID-0012	sym=none	kills=F0,F4,F8
+row	video_spr_limit	colneg	check=spr_line	slots=2;covering=1;ovf=0;col=0;k=20;held=16
+row	video_spr_limit	colneg	check=spr_line	slots=3;covering=2;ovf=0;col=0;k=36;held=16
+row	video_spr_limit	colneg	check=spr_line	slots=2;covering=1;ovf=0;col=0;k=68;held=16
+row	video_spr_limit	colneg	check=spr_line	slots=2;covering=2;ovf=0;col=0;k=100;held=16
+group	video_spr_limit	colie	form=STRUCT	class=ASSUMED:LED-VID-0012	sym=none	kills=F0,F4,F8
+row	video_spr_limit	colie	check=spr_line	slots=3;covering=2;ovf=0;col=1;k=52;held=18

@@ -20,7 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate** - Typed accept/refuse of HuCard bytes into fresh, isolated, seeded instances. One local command and CI fail closed (completed 2026-11-10)
 - [x] **Phase 3: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad** - Authored fixtures report guest-RAM verdicts for the CPU, MMU, timer, IRQ, and SEL/CLR pad, with negative controls and resumable bounded runs (completed 2026-11-11)
 - [x] **Phase 4: VCE/VDC Raw Video** - Per-scanline raw video and guest-recorded interrupt timing, checked against literal expectations for background, DMA, palette, and dot clock (sprites moved to Phase 04.1 at the D-180 cut) (completed 2026-11-12)
-- [ ] **Phase 04.1: VDC Sprites** - Sprites from the SAT with the per-line limit and the overflow and collision flags written into guest RAM, checked against literal expectations (split from Phase 4 at the D-180 cut)
+- [x] **Phase 04.1: VDC Sprites** - Sprites from the SAT with the per-line limit and the overflow and collision flags written into guest RAM, checked against literal expectations (split from Phase 4 at the D-180 cut) (completed 2026-11-12)
 - [ ] **Phase 5: PSG Raw Audio** - Timestamped PSG event log and PCM at a recorded format, checked by semantic properties. Can run in parallel with Phase 4
 - [ ] **Phase 6: Headless Runner, Installed-Consumer Proof and Staged Verification** - Separate observation artifacts, an independent consumer against the installed artifact, staged fuzzing, a benchmark, and a LibFuturo fit evaluation
 
@@ -212,12 +212,12 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. Sprite fixtures write the per-line limit and the overflow and collision status flags into guest RAM, and sprites drawn from the SAT (both widths, three heights, flips, priority, clipping) match literals derived from the fixture's own data in the raw records (the sprite half of Phase 4 criterion 2).
   2. A sprite raw-video hash counts as a verdict only when paired with a semantic literal assertion, and that assertion is shown to fail when the sprite renderer or slot limit is deliberately broken (the sprite half of Phase 4 criterion 5).
-**Plans**: 0/3 plans executed in 3 sequential waves, listed in execution order (CONTEXT plans 04-12..04-14; former files 04-14..04-16)
+**Plans**: 3/3 plans complete in 3 sequential waves, listed in execution order (CONTEXT plans 04-12..04-14; former files 04-14..04-16)
 
 Plans:
-- [ ] 04.1-01-PLAN.md - gate-cost levers (2)-(4) of D-176 with before and after times, then sprite decode and drawing through SATB DMA (spr_basic)
-- [ ] 04.1-02-PLAN.md - slot limit, overflow and collision, flags into guest RAM, OR and CR rows of vdc_stat, toy vid-spr-limit (spr_limit)
-- [ ] 04.1-03-PLAN.md - close-out for the sprite scope: timing and CI-efficiency inputs, sprite ledger promotions, README sprite sentences, 04.1-VALIDATION.md sign-off
+- [x] 04.1-01-PLAN.md - gate-cost levers (2)-(4) of D-176 with before and after times, then sprite decode and drawing through SATB DMA (spr_basic)
+- [x] 04.1-02-PLAN.md - slot limit, overflow and collision, flags into guest RAM, OR and CR rows of vdc_stat, toy vid-spr-limit (spr_limit)
+- [x] 04.1-03-PLAN.md - close-out for the sprite scope: timing and CI-efficiency inputs, sprite ledger promotions, README sprite sentences, 04.1-VALIDATION.md sign-off
 
 **Research**: No research needed beyond the Phase 4 context (the sprite decisions D-155, D-159 and D-160 in 04-CONTEXT).
 
@@ -277,6 +277,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phases 4 and 5
 | 2. Deterministic Machine Shell, HuCard Boundary and Fail-Closed Gate | 22/22 | Complete    | 2026-11-10 |
 | 3. HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad | 38/38 | Complete    | 2026-11-11 |
 | 4. VCE/VDC Raw Video | 16/16 | Complete    | 2026-11-12 |
-| 04.1. VDC Sprites | 0/3 | Not started | - |
+| 04.1. VDC Sprites | 3/3 | Complete    | 2026-11-12 |
 | 5. PSG Raw Audio | 0/TBD | Not started | - |
 | 6. Headless Runner, Installed-Consumer Proof and Staged Verification | 0/TBD | Not started | - |
