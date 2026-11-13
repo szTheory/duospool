@@ -48,7 +48,13 @@ and evidenced is not supported, regardless of how it looks in a frontend.
   register interface, both DMAs, palette and dot-clock scope; guest-recorded
   interrupt positions agree with the model — Phase 4 (evidence tier E0
   repeatability; positions are E2 self-consistency and a labelled modelling
-  assumption; sprites are Phase 4.1)
+  assumption)
+- ✓ Sprites drawn from the sprite attribute table into the same raw video
+  record (widths, heights, flips, palette bank, priorities, clipping, a
+  per-line limit of 16 with the overflow and collision flags reaching guest
+  RAM through the status register) — Phase 4.1 (evidence tier E0
+  repeatability; no sprite ledger entry is supported, the sprite statements
+  are labelled assumptions with their page disagreements recorded)
 
 ### Active
 
@@ -64,15 +70,15 @@ live in `.planning/REQUIREMENTS.md`.
       raw emulated video (before host scaling/colour conversion), raw audio
       (PSG events and PCM, before device playback), and guest progress.
       (Instruction and device-write sinks, the pad read log, machine time and
-      guest-RAM verdicts exist from Phase 3, the raw video sink from Phase 4
-      (sprites in Phase 4.1); audio is Phase 5.)
+      guest-RAM verdicts exist from Phase 3, the raw video sink from Phase 4,
+      sprites from Phase 4.1; audio is Phase 5.)
 - [ ] A headless runner (or equivalent consumer) that can load content, apply a
       scripted input, run for a bounded machine time, and emit observations.
 - [ ] Original, rights-cleared diagnostic fixtures with a manifest (source,
       build recipe, hashes, license, notices, redistribution terms, test
       meaning) as the dependable fast test suite. (CPU, MMU, timer, interrupt,
       speed-switch and pad fixtures exist from Phase 3, VDC and VCE display
-      fixtures from Phase 4 (sprites in Phase 4.1); audio fixtures are still
+      fixtures from Phase 4, sprite fixtures from Phase 4.1; audio fixtures are still
       to come.)
 - [ ] An installed-consumer/package proof: an independent consumer built
       against the installed artifact with source/build paths unavailable.
@@ -214,4 +220,4 @@ This document evolves at phase transitions and milestone boundaries.
 5. Refresh only the sibling/LibFuturo evidence that could change the live decision
 
 ---
-*Last updated: 2026-11-12 after Phase 4 (VCE/VDC raw video for the background, DMA, palette and dot-clock scope; E0 repeatability, E1 documentary for thirteen entries; sprites split to Phase 4.1)*
+*Last updated: 2026-11-12 after Phase 4.1 (VDC sprites in the raw video record; E0 repeatability, no sprite entry supported; the supported set stays thirteen E1 entries)*
