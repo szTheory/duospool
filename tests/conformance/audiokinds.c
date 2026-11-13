@@ -18,6 +18,10 @@
  * SELECTOR items (semicolons): anchor=ev:ch=<0..5|G>;reg=R<n>;[val=$hh;]nth=N (the N-th DSPE record of that channel, G the global chan $FE, register and value); ev=+K (the K-th record after the anchor, form EV); from=+M and to=+M (master clocks after the anchor) or from=M and to=M
  * (absolute, no anchor); to=ev:ch=..;reg=..;[val=..;]nth=N (an end anchor, RF-13: the reg, val and nth items after it belong to it); side=L|R. A window [from, to) holds the samples s with from <= s x sample_mclk < to (D-187), converted to stream indices with the DSPA header's
  * sample_mclk and first frame. LITERAL items (semicolons) are closed keys: the judged ones of each kind and the inputs of the 05-05 arithmetic lint (accepted, not judged here).
+ * Plan 05-05 grammar: every kind of tests/audio/KINDCLASS is parsed with its form (an unknown kind or a form that is not the kind's is refused); kinds whose judge lands later (05-06, 05-07, 05-09) are harness_failure when judged, never a pass. A row golden SCENE pcm_sha256=HEX psg_sha256=HEX
+ * pins the digests of a golden scene; class DEF:<LED ids> marks a definition (ER-19); selector items stream=dspa|dspe (the STRUCT header rows) and nth=N+M on the end anchor (an offset of M master clocks, PR-13); an expect_red scene (D-211, D-225) carries twin= and expect_red= and the
+ * case judging it takes the red list from the scene row. Forms added in 05-05: REL (period_ratio, same, atten_order, atten_equal over the windows of a group's rows in order), STRUCT (header, count) and the ROWS kind live (two rising crossings and at least 3 distinct levels between them).
+ * The kind audio_fault_sweep applies AF0..AF9 of D-209 in memory to copies of the captured streams of one run; audio_judge_forms shows every form able to fail (05-05).
  * Kinds judged here (05-04): ev_value (reg and val, or reg and vals for consecutive records), ev_decode (chan, effect, wave_idx, post of one record: the core's decode against the row, never a judge-side decode), period (the rising crossings of the window: threshold (min + max) / 2
  * of the window on that side, a crossing is the first sample with 2x >= min + max after one with 2x < min + max; fewer than k + 1 crossings is a fail; the distance from the first to the (k+1)-th must be d), cycle_order (the samples between the first two crossings run-collapsed
  * into plateaus, ranked, and compared with the ranks of words up to rotation; RF-14) and silent (every sample of the window on that side is 0, ER-19). An anchor that is not found or a window past the end of the stream fails its row; an empty window is harness_failure.
@@ -262,12 +266,61 @@ static int au_parse(const char *text, struct au_expect *e)
 
 enum { AX_ROLE_LITERAL = 1, AX_ROLE_GOLDEN = 2, AX_ROLE_EXPECT_RED = 3 };
 enum { AX_FORM_ROWS = 1, AX_FORM_REL = 2, AX_FORM_STRUCT = 3, AX_FORM_EV = 4 };
-enum { AK_EV_VALUE = 1, AK_EV_DECODE = 2, AK_PERIOD = 3, AK_CYCLE_ORDER = 4, AK_SILENT = 5 };
+enum {
+    AK_EV_VALUE = 1,
+    AK_EV_DECODE,
+    AK_EV_EDGE,
+    AK_PERIOD,
+    AK_PERIOD_RATIO,
+    AK_CYCLE_ORDER,
+    AK_CYCLE_PHASE,
+    AK_CYCLE_LINEAR,
+    AK_LEVELS_EXACT,
+    AK_SILENT,
+    AK_LIVE,
+    AK_SAME,
+    AK_ATTEN_ORDER,
+    AK_ATTEN_EQUAL,
+    AK_DDA_HOLD,
+    AK_DDA_ORDER,
+    AK_DDA_RAM_KEPT,
+    AK_DDA_EQUALS_WAVE,
+    AK_DDA_LEVEL_EXACT,
+    AK_TWO_LEVEL,
+    AK_RUN_GRID,
+    AK_NOISE_RATIO,
+    AK_RUN_MIN,
+    AK_NOISE_SEQ,
+    AK_LFO_STATIC,
+    AK_LFO_NEEDS_SEL1,
+    AK_LFO_DYNAMIC,
+    AK_COUNT,
+    AK_HEADER,
+    AK_END
+};
+
+/* the kinds of tests/audio/KINDCLASS with their form (scripts/audio-check reads the same table as data) and the plan that brings the judge of a kind this file does not judge yet (NULL: judged here) */
+static const struct au_kind_def {
+    const char *name;
+    int form;
+    const char *later;
+} au_kinds[] = {
+    {"ev_value", AX_FORM_EV, NULL},           {"ev_decode", AX_FORM_EV, NULL},         {"ev_edge", AX_FORM_EV, NULL},           {"period", AX_FORM_ROWS, NULL},
+    {"period_ratio", AX_FORM_REL, NULL},      {"cycle_order", AX_FORM_ROWS, NULL},     {"cycle_phase", AX_FORM_ROWS, "05-07"},  {"cycle_linear", AX_FORM_ROWS, "05-07"},
+    {"levels_exact", AX_FORM_ROWS, "05-06"},  {"silent", AX_FORM_ROWS, NULL},          {"live", AX_FORM_ROWS, NULL},            {"same", AX_FORM_REL, NULL},
+    {"atten_order", AX_FORM_REL, NULL},       {"atten_equal", AX_FORM_REL, NULL},      {"dda_hold", AX_FORM_ROWS, "05-07"},     {"dda_order", AX_FORM_ROWS, "05-07"},
+    {"dda_ram_kept", AX_FORM_ROWS, "05-07"},  {"dda_equals_wave", AX_FORM_REL, "05-07"}, {"dda_level_exact", AX_FORM_ROWS, "05-07"}, {"two_level", AX_FORM_ROWS, "05-07"},
+    {"run_grid", AX_FORM_ROWS, "05-07"},      {"noise_ratio", AX_FORM_REL, "05-07"},   {"run_min", AX_FORM_ROWS, "05-07"},      {"noise_seq", AX_FORM_ROWS, "05-07"},
+    {"lfo_static", AX_FORM_ROWS, "05-09"},    {"lfo_needs_sel1", AX_FORM_REL, "05-09"}, {"lfo_dynamic", AX_FORM_ROWS, "05-09"}, {"count", AX_FORM_STRUCT, NULL},
+    {"header", AX_FORM_STRUCT, NULL},
+};
 
 struct ax_scene {
     char name[AU_NAME];
     char case_id[72];
     int role;
+    char twin[AU_NAME];
+    char red[AX_TEXT]; /* the expect_red= list of an expect_red scene (D-211) */
 };
 
 struct ax_group {
@@ -287,15 +340,23 @@ struct ax_row {
     unsigned group;
 };
 
+struct ax_golden {
+    char scene[AU_NAME];
+    char pcm[65];
+    char psg[65];
+};
+
 struct ax_file {
     uint64_t sample_mclk;
     unsigned nh;
     unsigned ns;
     unsigned ng;
     unsigned nr;
+    unsigned ngold;
     struct ax_scene sc[AX_MAX];
     struct ax_group gr[AX_MAX];
     struct ax_row rw[AX_MAX];
+    struct ax_golden gd[4];
 };
 
 static unsigned ax_split(char *line, char **f, unsigned cap)
@@ -351,27 +412,24 @@ static int ax_class_ok(const char *text)
     if (colon == NULL || colon[1] == '\0' || strlen(text) >= AX_CLASS) {
         return 0;
     }
-    return strncmp(text, "MAN:", 4u) == 0 || strncmp(text, "GUEST:", 6u) == 0 || strncmp(text, "ASSUMED:", 8u) == 0;
+    return strncmp(text, "MAN:", 4u) == 0 || strncmp(text, "GUEST:", 6u) == 0 || strncmp(text, "ASSUMED:", 8u) == 0 || strncmp(text, "DEF:", 4u) == 0;
 }
 
 static int ax_kind(const char *text)
 {
-    if (strcmp(text, "ev_value") == 0) {
-        return AK_EV_VALUE;
-    }
-    if (strcmp(text, "ev_decode") == 0) {
-        return AK_EV_DECODE;
-    }
-    if (strcmp(text, "period") == 0) {
-        return AK_PERIOD;
-    }
-    if (strcmp(text, "cycle_order") == 0) {
-        return AK_CYCLE_ORDER;
-    }
-    if (strcmp(text, "silent") == 0) {
-        return AK_SILENT;
+    unsigned i;
+
+    for (i = 0u; i < (unsigned)(sizeof au_kinds / sizeof au_kinds[0]); i++) {
+        if (strcmp(text, au_kinds[i].name) == 0) {
+            return (int)i + 1;
+        }
     }
     return 0;
+}
+
+static int ax_hex64(const char *s)
+{
+    return strlen(s) == 64u && strspn(s, "0123456789abcdef") == 64u;
 }
 
 static const char *ax_row_parse(struct ax_file *f, char **fld, unsigned nf)
@@ -395,7 +453,7 @@ static const char *ax_row_parse(struct ax_file *f, char **fld, unsigned nf)
             const char *t = ax_val(fld[i], "twin");
             const char *r = ax_val(fld[i], "expect_red");
 
-            if ((t == NULL || !au_name_ok(t, AU_NAME)) && (r == NULL || strlen(r) == 0u)) {
+            if ((t == NULL || !au_name_ok(t, AU_NAME)) && (r == NULL || strlen(r) == 0u || strlen(r) >= AX_TEXT)) {
                 return "aexp-unknown-key: the optional scene keys are twin=NAME and expect_red=GID,...";
             }
         }
@@ -407,6 +465,17 @@ static const char *ax_row_parse(struct ax_file *f, char **fld, unsigned nf)
         s = &f->sc[f->ns++];
         memcpy(s->name, fld[1], strlen(fld[1]) + 1u);
         memcpy(s->case_id, a, strlen(a) + 1u);
+        for (i = 4u; i < nf; i++) {
+            const char *t = ax_val(fld[i], "twin");
+            const char *r = ax_val(fld[i], "expect_red");
+
+            if (t != NULL) {
+                memcpy(s->twin, t, strlen(t) + 1u);
+            }
+            if (r != NULL) {
+                memcpy(s->red, r, strlen(r) + 1u);
+            }
+        }
         if (strcmp(b, "literal") == 0) {
             s->role = AX_ROLE_LITERAL;
         } else if (strcmp(b, "golden") == 0) {
@@ -415,6 +484,9 @@ static const char *ax_row_parse(struct ax_file *f, char **fld, unsigned nf)
             s->role = AX_ROLE_EXPECT_RED;
         } else {
             return "aexp-unknown-key: a scene role is literal, golden or expect_red";
+        }
+        if ((s->role == AX_ROLE_EXPECT_RED) != (s->twin[0] != '\0' && s->red[0] != '\0') || (s->role != AX_ROLE_EXPECT_RED && (s->twin[0] != '\0' || s->red[0] != '\0'))) {
+            return "aexp-malformed: an expect_red scene carries twin=NAME and expect_red=GID,...; no other scene carries either (D-211, D-225)";
         }
     } else if (strcmp(fld[0], "group") == 0) {
         struct ax_group *g;
@@ -443,13 +515,13 @@ static const char *ax_row_parse(struct ax_file *f, char **fld, unsigned nf)
         }
         g->kind = ax_kind(kd);
         if (g->kind == 0) {
-            return "aexp-unknown-key: a group kind this runner does not judge (05-04: ev_value, ev_decode, period, cycle_order, silent)";
+            return "aexp-unknown-key: a group kind outside tests/audio/KINDCLASS";
         }
-        if ((g->kind == AK_EV_VALUE || g->kind == AK_EV_DECODE) != (g->form == AX_FORM_EV) || (g->form != AX_FORM_EV && g->form != AX_FORM_ROWS)) {
-            return "aexp-malformed: the ev kinds take form EV and period, cycle_order and silent form ROWS";
+        if (au_kinds[g->kind - 1].form != g->form) {
+            return "aexp-malformed: the group's form is not the form of its kind (tests/audio/KINDCLASS)";
         }
         if (!ax_class_ok(cl) || ax_kills(kl, &g->kills) != 0) {
-            return "aexp-malformed: a group needs class=MAN:L|GUEST:M|ASSUMED:LED and a non-empty kills list of AF0 to AF9";
+            return "aexp-malformed: a group needs class=MAN:L|GUEST:M|ASSUMED:LED|DEF:LED and a non-empty kills list of AF0 to AF9";
         }
         memcpy(g->cls, cl, strlen(cl) + 1u);
         for (i = 0u; i + 1u < f->ng; i++) {
@@ -468,11 +540,23 @@ static const char *ax_row_parse(struct ax_file *f, char **fld, unsigned nf)
         memcpy(r->gid, fld[2], strlen(fld[2]) + 1u);
         memcpy(r->sel, fld[3], strlen(fld[3]) + 1u);
         memcpy(r->lit, fld[4], strlen(fld[4]) + 1u);
+    } else if (strcmp(fld[0], "golden") == 0) {
+        struct ax_golden *gd;
+
+        if (nf != 4u || f->ngold >= 4u || !au_name_ok(fld[1], AU_NAME) || (a = ax_val(fld[2], "pcm_sha256")) == NULL || (b = ax_val(fld[3], "psg_sha256")) == NULL || !ax_hex64(a) || !ax_hex64(b)) {
+            return "aexp-malformed: a golden row is: golden SCENE pcm_sha256=HEX psg_sha256=HEX (64 lowercase hex digits each)";
+        }
+        gd = &f->gd[f->ngold++];
+        memcpy(gd->scene, fld[1], strlen(fld[1]) + 1u);
+        memcpy(gd->pcm, a, 65u);
+        memcpy(gd->psg, b, 65u);
     } else {
-        return "aexp-unknown-key: a row kind is aexp, scene, group or row";
+        return "aexp-unknown-key: a row kind is aexp, scene, group, row or golden";
     }
     return NULL;
 }
+
+static const char *ax_link(struct ax_file *f);
 
 /* build/gate/fixtures/ROM.aexp.tsv into f (cleared first); NULL on success. A missing file is a fault of the harness, never an empty scene list */
 static const char *ax_load(const char *rom, struct ax_file *f)
@@ -481,7 +565,6 @@ static const char *ax_load(const char *rom, struct ax_file *f)
     char *text;
     char *line;
     unsigned nrows = 0u;
-    unsigned i;
     const char *err = NULL;
 
     memset(f, 0, sizeof *f);
@@ -517,6 +600,14 @@ static const char *ax_load(const char *rom, struct ax_file *f)
     if (err != NULL) {
         return err;
     }
+    return ax_link(f);
+}
+
+/* the checks after the rows are read: the header once, a scene, every row's group and every group's scene; NULL on success */
+static const char *ax_link(struct ax_file *f)
+{
+    unsigned i;
+
     if (f->nh != 1u || f->ns == 0u) {
         return "aexp-malformed: the aexp rows need the header row aexp sample_mclk=N and at least one scene row";
     }
@@ -567,6 +658,12 @@ struct au_cap {
     int chain_bad;
     uint64_t machine_time;
     uint32_t reason;
+    uint64_t lf;        /* the video frame length in master clocks (262 or 263 lines of 1365), for the count kind */
+    uint64_t hdr_fcount; /* the sum of the pcm headers' count fields over the calls: a fault that drops or adds a frame changes fcount, never this */
+    uint64_t hdr_ecount; /* the same for the psg headers */
+    uint32_t pfbytes;   /* the pcm header's frame_bytes, version and format as read (au_run refuses others as harness_failure) */
+    uint32_t pversion;
+    uint32_t pformat;
 };
 
 static void au_cap_free(struct au_cap *cp)
@@ -583,6 +680,21 @@ static uint64_t au_pcm_capacity(uint64_t t0, uint64_t until)
     uint64_t span = (until > t0 ? until - t0 : 0u) + ds_max_step_mclk();
 
     return span / 192u + (span % 192u != 0u ? 1u : 0u) + 1u;
+}
+
+static uint64_t ao_frame_mclk(const struct ds_instance *inst);
+static uint64_t ao_frame_count(uint64_t first, uint64_t n, uint64_t lf, uint64_t k, uint64_t *start);
+
+/* the missing-sink rule of D-209: no frame although samples were due (shared with the control of audio_judge_forms) */
+static int au_no_frames(const struct au_cap *cp)
+{
+    return cp->fcount == 0u && cp->machine_time > cp->first * (uint64_t)cp->smclk;
+}
+
+/* the D-197 header rule of au_run: frame_bytes 8, version 1, format 1, a sample_mclk above 0; 1 when the header is acceptable (shared with the missing-sink control of audio_judge_forms) */
+static int au_pcm_header_ok(const uint8_t *h)
+{
+    return au_u16(h + AU_H_FBYTES) == AU_F_BYTES && h[AU_H_VERSION] == 1u && h[AU_H_FORMAT] == 1u && au_u32(h + AU_H_SMCLK) != 0u;
 }
 
 /* one ds_run call on w to until (with the DSV1 stop when dsv1 is set) whose psg, pcm and dev sinks point at the free tails of cp (allocated on first use: AU_PSG_CAP records, pcap frames, AU_DEV_CAP records); the call's records and frames are appended. A lost record or frame,
@@ -644,7 +756,7 @@ static int au_run(struct ctx *c, struct ds_instance *w, uint64_t until, int dsv1
         harness_error(c, "a sink of the audio run lost a record or a frame, or its header is inconsistent: the streams would be incomplete evidence (D-201)");
         return -1;
     }
-    if (au_u16(fsk.header + AU_H_FBYTES) != AU_F_BYTES || fsk.header[AU_H_VERSION] != 1u || fsk.header[AU_H_FORMAT] != 1u || au_u32(fsk.header + AU_H_SMCLK) == 0u || (cp->calls > 0u && au_u32(fsk.header + AU_H_SMCLK) != cp->smclk)) {
+    if (!au_pcm_header_ok(fsk.header) || (cp->calls > 0u && au_u32(fsk.header + AU_H_SMCLK) != cp->smclk)) {
         harness_error(c, "the pcm header does not read frame_bytes 8, version 1, format 1 and one sample_mclk above 0 (D-197)");
         return -1;
     }
@@ -657,6 +769,11 @@ static int au_run(struct ctx *c, struct ds_instance *w, uint64_t until, int dsv1
     cp->ecount += ec;
     cp->fcount += fc;
     cp->dcount += dc;
+    cp->hdr_ecount += ec;
+    cp->hdr_fcount += fc;
+    cp->pfbytes = au_u16(fsk.header + AU_H_FBYTES);
+    cp->pversion = fsk.header[AU_H_VERSION];
+    cp->pformat = fsk.header[AU_H_FORMAT];
     cp->calls++;
     cp->machine_time = res->machine_time;
     cp->reason = res->reason;
@@ -685,11 +802,12 @@ static int au_capture(struct ctx *c, const char *rom, const char *request, uint6
         note_run(c, res.machine_time, res.reason);
     }
     judge_dsv1(c, ci->ram8k + V_OFF, (unsigned)e->id, (unsigned)e->checks, got, gotcap);
+    cp->lf = ao_frame_mclk(ci);
     release_boot(&b);
     if (c->harness || c->timeout) {
         return -1;
     }
-    if (cp->fcount == 0u && cp->machine_time > cp->first * (uint64_t)cp->smclk) {
+    if (au_no_frames(cp)) {
         harness_error(c, "the pcm sink holds no frame although samples were due: a missing sink is a fault of the harness, never a pass (D-209)");
         return -1;
     }
@@ -827,6 +945,8 @@ struct au_sel {
     int to_kind; /* 0 none, 1 relative, 2 absolute, 3 the end anchor */
     uint64_t to;
     int side; /* 0 none, 1 L, 2 R */
+    int stream; /* 0 none, 1 dspa, 2 dspe (the STRUCT header rows) */
+    uint64_t to_off; /* the end anchor's offset in master clocks (nth=N+M, PR-13) */
 };
 
 /* one selector into s; NULL on success, else why not (a fault of the literal file: harness_failure) */
@@ -876,10 +996,23 @@ static const char *au_sel_parse(const char *text, struct au_sel *s)
             cur->has_val = 1;
             cur->val = (unsigned)v;
         } else if ((x = ax_val(item, "nth")) != NULL) {
-            if (cur == NULL || cur->nth != 0u || au_num(x, &v) != 0 || v == 0u) {
+            char nb[24];
+            const char *plus = strchr(x, '+');
+            size_t nlen = plus != NULL ? (size_t)(plus - x) : strlen(x);
+            uint64_t off = 0u;
+
+            if (nlen >= sizeof nb || (plus != NULL && (cur != &s->e || au_num(plus + 1, &off) != 0))) {
+                return "aexp-malformed: nth=N+M (an offset of M master clocks) is allowed on the end anchor only (PR-13)";
+            }
+            memcpy(nb, x, nlen);
+            nb[nlen] = '\0';
+            if (cur == NULL || cur->nth != 0u || au_num(nb, &v) != 0 || v == 0u) {
                 return "aexp-malformed: nth=N (N >= 1) follows its anchor once";
             }
             cur->nth = v;
+            if (cur == &s->e) {
+                s->to_off = off;
+            }
         } else if ((x = ax_val(item, "ev")) != NULL) {
             if (!s->a.set || s->has_ev || x[0] != '+' || au_num(x + 1, &v) != 0) {
                 return "aexp-malformed: ev=+K follows the start anchor once";
@@ -908,8 +1041,14 @@ static const char *au_sel_parse(const char *text, struct au_sel *s)
             }
             s->side = x[0] == 'L' ? 1 : 2;
             cur = NULL;
+        } else if ((x = ax_val(item, "stream")) != NULL) {
+            if (s->stream != 0 || (strcmp(x, "dspa") != 0 && strcmp(x, "dspe") != 0)) {
+                return "aexp-malformed: stream=dspa or stream=dspe, once";
+            }
+            s->stream = x[3] == 'a' ? 1 : 2;
+            cur = NULL;
         } else {
-            return "aexp-unknown-key: a selector item is anchor, reg, val, nth, ev, from, to or side";
+            return "aexp-unknown-key: a selector item is anchor, reg, val, nth, ev, from, to, side or stream";
         }
     }
     if ((s->a.set && (!s->a.has_reg || s->a.nth == 0u)) || (s->e.set && (!s->e.has_reg || s->e.nth == 0u))) {
@@ -928,7 +1067,7 @@ struct au_lit {
 };
 
 /* the closed literal keys: the judged keys of the 05-04 kinds and the inputs of the 05-05 arithmetic lint (plan check 3 info 5) */
-static const char *const au_keys[] = {"f", "k", "d", "nf", "g", "f2", "flf", "step", "w", "w1", "w2", "shift", "set", "m", "n", "r1", "al", "r5", "chon", "p0", "p1", "words", "minrun", "reg", "val", "vals", "chan", "effect", "wave_idx", "post"};
+static const char *const au_keys[] = {"f", "k", "d", "nf", "g", "f2", "flf", "step", "w", "w1", "w2", "shift", "set", "m", "n", "r1", "al", "r5", "chon", "p0", "p1", "words", "minrun", "reg", "val", "vals", "chan", "effect", "wave_idx", "post", "sample_mclk", "frame_bytes", "version", "format", "mark"};
 
 static const char *au_lit_parse(const char *text, struct au_lit *l)
 {
@@ -1065,7 +1204,7 @@ static int au_window(const struct au_cap *cp, const struct au_sel *s, uint64_t *
             snprintf(why, cap, "the end anchor record is not in the DSPE stream");
             return AU_FAIL;
         }
-        to = au_u64(cp->erec + (size_t)ei * AU_E_REC + AU_E_STAMP);
+        to = au_u64(cp->erec + (size_t)ei * AU_E_REC + AU_E_STAMP) + s->to_off;
     } else {
         to = s->to_kind == 1 ? base + s->to : s->to;
     }
@@ -1144,6 +1283,32 @@ static int au_rows_row(const struct au_cap *cp, const struct ax_group *g, const 
     if (w != AU_PASS) {
         return w;
     }
+    if (g->kind == AK_LIVE) {
+        /* live (D-208): a period or cycle_order property, never "nonzero": two rising crossings in the window and at least 3 distinct levels between them; AF0 inverts the rule */
+        uint64_t cx[2];
+        uint64_t lv[3];
+        unsigned nl = 0u;
+        unsigned j;
+
+        (void)l;
+        if (au_crossings(cp, i0, i1, s->side, cx, 2u) < 2u) {
+            snprintf(why, cap, "fewer than two rising crossings in the window [%llu, %llu): no live cycle", (unsigned long long)i0, (unsigned long long)i1);
+            return perturb ? AU_PASS : AU_FAIL;
+        }
+        for (i = cx[0]; i < cx[1] && nl < 3u; i++) {
+            uint64_t x = au_sample(cp, i, s->side);
+            int seen = 0;
+
+            for (j = 0u; j < nl; j++) {
+                seen = seen || lv[j] == x;
+            }
+            if (!seen) {
+                lv[nl++] = x;
+            }
+        }
+        snprintf(why, cap, "%s3 distinct levels between the crossings %llu and %llu", nl >= 3u ? "at least " : "fewer than ", (unsigned long long)cx[0], (unsigned long long)cx[1]);
+        return (nl >= 3u) != (perturb != 0) ? AU_PASS : AU_FAIL;
+    }
     if (g->kind == AK_SILENT) {
         uint32_t want = perturb ? 1u : 0u;
 
@@ -1174,6 +1339,10 @@ static int au_rows_row(const struct au_cap *cp, const struct ax_group *g, const 
         }
         snprintf(why, cap, "crossings %llu and %llu (the first and the %llu-th after it) are %llu samples apart, the literal is %llu", (unsigned long long)cx[0], (unsigned long long)cx[k], (unsigned long long)k, (unsigned long long)(cx[k] - cx[0]), (unsigned long long)d);
         return cx[k] - cx[0] == d ? AU_PASS : AU_FAIL;
+    }
+    if (g->kind != AK_CYCLE_ORDER) {
+        snprintf(why, cap, "the kind %s is parsed but judged from plan %s", au_kinds[g->kind - 1].name, au_kinds[g->kind - 1].later != NULL ? au_kinds[g->kind - 1].later : "05-05");
+        return AU_HARNESS;
     }
     {
         /* cycle_order: the plateaus between the first two rising crossings against the word ranks up to rotation (RF-14) */
@@ -1237,7 +1406,7 @@ static int au_ev_row(const struct au_cap *cp, const struct ax_group *g, const st
     uint32_t ai;
     uint64_t at;
 
-    if (!s->a.set || !s->has_ev || s->from_kind != 0 || s->to_kind != 0 || s->side != 0) {
+    if (!s->a.set || !s->has_ev || s->from_kind != 0 || s->to_kind != 0 || s->side != 0 || s->stream != 0) {
         snprintf(why, cap, "aexp-malformed: an EV row selects anchor=ev:...;ev=+K and nothing else");
         return AU_HARNESS;
     }
@@ -1320,6 +1489,230 @@ static int au_ev_row(const struct au_cap *cp, const struct ax_group *g, const st
     }
 }
 
+/* a number literal of l into *v; 0 on success */
+static int au_lit_num(const struct au_lit *l, const char *key, uint64_t *v)
+{
+    return au_lit_get(l, key) != NULL && au_num(au_lit_get(l, key), v) == 0 ? 0 : -1;
+}
+
+/* the STRUCT form (D-207, ER-19): header (the DSPA header fields sample_mclk, frame_bytes, version and format and the header count against the frames delivered; every DSPE record's version and the header count against the records delivered; definitions, DEF) and count (the per-frame sample counts
+ * of the frames 0 .. m / L - 1 summed, against n = ceil(m / 192), with the stream on the grid of D-187 up to the run's end; m a whole number of frames of L master clocks, ASSUMED:LED-VID-0001+LED-AUD-0014). perturb (AF0): the first literal + 1 */
+static int au_struct_row(const struct au_cap *cp, const struct ax_group *g, const struct au_sel *s, const struct au_lit *l, int perturb, char *why, size_t cap)
+{
+    uint64_t want[4];
+    uint32_t i;
+
+    if (g->kind == AK_HEADER) {
+        if (s->stream == 0 || s->a.set || s->e.set || s->from_kind != 0 || s->to_kind != 0 || s->side != 0 || s->has_ev) {
+            snprintf(why, cap, "aexp-malformed: a header row selects stream=dspa or stream=dspe and nothing else");
+            return AU_HARNESS;
+        }
+        if (s->stream == 1) {
+            if (au_lit_num(l, "sample_mclk", &want[0]) != 0 || au_lit_num(l, "frame_bytes", &want[1]) != 0 || au_lit_num(l, "version", &want[2]) != 0 || au_lit_num(l, "format", &want[3]) != 0) {
+                snprintf(why, cap, "aexp-malformed: a dspa header row needs sample_mclk, frame_bytes, version and format");
+                return AU_HARNESS;
+            }
+            want[0] += perturb ? 1u : 0u;
+            if ((uint64_t)cp->smclk != want[0] || (uint64_t)cp->pfbytes != want[1] || (uint64_t)cp->pversion != want[2] || (uint64_t)cp->pformat != want[3]) {
+                snprintf(why, cap, "the DSPA header reads sample_mclk %u, frame_bytes %u, version %u, format %u, the literal is %llu, %llu, %llu, %llu", (unsigned)cp->smclk, (unsigned)cp->pfbytes, (unsigned)cp->pversion, (unsigned)cp->pformat, (unsigned long long)want[0],
+                         (unsigned long long)want[1], (unsigned long long)want[2], (unsigned long long)want[3]);
+                return AU_FAIL;
+            }
+            if (cp->hdr_fcount != (uint64_t)cp->fcount) {
+                snprintf(why, cap, "the DSPA header counts %llu frames, the stream holds %u", (unsigned long long)cp->hdr_fcount, (unsigned)cp->fcount);
+                return AU_FAIL;
+            }
+            snprintf(why, cap, "the DSPA header reads the literal and counts the %u frames delivered", (unsigned)cp->fcount);
+            return AU_PASS;
+        }
+        if (au_lit_num(l, "version", &want[0]) != 0) {
+            snprintf(why, cap, "aexp-malformed: a dspe header row needs version");
+            return AU_HARNESS;
+        }
+        want[0] += perturb ? 1u : 0u;
+        for (i = 0u; i < cp->ecount; i++) {
+            if ((uint64_t)cp->erec[(size_t)i * AU_E_REC + AU_E_VERSION] != want[0]) {
+                snprintf(why, cap, "DSPE record %u reads version %u, the literal is %llu", (unsigned)i, (unsigned)cp->erec[(size_t)i * AU_E_REC + AU_E_VERSION], (unsigned long long)want[0]);
+                return AU_FAIL;
+            }
+        }
+        if (cp->hdr_ecount != (uint64_t)cp->ecount || cp->ecount == 0u) {
+            snprintf(why, cap, "the DSPE header counts %llu records, the stream holds %u (none is not a pass)", (unsigned long long)cp->hdr_ecount, (unsigned)cp->ecount);
+            return AU_FAIL;
+        }
+        snprintf(why, cap, "all %u DSPE records read version %llu and the header counts them", (unsigned)cp->ecount, (unsigned long long)want[0]);
+        return AU_PASS;
+    }
+    if (g->kind == AK_COUNT) {
+        uint64_t m = 0u;
+        uint64_t n = 0u;
+        uint64_t k;
+        uint64_t sum = 0u;
+
+        if (s->from_kind != 2 || s->to_kind != 2 || s->from != 0u || s->a.set || s->e.set || s->side != 0 || s->stream != 0 || au_lit_num(l, "m", &m) != 0 || au_lit_num(l, "n", &n) != 0 || s->to != m || cp->lf == 0u || m == 0u || m % cp->lf != 0u) {
+            snprintf(why, cap, "aexp-malformed: a count row selects from=0;to=M and carries m=M (a whole number of frames) and n");
+            return AU_HARNESS;
+        }
+        n += perturb ? 1u : 0u;
+        for (k = 0u; k < m / cp->lf; k++) {
+            uint64_t start = 0u;
+
+            sum += ao_frame_count(cp->first, cp->fcount, cp->lf, k, &start);
+        }
+        if ((uint64_t)cp->fcount + cp->first != cp->machine_time / cp->smclk + (cp->machine_time % cp->smclk != 0u ? 1u : 0u)) {
+            snprintf(why, cap, "the stream holds frames %llu to %llu, not every sample instant up to the run's end %llu (the grid of D-187)", (unsigned long long)cp->first, (unsigned long long)(cp->first + cp->fcount), (unsigned long long)cp->machine_time);
+            return AU_FAIL;
+        }
+        snprintf(why, cap, "the frames 0 to %llu of %llu master clocks hold %llu samples, the literal is %llu", (unsigned long long)(m / cp->lf - 1u), (unsigned long long)cp->lf, (unsigned long long)sum, (unsigned long long)n);
+        return sum == n ? AU_PASS : AU_FAIL;
+    }
+    snprintf(why, cap, "the kind %s is not a STRUCT kind", au_kinds[g->kind - 1].name);
+    return AU_HARNESS;
+}
+
+#define AU_REL_MAX 8u
+
+/* the peak (largest sample) of [i0, i1) on one side */
+static uint32_t au_peak(const struct au_cap *cp, uint64_t i0, uint64_t i1, int side)
+{
+    uint32_t p = 0u;
+    uint64_t i;
+
+    for (i = i0; i < i1; i++) {
+        uint32_t x = au_sample(cp, i, side);
+
+        p = x > p ? x : p;
+    }
+    return p;
+}
+
+/* the REL form (D-207, D-208): a relation over the windows of the group's rows in row order. period_ratio (two rows, k on each, p0 and p1 on the first): the distance of k cycles of the first window times p1 equals that of the second times p0; same (two rows, n on the first): the n samples
+ * from the first rising crossing of each window are equal (aligned at the crossing, never at a write, D-185); atten_order (two or more rows): the peaks strictly decrease; atten_equal: the peaks are equal. perturb (AF0): p0 + 1, the second window one sample later, a strict increase of
+ * the first pair, the first peak + 1 */
+static int au_rel_group(const struct ax_file *f, unsigned gi, const struct au_cap *cp, int perturb, char *why, size_t cap)
+{
+    const struct ax_group *g = &f->gr[gi];
+    uint64_t w0[AU_REL_MAX];
+    uint64_t w1[AU_REL_MAX];
+    uint64_t kk[AU_REL_MAX];
+    int sd[AU_REL_MAX];
+    uint64_t p0 = 0u;
+    uint64_t p1 = 0u;
+    uint64_t cn = 0u;
+    unsigned n = 0u;
+    unsigned r;
+    uint64_t *cx = NULL;
+    int out = AU_PASS;
+
+    if (au_kinds[g->kind - 1].later != NULL) {
+        snprintf(why, cap, "the kind %s is parsed but judged from plan %s", au_kinds[g->kind - 1].name, au_kinds[g->kind - 1].later);
+        return AU_HARNESS;
+    }
+    for (r = 0u; r < f->nr; r++) {
+        struct au_sel s;
+        struct au_lit l;
+        const char *err;
+        int v;
+
+        if (f->rw[r].group != gi) {
+            continue;
+        }
+        err = au_sel_parse(f->rw[r].sel, &s);
+        if (err == NULL) {
+            err = au_lit_parse(f->rw[r].lit, &l);
+        }
+        if (err != NULL || n >= AU_REL_MAX) {
+            snprintf(why, cap, "row %u: %s", n + 1u, err != NULL ? err : "aexp-malformed: a REL group has at most 8 rows");
+            return AU_HARNESS;
+        }
+        v = au_window(cp, &s, &w0[n], &w1[n], why, cap);
+        if (v != AU_PASS) {
+            return v;
+        }
+        sd[n] = s.side;
+        kk[n] = 0u;
+        if (g->kind == AK_PERIOD_RATIO && (au_lit_num(&l, "k", &kk[n]) != 0 || kk[n] == 0u || kk[n] >= AU_CROSS_MAX || (n == 0u && (au_lit_num(&l, "p0", &p0) != 0 || au_lit_num(&l, "p1", &p1) != 0 || p0 == 0u || p1 == 0u)))) {
+            snprintf(why, cap, "aexp-malformed: a period_ratio row needs k (1 to 4095), the first also p0 and p1 (above 0)");
+            return AU_HARNESS;
+        }
+        if (g->kind == AK_SAME && n == 0u && (au_lit_num(&l, "n", &cn) != 0 || cn == 0u)) {
+            snprintf(why, cap, "aexp-malformed: the first row of a same group needs n (the samples compared, above 0)");
+            return AU_HARNESS;
+        }
+        n++;
+    }
+    if (n < 2u || ((g->kind == AK_PERIOD_RATIO || g->kind == AK_SAME) && n != 2u)) {
+        snprintf(why, cap, "aexp-malformed: a REL group needs two rows (period_ratio and same exactly two)");
+        return AU_HARNESS;
+    }
+    if (g->kind == AK_PERIOD_RATIO || g->kind == AK_SAME) {
+        uint64_t dist[2];
+
+        cx = (uint64_t *)malloc((size_t)AU_CROSS_MAX * sizeof *cx);
+        if (cx == NULL) {
+            snprintf(why, cap, "out of memory for the crossings");
+            return AU_HARNESS;
+        }
+        for (r = 0u; r < 2u; r++) {
+            unsigned nc = au_crossings(cp, w0[r], w1[r], sd[r], cx, AU_CROSS_MAX);
+
+            if (g->kind == AK_PERIOD_RATIO) {
+                if ((uint64_t)nc < kk[r] + 1u) {
+                    snprintf(why, cap, "window %u holds %u rising crossings, fewer than k + 1 = %llu", r + 1u, nc, (unsigned long long)(kk[r] + 1u));
+                    out = AU_FAIL;
+                    break;
+                }
+                dist[r] = cx[kk[r]] - cx[0];
+            } else {
+                if (nc == 0u || cx[0] + cn + (r == 1u && perturb ? 1u : 0u) > w1[r]) {
+                    snprintf(why, cap, "window %u has no rising crossing followed by %llu samples inside it", r + 1u, (unsigned long long)cn);
+                    out = AU_FAIL;
+                    break;
+                }
+                dist[r] = cx[0] + (r == 1u && perturb ? 1u : 0u);
+            }
+        }
+        if (out == AU_PASS && g->kind == AK_PERIOD_RATIO) {
+            p0 += perturb ? 1u : 0u;
+            snprintf(why, cap, "the distances of the two windows are %llu and %llu samples, the literal ratio is %llu : %llu", (unsigned long long)dist[0], (unsigned long long)dist[1], (unsigned long long)p0, (unsigned long long)p1);
+            out = dist[0] * p1 == dist[1] * p0 ? AU_PASS : AU_FAIL;
+        } else if (out == AU_PASS) {
+            uint64_t j;
+
+            snprintf(why, cap, "the %llu samples from the first rising crossings (%llu and %llu) are equal", (unsigned long long)cn, (unsigned long long)dist[0], (unsigned long long)dist[1]);
+            for (j = 0u; j < cn; j++) {
+                if (au_sample(cp, dist[0] + j, sd[0]) != au_sample(cp, dist[1] + j, sd[1])) {
+                    snprintf(why, cap, "sample %llu after the first rising crossings differs (%u against %u)", (unsigned long long)j, (unsigned)au_sample(cp, dist[0] + j, sd[0]), (unsigned)au_sample(cp, dist[1] + j, sd[1]));
+                    out = AU_FAIL;
+                    break;
+                }
+            }
+        }
+        free(cx);
+        return out;
+    }
+    {
+        uint32_t pk[AU_REL_MAX];
+
+        for (r = 0u; r < n; r++) {
+            pk[r] = au_peak(cp, w0[r], w1[r], sd[r]);
+        }
+        if (g->kind == AK_ATTEN_EQUAL) {
+            pk[0] += perturb ? 1u : 0u;
+        }
+        for (r = 1u; r < n; r++) {
+            int ok = g->kind == AK_ATTEN_ORDER ? (perturb && r == 1u ? pk[1] > pk[0] : pk[r] < pk[r - 1u]) : pk[r] == pk[0];
+
+            if (!ok) {
+                snprintf(why, cap, "the peak of window %u is %u against %u before it: not %s", r + 1u, (unsigned)pk[r], (unsigned)pk[r - 1u], g->kind == AK_ATTEN_ORDER ? "strictly decreasing" : "equal");
+                return AU_FAIL;
+            }
+        }
+        snprintf(why, cap, "the %u peaks (the first %u, the last %u) are %s", n, (unsigned)pk[0], (unsigned)pk[n - 1u], g->kind == AK_ATTEN_ORDER ? "strictly decreasing" : "equal");
+        return AU_PASS;
+    }
+}
+
 /* one group of the scene on a capture: AU_PASS when every row passes; why holds the first failing row's reason (or the last row's). perturb set: the first row reads a perturbed literal (AF0) */
 static int au_eval_group(const struct ax_file *f, unsigned gi, const struct au_cap *cp, int perturb, char *why, size_t cap)
 {
@@ -1328,6 +1721,9 @@ static int au_eval_group(const struct ax_file *f, unsigned gi, const struct au_c
     unsigned nrow = 0u;
     int out = AU_PASS;
 
+    if (g->form == AX_FORM_REL) {
+        return au_rel_group(f, gi, cp, perturb, why, cap);
+    }
     snprintf(why, cap, "no row");
     for (r = 0u; r < f->nr; r++) {
         const struct ax_row *row = &f->rw[r];
@@ -1349,7 +1745,9 @@ static int au_eval_group(const struct ax_file *f, unsigned gi, const struct au_c
             snprintf(why, cap, "row %u: %s", nrow, err);
             return AU_HARNESS;
         }
-        v = g->form == AX_FORM_EV ? au_ev_row(cp, g, &s, &l, perturb && nrow == 1u, rwhy, sizeof rwhy) : au_rows_row(cp, g, &s, &l, perturb && nrow == 1u, rwhy, sizeof rwhy);
+        v = g->form == AX_FORM_EV ? au_ev_row(cp, g, &s, &l, perturb && nrow == 1u, rwhy, sizeof rwhy)
+            : g->form == AX_FORM_STRUCT ? au_struct_row(cp, g, &s, &l, perturb && nrow == 1u, rwhy, sizeof rwhy)
+                                        : au_rows_row(cp, g, &s, &l, perturb && nrow == 1u, rwhy, sizeof rwhy);
         if (v == AU_HARNESS) {
             snprintf(why, cap, "row %u: %s", nrow, rwhy);
             return AU_HARNESS;
@@ -1422,8 +1820,17 @@ void kind_audio(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
         harness_error(c, "the scene of the expect has no scene row, or its scene row names another case (only an expect_red binding may judge the scene of another case)");
         goto done;
     }
-    if (f->sc[si].role != AX_ROLE_LITERAL) {
-        harness_error(c, "the scene is not a literal scene: plan 05-04 judges literal scenes only (05-05 adds the golden role)");
+    if (f->sc[si].role == AX_ROLE_EXPECT_RED) {
+        unsigned t;
+
+        for (t = 0u; t < f->ns && !(strcmp(f->sc[t].name, f->sc[si].twin) == 0 && f->sc[t].role == AX_ROLE_LITERAL); t++) {
+        }
+        if (t == f->ns || e.nred != 0u || au_red_list(f->sc[si].red, &e) != 0) {
+            harness_error(c, "an expect_red scene names a literal scene of its file with twin= and lists its red groups with expect_red=, and its case carries no expect_red of its own (D-211)");
+            goto done;
+        }
+    } else if (f->sc[si].role != AX_ROLE_LITERAL) {
+        harness_error(c, "the scene is not a literal or expect_red scene (the golden role is judged by its digests)");
         goto done;
     }
     /* the two policy runs of D-204: zero (judged) and seeded-prng-v4 seed 1 (identity) */
@@ -1626,6 +2033,10 @@ static void au_target_of(const struct ax_file *f, unsigned gi, const struct au_c
             t->has_win = 1;
             t->i0 = i0;
             t->i1 = i1;
+        } else if (!t->has_win && s.side == 0 && s.from_kind == 2 && s.to_kind == 2 && s.to > s.from) {
+            t->has_win = 1;
+            t->i0 = au_index(cp, s.from);
+            t->i1 = au_index(cp, s.to);
         }
     }
     if (!t->has_win) {
@@ -1875,6 +2286,318 @@ void kind_audio_fault_sweep(const struct kase *k, struct ctx *c, char *got, size
     }
 done:
     au_cap_free(&cap0);
+    free(f);
+}
+
+/* ---- audio_judge_forms (plan 05-05 Task 2; the jf_want pattern of videokinds.c): pass, fail and harness rows of every form and judged kind on a synthetic capture, the AF0 perturbation of each, the null-synth controls on psg_tone's own event stream and the missing-sink rule ---- */
+
+#define AJ_FRAMES 4096u
+#define AJ_KEYOFF 2048u /* the synthetic key-off sample: silence from here */
+
+struct aj_ctx {
+    struct ctx *c;
+    struct ax_file *f;
+    unsigned checks;
+    char failed[1500];
+};
+
+static void aj_want(struct aj_ctx *j, const char *name, int got, int want)
+{
+    char msg[240];
+
+    snprintf(msg, sizeof msg, "judge forms: %.180s (verdict %d, wanted %d)", name, got, want);
+    check(j->c, got == want, msg);
+    j->checks++;
+    if (got != want && strlen(j->failed) + strlen(msg) + 2u < sizeof j->failed) {
+        strcat(j->failed, msg);
+        strcat(j->failed, "\n");
+    }
+}
+
+/* the synthetic word of index w: 0..15 rising, then 31 down to 16, so a cycle has one rising crossing (15 -> 31) and 32 distinct plateaus */
+static uint32_t aj_word(unsigned w)
+{
+    return w < 16u ? w : 47u - w;
+}
+
+/* the synthetic capture: key-on (R4 $9F on select 0) at stamp 0 and key-off (R4 $1F) at sample 2048; samples 0..1023 the words x 1000 with 4 samples per word (a cycle of 128), samples 1024..2047 the same x 500, then silence; L = R; the headers of a sound run */
+static int aj_stream(struct au_cap *x)
+{
+    uint32_t i;
+
+    memset(x, 0, sizeof *x);
+    x->erec = (uint8_t *)calloc(2u, AU_E_REC);
+    x->frames = (uint8_t *)calloc(AJ_FRAMES, AU_F_BYTES);
+    if (x->erec == NULL || x->frames == NULL) {
+        au_cap_free(x);
+        return -1;
+    }
+    for (i = 0u; i < 2u; i++) {
+        uint8_t *r = x->erec + (size_t)i * AU_E_REC;
+
+        au_put64(r + AU_E_STAMP, i == 0u ? 0u : (uint64_t)AJ_KEYOFF * 192u);
+        r[AU_E_REG] = 4u;
+        r[AU_E_VALUE] = i == 0u ? 0x9Fu : 0x1Fu;
+        r[AU_E_CHAN] = 0u;
+        r[AU_E_POST] = r[AU_E_VALUE];
+        r[AU_E_VERSION] = 1u;
+    }
+    for (i = 0u; i < AJ_FRAMES; i++) {
+        uint32_t v = i < 1024u ? 1000u * aj_word((i / 4u) % 32u) : i < AJ_KEYOFF ? 500u * aj_word((i / 4u) % 32u) : 0u;
+
+        au_put_frame(x, i, v, v);
+    }
+    x->ecount = 2u;
+    x->ecap = 2u;
+    x->fcount = AJ_FRAMES;
+    x->fcap = AJ_FRAMES;
+    x->smclk = 192u;
+    x->lf = 357630u;
+    x->hdr_fcount = AJ_FRAMES;
+    x->hdr_ecount = 2u;
+    x->pfbytes = 8u;
+    x->pversion = 1u;
+    x->pformat = 1u;
+    x->machine_time = (uint64_t)AJ_FRAMES * 192u;
+    return 0;
+}
+
+/* one group of FORM and KIND (class ASSUMED, kills AF0) with up to two rows, judged on x; the verdict, or AU_HARNESS when the rows do not parse */
+static int aj_eval(struct aj_ctx *j, const char *form, const char *kind, const char *sel1, const char *lit1, const char *sel2, const char *lit2, const struct au_cap *x, int perturb)
+{
+    char lines[5][AX_LINE + 1u];
+    unsigned n = 0u;
+    unsigned i;
+    char why[320];
+    const char *err = NULL;
+
+    memset(j->f, 0, sizeof *j->f);
+    snprintf(lines[n++], sizeof lines[0], "aexp\tsample_mclk=192");
+    snprintf(lines[n++], sizeof lines[0], "scene\tt\tcase=audio_t\trole=literal");
+    snprintf(lines[n++], sizeof lines[0], "group\tt\tg\tform=%s\tkind=%s\tclass=ASSUMED:LED-AUD-0009\tkills=AF0", form, kind);
+    snprintf(lines[n++], sizeof lines[0], "row\tt\tg\t%.180s\t%.180s", sel1, lit1);
+    if (sel2 != NULL) {
+        snprintf(lines[n++], sizeof lines[0], "row\tt\tg\t%.180s\t%.180s", sel2, lit2);
+    }
+    for (i = 0u; i < n && err == NULL; i++) {
+        char *fld[8];
+        unsigned nf = ax_split(lines[i], fld, 8u);
+
+        err = nf > 7u ? "too many fields" : ax_row_parse(j->f, fld, nf);
+    }
+    if (err == NULL) {
+        err = ax_link(j->f);
+    }
+    if (err != NULL) {
+        return AU_HARNESS;
+    }
+    return au_eval_group(j->f, 0u, x, perturb, why, sizeof why);
+}
+
+#define AJ_A "anchor=ev:ch=0;reg=R4;val=$9F;nth=1;from=+0;to=+196608"
+#define AJ_B "anchor=ev:ch=0;reg=R4;val=$9F;nth=1;from=+196608;to=+393216"
+#define AJ_Q "anchor=ev:ch=0;reg=R4;val=$9F;nth=1;from=+393216;to=+786432"
+#define AJ_WORDS "words=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16"
+
+static void aj_forms(struct aj_ctx *j, const struct au_cap *x)
+{
+    /* ROWS: period, cycle_order, silent, live (hand-derived from the construction: one rising crossing per 128-sample cycle at samples 64 + 128 m) */
+    aj_want(j, "ROWS period k=4 d=512 passes", aj_eval(j, "ROWS", "period", AJ_A ";side=L", "f=64;k=4;d=512", NULL, NULL, x, 0), AU_PASS);
+    aj_want(j, "ROWS period d=511 fails", aj_eval(j, "ROWS", "period", AJ_A ";side=L", "f=64;k=4;d=511", NULL, NULL, x, 0), AU_FAIL);
+    aj_want(j, "ROWS period AF0 (d + 1) fails", aj_eval(j, "ROWS", "period", AJ_A ";side=L", "f=64;k=4;d=512", NULL, NULL, x, 1), AU_FAIL);
+    aj_want(j, "ROWS period k=0 is harness", aj_eval(j, "ROWS", "period", AJ_A ";side=L", "k=0;d=512", NULL, NULL, x, 0), AU_HARNESS);
+    aj_want(j, "ROWS period without a side is harness", aj_eval(j, "ROWS", "period", AJ_A, "f=64;k=4;d=512", NULL, NULL, x, 0), AU_HARNESS);
+    aj_want(j, "ROWS cycle_order of the words passes", aj_eval(j, "ROWS", "cycle_order", AJ_A ";side=R", AJ_WORDS, NULL, NULL, x, 0), AU_PASS);
+    aj_want(j, "ROWS cycle_order AF0 (two words swapped) fails", aj_eval(j, "ROWS", "cycle_order", AJ_A ";side=R", AJ_WORDS, NULL, NULL, x, 1), AU_FAIL);
+    aj_want(j, "ROWS cycle_order of a rising table fails", aj_eval(j, "ROWS", "cycle_order", AJ_A ";side=R", "words=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31", NULL, NULL, x, 0), AU_FAIL);
+    aj_want(j, "ROWS cycle_order without words is harness", aj_eval(j, "ROWS", "cycle_order", AJ_A ";side=R", "r1=$FF", NULL, NULL, x, 0), AU_HARNESS);
+    aj_want(j, "ROWS silent after the key-off passes", aj_eval(j, "ROWS", "silent", AJ_Q ";side=L", "chon=0", NULL, NULL, x, 0), AU_PASS);
+    aj_want(j, "ROWS silent AF0 (every sample 1) fails", aj_eval(j, "ROWS", "silent", AJ_Q ";side=L", "chon=0", NULL, NULL, x, 1), AU_FAIL);
+    aj_want(j, "ROWS silent over the tone fails", aj_eval(j, "ROWS", "silent", AJ_A ";side=L", "chon=0", NULL, NULL, x, 0), AU_FAIL);
+    aj_want(j, "ROWS silent with an empty window is harness", aj_eval(j, "ROWS", "silent", "anchor=ev:ch=0;reg=R4;val=$9F;nth=1;from=+5;to=+6;side=L", "chon=0", NULL, NULL, x, 0), AU_HARNESS);
+    aj_want(j, "ROWS silent with an end anchor plus an offset passes", aj_eval(j, "ROWS", "silent", "anchor=ev:ch=0;reg=R4;val=$1F;nth=1;from=+0;to=ev:ch=0;reg=R4;val=$1F;nth=1+384000;side=R", "chon=0", NULL, NULL, x, 0), AU_PASS);
+    aj_want(j, "ROWS live over the tone passes", aj_eval(j, "ROWS", "live", AJ_B ";side=L", "r1=$FF", NULL, NULL, x, 0), AU_PASS);
+    aj_want(j, "ROWS live AF0 (the rule inverted) fails", aj_eval(j, "ROWS", "live", AJ_B ";side=L", "r1=$FF", NULL, NULL, x, 1), AU_FAIL);
+    aj_want(j, "ROWS live over silence fails", aj_eval(j, "ROWS", "live", AJ_Q ";side=L", "r1=$FF", NULL, NULL, x, 0), AU_FAIL);
+    aj_want(j, "ROWS a kind judged from a later plan (two_level) is harness", aj_eval(j, "ROWS", "two_level", AJ_A ";side=L", "r1=$FF", NULL, NULL, x, 0), AU_HARNESS);
+    aj_want(j, "ROWS an unknown kind is refused", aj_eval(j, "ROWS", "loud", AJ_A ";side=L", "r1=$FF", NULL, NULL, x, 0), AU_HARNESS);
+    aj_want(j, "ROWS the kind period under form REL is refused", aj_eval(j, "REL", "period", AJ_A ";side=L", "f=64;k=4;d=512", NULL, NULL, x, 0), AU_HARNESS);
+    /* REL: period_ratio, same, atten_order, atten_equal (window A at x 1000, window B at x 500) */
+    aj_want(j, "REL period_ratio 1:1 of A and B passes", aj_eval(j, "REL", "period_ratio", AJ_A ";side=L", "k=4;p0=1;p1=1", AJ_B ";side=L", "k=4", x, 0), AU_PASS);
+    aj_want(j, "REL period_ratio 2:1 fails", aj_eval(j, "REL", "period_ratio", AJ_A ";side=L", "k=4;p0=2;p1=1", AJ_B ";side=L", "k=4", x, 0), AU_FAIL);
+    aj_want(j, "REL period_ratio AF0 (p0 + 1) fails", aj_eval(j, "REL", "period_ratio", AJ_A ";side=L", "k=4;p0=1;p1=1", AJ_B ";side=L", "k=4", x, 1), AU_FAIL);
+    aj_want(j, "REL period_ratio with one row is harness", aj_eval(j, "REL", "period_ratio", AJ_A ";side=L", "k=4;p0=1;p1=1", NULL, NULL, x, 0), AU_HARNESS);
+    aj_want(j, "REL same of A on L and on R passes", aj_eval(j, "REL", "same", AJ_A ";side=L", "n=256", AJ_A ";side=R", "n=256", x, 0), AU_PASS);
+    aj_want(j, "REL same AF0 (one sample later) fails", aj_eval(j, "REL", "same", AJ_A ";side=L", "n=256", AJ_A ";side=R", "n=256", x, 1), AU_FAIL);
+    aj_want(j, "REL same of A and B fails", aj_eval(j, "REL", "same", AJ_A ";side=L", "n=256", AJ_B ";side=L", "n=256", x, 0), AU_FAIL);
+    aj_want(j, "REL same without n is harness", aj_eval(j, "REL", "same", AJ_A ";side=L", "r1=$FF", AJ_B ";side=L", "r1=$FF", x, 0), AU_HARNESS);
+    aj_want(j, "REL atten_order A then B passes", aj_eval(j, "REL", "atten_order", AJ_A ";side=L", "r1=$FF", AJ_B ";side=L", "r1=$EF", x, 0), AU_PASS);
+    aj_want(j, "REL atten_order AF0 (an increase wanted) fails", aj_eval(j, "REL", "atten_order", AJ_A ";side=L", "r1=$FF", AJ_B ";side=L", "r1=$EF", x, 1), AU_FAIL);
+    aj_want(j, "REL atten_order B then A fails", aj_eval(j, "REL", "atten_order", AJ_B ";side=L", "r1=$EF", AJ_A ";side=L", "r1=$FF", x, 0), AU_FAIL);
+    aj_want(j, "REL atten_equal of A on L and R passes", aj_eval(j, "REL", "atten_equal", AJ_A ";side=L", "r1=$FF", AJ_A ";side=R", "r1=$FF", x, 0), AU_PASS);
+    aj_want(j, "REL atten_equal AF0 (the first peak + 1) fails", aj_eval(j, "REL", "atten_equal", AJ_A ";side=L", "r1=$FF", AJ_A ";side=R", "r1=$FF", x, 1), AU_FAIL);
+    aj_want(j, "REL atten_equal of A and B fails", aj_eval(j, "REL", "atten_equal", AJ_A ";side=L", "r1=$FF", AJ_B ";side=L", "r1=$FF", x, 0), AU_FAIL);
+    aj_want(j, "REL a kind judged from a later plan (noise_ratio) is harness", aj_eval(j, "REL", "noise_ratio", AJ_A ";side=L", "r1=$FF", AJ_B ";side=L", "r1=$FF", x, 0), AU_HARNESS);
+    /* STRUCT: count (frame 0 of 357,630 master clocks holds ceil(357630 / 192) = 1863 samples) and header */
+    aj_want(j, "STRUCT count m=357630 n=1863 passes", aj_eval(j, "STRUCT", "count", "from=0;to=357630", "m=357630;n=1863", NULL, NULL, x, 0), AU_PASS);
+    aj_want(j, "STRUCT count n=1862 fails", aj_eval(j, "STRUCT", "count", "from=0;to=357630", "m=357630;n=1862", NULL, NULL, x, 0), AU_FAIL);
+    aj_want(j, "STRUCT count AF0 (n + 1) fails", aj_eval(j, "STRUCT", "count", "from=0;to=357630", "m=357630;n=1863", NULL, NULL, x, 1), AU_FAIL);
+    aj_want(j, "STRUCT count of a part frame is harness", aj_eval(j, "STRUCT", "count", "from=0;to=357631", "m=357631;n=1863", NULL, NULL, x, 0), AU_HARNESS);
+    aj_want(j, "STRUCT header dspa passes", aj_eval(j, "STRUCT", "header", "stream=dspa", "sample_mclk=192;frame_bytes=8;version=1;format=1", NULL, NULL, x, 0), AU_PASS);
+    aj_want(j, "STRUCT header dspa sample_mclk=191 fails", aj_eval(j, "STRUCT", "header", "stream=dspa", "sample_mclk=191;frame_bytes=8;version=1;format=1", NULL, NULL, x, 0), AU_FAIL);
+    aj_want(j, "STRUCT header dspa AF0 fails", aj_eval(j, "STRUCT", "header", "stream=dspa", "sample_mclk=192;frame_bytes=8;version=1;format=1", NULL, NULL, x, 1), AU_FAIL);
+    aj_want(j, "STRUCT header dspe version=1 passes", aj_eval(j, "STRUCT", "header", "stream=dspe", "version=1", NULL, NULL, x, 0), AU_PASS);
+    aj_want(j, "STRUCT header dspe version=2 fails", aj_eval(j, "STRUCT", "header", "stream=dspe", "version=2", NULL, NULL, x, 0), AU_FAIL);
+    aj_want(j, "STRUCT header with a window is harness", aj_eval(j, "STRUCT", "header", "stream=dspa;from=0;to=10", "sample_mclk=192;frame_bytes=8;version=1;format=1", NULL, NULL, x, 0), AU_HARNESS);
+    /* EV: ev_value, ev_decode, ev_edge on the two synthetic records */
+    aj_want(j, "EV ev_value passes", aj_eval(j, "EV", "ev_value", "anchor=ev:ch=0;reg=R4;val=$9F;nth=1;ev=+1", "reg=R4;val=$1F", NULL, NULL, x, 0), AU_PASS);
+    aj_want(j, "EV ev_value val=$1E fails", aj_eval(j, "EV", "ev_value", "anchor=ev:ch=0;reg=R4;val=$9F;nth=1;ev=+1", "reg=R4;val=$1E", NULL, NULL, x, 0), AU_FAIL);
+    aj_want(j, "EV ev_value AF0 fails", aj_eval(j, "EV", "ev_value", "anchor=ev:ch=0;reg=R4;val=$9F;nth=1;ev=+1", "reg=R4;val=$1F", NULL, NULL, x, 1), AU_FAIL);
+    aj_want(j, "EV ev_value without reg is harness", aj_eval(j, "EV", "ev_value", "anchor=ev:ch=0;reg=R4;val=$9F;nth=1;ev=+1", "val=$1F", NULL, NULL, x, 0), AU_HARNESS);
+    aj_want(j, "EV ev_decode passes", aj_eval(j, "EV", "ev_decode", "anchor=ev:ch=0;reg=R4;val=$9F;nth=1;ev=+0", "chan=0;effect=$00;wave_idx=0;post=$009F", NULL, NULL, x, 0), AU_PASS);
+    aj_want(j, "EV ev_decode post=$0000 fails", aj_eval(j, "EV", "ev_decode", "anchor=ev:ch=0;reg=R4;val=$9F;nth=1;ev=+0", "chan=0;effect=$00;wave_idx=0;post=$0000", NULL, NULL, x, 0), AU_FAIL);
+    aj_want(j, "EV ev_edge passes", aj_eval(j, "EV", "ev_edge", "anchor=ev:ch=0;reg=R4;val=$9F;nth=1;ev=+1", "chan=0;effect=$00;wave_idx=0;post=$001F", NULL, NULL, x, 0), AU_PASS);
+    aj_want(j, "EV ev_edge AF0 fails", aj_eval(j, "EV", "ev_edge", "anchor=ev:ch=0;reg=R4;val=$9F;nth=1;ev=+1", "chan=0;effect=$00;wave_idx=0;post=$001F", NULL, NULL, x, 1), AU_FAIL);
+    aj_want(j, "EV an anchor that is not in the stream fails", aj_eval(j, "EV", "ev_value", "anchor=ev:ch=3;reg=R4;nth=1;ev=+0", "reg=R4;val=$1F", NULL, NULL, x, 0), AU_FAIL);
+}
+
+/* the null-synth controls of D-209 on psg_tone's own capture: with no PCM frame, with every frame 0 and with every frame one constant, every period, cycle_order and live group of the scene fails, and every silent group has a failing live partner on its side (D-208) */
+static void aj_null(struct aj_ctx *j, const struct ax_file *f, const char *scene, const struct au_cap *cp)
+{
+    static const char *const nm[3] = {"no PCM frame", "every frame 0", "every frame 12345"};
+    unsigned v;
+
+    for (v = 0u; v < 3u; v++) {
+        struct au_cap x;
+        unsigned gi;
+        uint32_t i;
+
+        if (au_cap_copy(cp, &x) != 0) {
+            harness_error(j->c, "out of memory for the null-synth copies");
+            return;
+        }
+        if (v == 0u) {
+            x.fcount = 0u;
+        }
+        for (i = 0u; i < x.fcount; i++) {
+            au_put_frame(&x, i, v == 1u ? 0u : AU_AF6_LEVEL, v == 1u ? 0u : AU_AF6_LEVEL);
+        }
+        for (gi = 0u; gi < f->ng; gi++) {
+            const struct ax_group *g = &f->gr[gi];
+            char why[320];
+            char name[200];
+
+            if (strcmp(g->scene, scene) != 0 || g->form == AX_FORM_EV || g->form == AX_FORM_STRUCT) {
+                continue;
+            }
+            if (g->kind == AK_PERIOD || g->kind == AK_CYCLE_ORDER || g->kind == AK_LIVE) {
+                snprintf(name, sizeof name, "null synth (%s): the %s group %.31s fails", nm[v], au_kinds[g->kind - 1].name, g->gid);
+                aj_want(j, name, au_eval_group(f, gi, &x, 0, why, sizeof why) == AU_PASS ? AU_PASS : AU_FAIL, AU_FAIL);
+            } else if (g->kind == AK_SILENT) {
+                int sd = 0;
+                int partner_red = 0;
+                unsigned r;
+                unsigned g2;
+
+                for (r = 0u; r < f->nr && sd == 0; r++) {
+                    struct au_sel s;
+
+                    if (f->rw[r].group == gi && au_sel_parse(f->rw[r].sel, &s) == NULL) {
+                        sd = s.side;
+                    }
+                }
+                for (g2 = 0u; g2 < f->ng; g2++) {
+                    const struct ax_group *h = &f->gr[g2];
+
+                    if (strcmp(h->scene, scene) != 0 || !(h->kind == AK_PERIOD || h->kind == AK_CYCLE_ORDER || h->kind == AK_LIVE)) {
+                        continue;
+                    }
+                    for (r = 0u; r < f->nr; r++) {
+                        struct au_sel s;
+
+                        if (f->rw[r].group == g2 && au_sel_parse(f->rw[r].sel, &s) == NULL && s.side == sd && sd != 0 && au_eval_group(f, g2, &x, 0, why, sizeof why) != AU_PASS) {
+                            partner_red = 1;
+                        }
+                    }
+                }
+                snprintf(name, sizeof name, "null synth (%s): the silent group %.31s has a failing live partner on its side", nm[v], g->gid);
+                aj_want(j, name, partner_red ? AU_FAIL : AU_PASS, AU_FAIL);
+            }
+        }
+        au_cap_free(&x);
+    }
+}
+
+void kind_audio_judge_forms(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
+{
+    struct au_expect e;
+    struct aj_ctx j;
+    struct au_cap syn;
+    struct au_cap cap0;
+    struct ax_file *f = NULL;
+    char req[600];
+    uint64_t until = 0u;
+    unsigned si;
+
+    memset(&j, 0, sizeof j);
+    memset(&syn, 0, sizeof syn);
+    memset(&cap0, 0, sizeof cap0);
+    j.c = c;
+    if (!k->has[K_EXPECT] || au_parse(k->val[K_EXPECT], &e) != 0 || e.nred != 0u || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until == 0u) {
+        harness_error(c, "an audio_judge_forms case needs until_mclk and expect = rom=NAME;id=N;checks=N;scene=NAME (the null-synth scene)");
+        return;
+    }
+    j.f = (struct ax_file *)calloc(1u, sizeof *j.f);
+    f = (struct ax_file *)calloc(1u, sizeof *f);
+    if (j.f == NULL || f == NULL || aj_stream(&syn) != 0) {
+        harness_error(c, "out of memory for the judge forms");
+        goto done;
+    }
+    aj_forms(&j, &syn);
+    /* the missing-sink rule (D-209): a pcm header left at zero (no sink written) is refused, and a capture with no frame although samples were due is harness_failure, never a pass */
+    {
+        uint8_t zh[32];
+        struct au_cap none;
+
+        memset(zh, 0, sizeof zh);
+        aj_want(&j, "a pcm header left at zero (a missing sink) is refused as harness_failure", au_pcm_header_ok(zh) ? AU_PASS : AU_HARNESS, AU_HARNESS);
+        memset(&none, 0, sizeof none);
+        none.smclk = 192u;
+        none.machine_time = 678936u;
+        aj_want(&j, "a capture with no frame after 678,936 master clocks is harness_failure", au_no_frames(&none) ? AU_HARNESS : AU_PASS, AU_HARNESS);
+        none.machine_time = 0u;
+        aj_want(&j, "a capture with no frame and no sample due is not refused by the missing-sink rule", au_no_frames(&none) ? AU_HARNESS : AU_PASS, AU_PASS);
+    }
+    {
+        const char *err = ax_load(e.rom, f);
+
+        if (err != NULL) {
+            harness_error(c, err);
+            goto done;
+        }
+    }
+    for (si = 0u; si < f->ns && strcmp(f->sc[si].name, e.scene) != 0; si++) {
+    }
+    if (si == f->ns || f->sc[si].role != AX_ROLE_LITERAL || vd_policy_request(0u, k->has[K_REQUEST] ? k->val[K_REQUEST] : "", req, sizeof req) != 0) {
+        harness_error(c, "the null-synth scene of audio_judge_forms must be a literal scene of the aexp rows");
+        goto done;
+    }
+    if (au_capture(c, e.rom, req, until, &e, &cap0, 1, got, gotcap) != 0) {
+        goto done;
+    }
+    aj_null(&j, f, e.scene, &cap0);
+    {
+        char det[1800];
+
+        snprintf(det, sizeof det, "audio_judge_forms: %u checks of the ROWS, REL, STRUCT and EV forms (pass, fail, harness and the AF0 perturbation of each), the null-synth controls on %s and the missing-sink rule (E0: the judge is shown able to fail)\n%s", j.checks, e.scene,
+                 j.failed[0] != '\0' ? j.failed : "every check holds\n");
+        set_evidence_detail(det);
+    }
+    snprintf(got + strlen(got), gotcap - strlen(got), " judge_checks=%u", j.checks);
+done:
+    au_cap_free(&syn);
+    au_cap_free(&cap0);
+    free(j.f);
     free(f);
 }
 

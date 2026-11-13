@@ -92,3 +92,10 @@ group	tone_sel0	silent_poweron_L	form=ROWS	kind=silent	class=ASSUMED:LED-PROF-00
 row	tone_sel0	silent_poweron_L	from=0;to=ev:ch=G;reg=R0;val=$00;nth=1;side=L	chon=0;r1=$00;al=$00;r5=$00
 group	tone_sel0	silent_poweron_R	form=ROWS	kind=silent	class=ASSUMED:LED-PROF-0003	kills=AF0,AF6
 row	tone_sel0	silent_poweron_R	from=0;to=ev:ch=G;reg=R0;val=$00;nth=1;side=R	chon=0;r1=$00;al=$00;r5=$00
+# header (DEF:LED-AUD-0013+LED-AUD-0014; ER-19: definitions, no hardware claim): the DSPA header reads sample_mclk 192, frame_bytes 8, version 1, format 1 (D-197) and counts the frames delivered; every DSPE record reads version 1 (D-196) and the header counts the records. AF2, AF4 change the frames, AF8 the records.
+group	tone_sel0	header	form=STRUCT	kind=header	class=DEF:LED-AUD-0013+LED-AUD-0014	kills=AF0,AF2,AF4,AF8
+row	tone_sel0	header	stream=dspa	sample_mclk=192;frame_bytes=8;version=1;format=1
+row	tone_sel0	header	stream=dspe	version=1
+# count (ASSUMED:LED-VID-0001+LED-AUD-0014): video frame 0 of 262 lines is m = 1 x 357,630 master clocks, the one whole frame the scene covers (the run ends at DSV1 done, never read here, R7); it holds n = ceil(357630 / 192) = 1,863 samples (D-187), and the stream sits on the grid to the run's end.
+group	tone_sel0	count	form=STRUCT	kind=count	class=ASSUMED:LED-VID-0001+LED-AUD-0014	kills=AF0,AF1,AF2,AF4
+row	tone_sel0	count	from=0;to=357630	m=357630;n=1863
