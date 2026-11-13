@@ -237,7 +237,7 @@ Plans:
 Plans:
 - [ ] 05-01-PLAN.md - W1: evidence data: ER-1 image reads and the P8 label rules, 12 new and 6 amended ledger entries, withheld words, 05-HANDBOOK.md, CI lever (a), the local gate baseline (no C)
 - [ ] 05-02-PLAN.md - W1: psg and pcm sink plumbing with no producer, ds_obs_begin once, the IN-03 call-overlap refusal, OX_ROMS_MAX 48, the inert fold at both call sites
-- [ ] 05-03-PLAN.md - W2: the complete PSG layout and the one serial 9 / epoch 6 / text 8 bump, 15 constants rows, restore domain, noise counters, register decode and counters, seeded-prng-v4 (policy 6), golden compaction and CROWS_MAX
+- [ ] 05-03-PLAN.md - W2: the complete PSG layout and the one serial 9 / epoch 6 / text 8 bump, 15 PSG constants rows, restore domain, noise counters, register decode and counters, seeded-prng-v4 (policy 5), golden compaction and CROWS_MAX
 - [ ] 05-04-PLAN.md - W3: TRACER: select-0 writes to DSPE records and DSPA samples judged by hand literals, the d = 3 negative, the D-200 proof set, --audio-out, pcm_cadence, two toys, the fold cost
 - [ ] 05-05-PLAN.md - W4: the audio judge: full .aexp grammar, REL and STRUCT, AF0..AF9 sweep, audio-check stage 58 with KINDCLASS, DISPUTED, the arithmetic lint and RULES, the golden role
 - [ ] 05-06-PLAN.md - W5: six channels: pan-pair scenes with solo phases, event rows for every register, attenuation and silence rows, the in-ROM twin, psg_vol_table, two toys
