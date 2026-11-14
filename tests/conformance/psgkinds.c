@@ -7,7 +7,7 @@
  *   psg_wave_ptr         expect rows=all: the R6 wave pointer and DDA latch procedures and the channel counter bookkeeping (key-on, freeze, F = 0, DDA release)
  *   psg_lfo_trg          expect rows=all: R9 TRG reset and freeze, the TRG release restart, UNMODELLED, the D-231 TRG state with widx[1] = 5 restored
  *   psg_poweron          expect rows=all: the PSG power-on state under zero, v1, v2, v3 and v4 (seeds 1, 2), the v4 wave draw, the noise counters from time 0
- *   psg_restore_divisor  expect rows=all: a psg_tick_divisor=3 snapshot is refused by a default instance as snapshot.profile and restored by a d = 3 one (D-223)
+ *   psg_restore_divisor  expect rows=all: a psg_tick_divisor=3 snapshot is refused by a default instance as snapshot.profile and restored by a d = 3 one (D-223), within the d = 3 distance bounds and refused past them (D-203, review WR-02)
  *   psg_vol_table        expect rows=all: the 30 rows of psg_vol.def strictly decrease from 32768 to 219, and att 29, 30 and 91 contribute 31 x 219, 0 and 0 (plan 05-06)
  *   psg_pure_function    expect rows=all: widx(T + 6F) = widx(T) + 1 and widx(T + 192F) = widx(T) for four F, the noise distance periodic with 384 x NFc for three NFc (plan 05-06)
  * (later plans add psg_fold and others to this file.) Test code only, never installed. Includes the core's private ds_psg.h as vdckinds.c includes ds_vdc.h.
@@ -502,11 +502,46 @@ void kind_psg_restore_divisor(const struct kase *k, struct ctx *c, char *got, si
     check(c, ds_snapshot(w3, snap, size, NULL) == (uint32_t)DS_SNAPREF_NONE, "ds_snapshot of the d = 3 instance was refused");
     check(c, ds_restore(w6, snap, size) == (uint32_t)DS_SNAPREF_profile, "a d = 3 snapshot restored into a default (d = 6) instance is not refused as snapshot.profile (D-223)");
     check(c, ds_restore(t3, snap, size) == (uint32_t)DS_SNAPREF_NONE && t3->psg_nrem[0] == 4u, "a d = 3 snapshot is not restored by a d = 3 instance");
+    /* the restore bounds at d = 3 (review WR-02): at time 0 the d = 3 grid is r = 1 mod 3, so the largest on-grid distances are 12,286 (the step bound 3 x 4096 = 12,288, select 1 included) and 5,950 (the noise bound 3 x 64 x 31 = 5,952), and the next on-grid ones are
+     * refused as field. The d = 6 bounds (24,576, 11,904) and the coupled bound would accept every row, so a decoder that ignores d or couples select 1 fails here */
+    {
+        static const struct {
+            uint32_t ch; /* 0..5 a running channel (chON 1, DDA 0), 6 noise counter 0 */
+            uint32_t r;
+            uint32_t want;
+        } rows3[6] = {{0u, 12286u, (uint32_t)DS_SNAPREF_NONE}, {0u, 12289u, (uint32_t)DS_SNAPREF_field}, {1u, 12286u, (uint32_t)DS_SNAPREF_NONE},
+                      {1u, 12289u, (uint32_t)DS_SNAPREF_field}, {6u, 5950u, (uint32_t)DS_SNAPREF_NONE}, {6u, 5953u, (uint32_t)DS_SNAPREF_field}};
+        unsigned i;
+        char msg[200];
+
+        for (i = 0u; i < 6u; i++) {
+            uint32_t got_code = UINT32_MAX;
+
+            if (rows3[i].ch < 6u) {
+                w3->psg_ctl[rows3[i].ch] = 0x80u;
+                w3->psg_rem[rows3[i].ch] = rows3[i].r;
+            } else {
+                w3->psg_nrem[0] = rows3[i].r;
+            }
+            if (ds_snapshot(w3, snap, size, NULL) == (uint32_t)DS_SNAPREF_NONE) {
+                got_code = ds_restore(t3, snap, size);
+            }
+            snprintf(msg, sizeof msg, "d = 3: a %s distance of %u at time 0 gives the restore code %u, not %u (D-203 bounds at the restoring d)", rows3[i].ch < 6u ? (rows3[i].ch == 1u ? "select-1" : "select-0") : "noise", (unsigned)rows3[i].r, (unsigned)got_code,
+                     (unsigned)rows3[i].want);
+            check(c, got_code == rows3[i].want, msg);
+            if (rows3[i].ch < 6u) {
+                w3->psg_ctl[rows3[i].ch] = 0u;
+                w3->psg_rem[rows3[i].ch] = 0u;
+            } else {
+                w3->psg_nrem[0] = 4u;
+            }
+        }
+    }
     free(snap);
     release_boot(&b3);
     release_boot(&b6);
     release_boot(&bt);
-    snprintf(got, gotcap, "rows=3");
+    snprintf(got, gotcap, "rows=9");
 }
 
 /* ---- psg_fold (plan 05-04 Task 2; D-185, D-186, D-195, D-200, D-221, F-64; the kind_vdc_fold shape) ----

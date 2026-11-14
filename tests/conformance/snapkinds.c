@@ -1848,8 +1848,10 @@ static void ed_psg_trgrem(uint8_t *b) { psg_base(b); P0(b)[15] = 0x80u; P0(b)[17
 static void ed_psg_onrem0(uint8_t *b) { psg_base(b); P0(b)[16] = 0x80u; }                       /* chON 1, DDA 0, distance 0 */
 static void ed_psg_remmax(uint8_t *b) { psg_base(b); P0(b)[16] = 0x80u; sk_put32(PT(b), psg_grid_max(b, 24576u)); }
 static void ed_psg_remover(uint8_t *b) { psg_base(b); P0(b)[16] = 0x80u; sk_put32(PT(b), psg_grid_max(b, 24576u) + 6u); }
-static void ed_psg_rem1max(uint8_t *b) { psg_base(b); P0(b)[17] = 0x80u; sk_put32(PT(b) + 4u, psg_grid_max(b, 6291456u)); }
-static void ed_psg_rem1over(uint8_t *b) { psg_base(b); P0(b)[17] = 0x80u; sk_put32(PT(b) + 4u, psg_grid_max(b, 6291456u) + 6u); }
+/* select 1 has the channel bound 24,576 until 05.1-01 couples it (review WR-02, 05.1-CONTEXT C-09): the former coupled maximum 6,291,456 is refused, since no run without the LFO reaches it */
+static void ed_psg_rem1max(uint8_t *b) { psg_base(b); P0(b)[17] = 0x80u; sk_put32(PT(b) + 4u, psg_grid_max(b, 24576u)); }
+static void ed_psg_rem1over(uint8_t *b) { psg_base(b); P0(b)[17] = 0x80u; sk_put32(PT(b) + 4u, psg_grid_max(b, 24576u) + 6u); }
+static void ed_psg_rem1coupled(uint8_t *b) { psg_base(b); P0(b)[17] = 0x80u; sk_put32(PT(b) + 4u, psg_grid_max(b, 6291456u)); }
 static void ed_psg_remgrid(uint8_t *b) { psg_base(b); P0(b)[16] = 0x80u; sk_put32(PT(b), psg_r0(b) + 1u); }
 static void ed_psg_nrem0(uint8_t *b) { psg_base(b); sk_put32(PT(b) + 24u, 0u); }
 static void ed_psg_nremmax(uint8_t *b) { psg_base(b); sk_put32(PT(b) + 28u, psg_grid_max(b, 11904u)); }
@@ -2043,6 +2045,7 @@ static const struct {
     {"p-remover", M_EDIT, ed_psg_remover},
     {"p-rem1max", M_EDIT, ed_psg_rem1max},
     {"p-rem1over", M_EDIT, ed_psg_rem1over},
+    {"p-rem1coupled", M_EDIT, ed_psg_rem1coupled},
     {"p-remgrid", M_EDIT, ed_psg_remgrid},
     {"p-nrem0", M_EDIT, ed_psg_nrem0},
     {"p-nremmax", M_EDIT, ed_psg_nremmax},

@@ -3,7 +3,7 @@
 #
 # The PSG restore domain (plan 05-03; D-203, D-231, T-05-08, T-05-09): a mid-run snapshot of ds_proto is edited one defect per row (snapkinds.c, rows p-*: PSG0 is first zeroed and every channel distance set to 0, a valid all-frozen state) and restored.
 # This case holds the register and wave rows; snapshot_refusal_psgt holds the counter and LFSR rows. Refused as field: a select above 7, a frequency above $FFF, R4 bit 5, a wave index or DDA latch above 31, noise bits 5 or 6 of either noise channel, LFO control bits 2-6, a wave byte above 31, DDA with a non-zero wave index, a pending event on a channel frozen by chON 0, by DDA or (select 1)
-# by TRG, a running channel with no pending event, a distance above 24,576 (6,291,456 for select 1), a noise distance of 0 or above 11,904, a channel or noise event off the tick grid of d = 6, and an LFSR of 0 or $40000. Each range row is on the grid, so it fails only its range.
+# by TRG, a running channel with no pending event, a distance above 24,576 (select 1 too, so the former coupled maximum 6,291,456 is refused until 05.1-01 couples select 1, review WR-02), a noise distance of 0 or above 11,904, a channel or noise event off the tick grid of d = 6, and an LFSR of 0 or $40000. Each range row is on the grid, so it fails only its range.
 # Accepted: every boundary value (select 7, $FFF, $9F, $83, wave 31, the largest on-grid distances, LFSR $3FFFF) and select 1 under TRG with wave index 5 (D-231: R6 writes under TRG advance it, so the state is reachable). Evidence tier E0: the domain is the project's rule (D-203).
 id = "snapshot_refusal_psg"
 kind = "snapshot_refuse"
