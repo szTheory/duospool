@@ -121,6 +121,7 @@ fi
 # withheld claim words (ER-6): lower-case, whole words (the characters on either side are not letters, digits or underscore, so a hyphen
 # is a boundary and cycle-accurate is found by accurate; the hyphenated Phase 4 compounds such as pixel-accurate and video-compatible are found the same way, and the three multi-word items of D-181 are listed in full, plan 04-01).
 # Plan 05-01 adds the D-218 words band-limited, sounds correct, plays music and authentic sound; the other D-218 words are found by accurate and compatible (F-75). Allowed only inside double quotes on a policy line. POSIX awk only (no \b, no IGNORECASE).
+# Each of the four has its own control tests/docs/claim-word-audio-<word> whose README holds that word and no other, so deleting one alternative from re turns its control red (Phase 5 review WR-07; claim-word-audio holds two of them).
 cw_hits=$(awk '
   BEGIN {
     re = "(^|[^a-z0-9_])(accurate|cycle-accurate|interrupt-accurate|pad-accurate|hardware-verified|compatible|supports tg-16|supports pc engine|boots|passes the cpu tests|renders correctly|displays correctly|plays games|band-limited|sounds correct|plays music|authentic sound)([^a-z0-9_]|$)"
