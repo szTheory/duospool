@@ -1375,3 +1375,91 @@ Cut order if more must go (D-217): the LFO first, then `audio_noise_repeat` to t
 - **`audio-check` (5 to 8 s)** is above its 2 s estimate: it runs the negative mini-roots and the generated lex controls, each a separate awk run.
 - **The CI job trigger** is at risk on a slow runner draw (estimate above). If the first Phase 5 CI run crosses 600 s, the D-176 staging order applies before any evidence is dropped; nothing is staged here.
 - Nothing was weakened to save seconds: no stage, control, selftest, case or golden was skipped, shortened or removed.
+
+## Phase 5 close-out (plan 05-10; local runs, not CI runs)
+
+CI for Phase 5: unverified: no push is authorised (D-64). No Phase 5 commit has run on a GitHub runner, so this section makes no CI claim; every run is E0 repeatability and no time here is a pass or fail criterion (D-214, D-216).
+It closes Phase 5 after the D-217 cut (D-234): the phase-gate set run once over the whole phase (plans 05-01 to 05-08, 05-12 and Task 1 of this plan), trigger (3) re-measured by instruction counts, the D-214 rows with their final values and the inputs of the first Phase 5 CI efficiency review.
+
+Machine: the development machine of the 05-01 baseline (Apple M5 Pro, 18 cores, macOS, BWK awk, Apple clang, cmake), 2026-11-13, at the tree of `a3a2238` (Task 1 of this plan: the RULES limits, the LED-AUD-0005 narrowing, the d_hold and R2 row classes, the two unjudged kinds dropped; no core C change after `29f9016`).
+The machine was not quiet: another project's sanitizer builds and container jobs held the one-minute load average between about 6 and 48. Every figure carries its load, and none is judged alone.
+
+| Run | Tree | What | Result | Wall s | User CPU s | System s | Load (1 min): start, end; mean of 20 s samples |
+|-----|------|------|--------|--------|------------|----------|------------------------------------------------|
+| gate | `a3a2238` (the same content before its commit) | `/usr/bin/time -p sh scripts/check --timing` | PASS, 58 stages (59 CHECK PASS lines) | 641.6 | 516.5 | 95.5 | 23.3, 8.2; mean 11.7 (6.2 to 23.2) |
+| B | `9619efe` (scratch clone, warm), right after the gate | the same | PASS, 57 stages | 752.7 | 495.2 | 118.6 | 9.8, 15.0; mean 28.9 (9.8 to 47.9) |
+| dash (first) | `a3a2238` | `/usr/bin/time -p dash scripts/check` | harness error, not a check failure: `conformance` ERROR `HARNESS_WALL seconds=300` (the gate preset's wall watchdog of `conformance-run`) at load 116 to 42 (mean 80.2, peak 129); every earlier stage PASS | 1,473.0 | 551.8 | 139.5 | 116.1, 42.3; mean 80.2 |
+| dash (re-run) | `a3a2238` | the same, unchanged tree, after the load fell | PASS, 58 stages (59 CHECK PASS lines) | 726.2 | 514.9 | 130.3 | 40.7, 14.7; mean 19.9 (14.3 to 40.7) |
+| selftest | `a3a2238` | `sh scripts/check --selftest` | SELFTEST RESULT PASS, 207 PASS lines (206 rows) | 281.7 | 76.4 | 138.8 | mean 41.2 (35.6 to 45.1) |
+| audit | `f6afede..a3a2238` | `sh scripts/audit-history --range` (the Phase 5 range) | clean: 45 commits, 408 blobs, 2,456 blob-path pairs | 68.2 | 23.3 | 32.0 | mean 28.3 |
+
+The pair gate and B is not like for like: B ran at a mean load of 28.9 against 11.7, and the same baseline tree read 264.2 to 266.9 s at checkpoint A (loads 8.8 to 12.9) against 495.2 s here. Its ratio (+4.3 percent) is recorded and not used. Trigger (3) is read from the instruction counts below.
+
+Side by side (user CPU of `sh scripts/check --timing` unless named; each figure from its section of this file or its SUMMARY):
+
+| Run | Tree | Wall s | User CPU s | Load (1 min) | Note |
+|-----|------|--------|------------|--------------|------|
+| 05-01 baseline | `9619efe` | 328.2 | 270.0 | 5.7 to 9.1 | the trigger (3) baseline |
+| 05-04 | after Task 3 | 657.5 | 501.2 | 22.5 to 11.9 | the fold in every step and the audio judge |
+| 05-08 run C | `29f9016` | 376.4 | 317.1 | mean 7.7 | pair 1 partner of run B (264.2 s): +20.0 percent |
+| 05-08 run D | `29f9016` + docs | 425.0 | 353.4 | mean 10.6 | pair 2 partner of run E (266.9 s): +32.4 percent |
+| 05-10 gate | `a3a2238` | 641.6 | 516.5 | mean 11.7 | contended by another project's sanitizer builds |
+
+Stage seconds of 5 s or more of the 05-10 gate (the gate's own clock, sum 642): `sanitizers` 276, `conformance` 131, `determinism` 92, `video-check` 19, `inventory` 11, `audio-check` 10, `protocol-negatives` 9,
+`fixtures` 8, `named-controls` 8, `audit-synthetic` 7, `licences` 6, `rights-negatives` 6. Against 05-08 run C (sum 377) every large stage grew with the load, not with the code: this plan changed no core C and added no case.
+
+**Trigger (3) re-measured by instruction counts (05-08 note; the cut is already taken, so the value is recorded,
+not decided on).** `/usr/bin/time -l` on one `ds_runner` invocation over every case of the stage's own case list (the arguments of the `conformance` and `sanitizers` stages with a fixed marker seed, evidence in a scratch directory outside the repository), this tree against `9619efe` in the scratch clone:
+
+| Runner | This tree (`a3a2238`) | `9619efe` | Growth |
+|--------|-----------------------|-----------|--------|
+| gate preset, 388 against 334 cases, all pass | 1,013,749,079,842 instructions; 87.3 s user (load 14 to 32) | 829,373,426,516 instructions; 74.7 s user (load 32 to 27) | +22.2 percent instructions; [+16.8 percent user] |
+| sanitize preset, 386 against 332 cases, all pass | 4,079,081,082,325 instructions; 299.7 s user (load 27 to 33) | 3,259,187,234,727 instructions; 244.8 s user (load 33 to 41) | +25.2 percent instructions; [+22.4 percent user] |
+
+The growth equals the checkpoint A figures (+22.2 and +25.2 percent): the counts of both trees moved by 0.1 to 0.2 percent between the two measurements, which is the repeatability of the method, and this plan's test-code change does not show. The user CPU pair in brackets is the same work at loads of 14 to 41 and is not judged.
+Trigger (3) therefore stays where checkpoint A left it: at the +25 percent line in the sanitize preset and under it in the gate preset, above the D-214 band for the whole phase (+10 to +20 percent). The LFO, cut to Phase 5.1, would add the third audio ROM and its proof set to both counts.
+
+Linux container parts (`sh scripts/linux-repro`, all six default parts in one run on the tree of `a3a2238`, under emulation, linux/amd64 on an arm64 host, Ubuntu 24.04; local one-offs, not CI runs). mawk and gawk are the second awk:
+
+| Part | awk and compiler | Result |
+|------|------------------|--------|
+| `default-awk` | stock mawk 1.3.4, gcc 13.3 | PASS: gate exit 0, 58 stages (59 CHECK PASS lines), stage sum 1,956 s; `--selftest` SELFTEST RESULT PASS (207 PASS lines) |
+| `mawk` | mawk 1.3.4, clang 18.1.3 | PASS: gate 58 stages, stage sum 2,269 s; `--selftest` PASS |
+| `gawk` | gawk 5.2.1, gcc 13.3 | PASS: gate 58 stages, stage sum 1,779 s; `--selftest` PASS |
+| `gate-gcc` | `-std=c11 -pedantic -Wall -Wextra -Wconversion -Wshadow -Werror`, gcc 13.3 | PASS (the test-code change of Task 1, `audiokinds.c`, built clean) |
+| `gate-clang` | the same flags, clang 18 | PASS |
+| `core-boundary-gcc` | gcc 13.3 | PASS |
+
+`LINUX_REPRO RESULT PASS`, 9,119 s in all (20:02 to 22:34), while the instruction counts above ran on the host for its first 13 minutes and another project's jobs held the host load at 12 to 112 (mean 36), which is why it took longer than the 5,142 s of checkpoint A.
+
+Sizes (ROM-SIZE shapes, audit-history): of the 255 files added or modified in `f6afede..a3a2238`, none is 4,096 bytes or more and a multiple of 8,192 or of 8,192 plus 512;
+the largest are `scripts/check` (247,387 bytes) and `tests/conformance/audiokinds.c` (208,342 bytes). `psg_tone.aexp` is 41,065 bytes and 190 rows, `psg_mod.aexp` 13,858 bytes and 35 rows, under the 49,152-byte and 512-row cap of D-233.
+
+D-214 budget rows, final for Phase 5 (the handbook section 9 carries the same values):
+
+| Budget | Before Phase 5 | Phase 5 target | Final (05-10) |
+|--------|----------------|----------------|---------------|
+| Gate stages | 57 | 58 | 58 |
+| Constants rows / CROWS_MAX | 34 / 40 | 49 / 64 | 49 / 64 |
+| Withheld ids | 35 | 42 | 42 |
+| Regions; serial / epoch / text | 21; 8 / 5 / 7 | 24; 9 / 6 / 8 | 24; 9 / 6 / 8 (epoch 6 unreleased until the first push, R11) |
+| Toys | 26 | 33 (32 after a cut) | 32 (six audio toys; psg-lfo-shift moved to Phase 5.1) |
+| Conformance REQUIRED cases | 334 | about 379 to 394 | 388 |
+| Guest ROMs / OX_ROMS_MAX | 36 / 40 | 39 / 48 | 38 / 48 (psg_lfo in Phase 5.1) |
+| DSV ids | 1..26 | 27, 28, 29 | 27 (psg_tone) and 28 (psg_mod); 29 (psg_lfo) in Phase 5.1 |
+| Ledger entries / REQUIRED lines | 63 / 63 | 75 / 75 | 75 / 75 |
+| Local warm gate user CPU | 270.0 s (05-01) | +10 to +20 percent; trigger (3) above +25 percent | not comparable this run (load); instructions +22.2 (gate) and +25.2 percent (sanitize) |
+| CI critical path | 562 s (4.1 run) | about 587 to 612 s; job trigger 600 s | unverified (no CI run); checkpoint A estimate 525 to 670 s still holds (no core C change since) |
+
+The cut (D-234): checkpoint A recorded trigger (3) borderline and trigger (2) unmeasured, and the orchestrator took the cut under the owner's D-217 approval. Moved to Phase 5.1: CONTEXT plan 05-09 (the combined counter, TRG, the CTL shifts and F0', `psg_lfo` with DSV id 29, the toy `psg-lfo-shift`, the `psg_lfo` proof set) as plan 05.1-01, and the LFO close-out as 05.1-02.
+Phase 5 closes with the LFO under DSPE UNMODELLED: an R9 write with CTL not 0 is logged with that effect bit, select 0 is not modulated, and the 17 LFO clauses of `tests/audio/RULES` are limit lines named `lfo-in-5.1`.
+
+### Efficiency review inputs for the first Phase 5 CI run (AGENTS.md: review after each CI run; no Phase 5 CI run exists yet)
+
+- **The CI critical path is unverified** until the owner authorises a push (D-64). The checkpoint A estimate (`gate-gawk` about 523 s, `gate-mawk` 528 to 665 s by runner draw, against the 600 s job trigger of D-176) stands: this plan added no case and no core C, only test-code and data edits.
+- **Lever (a)** (`9619efe`: `nproc` and the CPU model in the tool-versions step of both work jobs) prints the runner's core count and CPU model in the first run; read it beside each job's seconds to tell a slow runner draw from growth. The owner says yes or no to keeping it at publish time (D-215, D-226).
+- **The largest stages** are `sanitizers` (every case under ASan and UBSan, +25.2 percent instructions over the phase) and `conformance` (+22.2 percent); the audio cases themselves are a few seconds, and most of the growth is the PSG fold in every guest step since 05-03.
+If the first run crosses 600 s, the D-176 staging order applies before any evidence is dropped; the checkpoint A candidate (two power-on policies for the audio fixtures in the sanitize preset only) is not applied.
+- **Push hazard for Phase 5.1 (R11, 05.1-CONTEXT C-08):** a push of Phase 5 before 05.1-01 runs makes epoch 6 public, so the LFO behaviour change of 05.1-01 would need an epoch bump that no 5.1 plan contains; the push decision should weigh it.
+- **The wall watchdog of `conformance-run`** (300 s for the gate preset, 900 s for sanitize) tripped once here, in the first dash run at a host load of 80 to 129 from other projects' jobs; the stage takes 131 s at load 12. A CI runner has no such competing load (the 4.1 run's gcc conformance step took 82 s), so no change is proposed.
+- Nothing was weakened to save seconds: no stage, control, selftest, case or golden was skipped, shortened or removed.
