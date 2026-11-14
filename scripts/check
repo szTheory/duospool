@@ -2926,7 +2926,7 @@ selftest() {
     for ar_e in format:rule-format unknown-key:rule-unknown-key arith:rule-aexp-arith class-label:rule-aexp-class-label live-class:rule-aexp-live-class silent-class:rule-aexp-silent-class disputed-mark:rule-audio-disputed-mark disputed-sum:rule-audio-disputed-sum \
       rule-no-row:rule-audio-rule-no-row silence-unpaired:rule-audio-silence-unpaired group-unkilled:rule-audio-group-unkilled group-af0:rule-audio-group-af0 scene-no-case:rule-audio-scene-case scene-no-sweep:rule-audio-scene-sweep toy-no-literal:rule-audio-toy-no-literal \
       exempt-format:rule-audio-exempt-format data-format:rule-data-format \
-      disputed-wrap-zero:rule-audio-disputed-wrap-static disputed-wrap-dynamic:rule-audio-disputed-wrap-dynamic; do
+      disputed-wrap-zero:rule-audio-disputed-wrap-static disputed-wrap-dynamic:rule-audio-disputed-wrap-dynamic rule-case-scene:rule-audio-rule-case-scene; do
       ar_case=${ar_e%%:*}
       ar_tag=${ar_e#*:}
       rm -rf "$cp_dir"

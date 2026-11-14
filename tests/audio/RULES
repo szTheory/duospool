@@ -3,6 +3,7 @@
 #
 # tests/audio/RULES - the rule map of ER-17 (plan 05-05; D-216 R3): one line per clause of LED-AUD-0001..0014, of D-182..D-194, D-196, D-197, D-220 and of the adopted rulings D-219, RF-4 and RF-5. Fields, TAB separated: CLAUSE, SOURCE, STATUS, NEED, TEXT.
 # STATUS row: NEED lists the kinds of tests/audio/KINDCLASS (comma separated) of which at least one group in a fixtures/src/*.aexp must declare a kill other than AF0, or names case:ID, a REQUIRED conformance case; scripts/audio-check fails AUDIO_RULE_NO_ROW otherwise.
+# A case: NEED naming a guest case of kind audio also needs a group with a kill other than AF0 in that case's scene, so deleting the scene turns the clause red (Phase 5.1 review fix WR-03). A clause that a guest kind cannot fail alone is split in two lines, a guest half (kind or case) and a C-level half (case:ID), each saying what it judges.
 # STATUS limit: NEED names the limit (R3: a named limit with its reason in TEXT). STATUS later:05-NN: the plan whose rows cover the clause (NEED the kinds it is expected to use); that plan moves the line to row when its rows land. The 05-04 tracer clauses (6F step, 32-word cycle, order, chON 0 silence, DSPE decode) are row.
 aud01-a	LED-AUD-0001	row	period	every PSG counter ticks at master/d with d the bound psg_tick_divisor: the tone_sel0 period groups at d = 6 (documentary under the bound divisor, ER-14)
 aud01-b	LED-AUD-0001	row	case:audio_tone_sel0_d3	d = 3 doubles every PSG frequency: the period groups of tone_sel0 are red under bind.psg_tick_divisor=3 (expect_red, D-211)
@@ -24,7 +25,8 @@ aud04-c	LED-AUD-0004	row	case:psg_dev_join	reads return io_buffer with no penalt
 aud04-d	LED-AUD-0004	row	case:psg_wave_ptr	R6 with chON 1 and DDA 0 stores with no increment (held, a disputed point): the C-level WAVE_HELD row of psg_wave_ptr (ASSUMED); no fixture row plays a held write (05-06)
 aud04-e	LED-AUD-0004	row	cycle_phase	key-on keeps widx; a counter restarts at (w - w mod d) + its period on key-on (the key-on counter, a disputed point) (d_phase of mod_dda judges the index kept at key-on; the restart instant is not judged)
 aud04-f	LED-AUD-0004	row	cycle_phase	a counter restarts at (w - w mod d) + its period on DDA 1 -> 0 (d_rel of mod_dda judges the restart with the index 0 kept; the restart instant is not judged)
-aud04-g	LED-AUD-0004	row	cycle_phase	a counter restarts on TRG 1 -> 0 of an uncoupled select 1 (05.1-02: the ASSUMED row rel of lfo_release, judged from word 0)
+aud04-g	LED-AUD-0004	row	case:audio_lfo_release	a counter restarts on TRG 1 -> 0 of an uncoupled select 1, guest half: the ASSUMED group rel of lfo_release (05.1-02) judges select 1's table from word 0 after R9 $00; the kind cycle_phase would be met by the groups of psg_mod, so the REQUIRED guest case and its scene are named (review WR-03)
+aud04-g2	LED-AUD-0004	row	case:psg_lfo_trg	the same restart, C-level half: R9 $00 with select 1 chON 1 at w = 5,003 restarts select 1 at (w - w mod 6) + 6 x 256 = 6,534 (ASSUMED psg_trg_release_restart); no guest row judges the restart instant
 aud04-h	LED-AUD-0004	row	dda_hold,dda_order	R6 with DDA 1 loads the latch at any chON (the latch with chON 0 is a disputed point) (the ASSUMED group d_hold1 of mod_dda judges write 1 after a latch loaded with chON 0, mark=latch_off, 05-10)
 aud05-a	LED-AUD-0005	row	ev_decode	with chON 0 and DDA 0 an R6 write stores the word at the address counter and increments it (WAVE_STORE, wave_idx steps)
 aud05-b	LED-AUD-0005	row	ev_decode	DDA 1 resets the address counter to 0 (IDX_RESET, wave_idx 0)
@@ -32,7 +34,8 @@ aud05-c	LED-AUD-0005	row	dda_hold,dda_ram_kept	with chON 1 and DDA 1 an R6 write
 aud05-d	LED-AUD-0005	row	silent	with chON 0 the channel output is off (silent_pre of tone_sel0)
 aud06-a	LED-AUD-0006	row	period	a channel cycle is 192 x F master clocks for F >= 1 with psg_tick_divisor 6 (the 6F step, the 32-word cycle)
 aud06-b	LED-AUD-0006	row	run_grid,noise_ratio	a noise clock of 384 x NFc for NFc >= 1
-aud06-c	LED-AUD-0006	row	lfo_dynamic	an LFO-coupled select-1 step of 6 x F2 x FLF (05.1-02: lfo_dynamic shows select 1 stepping coupled through both half tables, interior runs of at least 40 cycles; the step length itself is judged at C level, 115,200 in psg_lfo_trg; no switch timing row, D-208)
+aud06-c	LED-AUD-0006	row	lfo_dynamic	an LFO-coupled select-1 step of 6 x F2 x FLF, guest half: lfo_dynamic shows select 1 stepping coupled through both half tables (interior runs of at least 40 cycles); it does not judge the step length (the step, f2 and flf literals of the dyn row are lint-checked only, and FLF 0 read as 256 passes it: mutant W26 survives); no switch timing row, D-208
+aud06-c2	LED-AUD-0006	row	case:psg_lfo_trg	the same step, C-level half: 6 x 128 x 150 = 115,200 master clocks between two select-1 steps and FLF 0 read as 6 x 128 x 256 = 196,608 (hand literals; mutant W26, the R8 store deleted, turns psg_lfo_trg, psg_decode and psg_fold red)
 aud07-a	LED-AUD-0007	limit	disputed-zero	F = 0 as 4096, FLF = 0 as 256 and NFc = 0 as a noise clock of 32 ticks are disputed points (ER-15): ASSUMED rows only, no MAN row is owed; psg_decode and psg_lfo_trg cover the stores
 aud07-b	LED-AUD-0007	row	case:psg_lfo_trg	the modulated select-0 value masked to 12 bits with 0 read as 4096 (05.1-01: the LFO wrap is a disputed point: ASSUMED C-level rows only, ER-15; F0 16, w $00, CTL 1 -> 4096 in psg_lfo_trg)
 aud08-a	LED-AUD-0008	row	silent	a side is silent when chON is 0
@@ -50,8 +53,10 @@ aud10-c	LED-AUD-0010	row	noise_seq	the LFSR clocks at its noise clock whatever N
 aud10-d	LED-AUD-0010	row	two_level	the noise replaces the wave when NE is 1
 aud11-a	LED-AUD-0011	row	lfo_static,lfo_needs_sel1	modulation applies while LF CTL != 0 and select 0 and 1 have chON 1 (05.1-01)
 aud11-b	LED-AUD-0011	row	lfo_static	select 0 uses (F0 + $1000 + (w << s) - (16 << s)) & $FFF, s 0, 2, 4 (05.1-01)
-aud11-c	LED-AUD-0011	row	lfo_static	TRG 1 holds w at wave[1][0] whatever widx[1] is and freezes the select-1 counter (05.1-01: the held word in the lfo_static rows; widx[1] != 0 under TRG 1 judged at C level only (psg_lfo_trg))
-aud11-d	LED-AUD-0011	row	lfo_dynamic	with TRG 0 select 1 steps every d x F1e x FLFe while LF CTL != 0 and select 0 and 1 have chON 1 (one combined counter), and every d x F1e otherwise, as with CTL 0 (05.1-02: lfo_dynamic, select 1 stepping after R9 $01; the step length at C level in psg_lfo_trg)
+aud11-c	LED-AUD-0011	row	lfo_static	TRG 1 holds w at wave[1][0], guest half: the held word $18 of the lfo_static rows (05.1-01); the freeze of the select-1 counter and widx[1] != 0 under TRG 1 are not judged by a guest row (mutant W30 survives every psg_lfo case)
+aud11-c2	LED-AUD-0011	row	case:psg_lfo_trg	TRG 1 freezes the select-1 counter and holds w at wave[1][0] whatever widx[1] is, C-level half: widx[1] = 5 under TRG 1 keeps select 1 frozen and select 0 at 6 x 520 (mutant W30, the freeze deleted, turns psg_lfo_trg and psg_fold red)
+aud11-d	LED-AUD-0011	row	lfo_dynamic	with TRG 0 select 1 steps every d x F1e x FLFe while LF CTL != 0 and select 0 and 1 have chON 1 (one combined counter), and every d x F1e otherwise; guest half: lfo_dynamic, select 1 stepping through both half tables after R9 $01 (05.1-02); the step length is not judged by a guest row
+aud11-d2	LED-AUD-0011	row	case:psg_lfo_trg	the same step, C-level half: 115,200 coupled after R9 $01 at 60,003 (F1 128, FLF 150) and 768 (6 x 128) uncoupled after R9 $00 at 250,000 (hand literals; the rel group of lfo_release judges the uncoupled plateau 6 x 256)
 aud12-a	LED-AUD-0012	row	period	counters tick at k x d master clocks (the period groups at d = 6; the tick phase 0 is ASSUMED)
 aud12-b	LED-AUD-0012	row	noise_seq	R2, R3 and R7 writes apply at the next reload (R7: the noise_seq ordinals of mod_noise4 keep the old period up to the first reload after the write; R2 and R3 at a reload are not judged by a row)
 aud12-c	LED-AUD-0012	row	cycle_phase	a counter is frozen while chON 0 or DDA 1 (select 1 also while TRG 1) (d_rel of mod_dda: frozen while DDA 1 with chON 1; the chON 0 and TRG 1 halves have no row of their own)
@@ -74,7 +79,8 @@ d183-a	D-183	row	case:audio_tone_sel0_d3	psg_tick_divisor d (3 or 6, OPEN) divid
 d184-a	D-184	row	period	step d x Fe and cycle 32 x d x Fe (Fe = F)
 d184-b	D-184	limit	disputed-zero	Fe = 4096 for F = 0, FLFe = 256 for FLF = 0 and 32 ticks for NFc = 0 are disputed points (ER-15), ASSUMED rows only
 d184-c	D-184	row	run_grid,noise_ratio	noise d x 64 x NFc with NFc = 31 - (R7 & $1F)
-d184-d	D-184	row	lfo_dynamic	select 1 with TRG 0 steps d x F1e x FLFe while LF CTL != 0 and select 0 and 1 have chON 1 (the coupled step), and d x F1e otherwise (05.1-02: lfo_dynamic; the length at C level in psg_lfo_trg)
+d184-d	D-184	row	lfo_dynamic	select 1 with TRG 0 steps d x F1e x FLFe while LF CTL != 0 and select 0 and 1 have chON 1 (the coupled step), and d x F1e otherwise; guest half: lfo_dynamic (05.1-02), run structure only
+d184-d2	D-184	row	case:psg_lfo_trg	the same step, C-level half: the coupled length 115,200 and the uncoupled 768 of psg_lfo_trg (hand literals from D-184)
 d184-e	D-184	row	lfo_static	F0' = (F0 + $1000 + (w << s) - (16 << s)) & $FFF, 0 -> 4096, s = 2((R9 & 3) - 1) (05.1-01)
 d185-a	D-185	row	cycle_phase	key-on next = (w - w mod d) + d x Fe with the index unchanged; R2, R3 and R7 apply at the next reload; frozen while chON 0 or DDA 1 (d_phase and d_rel of mod_dda: the index unchanged at key-on and frozen under DDA 1; R7 at the next reload by n4_seq; the instants are not judged)
 d185-b	D-185	row	case:psg_wave_ptr	NE keeps the wave counter running; a counter starts at key-on on the tick grid, freezes at chON 0 and restarts on a DDA release (C level)
@@ -102,9 +108,13 @@ d196-a	D-196	row	ev_value,ev_decode	DSPE v1: one 24-byte record per window-2 wri
 d197-a	D-197	row	case:pcm_cadence	DSPA v1: frames of u32 L and u32 R under the header count, lost, seq, first, sample_mclk, frame_bytes 8, version 1, format 1
 d197-b	D-197	row	header	the DSPA header reads sample_mclk 192, frame_bytes 8, version 1 and format 1 and counts the frames delivered (definitions, ER-19)
 d220-a	D-220	row	cycle_phase	the restart edge DDA 1 -> 0 is a constant with ledger LED-AUD-0004 and carries no MAN row (an ASSUMED row) (d_rel of mod_dda)
-d220-b	D-220	row	cycle_phase	the restart edge TRG 1 -> 0 of an uncoupled select 1 carries no MAN row (an ASSUMED row) (05.1-02: rel of lfo_release, class ASSUMED:LED-AUD-0004+LED-AUD-0011)
+d220-b	D-220	row	case:audio_lfo_release	the restart edge TRG 1 -> 0 of an uncoupled select 1 carries no MAN row, guest half: the group rel of lfo_release is class ASSUMED:LED-AUD-0004+LED-AUD-0011 (05.1-02); the REQUIRED guest case and its scene are named, not the kind cycle_phase (review WR-03)
+d220-b2	D-220	row	case:psg_lfo_trg	the same edge, C-level half: the restart row of psg_lfo_trg is ASSUMED:LED-AUD-0004 (psg_trg_release_restart), no MAN row
 d219-a	D-219	row	lfo_static,lfo_needs_sel1	modulation is active while LF CTL != 0 and select 0 and 1 are on (05.1-01)
-d219-b	D-219	row	lfo_static	TRG 1 holds wave[1][0] - 16 and freezes select 1; lfo_static rows judge a TRG = 1 run (05.1-01)
+d219-b	D-219	row	lfo_static	TRG 1 holds wave[1][0] - 16, guest half: the lfo_static rows judge a TRG = 1 run at the held word $18 (05.1-01); the freeze of select 1 is judged at C level only
+d219-b2	D-219	row	case:psg_lfo_trg	TRG 1 freezes select 1, C-level half: psg_lfo_trg, with widx[1] = 5 under TRG 1 (D-231); mutant W30 turns psg_lfo_trg and psg_fold red
 d219-c	D-219	row	lfo_dynamic	TRG 0 lets select 1 step (05.1-02: lfo_dynamic, both cycle lengths after R9 $01)
-rf4-a	RF-4	row	lfo_static	LF TRG 1 resets the select-1 wave counter to 0 and halts modulation at the address-0 data (P8-6) (05.1-01)
-rf5-a	RF-5	row	cycle_phase	restart edges beyond key-on (DDA 1 -> 0, TRG 1 -> 0) are ledger constants (LED-AUD-0004): the DDA 1 -> 0 edge has the ASSUMED row d_rel of mod_dda (plan 05-07); the TRG 1 -> 0 edge the ASSUMED row rel of lfo_release (05.1-02)
+rf4-a	RF-4	row	lfo_static	LF TRG 1 halts modulation at the address-0 data (P8-6), guest half: the held word $18 of the lfo_static rows (05.1-01); the reset of the select-1 wave counter is judged at C level
+rf4-a2	RF-4	row	case:psg_lfo_trg	LF TRG 1 resets the select-1 wave counter to 0, C-level half: R9 $80 sets widx[1] = 0 and freezes select 1 in psg_lfo_trg (mutant W29, the reset deleted, also turns the rel group of audio_lfo_release red)
+rf5-a	RF-5	row	cycle_phase	restart edges beyond key-on (DDA 1 -> 0, TRG 1 -> 0) are ledger constants (LED-AUD-0004): the DDA 1 -> 0 edge has the ASSUMED row d_rel of mod_dda (plan 05-07)
+rf5-a2	RF-5	row	case:audio_lfo_release	the TRG 1 -> 0 edge has the ASSUMED row rel of lfo_release (05.1-02), named by its REQUIRED guest case because the kind cycle_phase is met by the groups of psg_mod (review WR-03)

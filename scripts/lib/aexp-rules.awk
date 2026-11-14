@@ -21,7 +21,7 @@
 # Disputed points (ER-15): a MAN group whose row carries a DISPUTED marker (an explicit mark=MARKER item, or found in the row: f=0, flf=0, nf=0 as nfc=0, an item reg=RA..RF, an R0 value with select 6 or 7) or whose S is 15 without a byte $00 is AUDIO_DISPUTED_POINT (rule-audio-disputed-mark, rule-audio-disputed-sum).
 # The marker lfo_wrap is found in the row too (review fix WR-02): the unmasked LFO sum f + (w << s) - (16 << s) of a row with f, w and shift, or f + w1 - 16 and f + w2 - 16 of a row with w1 and w2, outside 1..4095 is the 12-bit wrap (a sum of 0 is read as 4096): ASSUMED rows only (rule-audio-disputed-wrap-static, rule-audio-disputed-wrap-dynamic).
 # Each statement that reports a code carries a tag  # rule-NAME ; scripts/check deletes the tagged lines of a scratch copy and requires the matching mini-root of tests/audio (or a generated control) to turn red: rule-audio-hash-only, rule-audio-group-vacuous, rule-aexp-class-lint (the three
-# D-207 mutations), rule-aexp-class-label, rule-aexp-live-class, rule-aexp-silent-class, rule-aexp-arith, rule-audio-disputed-mark, rule-audio-disputed-sum, rule-audio-disputed-wrap-static, rule-audio-disputed-wrap-dynamic, rule-audio-rule-no-row, rule-audio-silence-unpaired, rule-audio-group-unkilled, rule-audio-group-af0, rule-audio-scene-case,
+# D-207 mutations), rule-aexp-class-label, rule-aexp-live-class, rule-aexp-silent-class, rule-aexp-arith, rule-audio-disputed-mark, rule-audio-disputed-sum, rule-audio-disputed-wrap-static, rule-audio-disputed-wrap-dynamic, rule-audio-rule-no-row, rule-audio-rule-case-scene, rule-audio-silence-unpaired, rule-audio-group-unkilled, rule-audio-group-af0, rule-audio-scene-case,
 # rule-audio-scene-sweep, rule-audio-toy-no-literal, rule-audio-exempt-format, rule-format, rule-unknown-key, rule-data-format and rule-stage1-limits; rule-stage1-row reports an input row stage 1 never prints and has no file control (the RULES sentinel and AUDIO_STAGE_DEAD guard the stage boundary).
 function violf(file, code, ln, detail) {
   printf "V\t%s\t%s\t%s\t%s\n", file, code, ln, detail
@@ -567,6 +567,13 @@ END {
         c = substr(need, 6)
         if (!inv_active || !(c in ac_req) || ac_req[c] != "1") {
           violf("tests/audio/RULES", "AUDIO_RULE_NO_ROW", rl_ln[i], "the clause " rl_id[i] " (" rl_src[i] ") names the case " c ", which is not a REQUIRED case (ER-17)")  # rule-audio-rule-no-row
+        } else if (ac_kind[c] == "audio" && ac_scene[c] != "-") {
+          # a guest case judges its scene, so the clause is covered only while that scene holds a group with a kill other than AF0 (review fix WR-03: deleting the scene must turn the clause red, not only deleting the case)
+          ccov = 0
+          for (g = 1; g <= ng; g++) if (g_scene[g] == ac_scene[c] && g_kills[g] != "" && g_kills[g] != "AF0") ccov = 1
+          if (!ccov) {
+            violf("tests/audio/RULES", "AUDIO_RULE_NO_ROW", rl_ln[i], "the clause " rl_id[i] " (" rl_src[i] ") names the guest case " c ", but no group of its scene " ac_scene[c] " declares a kill other than AF0 (ER-17)")  # rule-audio-rule-case-scene
+          }
         }
         continue
       }
