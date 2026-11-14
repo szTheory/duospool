@@ -259,11 +259,12 @@ Plans:
   2. The R8 and R9 records decode into the event log as the pages state, an R9 write no longer sets UNMODELLED, and the LFO pair folds composably and boundedly (at most one fold span of 600 master clocks per fold).
   3. A toy that changes the CTL shifts turns the CTL 2 and CTL 3 rows red and leaves CTL 1 green, and the new fixture carries observer, chunk, restore (including a stop under TRG 1 with a non-zero select-1 index) and non-interference coverage.
   4. No LFO rate, depth or switch-timing claim is made: LED-AUD-0011 stays assumed (ER-14), and the README and ledger state only what the gate shows.
-**Plans**: 0/2 plans executed in 2 sequential waves (CONTEXT plan 05-09, former file 05-09-PLAN.md, is 05.1-01; 05.1-02 is the close-out for the LFO scope that 05-10 no longer covers)
+**Plans**: 0/3 plans executed in 3 sequential waves (CONTEXT plan 05-09, former file 05-09-PLAN.md, is split into 05.1-01 and 05.1-02 at plan check 1; 05.1-03, former file 05.1-02, is the close-out for the LFO scope that 05-10 no longer covers)
 
 Plans:
-- [ ] 05.1-01-PLAN.md - the combined LFO counter, TRG, CTL shifts and F0' in the fold, psg_lfo with lfo_static, lfo_needs_sel1, lfo_dynamic and lfo_release, the R8/R9 and F >= $800 decode rows, toy psg-lfo-shift, the psg_lfo proof set
-- [ ] 05.1-02-PLAN.md - close-out for the LFO scope: phase-gate set and cost, LFO pins and the LED-AUD-0002/-0003 review, README LFO sentence, 05.1-VALIDATION.md sign-off
+- [ ] 05.1-01-PLAN.md - the combined LFO counter, TRG, CTL shifts and F0' in the fold with C-level rows, the coupled select-1 restore bound (C-09), the modelled LFO ledger statements (C-10), psg_lfo with lfo_static, lfo_ctl1 and lfo_needs_sel1, the R9 and F >= $800 decode rows, toy psg-lfo-shift
+- [ ] 05.1-02-PLAN.md - lfo_release and lfo_dynamic with the R8 decode row and the lfo_dynamic judge, the 600-iteration fold proof, psg_lfo's observer, chunk, restore and non-interference cases
+- [ ] 05.1-03-PLAN.md - close-out for the LFO scope: phase-gate set and cost, LFO pins and the LED-AUD-0002/-0003 review, README LFO sentence, 05.1-VALIDATION.md sign-off
 
 **Research**: No research needed beyond the Phase 5 context (05-CONTEXT D-184, D-185, D-186, D-192, D-208, D-210, D-212, D-219..D-221, D-231, D-234; 05-RESEARCH sections 2, 4 and 6).
 
@@ -311,5 +312,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phases 4 and 5
 | 4. VCE/VDC Raw Video | 16/16 | Complete    | 2026-11-12 |
 | 04.1. VDC Sprites | 3/3 | Complete    | 2026-11-12 |
 | 5. PSG Raw Audio | 10/10 | Complete    | 2026-11-14 |
-| 05.1. PSG LFO (frequency modulation) | 0/2 | Not started | - |
+| 05.1. PSG LFO (frequency modulation) | 0/3 | Not started | - |
 | 6. Headless Runner, Installed-Consumer Proof and Staged Verification | 0/TBD | Not started | - |
