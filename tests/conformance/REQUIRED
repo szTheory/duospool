@@ -391,3 +391,11 @@ chunk_equiv_audio_psg_mod
 audio_noise_repeat
 psg_random_regs
 psg_block_flood
+psg_lfo
+audio_lfo_static
+audio_lfo_ctl1
+audio_lfo_needs_sel1
+audio_fault_sweep_lfo_static
+audio_fault_sweep_lfo_ctl1
+audio_fault_sweep_lfo_needs_sel1
+mutate_sweep_psg_lfo

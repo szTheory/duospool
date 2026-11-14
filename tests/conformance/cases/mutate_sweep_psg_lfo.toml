@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The mutation sweep of psg_lfo (plan 05.1-01; D-126, D-212): every GUEST check of the table sums is shown able to fail. until_mclk as psg_lfo (C-11).
+id = "mutate_sweep_psg_lfo"
+kind = "mutate_sweep"
+fixture = "authored:psg-lfo"
+request = ""
+expect = "id=29"
+meaning = "Changing the expected literal of any one of the 2 psg_lfo checks flips exactly that check to fail and no other, so neither check is vacuous"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 15000000
+checks = 2

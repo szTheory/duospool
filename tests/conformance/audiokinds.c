@@ -18,7 +18,7 @@
  * SELECTOR items (semicolons): anchor=ev:ch=<0..5|G>;reg=R<n>;[val=$hh;]nth=N (the N-th DSPE record of that channel, G the global chan $FE, register and value); ev=+K (the K-th record after the anchor, form EV); from=+M and to=+M (master clocks after the anchor) or from=M and to=M
  * (absolute, no anchor); to=ev:ch=..;reg=..;[val=..;]nth=N (an end anchor, RF-13: the reg, val and nth items after it belong to it); side=L|R. A window [from, to) holds the samples s with from <= s x sample_mclk < to (D-187), converted to stream indices with the DSPA header's
  * sample_mclk and first frame. LITERAL items (semicolons) are closed keys: the judged ones of each kind and the inputs of the 05-05 arithmetic lint (accepted, not judged here).
- * Plan 05-05 grammar: every kind of tests/audio/KINDCLASS is parsed with its form (an unknown kind or a form that is not the kind's is refused); kinds whose judge lands later (05-06, 05-07; the LFO kinds with 05.1-01) are harness_failure when judged, never a pass. A row golden SCENE pcm_sha256=HEX psg_sha256=HEX
+ * Plan 05-05 grammar: every kind of tests/audio/KINDCLASS is parsed with its form (an unknown kind or a form that is not the kind's is refused); kinds whose judge lands later (05-06, 05-07; lfo_static and lfo_needs_sel1 with 05.1-01, lfo_dynamic with 05.1-02) are harness_failure when judged, never a pass. A row golden SCENE pcm_sha256=HEX psg_sha256=HEX
  * pins the digests of a golden scene; class DEF:<LED ids> marks a definition (ER-19); selector items stream=dspa|dspe (the STRUCT header rows) and nth=N+M on the end anchor (an offset of M master clocks, PR-13); an expect_red scene (D-211, D-225) carries twin= and expect_red= and the
  * case judging it takes the red list from the scene row. Forms added in 05-05: REL (period_ratio, same, atten_order, atten_equal over the windows of a group's rows in order), STRUCT (header, count) and the ROWS kind live (two rising crossings and at least 3 distinct levels between them).
  * The kind audio_fault_sweep applies AF0..AF9 of D-209 in memory to copies of the captured streams of one run; audio_judge_forms shows every form able to fail (05-05).
@@ -298,8 +298,8 @@ enum {
     AK_END
 };
 
-/* the kinds of tests/audio/KINDCLASS with their form (scripts/audio-check reads the same table as data) and the plan that brings the judge of a kind this file does not judge yet (NULL: judged here; plan 05-07 judges the noise and DDA kinds and cycle_phase; the three LFO kinds
- * are judged from Phase 5.1 plan 05.1-01, after the D-217 cut, D-234; the close-out plan 05-10 dropped the two kinds that no plan had a row for) */
+/* the kinds of tests/audio/KINDCLASS with their form (scripts/audio-check reads the same table as data) and the plan that brings the judge of a kind this file does not judge yet (NULL: judged here; plan 05-07 judges the noise and DDA kinds and cycle_phase; Phase 5.1
+ * plan 05.1-01 judges lfo_static (the period judge on k and d, d = k x F' checked by the lint) and lfo_needs_sel1 (the same judge), 05.1-02 lfo_dynamic; the close-out plan 05-10 dropped the two kinds that no plan had a row for) */
 static const struct au_kind_def {
     const char *name;
     int form;
@@ -310,8 +310,8 @@ static const struct au_kind_def {
     {"silent", AX_FORM_ROWS, NULL},           {"live", AX_FORM_ROWS, NULL},            {"same", AX_FORM_REL, NULL},             {"atten_order", AX_FORM_REL, NULL},
     {"atten_equal", AX_FORM_REL, NULL},       {"dda_hold", AX_FORM_ROWS, NULL},        {"dda_order", AX_FORM_ROWS, NULL},       {"dda_ram_kept", AX_FORM_ROWS, NULL},
     {"dda_level_exact", AX_FORM_ROWS, NULL},  {"two_level", AX_FORM_ROWS, NULL},       {"run_grid", AX_FORM_ROWS, NULL},        {"noise_ratio", AX_FORM_REL, NULL},
-    {"run_min", AX_FORM_ROWS, NULL},          {"noise_seq", AX_FORM_ROWS, NULL},       {"lfo_static", AX_FORM_ROWS, "05.1-01"}, {"lfo_needs_sel1", AX_FORM_REL, "05.1-01"},
-    {"lfo_dynamic", AX_FORM_ROWS, "05.1-01"}, {"count", AX_FORM_STRUCT, NULL},         {"header", AX_FORM_STRUCT, NULL},
+    {"run_min", AX_FORM_ROWS, NULL},          {"noise_seq", AX_FORM_ROWS, NULL},       {"lfo_static", AX_FORM_ROWS, NULL},      {"lfo_needs_sel1", AX_FORM_REL, NULL},
+    {"lfo_dynamic", AX_FORM_ROWS, "05.1-02"}, {"count", AX_FORM_STRUCT, NULL},         {"header", AX_FORM_STRUCT, NULL},
 };
 
 struct ax_scene {
@@ -1439,7 +1439,7 @@ static int au_rows_row(const struct au_cap *cp, const struct ax_group *g, const 
         snprintf(why, cap, "all %llu samples of the window are 0", (unsigned long long)(i1 - i0));
         return AU_PASS;
     }
-    if (g->kind == AK_PERIOD) {
+    if (g->kind == AK_PERIOD || g->kind == AK_LFO_STATIC) { /* lfo_static (plan 05.1-01, D-208, D-219): the period judge on k and d, with d = k x F' (the lint recomputes F' from f, w and shift) */
         uint64_t cx[AU_CROSS_MAX];
         uint64_t k = 0u;
         uint64_t d = 0u;
@@ -2005,14 +2005,14 @@ static int au_rel_group(const struct ax_file *f, unsigned gi, const struct au_ca
             snprintf(why, cap, "aexp-malformed: the first row of a noise_ratio group needs p0 and p1 (above 0)");
             return AU_HARNESS;
         }
-        if (g->kind == AK_SAME && n == 0u && (au_lit_num(&l, "n", &cn) != 0 || cn == 0u)) {
+        if ((g->kind == AK_SAME || g->kind == AK_LFO_NEEDS_SEL1) && n == 0u && (au_lit_num(&l, "n", &cn) != 0 || cn == 0u)) {
             snprintf(why, cap, "aexp-malformed: the first row of a same group needs n (the samples compared, above 0)");
             return AU_HARNESS;
         }
         n++;
     }
-    if (n < 2u || ((g->kind == AK_PERIOD_RATIO || g->kind == AK_SAME || g->kind == AK_NOISE_RATIO) && n != 2u)) {
-        snprintf(why, cap, "aexp-malformed: a REL group needs two rows (period_ratio, same and noise_ratio exactly two)");
+    if (n < 2u || ((g->kind == AK_PERIOD_RATIO || g->kind == AK_SAME || g->kind == AK_LFO_NEEDS_SEL1 || g->kind == AK_NOISE_RATIO) && n != 2u)) {
+        snprintf(why, cap, "aexp-malformed: a REL group needs two rows (period_ratio, same, lfo_needs_sel1 and noise_ratio exactly two)");
         return AU_HARNESS;
     }
     if (g->kind == AK_NOISE_RATIO) {
@@ -2030,7 +2030,7 @@ static int au_rel_group(const struct ax_file *f, unsigned gi, const struct au_ca
         snprintf(why, cap, "the grids (the gcd of the interior runs) of the two windows are %llu and %llu samples, the literal ratio is %llu : %llu", (unsigned long long)rs[0].gcd, (unsigned long long)rs[1].gcd, (unsigned long long)p0, (unsigned long long)p1);
         return rs[0].gcd * p1 == rs[1].gcd * p0 ? AU_PASS : AU_FAIL;
     }
-    if (g->kind == AK_PERIOD_RATIO || g->kind == AK_SAME) {
+    if (g->kind == AK_PERIOD_RATIO || g->kind == AK_SAME || g->kind == AK_LFO_NEEDS_SEL1) { /* lfo_needs_sel1 (plan 05.1-01, D-208, D-219): the same judge, the CTL 0 and CTL 1 windows of select 0 with select 1 off */
         uint64_t dist[2];
 
         cx = (uint64_t *)malloc((size_t)AU_CROSS_MAX * sizeof *cx);

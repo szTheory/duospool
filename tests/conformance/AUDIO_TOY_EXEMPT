@@ -3,3 +3,4 @@
 #
 # The scene cases of fixtures/src/*.aexp whose AF0-only groups no toy EXPECT kills, one per line: CASE_ID, a TAB and the reason (plan 05-05; D-209, D-210, the VIDEO_TOY_EXEMPT format). scripts/audio-check reads this file; a line with no reason is AUDIO_EXEMPT_FORMAT.
 # A line is added only for an AF0-only group that no toy covers, with the faults that kill the rest of its scene; the audio toy cap of D-210 is 7. Empty for psg_tone.
+audio_lfo_ctl1	its group ev_ctl1 (the R9 $81 decode row) is AF0 only: AF8 moves nth 1 onto the identical R9 $81 record of lfo_needs_sel1 and AF9 relabels no global record; the toy psg-lfo-shift keeps the case green (s = 0); the lfo1 and ord1 groups of the scene are killed by AF2, AF4, AF5, AF6 and AF7
