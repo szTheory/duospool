@@ -64,6 +64,7 @@ Not in phase: resampling, playback, WAV, band-limited synthesis, CD audio, Super
 - D-231 (amends D-203) "TRG implies widx[1] = 0" is dropped: R6 writes under TRG 1 advance widx[1] legally; the held value is wave[1][0] - 16 whatever the index; 05-03 adds an accepted row.
 - D-232 The D-230 oversized-.aexp control is an exit-2 control in the pf_empty_path_control pattern; run_controls keeps exit 0/1 for the others.
 - D-233 (amends D-230; added by plan 05-12 as a recorded deviation) .aexp reader cap 49,152 bytes per file (one named constant; a 49,153-byte exit-2 control and an exactly-49,152-byte pass control); .vexp keeps 16,384; one comment line per group still holds.
+- D-234 (applies D-217) The cut is taken: CONTEXT plan 05-09 is Phase 5.1 plan 05.1-01; 05.1-02 closes the LFO scope; 05-09 reads 05.1-01.
 
 ## 3. Evidence rules
 
@@ -164,7 +165,7 @@ Carried: D-177 (a)-(g); core: no malloc, file I/O, clocks, env, floats or mutabl
 | CI critical path | 562 s (4.1 run) | about 587 to 612 s; job trigger 600 s | D-214, D-226 |
 | Local warm gate user CPU | 270.0 s (05-01, load 5.7-9.1) | +10 to +20 percent; trigger (3) over +25 percent | D-214, D-217 |
 
-Checkpoint A (05-08): stages 58, constants 49/64, withheld 42, regions 24, ROMs 38/48, DSV 27-28, toys 32, REQUIRED 388, supported 14; user CPU 317-358 s: +20.0 / +32.4 percent in two same-hour pairs (load 6-18); runner instructions +22 / +25 percent; CI unverified (525-670 s).
+Final (05-08 and 05-10): stages 58, constants 49/64, withheld 42, regions 24, ROMs 38/48, DSV 27-28, toys 32, REQUIRED 388, supported 15 (LED-AUD-0005 in 05-10); runner instructions +22.2 / +25.2 percent at both (user CPU load-confounded); CI unverified (525-670 s).
 
 ## 10. Discrepancy list (ledger disagreement field)
 
@@ -174,8 +175,8 @@ DX-1 (LED-AUD-0001); DX-2 (-0002); DX-3 (-0010); DX-4, DX-16 (-0011); DX-5 (-000
 
 Cut at 05-08 if any of: (1) more than two revision plans (05-16+); (2) a CI work job over 600 s after levers (a) and D-176 (1); (3) local warm user CPU over +25 percent of the 05-01 baseline (same machine, load); (4) the LFO needs a new model row or an unsettled discrepancy;
 (5) an unbounded LFO fold; (6) an owner preference for an earlier pull request.
-Then 05-09 becomes plan 5.1-01 of an inserted Phase 5.1 (psg_lfo, psg-lfo-shift), 05-10 closes Phase 5 with the LFO under DSPE UNMODELLED, and ROADMAP criterion 1 gains "LFO registers logged and decoded; LFO modulation in 5.1". Cut order: LFO first, then the noise repeat case to two policies; never DDA, period, order or silence rows.
-05-08 record (docs/ci-timings.md): (1) 0; (2) no CI run; (3) borderline (+20.0 / +32.4 percent); (4)-(6) no. Recommendation: cut (LFO to 5.1); the orchestrator decides.
+Cut order: LFO first, then the noise repeat to two policies; never DDA, period, order or silence rows. 05-08: (1) 0; (2) no CI run; (3) borderline; (4)-(6) no.
+Outcome (D-234): cut taken; 05.1-01 has psg_lfo and psg-lfo-shift; 05-10 closed Phase 5 with the LFO under DSPE UNMODELLED (17 RULES limits lfo-in-5.1); AUD-02, AUD-03 complete, AUD-01 in 5.1.
 
 ## 12. Process rules and the stop rule
 
