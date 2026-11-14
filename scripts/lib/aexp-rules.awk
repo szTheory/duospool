@@ -19,8 +19,9 @@
 # Classes: a group's class must be a subset of its kind's ceiling (page-set rule: a MAN label set inside the ceiling set; GUEST where the ceiling is GUEST or MAN; ASSUMED always; DEF only where the ceiling is DEF), each MAN label with an img cite, each ASSUMED or DEF label a ledger id
 #   (rule-aexp-class-lint, rule-aexp-class-label); a MAN live, period or cycle_order row needs S = 0 or S = 4 (ER-16, rule-aexp-live-class); a MAN silent row needs chon=0 under P8-4, or S >= 16 or an R1/R5 byte $00 under P8-10 (ER-15, D-208, rule-aexp-silent-class).
 # Disputed points (ER-15): a MAN group whose row carries a DISPUTED marker (an explicit mark=MARKER item, or found in the row: f=0, flf=0, nf=0 as nfc=0, an item reg=RA..RF, an R0 value with select 6 or 7) or whose S is 15 without a byte $00 is AUDIO_DISPUTED_POINT (rule-audio-disputed-mark, rule-audio-disputed-sum).
+# The marker lfo_wrap is found in the row too (review fix WR-02): the unmasked LFO sum f + (w << s) - (16 << s) of a row with f, w and shift, or f + w1 - 16 and f + w2 - 16 of a row with w1 and w2, outside 1..4095 is the 12-bit wrap (a sum of 0 is read as 4096): ASSUMED rows only (rule-audio-disputed-wrap-static, rule-audio-disputed-wrap-dynamic).
 # Each statement that reports a code carries a tag  # rule-NAME ; scripts/check deletes the tagged lines of a scratch copy and requires the matching mini-root of tests/audio (or a generated control) to turn red: rule-audio-hash-only, rule-audio-group-vacuous, rule-aexp-class-lint (the three
-# D-207 mutations), rule-aexp-class-label, rule-aexp-live-class, rule-aexp-silent-class, rule-aexp-arith, rule-audio-disputed-mark, rule-audio-disputed-sum, rule-audio-rule-no-row, rule-audio-silence-unpaired, rule-audio-group-unkilled, rule-audio-group-af0, rule-audio-scene-case,
+# D-207 mutations), rule-aexp-class-label, rule-aexp-live-class, rule-aexp-silent-class, rule-aexp-arith, rule-audio-disputed-mark, rule-audio-disputed-sum, rule-audio-disputed-wrap-static, rule-audio-disputed-wrap-dynamic, rule-audio-rule-no-row, rule-audio-silence-unpaired, rule-audio-group-unkilled, rule-audio-group-af0, rule-audio-scene-case,
 # rule-audio-scene-sweep, rule-audio-toy-no-literal, rule-audio-exempt-format, rule-format, rule-unknown-key, rule-data-format and rule-stage1-limits; rule-stage1-row reports an input row stage 1 never prints and has no file control (the RULES sentinel and AUDIO_STAGE_DEAD guard the stage boundary).
 function violf(file, code, ln, detail) {
   printf "V\t%s\t%s\t%s\t%s\n", file, code, ln, detail
@@ -50,6 +51,12 @@ function fprime(f, w, s,    p, v) {
   p = (s == 0) ? 1 : ((s == 2) ? 4 : 16)
   v = (f + 4096 + w * p - 16 * p) % 4096
   return (v == 0) ? 4096 : v
+}
+# lfoout(f, w, s): 1 when the unmasked LFO sum f + w x 2^s - 16 x 2^s, the value fprime masks to 12 bits, is outside 1..4095: below 1 or above 4095 the mask wraps it and a sum of 0 is read as 4096, both disputed points (ER-15, D-184, LED-AUD-0011, the marker lfo_wrap)
+function lfoout(f, w, s,    p, v) {
+  p = (s == 0) ? 1 : ((s == 2) ? 4 : 16)
+  v = f + w * p - 16 * p
+  return (v < 1 || v > 4095) ? 1 : 0
 }
 # splitkv(text, K, V, file, ln, what): the items of a selector or a literal (separated by semicolons) into K[1..n] and V[1..n]; the count, or -1 after a format violation
 function splitkv(text, K, V, file, ln, what,    n, a, i, p) {
@@ -434,6 +441,8 @@ END {
       if (("f" in nv && nv["f"] == 0) && ("f=0" in marker)) rmk["f=0"] = 1
       if (("flf" in nv && nv["flf"] == 0) && ("flf=0" in marker)) rmk["flf=0"] = 1
       if (("nf" in nv && nv["nf"] == 0) && ("nfc=0" in marker)) rmk["nfc=0"] = 1
+      if (("lfo_wrap" in marker) && ("f" in nv) && ("w" in nv) && ("shift" in nv) && lfoout(nv["f"], nv["w"], nv["shift"])) rmk["lfo_wrap"] = 1  # rule-audio-disputed-wrap-static
+      if (("lfo_wrap" in marker) && ("f" in nv) && ("w1" in nv) && ("w2" in nv) && (lfoout(nv["f"], nv["w1"], 0) || lfoout(nv["f"], nv["w2"], 0))) rmk["lfo_wrap"] = 1  # rule-audio-disputed-wrap-dynamic
       for (j = 1; j <= nsk; j++) if (SK[j] == "reg" && ("reg=" SV[j]) in marker) rmk["reg=" SV[j]] = 1
       if ("reg" in lv && ("reg=" lv["reg"]) in marker) rmk["reg=" lv["reg"]] = 1
       for (j = 1; j < nsk; j++) if (SK[j] == "reg" && SV[j] == "R0" && SK[j + 1] == "val" && num(SV[j + 1]) >= 0 && (num(SV[j + 1]) % 8) >= 6 && ("sel=" (num(SV[j + 1]) % 8)) in marker) rmk["sel=" (num(SV[j + 1]) % 8)] = 1
