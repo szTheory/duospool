@@ -13,4 +13,4 @@ meaning = "Folding the PSG over random step partitions gives the same state, nex
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-AUD-0012"]

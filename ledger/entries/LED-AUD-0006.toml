@@ -9,7 +9,7 @@ status = "assumed"
 sources = ["FACT|P8-9|gsd-executor image 2026-11-13: fOUT = fmaster/(2 x 32 x F), fLFO = fmaster/(2 x 32 x F2 x FLF), fNCL = fmaster/(2 x 32 x 2 x NF), fmaster 7.16 MHz from the CPU", "FACT|H8-23|same read: the CPU supplies CLKP with f = OSC1/3", "FACT|P8-12|same read: A4 F 254 at 440.45 Hz and C1 F 3,421 at 32.70 Hz, both 7.16 MHz/(64 F)"]
 evidence = []
 disagreement = "none against the pages: pcetech and the emulators write the same formula as master/6 with 32F ticks per cycle (DX-1, LED-AUD-0001); what stays unmeasured is the hardware clock (criterion 4)"
-pinning_test = "PENDING:5"
+pinning_test = "TEST:audio_tone_sel0"
 updated = "2026-11-13"
 assumption = "Held by ER-14 until C1 is settled; the bound value is never used to compute a literal (D-183), and the d = 3 binding is the expect_red control of D-211."
 revisit_phase = 5

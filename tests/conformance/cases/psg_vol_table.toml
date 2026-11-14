@@ -13,4 +13,4 @@ meaning = "The volume curve of the core strictly decreases from 32768 to 219 ove
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-AUD-0009"]

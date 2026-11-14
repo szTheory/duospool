@@ -1,17 +1,20 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
-# PSG wave RAM modes (05-CONTEXT D-190, D-191; AUD-01). A modelling assumption until promoted, not a hardware measurement.
-# E1 candidate (D-213): every clause is stated on P8-4 or P8-5 (image read); promotion only by ER-2 and ER-22 in plan 05-08 or 05-10.
+# PSG wave RAM modes (05-CONTEXT D-190, D-191; AUD-01). Supported (E1, documentary) by plan 05-10 under ER-2 and ER-22: the equality of the model with page statements, not a hardware measurement. Clause (c) was narrowed to chON 1 and DDA 1 in 05-10 Task 1 (P8-4).
+# ER-2 record (plan 05-10, verifier gsd-executor, 2026-11-13). Condition 1: P8-4 and P8-5 are img rows of fixtures/lib/cites.txt (page images read in plan 05-01). Condition 2: every literal of the covering groups is a page rule (index stored and stepped, index reset, level held per write, held order, RAM kept, silence); none comes from a DuoSpool run.
+# Condition 3: the statement says equal to the manual's stated rules. Condition 4: withheld lists hardware accuracy, timing and compatibility. Condition 5: pin TEST:audio_mod_dda names this entry in its pins.
+# ER-22 per clause (MAN groups in guest-fixture cases): (a) ev_decode_sel0 (R6 WAVE_STORE, wave_idx steps; audio_tone_sel0, MAN:P8-2+P8-3+P8-4) and cycle_order_L/R (MAN:P8-4+P8-5); (b) ev_decode_sel0's R4 $40 row and d_dec of audio_mod_dda (IDX_RESET, index 0 after a played index; toy psg-dda-no-reset turns d_dec red);
+# (c) d_hold (writes 2 to 9 with chON 1 and DDA 1), d_ord and d_ram of audio_mod_dda, MAN:P8-4+P8-5; (d) silent_pre_L/R of audio_tone_sel0, MAN:P8-4. No clause holds a disputed point: the chON 0 latch is d_hold1 (ASSUMED, outside the statement); DX-12 is a cross-source disagreement, not an in-page conflict.
 id = "LED-AUD-0005"
-statement = "DuoSpool models wave RAM modes as: with chON 0 and DDA 0 an R6 write stores the word at the address counter and increments it; DDA 1 resets the counter to 0; with chON 1 and DDA 1 an R6 write goes to the D/A and is held until the next write, wave RAM unchanged; with chON 0 the channel output is off. Modelling assumption."
+statement = "VL0 (E1 documentary): DuoSpool models wave RAM modes as: with chON 0 and DDA 0 an R6 write stores the word at the address counter and increments it; DDA 1 resets the counter to 0; with chON 1 and DDA 1 an R6 write goes to the D/A and is held until the next write, wave RAM unchanged; with chON 0 the channel output is off; equal to the manual's stated rules (P8-4, P8-5)."
 profile = "pce-hucard-2btn"
-status = "assumed"
+status = "supported"
 sources = ["FACT|P8-4|gsd-executor image 2026-11-13: (chON, DDA) mode table 00 write and increment, 01 counter reset, 10 mixing, 11 counter reset and each write to the D/A; chON 0 turns the sound output off", "FACT|P8-5|same read: procedures (1) to (3); in DDA mode each write is held until the next one and R6 data are not changed"]
-evidence = []
+evidence = ["E1|tests/conformance/cases/audio_mod_dda.toml: MAN rows of fixtures/src/psg_mod.aexp: DDA_LOAD and IDX_RESET (d_dec); level changes per changing write and holds (d_hold); held order (d_ord); RAM kept (d_ram); also ev_decode_sel0, cycle_order, silent_pre of audio_tone_sel0", "E0|tests/conformance/cases/audio_mod_dda.toml: PCM and DSPE hashes beside the verdict, repeatability only"]
 disagreement = "DX-12 DDA reset: the page states a level (the counter is reset while DDA is 1); pcetech, MAME and Mednafen reset on the DDA 1 -> 0 edge and Mesen2 only with chON 0; the level and edge readings are observably equal."
-pinning_test = "PENDING:5"
+pinning_test = "TEST:audio_mod_dda"
 updated = "2026-11-13"
 assumption = "Clause (c) is narrowed to chON 1 and DDA 1 (05-10): P8-4 states the D/A for that mode only; chON 0 with DDA 1 is the disputed latch_off point (LED-AUD-0004, RULES aud04-h). The level reading (DX-12) gives the restore invariant DDA 1 implies widx 0 (D-203). The playback phase, the pointer while off and writes while playing are outside the statement (LED-AUD-0004, LED-AUD-0012)."
 revisit_phase = 5
-withheld = ["playback phase", "the wave pointer while a channel is off", "writes while a channel plays"]
+withheld = ["playback phase", "the wave pointer while a channel is off", "writes while a channel plays", "the D/A latch loaded with chON 0", "hardware-verified", "any claim of hardware accuracy", "any claim about timing", "any claim of game compatibility"]
 origin = "05-CONTEXT D-190"

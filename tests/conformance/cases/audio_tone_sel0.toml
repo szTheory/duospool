@@ -15,5 +15,5 @@ meaning = "A guest that uploads a 32-word table to select 0 and keys it on at F 
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-AUD-0006"]
 until_mclk = 12000000

@@ -13,4 +13,4 @@ meaning = "A PSG write decodes reg = offset & $0F at every mirror, stores throug
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-AUD-0003"]

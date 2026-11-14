@@ -11,5 +11,5 @@ meaning = "A timer-paced DDA scene on select 2 changes the level exactly at the 
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-AUD-0005"]
 until_mclk = 4000000

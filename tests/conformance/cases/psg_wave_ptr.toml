@@ -15,4 +15,4 @@ meaning = "R6 stores and steps the wave index with chON 0, holds it with chON 1,
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-AUD-0004", "LED-AUD-0007"]

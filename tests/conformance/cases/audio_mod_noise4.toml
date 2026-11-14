@@ -11,5 +11,5 @@ meaning = "Select 4 keyed on with NE 1 and NFc 7 gives exactly two levels whose 
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-AUD-0010"]
 until_mclk = 4000000

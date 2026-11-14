@@ -13,5 +13,5 @@ meaning = "Every window-2 write of psg_tone and of an in-memory program with blo
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-AUD-0013"]
 until_mclk = 1000000

@@ -9,7 +9,7 @@ status = "assumed"
 sources = ["REPORT|pcetech.txt|effective tick master/6 (SUMMARY C1)", "CODE|Geargrafx, Mednafen, Ares|each models master/6 (SUMMARY C1)", "FACT|P8-9|gsd-executor image 2026-11-13: fOUT = fmaster/(2 x 32 x F), fmaster 7.16 MHz supplied by the CPU", "FACT|H8-23|same read: CLKP f = OSC1/3", "FACT|P8-12|same read: scale table at 7.16 MHz, A4 F 254 440.45 Hz, C1 F 3,421 32.70 Hz"]
 evidence = []
 disagreement = "DX-1: P8-9 (fOUT = fmaster/(2 x 32 x F), 7.16 MHz from the CPU), H8-23 (CLKP = OSC1/3) and P8-12 (computed at 7.16 MHz) against the master/6 x 32F wording of pcetech and three emulators: one formula, 6F master clocks per step. Only OSC1/3 x 32F contradicts the pages, and d = 3 implements it. What stays unmeasured is the hardware."
-pinning_test = "PENDING:5"
+pinning_test = "TEST:audio_tone_sel0_d3"
 updated = "2026-11-13"
 assumption = "psg_tick_divisor stays an open profile field (3 or 6) bound by the run request; every audio case binds 6 except the d = 3 expect_red control (D-183, D-211); no literal is computed from the bound value, and the status is held by ER-14."
 revisit_phase = 5

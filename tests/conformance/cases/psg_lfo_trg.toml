@@ -13,4 +13,4 @@ meaning = "R9 with TRG 1 resets and freezes select 1, a TRG release restarts it 
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-AUD-0011"]

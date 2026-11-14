@@ -30,13 +30,25 @@ leftmost-pixel bit order, flips, the CGY field value 2, the 12-slot and 17th spr
 flag that stays clear while its enable is clear and every other collision row are assumptions. Withheld for sprites: overflow timing,
 collision timing, collision of transparent pixels, the sprite width modes (SM and VM other than 0) and sprite pattern addressing for CGY 2.
 
+Phase 5 (PSG raw audio) covers the tone, attenuation, DDA and noise paths; LFO modulation was split off at the cut line into Phase 5.1.
+DuoSpool executes the authored PSG diagnostic fixtures and emits a timestamped PSG register-event log (DSPE v1) and PCM (DSPA v1: one
+point sample per 192 master clocks, 2 x u32 unsigned) before any host resampling. The PSG entries listed as supported below are E1
+documentary: they equal the cited PSG manual page, not a hardware measurement. The channel period rows equal the manual formula under the
+bound psg_tick_divisor 6; the PSG clock stays an open profile field, so no pitch or timing claim is made. Noise output repeats across
+fresh runs under the same power-on policy (E0). LFO modulation is Phase 5.1: an R9 write with CTL not 0 is logged with the UNMODELLED
+effect bit, and select 0 is not modulated. A hash of either stream is repeatability evidence (E0) only, never a verdict. Withheld for
+audio: any pitch in Hz, the PSG clock, any absolute period or frequency ratio as a hardware fact, the sample rate as the hardware's, the
+noise sequence or spectrum, the volume curve or dB values, DC level or centring, the HuC6280A, leak, filtering, F = 0, NFc = 0 or FLF = 0
+behaviour, R6 writes while playing, the key-on phase, LFO timing, the sum-15 boundary, PSG read values, and how any commercial software sounds.
+
 Supported entries (evidence tier E1, documentary): LED-CPU-0001, LED-CPU-0002, LED-CPU-0005, LED-CPU-0014, LED-CPU-0016,
 LED-IRQ-0002, LED-IRQ-0004 (part a only), LED-VID-0006, LED-VID-0008, LED-VID-0009, LED-VID-0014, LED-VID-0016,
-LED-VID-0017 and LED-AUD-0008. Supported here means the model equals the cited manual page: a documentary comparison, not a hardware measurement.
+LED-VID-0017, LED-AUD-0005 and LED-AUD-0008. Supported here means the model equals the cited manual page: a documentary comparison, not a hardware measurement.
 Each Phase 4 entry is scoped by its statement to the page-stated part only: LED-VID-0008 covers the RR, DV and VD flags, their
 enables and the clear on read (the OR and CR flags are raised by the sprite model, a labelled assumption outside the E1 statement), LED-VID-0009 the next-line statements for BXR and
 BYR, LED-VID-0014 the trigger, the length and the DCR bits of the VRAM copy (the cancel at a display start is a modelling reading), and
-LED-VID-0017 exactly the control register contents 00h and 01h. For the PSG, E1 documentary: the entries the README lists as supported equal
+LED-VID-0017 exactly the control register contents 00h and 01h. LED-AUD-0005 covers the wave RAM modes with the D/A load stated for
+chON 1 and DDA 1 only (a latch load with chON 0 is a labelled assumption). For the PSG, E1 documentary: the entries the README lists as supported equal
 the cited PSG manual page, not a hardware measurement.
 
 Guest-recorded interrupt positions agree with the model's position for the profile's line count (E2 self-consistency); the position

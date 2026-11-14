@@ -13,5 +13,5 @@ meaning = "The tracer scene bound to psg_tick_divisor = 3 fails exactly its peri
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-AUD-0001"]
 until_mclk = 12000000

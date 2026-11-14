@@ -13,4 +13,4 @@ meaning = "Run frame by frame, psg_tone's DSPA stream holds ceil(M / 192) frames
 required = true
 control = false
 expect_outcome = "pass"
-pins = []
+pins = ["LED-AUD-0014"]

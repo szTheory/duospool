@@ -9,7 +9,7 @@ status = "assumed"
 sources = ["FACT|P8-9|gsd-executor image 2026-11-13: F = 0 forbidden, NF = 0 undefined; FLF = 0 is not mentioned", "CODE|MAME, Mednafen, Geargrafx, Mesen2|reading material only, nothing copied: 4096, 256 and 32 ticks", "REPORT|pcetech.txt|$000 described as the lowest frequency; not re-read"]
 evidence = []
 disagreement = "DX-14 zero values: P8-9 calls F = 0 forbidden and NF = 0 undefined and says nothing of FLF = 0; pcetech calls $000 the lowest frequency; the emulators read as material use 4096, 256 and 32 ticks."
-pinning_test = "PENDING:5"
+pinning_test = "TEST:psg_wave_ptr"
 updated = "2026-11-13"
 assumption = "Named constants with this ledger id so that hostile register programs stay bounded; no MAN row may touch them (ER-15) and fixtures write no zero value in a judged window."
 revisit_phase = 5

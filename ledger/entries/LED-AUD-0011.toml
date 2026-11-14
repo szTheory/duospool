@@ -9,7 +9,7 @@ status = "assumed"
 sources = ["FACT|P8-6|images 2026-11-13: R8 with ch2 R2 R3 one counter; TRG 1 resets, halts with address-0 data, resets the counter; ch1 and ch2 enabled", "FACT|P8-7 P8-8 P8-9|same read: value - $10; CTL shifts 0, 2, 4; fLFO = fmaster/(2 x 32 x F2 x FLF), 20-bit counter", "CODE|Mednafen, Mesen2|reading material only, nothing copied: counter held while TRG 1"]
 evidence = []
 disagreement = "DX-4 LFO arithmetic: P8-8 draws 4 added bits while P8-7 maps the 5-bit word to w - 16; the extension width is a reading, and the read instant and the TRG restart instant have no page. DX-16 TRG level versus pulse: the page says modulation is halted until 0 is written; Mednafen and Mesen2 hold the counter while TRG is 1."
-pinning_test = "PENDING:5"
+pinning_test = "TEST:psg_lfo_trg"
 updated = "2026-11-13"
 assumption = "Held by ER-14. The modulated value is read at each select-0 reload after a select-1 step at the same instant, the TRG 1 -> 0 restart is (w - w mod d) + d x F1e x FLFe (LED-AUD-0004), and enabled is read as chON 1; all three are project choices. Until plan 05-09 an R9 write with CTL != 0 is logged UNMODELLED."
 revisit_phase = 5
