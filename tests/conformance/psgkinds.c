@@ -549,7 +549,9 @@ void kind_psg_restore_divisor(const struct kase *k, struct ctx *c, char *got, si
  * step partitions (steps of 1 to 600 master clocks, D-221: each step's writes folded with step_end 0, then a step_end 1 fold to the step's last clock and the machine time moved past it, as ds_cpu_step_obs does). Both carry a pcm channel. The PSG registers, wave RAM, indices and LFSRs
  * must be equal, every next event at the same absolute time, and the samples byte-identical; after every step_end fold the D-186 invariant holds (1 <= r <= the largest period, r = 0 exactly when frozen, (machine_time - 1 + r) mod d = 0); out-of-step folds are not asserted (F-64).
  * The tie order of D-185 at a write: an R6 write to a running channel at its next step event E minus 1 stores at the old index, at E and at E + 1 at the new one (the event at the write stamp is processed first; E = (w - w mod d) + d x F after a key-on at w, the formula written here);
- * a key-on stamped at a sample instant is heard from the next sample on (the sample at the stamp sees the state before the write). */
+ * a key-on stamped at a sample instant is heard from the next sample on (the sample at the stamp sees the state before the write).
+ * The one jump is a fold with no rebase, not a long-span fold: with its pcm channel ds_psg_advance folds to every sample instant, so it is folded in pieces of at most 192 clocks. The sink-less fold over a whole step (up to 600 clocks) is compared only by the
+ * state digests of aud_noninterference (review IN-05). */
 
 static uint32_t pf_u32(const uint8_t *p)
 {
