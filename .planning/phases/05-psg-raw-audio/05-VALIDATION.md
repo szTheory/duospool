@@ -11,7 +11,9 @@ created: "2026-11-13"
 
 > Per-phase validation contract for feedback sampling during execution, drafted before execution from `05-RESEARCH.md` section "Validation Architecture" and the plans `05-01-PLAN.md` to `05-10-PLAN.md`. The plans are authoritative for stage names, case ids and verify commands; on any mismatch the plan wins and the closing plan corrects this file.
 
-> `nyquist_compliant` stays false until execution proves the map: every requirement and criterion row green, every negative control seen red, the full gate, `--selftest`, the dash run, the second awk, all six Linux parts and audit-history clean. Plan 05-10 Task 3 completes and signs this file; nothing flips it earlier.
+> **The D-217 cut was taken** at checkpoint 05-08 (05-CONTEXT D-234): the LFO plan 05-09 is Phase 5.1 plan 05.1-01, and its rows live in the Phase 5.1 validation file that 05.1-02 creates.
+
+> `nyquist_compliant` stays false until execution proves the map: every requirement and criterion row green, every negative control seen red, the full gate, `--selftest`, the dash run, the second awk, all six Linux parts and audit-history clean. Plan 05-10 Task 4 completes and signs this file; nothing flips it earlier.
 
 > **Evidence discipline.** Every green here is E0 repeatability. An audio hash counts only beside a literal group shown to fail (ER-20). Manual-page literals are E1 documentary only after the ER-1 image read (05-01) and only for entries promoted under ER-2 and ER-22. No pitch or timing correctness claim is made while psg_tick_divisor stays open (ER-14). No withheld claim word is used.
 
@@ -25,7 +27,7 @@ created: "2026-11-13"
 | **Config files** | `CMakePresets.json`, `tests/conformance/cases/*.toml`, `tests/conformance/REQUIRED`, `fixtures/manifest/*.toml`, `fixtures/src/*.{s,checks,aexp}`, `tests/audio/{KINDCLASS,RULES,DISPUTED}`, `tests/conformance/AUDIO_TOY_EXEMPT`, `ledger/REQUIRED` |
 | **Quick run** | `sh scripts/check --stage conformance` then `grep '^RESULT <case> pass' build/gate/results.txt`; narrow stages `audio-check` (from 05-05), `fixture-build`, `fixture-lint`, `inventory`, `docs-claims`, `ledger-entries`, `record-lint` |
 | **Full suite** | `sh scripts/check` (57 stages now, 58 after 05-05), then `sh scripts/check --selftest`, then `sh scripts/audit-history --range <start>..HEAD` |
-| **Linux strict C11** | `LINUX_REPRO_PARTS=gate-gcc sh scripts/linux-repro` at the end of every plan that edits C (05-02..05-07, 05-09); all six parts (`sh scripts/linux-repro`, which includes the second awk) and `dash scripts/check` in 05-08 and 05-10 |
+| **Linux strict C11** | `LINUX_REPRO_PARTS=gate-gcc sh scripts/linux-repro` at the end of every plan that edits C (05-02..05-07, 05-12); all six parts (`sh scripts/linux-repro`, which includes the second awk) and `dash scripts/check` in 05-08 and 05-10 |
 | **Runtime baseline** | Recorded by 05-01 in `docs/ci-timings.md` ("Phase 5 baseline"); fold cost re-measured after 05-03 and in 05-04; budgets of D-214 checked in 05-08 and 05-10; cut trigger (3) at +25 percent user CPU over the 05-01 baseline |
 
 ---
@@ -49,14 +51,14 @@ created: "2026-11-13"
 | AUD-01 c | Period 192F at d = 6, all six channels | period rows of tone_sel0 and the pan scenes; `psg_pure_function` | `--stage conformance; RESULT audio_tone_sel0, psg_pure_function` | MAN P8-9 + H8-23 (+ P8-12) | `audio_tone_sel0_d3` (d = 3 expect_red); twin F + 1 | 05-04, 05-06 |
 | AUD-01 d | Volume, balance, silence | `audio_tone_atten`, pan silent rows, `psg_vol_table` | `--stage audio-check; --stage conformance; RESULT audio_tone_atten, psg_vol_table` | MAN P8-3, P8-4, P8-10 (S >= 16, byte zero, S = 4); S = 15 and curve ASSUMED | toy psg-atten-max | 05-06 |
 | AUD-01 e | Noise on select 4 and 5, NE gating, clock grid | two_level, run_grid, noise_ratio, noise_seq, r7_ignored | `--stage conformance; RESULT audio_mod_noise4, audio_mod_noise5, audio_mod_r7` | MAN P8-2, P8-6, P8-9, H8-23; LFSR ASSUMED | toy psg-noise-taps | 05-07 |
-| AUD-01 f | LFO static, needs select 1, dynamic | lfo_static, lfo_needs_sel1, lfo_dynamic; `psg_lfo_trg` | `--stage conformance; RESULT audio_lfo_static, audio_lfo_needs_sel1, audio_lfo_dynamic` | MAN P8-6..P8-9 + H8-23 (D-219) | toy psg-lfo-shift | 05-09 (5.1-01 at a cut) |
+| AUD-01 f | LFO static, needs select 1, dynamic | lfo_static, lfo_needs_sel1, lfo_dynamic; `psg_lfo_trg` | `--stage conformance; RESULT audio_lfo_static, audio_lfo_needs_sel1, audio_lfo_dynamic` | MAN P8-6..P8-9 + H8-23 (D-219) | toy psg-lfo-shift | 05.1-01 (Phase 5.1 since the D-217 cut, D-234; signed in 05.1-VALIDATION.md, not here) |
 | AUD-02 a | DSPE one record per window-2 write, joined 1:1 with dev | `psg_dev_join`, ev rows, DSPE STRUCT header | `--stage conformance; RESULT psg_dev_join` | definition LED-AUD-0013 (ER-19) | AF8; toy psg-emit-mutates | 05-04, 05-05 |
 | AUD-02 b | DSPA grid, count closed form, per-frame counts | `pcm_cadence`, STRUCT count and header groups, observer seq rows | `--stage conformance; RESULT pcm_cadence, observer_psg_tone` | ASSUMED LED-VID-0001 + definition LED-AUD-0014 | toy psg-fold-skipped-at-step-end; AF2 | 05-04, 05-05 |
-| AUD-02 c | Sinks, IN-03, non-interference, chunks, restore | `run_refuse_*` (with call_overlap), `*_chan_append`, `observer_<rom>`, `aud_noninterference`, `chunk_equiv_audio_<rom>`, `snapshot_restore_audio`, `psg_fold`, `audio_out_rights` | `RESULT` of each | rules in the cases (E0) | 05-02 scratch deletions; hostile rows; toys | 05-02, 05-04, 05-07, 05-09 |
+| AUD-02 c | Sinks, IN-03, non-interference, chunks, restore | `run_refuse_*` (with call_overlap), `*_chan_append`, `observer_<rom>`, `aud_noninterference`, `chunk_equiv_audio_<rom>`, `snapshot_restore_audio`, `psg_fold`, `audio_out_rights` | `RESULT` of each | rules in the cases (E0) | 05-02 scratch deletions; hostile rows; toys | 05-02, 05-04, 05-07 (psg_lfo's set: 05.1-01) |
 | AUD-03 a | Semantic rows, never nonzero; liveness | audio kind ROWS/REL/STRUCT/EV; `audio_fault_sweep_*`; `audio-check` | `--stage audio-check; --stage conformance; RESULT audio_fault_sweep_tone_sel0` | hand literals (D-206) | AF0..AF9; null-synth rows of `audio_judge_forms`; selftest mutations | 05-04, 05-05 |
 | AUD-03 b | Noise deterministic | `audio_noise_repeat` (zero, v4 s1, v4 s2) | `--stage conformance; RESULT audio_noise_repeat` | E0 repeatability | one-byte flip of the comparison | 05-07 |
 | AUD-03 c | Zero and v4 identity of audio literal cases can fail | `aud_poweron_policy_diff` | `--stage conformance; RESULT aud_poweron_policy_diff` | ASSUMED LED-PROF-0003 | itself is the negative (streams must differ) | 05-04 |
-| SC1 | All six channels, every register, decoded semantics | ev rows of psg_tone, psg_mod, psg_lfo | `--stage conformance; RESULT audio_tone_pan01, audio_tone_pan23, audio_tone_pan45` | GUEST:program + MAN P8-2..P8-4 | AF8, AF9, psg-chsel-mask | 05-06, 05-07, 05-09 |
+| SC1 | All six channels, every register, decoded semantics (LFO modulation: Phase 5.1) | ev rows of psg_tone and psg_mod; the R8 and R9 decode at C level (psg_decode, psg_lfo_trg) | `--stage conformance; RESULT audio_tone_pan01, audio_tone_pan23, audio_tone_pan45` | GUEST:program + MAN P8-2..P8-4 | AF8, AF9, psg-chsel-mask | 05-06, 05-07, 05-12 |
 | SC2 | Recorded rate and format; non-integer cadence visible | DSPA STRUCT header group, `pcm_cadence`, TSV F rows of `--audio-out` | `--stage conformance; RESULT pcm_cadence, audio_out_rights` | definition + ASSUMED | AF2; audio_out_check in conformance-run | 05-04, 05-05 |
 | SC3 | Period, content, silence; a mis-programmed fixture fails | tone_sel0 period, cycle_order, silent rows; `audio_tone_sel0_d3`; `audio_tone_pan01_twin` | `--stage conformance; RESULT audio_tone_sel0_d3, audio_tone_pan01_twin` | MAN rows of RESEARCH section 6 | misprog-misattributed if any other group flips | 05-04, 05-06 |
 | SC4 | Noise repeats; clock field stays open | `audio_noise_repeat`; docs-check withheld words; LED-AUD-0001 assumed | `--stage conformance; --stage docs-claims; --stage ledger-entries` | E0; ER-14 | tests/docs/claim-word-audio | 05-01, 05-07, 05-10 |
@@ -92,12 +94,12 @@ Drafted from the plans; executors keep it current through their SUMMARYs and 05-
 | 05-08-T1 | 05-08 | W7 | AUD-01..03 | T-05-30 | phase-gate set and cost record | gate | `stage ci-timings-controls, docs-claims; dash; all six Linux parts` | yes | pending |
 | 05-08-T2 | 05-08 | W7 | AUD-01..03 | T-05-29 | scratch mutant sweep, promotions under ER-2 and ER-22 | gate | `stage ledger-entries, inventory, fixture-lint, docs-claims, docs-claims-negatives` | yes | pending |
 | 05-08-T3 | 05-08 | W7 | AUD-01..03 | T-05-30 | cut decision, handbook update | gate | `stage ci-timings-controls, docs-claims; handbook size` | yes | pending |
-| 05-09-T1 | 05-09 | W8 | AUD-01 | T-05-31, T-05-32 | combined LFO counter, F0', coupled fold | conformance | `stage core-boundary, conformance; RESULT psg_lfo_trg, psg_fold` | yes | pending |
-| 05-09-T2 | 05-09 | W8 | AUD-01 | T-05-33 | psg_lfo scenes, toy | conformance | `stage fixture-lint, audio-check, conformance; RESULT audio_lfo_static, audio_lfo_dynamic; CONTROL psg-lfo-shift` | yes | pending |
-| 05-09-T3 | 05-09 | W8 | AUD-01 | T-05-31 | psg_lfo proof set | conformance | `stage audio-check, conformance, sanitizers; RESULT observer_psg_lfo, chunk_equiv_audio_psg_lfo` | yes | pending |
-| 05-10-T1 | 05-10 | W9 | AUD-01..03 | T-05-36 | phase-gate set and close-out timing | gate | `stage ci-timings-controls, docs-claims; dash; all six Linux parts` | yes | pending |
-| 05-10-T2 | 05-10 | W9 | AUD-01..03 | T-05-34 | pins, promotions, RULES, README | gate | `stage ledger-entries, inventory, fixture-lint, audio-check, docs-claims, docs-claims-negatives` | yes | pending |
-| 05-10-T3 | 05-10 | W9 | AUD-01..03 | T-05-35 | this file signed off, verification-report inputs | gate | `nyquist_compliant true, status final; stage docs-claims, ledger-entries` | yes | pending |
+| 05-10-T1 | 05-10 | W9 | AUD-01..03 | T-05-36, T-05-37 | RULES limits at the cut, the LED-AUD-0005 narrowing, the d_hold and R2 row classes, the unjudged kinds dropped | gate | `stage audio-check, ledger-entries, conformance; RESULT audio_judge_forms, audio_mod_dda, audio_fault_sweep_mod_dda, audio_tone_golden` | yes | pending |
+| 05-10-T2 | 05-10 | W9 | AUD-01..03 | T-05-36 | phase-gate set, close-out timing, trigger (3) by instruction count | gate | `stage ci-timings-controls, docs-claims; dash; all six Linux parts` | yes | pending |
+| 05-10-T3 | 05-10 | W9 | AUD-01..03 | T-05-34 | pins, promotions, README | gate | `stage ledger-entries, inventory, fixture-lint, audio-check, docs-claims, docs-claims-negatives` | yes | pending |
+| 05-10-T4 | 05-10 | W9 | AUD-01..03 | T-05-35 | this file signed off, verification-report inputs | gate | `nyquist_compliant true, status final; stage docs-claims, ledger-entries` | yes | pending |
+
+The former rows 05-09-T1..T3 are the Phase 5.1 rows 05.1-01-T1..T3 (05.1-VALIDATION.md); 05-12's rows are added from its SUMMARY by 05-10.
 
 *Status: pending, green, red, flaky*
 
@@ -128,7 +130,7 @@ None expected: every behaviour is checked by the gate (AGENTS.md "Verify phases"
 
 - [ ] Every task has an automated verify or a Wave 0 dependency
 - [ ] Sampling continuity: no three consecutive tasks without an automated verify
-- [ ] Every negative control seen red (seven audio toys, or six after a cut; every audio_fault_sweep; audio_tone_sel0_d3; the twin; null-synth rows; aud_poweron_policy_diff; audio-check mini-roots and selftests; hostile restore rows; docs and fixture-lint controls)
+- [ ] Every negative control seen red (six audio toys: the cut was taken and psg-lfo-shift is Phase 5.1; every audio_fault_sweep; audio_tone_sel0_d3; the twin; null-synth rows; aud_poweron_policy_diff; audio-check mini-roots and selftests; hostile restore rows; docs and fixture-lint controls)
 - [ ] No watch-mode flags
 - [ ] the nyquist flag in the frontmatter is set true only by plan 05-10
 
