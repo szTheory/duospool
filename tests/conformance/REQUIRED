@@ -401,3 +401,5 @@ audio_fault_sweep_lfo_needs_sel1
 mutate_sweep_psg_lfo
 audio_lfo_release
 audio_fault_sweep_lfo_release
+audio_lfo_dynamic
+audio_fault_sweep_lfo_dynamic

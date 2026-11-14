@@ -18,7 +18,7 @@
  * SELECTOR items (semicolons): anchor=ev:ch=<0..5|G>;reg=R<n>;[val=$hh;]nth=N (the N-th DSPE record of that channel, G the global chan $FE, register and value); ev=+K (the K-th record after the anchor, form EV); from=+M and to=+M (master clocks after the anchor) or from=M and to=M
  * (absolute, no anchor); to=ev:ch=..;reg=..;[val=..;]nth=N (an end anchor, RF-13: the reg, val and nth items after it belong to it); side=L|R. A window [from, to) holds the samples s with from <= s x sample_mclk < to (D-187), converted to stream indices with the DSPA header's
  * sample_mclk and first frame. LITERAL items (semicolons) are closed keys: the judged ones of each kind and the inputs of the 05-05 arithmetic lint (accepted, not judged here).
- * Plan 05-05 grammar: every kind of tests/audio/KINDCLASS is parsed with its form (an unknown kind or a form that is not the kind's is refused); kinds whose judge lands later (05-06, 05-07; lfo_static and lfo_needs_sel1 with 05.1-01, lfo_dynamic with 05.1-02) are harness_failure when judged, never a pass. A row golden SCENE pcm_sha256=HEX psg_sha256=HEX
+ * Plan 05-05 grammar: every kind of tests/audio/KINDCLASS is parsed with its form (an unknown kind or a form that is not the kind's is refused); every kind has its judge here since 05.1-02 (lfo_dynamic, the last), so none is judged from a later plan. A row golden SCENE pcm_sha256=HEX psg_sha256=HEX
  * pins the digests of a golden scene; class DEF:<LED ids> marks a definition (ER-19); selector items stream=dspa|dspe (the STRUCT header rows) and nth=N+M on the end anchor (an offset of M master clocks, PR-13); an expect_red scene (D-211, D-225) carries twin= and expect_red= and the
  * case judging it takes the red list from the scene row. Forms added in 05-05: REL (period_ratio, same, atten_order, atten_equal over the windows of a group's rows in order), STRUCT (header, count) and the ROWS kind live (two rising crossings and at least 3 distinct levels between them).
  * The kind audio_fault_sweep applies AF0..AF9 of D-209 in memory to copies of the captured streams of one run; audio_judge_forms shows every form able to fail (05-05).
@@ -298,20 +298,16 @@ enum {
     AK_END
 };
 
-/* the kinds of tests/audio/KINDCLASS with their form (scripts/audio-check reads the same table as data) and the plan that brings the judge of a kind this file does not judge yet (NULL: judged here; plan 05-07 judges the noise and DDA kinds and cycle_phase; Phase 5.1
- * plan 05.1-01 judges lfo_static (the period judge on k and d, d = k x F' checked by the lint) and lfo_needs_sel1 (the same judge), 05.1-02 lfo_dynamic; the close-out plan 05-10 dropped the two kinds that no plan had a row for) */
+/* the kinds of tests/audio/KINDCLASS with their form (scripts/audio-check reads the same table as data); every kind is judged here (plan 05-07 judges the noise and DDA kinds and cycle_phase; Phase 5.1 plan 05.1-01 judges lfo_static (the period judge on k and d,
+ * d = k x F' checked by the lint) and lfo_needs_sel1 (the same judge), 05.1-02 lfo_dynamic (the run and set rule), so no kind is judged from a later plan any more; the close-out plan 05-10 dropped the two kinds that no plan had a row for) */
 static const struct au_kind_def {
     const char *name;
     int form;
-    const char *later;
 } au_kinds[] = {
-    {"ev_value", AX_FORM_EV, NULL},           {"ev_decode", AX_FORM_EV, NULL},         {"ev_edge", AX_FORM_EV, NULL},           {"period", AX_FORM_ROWS, NULL},
-    {"period_ratio", AX_FORM_REL, NULL},      {"cycle_order", AX_FORM_ROWS, NULL},     {"cycle_phase", AX_FORM_ROWS, NULL},     {"levels_exact", AX_FORM_ROWS, NULL},
-    {"silent", AX_FORM_ROWS, NULL},           {"live", AX_FORM_ROWS, NULL},            {"same", AX_FORM_REL, NULL},             {"atten_order", AX_FORM_REL, NULL},
-    {"atten_equal", AX_FORM_REL, NULL},       {"dda_hold", AX_FORM_ROWS, NULL},        {"dda_order", AX_FORM_ROWS, NULL},       {"dda_ram_kept", AX_FORM_ROWS, NULL},
-    {"dda_level_exact", AX_FORM_ROWS, NULL},  {"two_level", AX_FORM_ROWS, NULL},       {"run_grid", AX_FORM_ROWS, NULL},        {"noise_ratio", AX_FORM_REL, NULL},
-    {"run_min", AX_FORM_ROWS, NULL},          {"noise_seq", AX_FORM_ROWS, NULL},       {"lfo_static", AX_FORM_ROWS, NULL},      {"lfo_needs_sel1", AX_FORM_REL, NULL},
-    {"lfo_dynamic", AX_FORM_ROWS, "05.1-02"}, {"count", AX_FORM_STRUCT, NULL},         {"header", AX_FORM_STRUCT, NULL},
+    {"ev_value", AX_FORM_EV},          {"ev_decode", AX_FORM_EV},      {"ev_edge", AX_FORM_EV},         {"period", AX_FORM_ROWS},       {"period_ratio", AX_FORM_REL},    {"cycle_order", AX_FORM_ROWS}, {"cycle_phase", AX_FORM_ROWS},
+    {"levels_exact", AX_FORM_ROWS},    {"silent", AX_FORM_ROWS},       {"live", AX_FORM_ROWS},          {"same", AX_FORM_REL},          {"atten_order", AX_FORM_REL},     {"atten_equal", AX_FORM_REL},  {"dda_hold", AX_FORM_ROWS},
+    {"dda_order", AX_FORM_ROWS},       {"dda_ram_kept", AX_FORM_ROWS}, {"dda_level_exact", AX_FORM_ROWS}, {"two_level", AX_FORM_ROWS},  {"run_grid", AX_FORM_ROWS},       {"noise_ratio", AX_FORM_REL},  {"run_min", AX_FORM_ROWS},
+    {"noise_seq", AX_FORM_ROWS},       {"lfo_static", AX_FORM_ROWS},   {"lfo_needs_sel1", AX_FORM_REL}, {"lfo_dynamic", AX_FORM_ROWS},  {"count", AX_FORM_STRUCT},        {"header", AX_FORM_STRUCT},
 };
 
 struct ax_scene {
@@ -1221,6 +1217,7 @@ static int au_window(const struct au_cap *cp, const struct au_sel *s, uint64_t *
 }
 
 #define AU_CROSS_MAX 4096u
+#define AU_LFO_MIN_RUN 40u /* lfo_dynamic (plan 05.1-02): the fewest cycles of an interior run; a half table of psg_lfo's lfo_dynamic lasts 16 x 115,200 / 192 = 9,600 samples, 48 cycles of 200 or about 52 of 184 */
 
 /* the rising crossings of the window on one side (threshold (min + max) / 2 written as 2x against min + max); the count, the first cap of them in cx */
 static unsigned au_crossings(const struct au_cap *cp, uint64_t i0, uint64_t i1, int side, uint64_t *cx, unsigned cap)
@@ -1705,8 +1702,96 @@ static int au_rows_row(const struct au_cap *cp, const struct ax_group *g, const 
         snprintf(why, cap, "the first %u plateaus of [%llu, %llu) rank as the literal in order", nwant, (unsigned long long)i0, (unsigned long long)i1);
         return AU_PASS;
     }
+    if (g->kind == AK_LFO_DYNAMIC) {
+        /* lfo_dynamic (plan 05.1-02; D-208, MAN:P8-6+P8-7+P8-8+P8-9+H8-23): the complete cycles of the window (one rising crossing to the next) are grouped into maximal runs of equal length, all taken from the stream: no switch instant is computed, so the row rests
+         * on no restart edge (D-220) and judges no switch timing (D-208). Every run length must be one of set=A,B (F'(w1) and F'(w2) samples at shift 0, recomputed by the lint), except a single cycle of another length (the straddling cycle of a switch) that stands
+         * between a run of A and a run of B; both lengths must occur; no other cycle may sit at the window's edge; every interior run of A or B (neither the first nor the last) holds at least AU_LFO_MIN_RUN cycles. AF0 reads A + 1 */
+        uint64_t cx[AU_CROSS_MAX];
+        uint64_t sv[2];
+        unsigned nsv = 0u;
+        unsigned n;
+        unsigned c;
+        unsigned nset = 0u;      /* the runs of A or B finished so far */
+        unsigned between = 0u;   /* the cycles of another length since the last run of A or B */
+        uint64_t other = 0u;     /* the last such length */
+        uint64_t last_len = 0u;  /* the last run of A or B */
+        unsigned last_cnt = 0u;
+        uint64_t run_len = 0u;   /* the run being collected */
+        unsigned run_cnt = 0u;
+        unsigned straddle = 0u;
+        int seen[2] = {0, 0};
+
+        if (au_lit_get(l, "set") == NULL || au_numlist(au_lit_get(l, "set"), sv, 2u, &nsv) != 0 || nsv != 2u || sv[0] == 0u || sv[1] == 0u || sv[0] == sv[1]) {
+            snprintf(why, cap, "aexp-malformed: an lfo_dynamic row needs set=A,B (two different cycle lengths in samples)");
+            return AU_HARNESS;
+        }
+        sv[0] += perturb ? 1u : 0u;
+        n = au_crossings(cp, i0, i1, s->side, cx, AU_CROSS_MAX);
+        if (n > AU_CROSS_MAX) {
+            snprintf(why, cap, "more than %u rising crossings in the window [%llu, %llu): past the judge's capacity", AU_CROSS_MAX, (unsigned long long)i0, (unsigned long long)i1);
+            return AU_HARNESS;
+        }
+        if (n < 2u) {
+            snprintf(why, cap, "%u rising crossings in the window [%llu, %llu): no complete cycle", n, (unsigned long long)i0, (unsigned long long)i1);
+            return AU_FAIL;
+        }
+        for (c = 0u; c + 1u <= n; c++) {
+            uint64_t len = c + 1u < n ? cx[c + 1u] - cx[c] : 0u; /* c = n - 1: the end, which finishes the last run */
+
+            if (c + 1u < n && run_cnt > 0u && len == run_len) {
+                run_cnt++;
+                continue;
+            }
+            if (run_cnt > 0u) { /* finish the run (run_len, run_cnt), which ends at the crossing cx[c] */
+                int k = run_len == sv[0] ? 0 : run_len == sv[1] ? 1 : -1;
+
+                if (k < 0) {
+                    between += run_cnt;
+                    other = run_len;
+                } else {
+                    if (nset == 0u && between > 0u) {
+                        snprintf(why, cap, "a cycle of %llu samples before the first run of %llu or %llu (at the window's edge, ending at sample %llu)", (unsigned long long)other, (unsigned long long)sv[0], (unsigned long long)sv[1], (unsigned long long)cx[c]);
+                        return AU_FAIL;
+                    }
+                    if (nset > 0u && between > 1u) {
+                        snprintf(why, cap, "%u cycles of another length (the last %llu samples) between a run of %llu and a run of %llu ending at sample %llu: at most one straddling cycle", between, (unsigned long long)other, (unsigned long long)last_len, (unsigned long long)run_len,
+                                 (unsigned long long)cx[c]);
+                        return AU_FAIL;
+                    }
+                    if (nset > 0u && between == 1u && last_len == run_len) {
+                        snprintf(why, cap, "a cycle of %llu samples inside a run of %llu (ending at sample %llu): a third length is not a straddling cycle", (unsigned long long)other, (unsigned long long)run_len, (unsigned long long)cx[c]);
+                        return AU_FAIL;
+                    }
+                    if (nset >= 2u && last_cnt < AU_LFO_MIN_RUN) {
+                        snprintf(why, cap, "an interior run of %u cycles of %llu samples, fewer than %u (a half table holds about 48 to 52)", last_cnt, (unsigned long long)last_len, AU_LFO_MIN_RUN);
+                        return AU_FAIL;
+                    }
+                    straddle += between;
+                    between = 0u;
+                    seen[k] = 1;
+                    nset++;
+                    last_len = run_len;
+                    last_cnt = run_cnt;
+                }
+            }
+            run_len = len;
+            run_cnt = 1u;
+        }
+        if (between > 0u) {
+            snprintf(why, cap, "%u cycle(s) of another length (the last %llu samples) after the last run of %llu or %llu (at the window's edge)", between, (unsigned long long)other, (unsigned long long)sv[0], (unsigned long long)sv[1]);
+            return AU_FAIL;
+        }
+        if (!seen[0] || !seen[1]) {
+            snprintf(why, cap, "the %u complete cycles of [%llu, %llu) hold runs of %llu samples only: both %llu and %llu must occur", n - 1u, (unsigned long long)i0, (unsigned long long)i1, (unsigned long long)(seen[0] ? sv[0] : seen[1] ? sv[1] : 0u),
+                     (unsigned long long)sv[0], (unsigned long long)sv[1]);
+            return AU_FAIL;
+        }
+        snprintf(why, cap, "the %u complete cycles of [%llu, %llu) form %u runs of %llu or %llu samples (every interior run at least %u cycles) and %u straddling cycle(s), each between a run of one length and one of the other", n - 1u, (unsigned long long)i0,
+                 (unsigned long long)i1, nset, (unsigned long long)sv[0], (unsigned long long)sv[1], AU_LFO_MIN_RUN, straddle);
+        return AU_PASS;
+    }
     if (g->kind != AK_CYCLE_ORDER && g->kind != AK_DDA_RAM_KEPT) {
-        snprintf(why, cap, "the kind %s is parsed but judged from plan %s", au_kinds[g->kind - 1].name, au_kinds[g->kind - 1].later != NULL ? au_kinds[g->kind - 1].later : "05-05");
+        snprintf(why, cap, "the kind %s has no ROWS judge in this file (fail closed)", au_kinds[g->kind - 1].name);
         return AU_HARNESS;
     }
     {
@@ -1970,10 +2055,6 @@ static int au_rel_group(const struct ax_file *f, unsigned gi, const struct au_ca
     uint64_t *cx = NULL;
     int out = AU_PASS;
 
-    if (au_kinds[g->kind - 1].later != NULL) {
-        snprintf(why, cap, "the kind %s is parsed but judged from plan %s", au_kinds[g->kind - 1].name, au_kinds[g->kind - 1].later);
-        return AU_HARNESS;
-    }
     for (r = 0u; r < f->nr; r++) {
         struct au_sel s;
         struct au_lit l;
@@ -2878,6 +2959,103 @@ static int aj_stream(struct au_cap *x)
     return 0;
 }
 
+/* a synthetic capture of whole cycles (plan 05.1-02, the lfo_dynamic rows): one record (R4 $9F on select 0 at stamp 0), 10 samples of 0, then for each pair (length, count) of spec that many cycles of that many samples, each 1000 for its first half and 0 after it, so
+ * every cycle starts with its one rising crossing, then 10 samples of 1000 (the crossing that closes the last cycle); L = R. *nf gets the frame count; 0, or -1 when out of memory */
+static int aj_cycles(struct au_cap *x, const uint32_t *spec, unsigned npair, uint32_t *nf)
+{
+    uint32_t total = 20u;
+    uint32_t at = 10u;
+    uint32_t i;
+    unsigned p;
+
+    for (p = 0u; p < npair; p++) {
+        total += spec[2u * p] * spec[2u * p + 1u];
+    }
+    memset(x, 0, sizeof *x);
+    x->erec = (uint8_t *)calloc(1u, AU_E_REC);
+    x->frames = (uint8_t *)calloc(total, AU_F_BYTES);
+    if (x->erec == NULL || x->frames == NULL) {
+        au_cap_free(x);
+        return -1;
+    }
+    x->erec[AU_E_REG] = 4u;
+    x->erec[AU_E_VALUE] = 0x9Fu;
+    x->erec[AU_E_CHAN] = 0u;
+    x->erec[AU_E_POST] = 0x9Fu;
+    x->erec[AU_E_VERSION] = 1u;
+    for (p = 0u; p < npair; p++) {
+        uint32_t k;
+
+        for (k = 0u; k < spec[2u * p + 1u]; k++) {
+            for (i = 0u; i < spec[2u * p]; i++) {
+                uint32_t v = i < spec[2u * p] / 2u ? 1000u : 0u;
+
+                au_put_frame(x, at++, v, v);
+            }
+        }
+    }
+    for (i = 0u; i < 10u; i++) {
+        au_put_frame(x, at++, 1000u, 1000u);
+    }
+    x->ecount = 1u;
+    x->ecap = 1u;
+    x->fcount = total;
+    x->fcap = total;
+    x->smclk = 192u;
+    x->lf = 357630u;
+    x->hdr_fcount = total;
+    x->hdr_ecount = 1u;
+    x->pfbytes = 8u;
+    x->pversion = 1u;
+    x->pformat = 1u;
+    x->machine_time = (uint64_t)total * 192u;
+    *nf = total;
+    return 0;
+}
+
+static int aj_eval(struct aj_ctx *j, const char *form, const char *kind, const char *sel1, const char *lit1, const char *sel2, const char *lit2, const struct au_cap *x, int perturb);
+
+/* one lfo_dynamic row over the whole synthetic capture of spec (window from the record at 0 to the last frame, side L), judged with lit and perturb, against want */
+static void aj_dyn(struct aj_ctx *j, const char *name, const uint32_t *spec, unsigned npair, const char *lit, int perturb, int want)
+{
+    struct au_cap y;
+    uint32_t nf = 0u;
+    char sel[120];
+
+    if (aj_cycles(&y, spec, npair, &nf) != 0) {
+        aj_want(j, name, -1, want); /* out of memory: the check fails */
+        return;
+    }
+    snprintf(sel, sizeof sel, "anchor=ev:ch=0;reg=R4;val=$9F;nth=1;from=+0;to=+%llu;side=L", (unsigned long long)nf * 192u);
+    aj_want(j, name, aj_eval(j, "ROWS", "lfo_dynamic", sel, lit, NULL, NULL, &y, perturb), want);
+    au_cap_free(&y);
+}
+
+#define AJ_DYN "f=192;w1=$18;w2=$08;f2=128;flf=150;step=115200;set=200,184"
+
+/* the lfo_dynamic rule of plan 05.1-02, one row per rule (C-06): a pass (runs of 200 and 184 with one straddling cycle at each switch), the boundary interior run of 40, one length only, a third length inside a run, two straddling cycles between two runs, an interior run of
+ * 39, a straddling cycle at the window's edge, AF0 (the first set length + 1) and a literal without set */
+static void aj_lfo_dynamic(struct aj_ctx *j)
+{
+    static const uint32_t pass[] = {200u, 45u, 192u, 1u, 184u, 50u, 191u, 1u, 200u, 10u};
+    static const uint32_t run40[] = {200u, 45u, 192u, 1u, 184u, 40u, 192u, 1u, 200u, 45u};
+    static const uint32_t one[] = {200u, 100u};
+    static const uint32_t third[] = {200u, 45u, 190u, 1u, 200u, 45u, 192u, 1u, 184u, 45u};
+    static const uint32_t two[] = {200u, 45u, 192u, 1u, 188u, 1u, 184u, 45u};
+    static const uint32_t run39[] = {200u, 45u, 192u, 1u, 184u, 39u, 192u, 1u, 200u, 45u};
+    static const uint32_t edge[] = {192u, 1u, 200u, 45u, 184u, 45u};
+
+    aj_dyn(j, "ROWS lfo_dynamic runs of 200 and 184 with one straddling cycle at each switch passes", pass, 5u, AJ_DYN, 0, AU_PASS);
+    aj_dyn(j, "ROWS lfo_dynamic with an interior run of 40 cycles passes", run40, 5u, AJ_DYN, 0, AU_PASS);
+    aj_dyn(j, "ROWS lfo_dynamic with one length only (200) fails", one, 1u, AJ_DYN, 0, AU_FAIL);
+    aj_dyn(j, "ROWS lfo_dynamic with a third length (190) inside a run of 200 fails", third, 5u, AJ_DYN, 0, AU_FAIL);
+    aj_dyn(j, "ROWS lfo_dynamic with two straddling cycles (192, 188) between two runs fails", two, 4u, AJ_DYN, 0, AU_FAIL);
+    aj_dyn(j, "ROWS lfo_dynamic with an interior run of 39 cycles fails", run39, 5u, AJ_DYN, 0, AU_FAIL);
+    aj_dyn(j, "ROWS lfo_dynamic with a cycle of another length at the window's edge fails", edge, 3u, AJ_DYN, 0, AU_FAIL);
+    aj_dyn(j, "ROWS lfo_dynamic AF0 (the first set length + 1) fails", pass, 5u, AJ_DYN, 1, AU_FAIL);
+    aj_dyn(j, "ROWS lfo_dynamic without set is harness", pass, 5u, "f=192;w1=$18;w2=$08;f2=128;flf=150;step=115200", 0, AU_HARNESS);
+}
+
 /* one group of FORM and KIND (class ASSUMED, kills AF0) with up to two rows into j->f as group 0; 0, or -1 when the rows do not parse */
 static int aj_load(struct aj_ctx *j, const char *form, const char *kind, const char *sel1, const char *lit1, const char *sel2, const char *lit2)
 {
@@ -2998,7 +3176,9 @@ static void aj_forms(struct aj_ctx *j, const struct au_cap *x)
     aj_want(j, "ROWS lfo_static with a wrong d (4 x 130 = 520) fails", aj_eval(j, "ROWS", "lfo_static", AJ_A ";side=L", "f=128;w=$12;shift=0;k=4;d=520", NULL, NULL, x, 0), AU_FAIL);
     aj_want(j, "ROWS lfo_static AF0 (d + 1) fails", aj_eval(j, "ROWS", "lfo_static", AJ_A ";side=L", "f=128;w=$10;shift=0;k=4;d=512", NULL, NULL, x, 1), AU_FAIL);
     aj_want(j, "ROWS lfo_static without d is harness", aj_eval(j, "ROWS", "lfo_static", AJ_A ";side=L", "f=128;w=$10;shift=0;k=4", NULL, NULL, x, 0), AU_HARNESS);
-    aj_want(j, "ROWS a kind judged from a later plan (lfo_dynamic, 05.1-02) is harness", aj_eval(j, "ROWS", "lfo_dynamic", AJ_A ";side=L", "r1=$FF", NULL, NULL, x, 0), AU_HARNESS);
+    /* lfo_dynamic (plan 05.1-02): the row of a later-judged kind is gone (no kind is judged later); on the synthetic capture's one period a pass of runs is impossible, and the rows of each rule run on captures of whole cycles (aj_lfo_dynamic) */
+    aj_want(j, "ROWS lfo_dynamic on one period only (128-sample cycles, set=200,184) fails", aj_eval(j, "ROWS", "lfo_dynamic", AJ_A ";side=L", AJ_DYN, NULL, NULL, x, 0), AU_FAIL);
+    aj_lfo_dynamic(j);
     aj_want(j, "ROWS an unknown kind is refused", aj_eval(j, "ROWS", "loud", AJ_A ";side=L", "r1=$FF", NULL, NULL, x, 0), AU_HARNESS);
     aj_want(j, "ROWS the kind period under form REL is refused", aj_eval(j, "REL", "period", AJ_A ";side=L", "f=64;k=4;d=512", NULL, NULL, x, 0), AU_HARNESS);
     /* REL: period_ratio, same, atten_order, atten_equal (window A at x 1000, window B at x 500) */

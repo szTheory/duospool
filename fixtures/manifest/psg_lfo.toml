@@ -3,16 +3,16 @@
 #
 # Fixture manifest entry (FIX-02, FIX-01, D-59 amended, D-123, D-212): one authored HuCard image of fixtures/src/psg_lfo.s. The bytes are assembled in the gate by ca65 and ld65 and are
 # never committed. scripts/fixture-check compares size and sha256 below with the bytes scripts/fixture-build wrote, as hashed by the host sha tool, so a changed source, library or
-# toolchain output turns the gate red. The pin was measured on the first build of plan 05.1-01 on the Homebrew cc65 2.19 bottle (see fixtures/lib/TOOLS.md); it proves the build is repeatable, nothing more. Plan 05.1-02 re-measured it after lfo_release (reproduced by a separate scratch link) and re-measures it after lfo_dynamic.
+# toolchain output turns the gate red. The pin was measured on the first build of plan 05.1-01 on the Homebrew cc65 2.19 bottle (see fixtures/lib/TOOLS.md); it proves the build is repeatable, nothing more. Plan 05.1-02 re-measured it after lfo_release and after lfo_dynamic, each reproduced by a separate scratch link.
 id = "psg_lfo"
 kind = "authored"
 source = "fixtures/src/psg_lfo.s"
 recipe = "psg-lfo: ca65 --cpu huc6280 -D ROMBANKS=32 -I fixtures/lib -o build/gate/fx/psg-lfo.o fixtures/src/psg_lfo.s; ld65 -C fixtures/lib/hucard.cfg -D ROMBANKS=32 -o build/gate/fixtures/psg-lfo.pce build/gate/fx/psg-lfo.o"
 toolchain = "cc65 V2.19 (ca65 prints V2.18; identity by encoding-matrix bytes, plan 03-08), Homebrew bottle 2.19 locally, hashed by sha256sum or shasum -a 256"
 size = 262144
-sha256 = "e6e692375195c2d2bdfec4b076ae141809b56158c2b03c5c5def991b8672b118"
+sha256 = "026d4fce6cb86cefe8bf9ec9743ec870c435291f53a01f174b0b4f0784c56a2d"
 licence = "0BSD"
 notices = "none: assembled at gate time from the project-owned sources fixtures/src/psg_lfo.s and fixtures/lib/*.inc and hucard.cfg (0BSD); no HuC, PCEAS or cc65 library or startup code, no emulator code, no game content"
 redistribution = "generated-not-committed"
-meaning = "Authored diagnostic HuCard of 256 KiB: select 1 holding the LFO modulation word $18 under TRG 1 while select 0 plays at F0 = 512 under LF CTL 0 to 3, and with select 1 off, judged by the runner's audio kind against psg_lfo.aexp; DSV1 GUEST checks of the guest's own table data. A pass is not a support claim."
+meaning = "Authored diagnostic HuCard of 256 KiB: select 0 under held LFO modulation (word $18, TRG 1) at LF CTL 0 to 3 and with select 1 off, select 1 alone released from TRG 1, and select 0 under running modulation ($18 and $08), judged by the runner's audio kind against psg_lfo.aexp; DSV1 GUEST checks of the guest's own table data. A pass is not a support claim."
 verdict_source = "guest-computed"
