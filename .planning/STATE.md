@@ -3,17 +3,17 @@ gsd_state_version: "1.0"
 current_phase: "05.1"
 current_phase_name: PSG LFO (frequency modulation)
 current_plan: 3
-status: executing
-stopped_at: Completed 05.1-02-PLAN.md
-last_updated: "2026-11-14T10:01:15.812Z"
+status: verifying
+stopped_at: Completed 05.1-03-PLAN.md
+last_updated: "2026-11-14T12:27:47.489Z"
 last_activity: 2026-11-14
 last_activity_desc: Phase 5 complete, transitioned to Phase 05.1
-state_head: 2c8508a8856178e503245caaa2b65178d4ec74c8
+state_head: ba20aee3f7575fec69f5786fca041c1aa545fb1d
 progress:
   total_phases: 8
   completed_phases: 6
   total_plans: 104
-  completed_plans: 103
+  completed_plans: 104
   percent: 75
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 Phase: 05.1 — PSG LFO (frequency modulation)
 Current Plan: 3
 Total Plans in Phase: 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-14 — Phase 5 complete, transitioned to Phase 05.1
 
 Progress: [████████░░] 75%
@@ -164,6 +164,7 @@ Progress: [████████░░] 75%
 | Phase 05 P10 | 4h35m | 4 tasks | 34 files |
 | Phase 05.1 P01 | 45min | 3 tasks | 31 files |
 | Phase 05.1 P02 | 64min | 3 tasks | 16 files |
+| Phase 05.1 P03 | 144min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -388,6 +389,8 @@ Recent decisions affecting current work:
 - [Phase 05.1]: 05.1-02: kill lists as the sweep observes: rel AF0,AF5,AF6,AF7,AF8; dyn AF0,AF2,AF4,AF5,AF6,AF7,AF8; ev_r8 AF0,AF8 (AF9 relabels no global record)
 - [Phase 05.1]: 05.1-02: chunk_equiv_audio_psg_lfo runs to 8,000,000 (chunk_equiv needs the DSV1 done state, 7,951,284, before its deadline, D-95); the other proof-set cases stop at 3,750,000 = R9 $01 stamp 3,509,820 + 2 x 115,200, rounded up
 - [Phase 05.1]: 05.1-02: no epoch, serial or text bump; the LFO scenes fill behaviour into the unreleased epoch 6 (C-08)
+- [Phase 05.1]: 05.1-03: LED-AUD-0002 stays assumed although every clause has a MAN group in a guest-fixture case; the ER-2 promotion edits were not made (orchestrator direction) and the clause table is recorded in the entry
+- [Phase 05.1]: 05.1-03: the README claims only the MAN LFO rows under the bound divisor 6 (P8-7 reading of the w - 16 extension named); the restart and the 12-bit wrap are labelled assumptions; trigger (3) fires on the instruction measure (+28.65 and +30.23 percent over 05-01), recorded not decided on
 
 ### Pending Todos
 
@@ -411,6 +414,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-14T10:01:14.670Z
-Stopped at: Completed 05.1-02-PLAN.md
+Last session: 2026-11-14T12:27:46.496Z
+Stopped at: Completed 05.1-03-PLAN.md
 Resume file: None
