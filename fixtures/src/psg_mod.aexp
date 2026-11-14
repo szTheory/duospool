@@ -70,8 +70,8 @@ row	mod_dda	d_dec	anchor=ev:ch=2;reg=R4;val=$DF;nth=1;ev=+0	chan=2;effect=$08;wa
 group	mod_dda	d_hold	form=ROWS	kind=dda_hold	class=MAN:P8-4+P8-5	kills=AF0,AF5,AF6,AF8
 row	mod_dda	d_hold	anchor=ev:ch=2;reg=R6;val=$05;nth=3;from=+384;to=ev:ch=2;reg=R6;val=$1B;nth=3+2000;side=L	ords=2,3,4,5,6,8;r1=$FF;al=$1F;r5=$FF
 row	mod_dda	d_hold	anchor=ev:ch=2;reg=R6;val=$05;nth=3;from=+384;to=ev:ch=2;reg=R6;val=$1B;nth=3+2000;side=R	ords=2,3,4,5,6,8;r1=$FF;al=$1F;r5=$FF
-# d_hold1 (ASSUMED:LED-AUD-0004, mark=latch_off): from R4 $DF to write 2 the one write 1 changes the level; the level before it is the latch 0 of R6 $00 written with chON 0 (the disputed latch_off point) or the power-on latch (LED-PROF-0003; 05-07 deviation 6), so it is no MAN row (ER-10, ER-15).
-group	mod_dda	d_hold1	form=ROWS	kind=dda_hold	class=ASSUMED:LED-AUD-0004	kills=AF0,AF5,AF6,AF8
+# d_hold1 (ASSUMED:LED-AUD-0004, mark=latch_off): from R4 $DF to write 2 the one write 1 changes the level; the level before it is the latch 0 of R6 $00 written with chON 0 (the disputed latch_off point) or the power-on latch (LED-PROF-0003; 05-07 deviation 6), so it is no MAN row (ER-10, ER-15). No AF8 (the next R4 $DF empties the window: a harness outcome, no kill; WR-01).
+group	mod_dda	d_hold1	form=ROWS	kind=dda_hold	class=ASSUMED:LED-AUD-0004	kills=AF0,AF5,AF6
 row	mod_dda	d_hold1	anchor=ev:ch=2;reg=R4;val=$DF;nth=1;from=+0;to=ev:ch=2;reg=R6;val=$05;nth=4;side=L	ords=1;r1=$FF;al=$1F;r5=$FF;mark=latch_off
 row	mod_dda	d_hold1	anchor=ev:ch=2;reg=R4;val=$DF;nth=1;from=+0;to=ev:ch=2;reg=R6;val=$05;nth=4;side=R	ords=1;r1=$FF;al=$1F;r5=$FF;mark=latch_off
 # d_ord (MAN:P8-4+P8-5): from write 1 + 384 (two samples past its stamp) to write 9 + 2,000 the 7 plateaus rank as the held values 5, 20, 3, 31, 0, 12, 27.

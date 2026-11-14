@@ -2625,28 +2625,50 @@ static unsigned au_popcount(unsigned m)
     return n;
 }
 
-/* the observed kill set of group gi on the capture cp: bit af set when the group does not pass under AFaf; -1 when out of memory */
-static int au_kill_set(const struct ax_file *f, unsigned gi, const struct au_cap *cp, unsigned *flips)
+/* the observed kill set of group gi on the capture cp: bit af of *flips set when the group FAILS under AFaf (its judged comparison turned red), bit af of *harness set when it gives a harness outcome instead (the fault made a row malformed or its window empty). A harness outcome
+ * is never a kill (D-209; the rule of the video sweep, videokinds.c vk_sweep_group). hwhy gets the reason of the first harness outcome of a declared kill (empty when none); -1 when out of memory */
+static int au_kill_set(const struct ax_file *f, unsigned gi, const struct au_cap *cp, unsigned *flips, unsigned *harness, char *hwhy, size_t hcap)
 {
     struct au_target t;
     unsigned af;
 
     *flips = 0u;
+    *harness = 0u;
+    hwhy[0] = '\0';
     au_target_of(f, gi, cp, &t);
     for (af = 0u; af < AU_AF_N; af++) {
         struct au_cap x;
         char why[320];
+        int v;
 
         if (au_cap_copy(cp, &x) != 0) {
             return -1;
         }
         au_fault(&x, af, &t);
-        if (au_eval_group(f, gi, &x, af == 0u, why, sizeof why) != AU_PASS) {
+        v = au_eval_group(f, gi, &x, af == 0u, why, sizeof why);
+        if (v == AU_FAIL) {
             *flips |= 1u << af;
+        } else if (v == AU_HARNESS) {
+            if (hwhy[0] == '\0' && (f->gr[gi].kills & (1u << af)) != 0u) {
+                snprintf(hwhy, hcap, "AF%u: %.300s", af, why);
+            }
+            *harness |= 1u << af;
         }
         au_cap_free(&x);
     }
     return 0;
+}
+
+/* the sweep verdict of one group (D-209): AU_HARNESS when a declared kill gave a harness outcome (the fault broke a row instead of the judged comparison, so it shows nothing), AU_FAIL when a declared kill left the group green or no declared kill flips it, else AU_PASS */
+static int au_sweep_verdict(unsigned kills, unsigned flips, unsigned harness)
+{
+    if ((kills & harness) != 0u) {
+        return AU_HARNESS;
+    }
+    if ((kills & ~flips) != 0u || (kills & flips) == 0u) {
+        return AU_FAIL;
+    }
+    return AU_PASS;
 }
 
 void kind_audio_fault_sweep(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
@@ -2708,11 +2730,14 @@ void kind_audio_fault_sweep(const struct kase *k, struct ctx *c, char *got, size
         const struct ax_group *g = &f->gr[gi];
         char why[320];
         char msg[440];
-        char line[300];
+        char line[360];
+        char hwhy[320];
         char dtxt[64];
         char ftxt[64];
         char mtxt[64];
+        char htxt[64];
         unsigned flips = 0u;
+        unsigned harness = 0u;
         int base;
 
         if (strcmp(g->scene, e.scene) != 0) {
@@ -2730,8 +2755,13 @@ void kind_audio_fault_sweep(const struct kase *k, struct ctx *c, char *got, size
             check(c, 0, msg);
             continue;
         }
-        if (au_kill_set(f, gi, &cap0, &flips) != 0) {
+        if (au_kill_set(f, gi, &cap0, &flips, &harness, hwhy, sizeof hwhy) != 0) {
             harness_error(c, "out of memory for the faulted copies of the streams");
+            goto done;
+        }
+        if (au_sweep_verdict(g->kills, flips, harness) == AU_HARNESS) {
+            snprintf(msg, sizeof msg, "group %.31s: a declared kill gave a harness outcome, not a failure of the judged comparison, so it is no kill (D-209): %.280s", g->gid, hwhy);
+            harness_error(c, msg);
             goto done;
         }
         ndecl += au_popcount(g->kills);
@@ -2739,11 +2769,12 @@ void kind_audio_fault_sweep(const struct kase *k, struct ctx *c, char *got, size
         au_mask_text(g->kills, dtxt, sizeof dtxt);
         au_mask_text(flips, ftxt, sizeof ftxt);
         au_mask_text(g->kills & ~flips, mtxt, sizeof mtxt);
+        au_mask_text(harness, htxt, sizeof htxt);
         snprintf(msg, sizeof msg, "group %.31s: the declared kill(s) %.40s do not flip it (declared %.40s, observed %.40s; D-209)", g->gid, mtxt, dtxt, ftxt);
         check(c, (g->kills & ~flips) == 0u, msg);
         snprintf(msg, sizeof msg, "group %.31s: no declared fault flips it (declared %.40s): a vacuous group (D-209)", g->gid, dtxt);
         check(c, (g->kills & flips) != 0u, msg);
-        snprintf(line, sizeof line, "audio_sweep %.31s %.95s declared=%.40s observed=%.40s missing=%.40s\n", g->gid, g->cls, dtxt, ftxt, mtxt);
+        snprintf(line, sizeof line, "audio_sweep %.31s %.95s declared=%.40s observed=%.40s missing=%.40s harness=%.40s\n", g->gid, g->cls, dtxt, ftxt, mtxt, htxt);
         if (used + strlen(line) + 1u < sizeof detail) {
             memcpy(detail + used, line, strlen(line) + 1u);
             used += strlen(line);
@@ -2756,7 +2787,8 @@ void kind_audio_fault_sweep(const struct kase *k, struct ctx *c, char *got, size
     {
         char head[300];
 
-        snprintf(head, sizeof head, "audio_sweep: groups=%u declared=%u flipped=%u (E0: each literal group shown live on in-memory faults AF0..AF9 of the captured streams of one run, D-209; observed= is the kill matrix of all ten faults)\n", ngroups, ndecl, nflip);
+        snprintf(head, sizeof head, "audio_sweep: groups=%u declared=%u flipped=%u (E0: each literal group shown live on in-memory faults AF0..AF9 of the captured streams of one run, D-209; observed= the faults that fail it, harness= those that only break a row, never a kill)\n", ngroups,
+                 ndecl, nflip);
         if (strlen(head) + used + 1u <= sizeof detail) {
             memmove(detail + strlen(head), detail, used + 1u);
             memcpy(detail, head, strlen(head));
@@ -2846,13 +2878,12 @@ static int aj_stream(struct au_cap *x)
     return 0;
 }
 
-/* one group of FORM and KIND (class ASSUMED, kills AF0) with up to two rows, judged on x; the verdict, or AU_HARNESS when the rows do not parse */
-static int aj_eval(struct aj_ctx *j, const char *form, const char *kind, const char *sel1, const char *lit1, const char *sel2, const char *lit2, const struct au_cap *x, int perturb)
+/* one group of FORM and KIND (class ASSUMED, kills AF0) with up to two rows into j->f as group 0; 0, or -1 when the rows do not parse */
+static int aj_load(struct aj_ctx *j, const char *form, const char *kind, const char *sel1, const char *lit1, const char *sel2, const char *lit2)
 {
     char lines[5][AX_LINE + 1u];
     unsigned n = 0u;
     unsigned i;
-    char why[320];
     const char *err = NULL;
 
     memset(j->f, 0, sizeof *j->f);
@@ -2872,10 +2903,40 @@ static int aj_eval(struct aj_ctx *j, const char *form, const char *kind, const c
     if (err == NULL) {
         err = ax_link(j->f);
     }
-    if (err != NULL) {
+    return err != NULL ? -1 : 0;
+}
+
+/* that group judged on x; the verdict, or AU_HARNESS when the rows do not parse */
+static int aj_eval(struct aj_ctx *j, const char *form, const char *kind, const char *sel1, const char *lit1, const char *sel2, const char *lit2, const struct au_cap *x, int perturb)
+{
+    char why[320];
+
+    if (aj_load(j, form, kind, sel1, lit1, sel2, lit2) != 0) {
         return AU_HARNESS;
     }
     return au_eval_group(j->f, 0u, x, perturb, why, sizeof why);
+}
+
+/*
+ * The sweep's harness rule (D-209): a silent group whose start anchor is R4 of channel 0 with any value (nth=1: the key-on) and whose window runs from key-on + 393,216 (sample 2048, the key-off) to the key-off + 384,000 (sample 4048). AF8 drops the key-on record, so the start anchor
+ * names the key-off and the window [786,432, 777,216) is empty: a harness outcome, which is no kill. AF6 (a constant non-silent window) fails the judged comparison: a kill. A sweep that declares AF8 is a harness failure; one that declares only AF6 passes.
+ */
+static void aj_sweep_harness(struct aj_ctx *j, const struct au_cap *x)
+{
+    unsigned flips = 0u;
+    unsigned harness = 0u;
+    char why[320];
+    char hwhy[320];
+
+    if (aj_load(j, "ROWS", "silent", "anchor=ev:ch=0;reg=R4;nth=1;from=+393216;to=ev:ch=0;reg=R4;val=$1F;nth=1+384000;side=R", "chon=0", NULL, NULL) != 0 || au_eval_group(j->f, 0u, x, 0, why, sizeof why) != AU_PASS ||
+        au_kill_set(j->f, 0u, x, &flips, &harness, hwhy, sizeof hwhy) != 0) {
+        aj_want(j, "sweep: the harness-rule group parses, passes unfaulted and is swept", 0, 1);
+        return;
+    }
+    aj_want(j, "sweep: AF8 that empties the judged window gives a harness outcome and is not counted as a kill", (harness & (1u << 8)) != 0u && (flips & (1u << 8)) == 0u, 1);
+    aj_want(j, "sweep: AF6 fails the judged comparison and is counted as a kill", (flips & (1u << 6)) != 0u && (harness & (1u << 6)) == 0u, 1);
+    aj_want(j, "sweep: a declared kill seen only as a harness outcome makes the sweep a harness failure", au_sweep_verdict((1u << 6) | (1u << 8), flips, harness), AU_HARNESS);
+    aj_want(j, "sweep: declared kills that each fail the judged comparison pass the sweep", au_sweep_verdict(1u << 6, flips, harness), AU_PASS);
 }
 
 #define AJ_A "anchor=ev:ch=0;reg=R4;val=$9F;nth=1;from=+0;to=+196608"
@@ -3070,6 +3131,7 @@ void kind_audio_judge_forms(const struct kase *k, struct ctx *c, char *got, size
         goto done;
     }
     aj_forms(&j, &syn);
+    aj_sweep_harness(&j, &syn);
     /* the missing-sink rule (D-209): a pcm header left at zero (no sink written) is refused, and a capture with no frame although samples were due is harness_failure, never a pass */
     {
         uint8_t zh[32];
