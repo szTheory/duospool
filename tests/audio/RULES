@@ -38,7 +38,7 @@ aud07-b	LED-AUD-0007	limit	lfo-in-5.1	the modulated select-0 value masked to 12 
 aud08-a	LED-AUD-0008	row	silent	a side is silent when chON is 0
 aud08-b	LED-AUD-0008	row	silent	a side is silent when R1 or R5 is $00 (the byte-zero clause of P8-10): sil_P4 and sil_P5 of tone_atten (05-06)
 aud08-c	LED-AUD-0008	row	silent	a side is silent when the P8-10 sum is 16 or more (15 is a disputed point): the sil_C1_R and sil_C2_L groups of the pan scenes (05-06)
-aud08-d	LED-AUD-0008	row	atten_order	the level strictly decreases per one-step decrease of the R1, R4 and R5 fields: ao_r1, ao_al and ao_lal of tone_atten (05-06)
+aud08-d	LED-AUD-0008	row	atten_order	the level strictly decreases per one-step decrease of the R1, R4 and R5 fields that leaves the P8-10 sum at most 4: ao_r1, ao_al and ao_lal of tone_atten, sums 0 to 2 (05-06; narrowed by review WR-05)
 aud09-a	LED-AUD-0009	row	cycle_order	each channel is an unsigned 5-bit level, the wave word when chON 1, DDA 0 and NE 0 (the plateaus rank as the words)
 aud09-b	LED-AUD-0009	row	dda_hold,two_level	the level is the latch in DDA mode and the noise level under NE
 aud09-c	LED-AUD-0009	row	levels_exact	scaled per side by VOL[att] for att < 30 and 0 above (the Q15 curve is ASSUMED): lev_P1 and lev_P2 of tone_atten; psg_vol_table at att 29, 30 and 91 (05-06)

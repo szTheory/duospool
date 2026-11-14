@@ -48,7 +48,8 @@ Each Phase 4 entry is scoped by its statement to the page-stated part only: LED-
 enables and the clear on read (the OR and CR flags are raised by the sprite model, a labelled assumption outside the E1 statement), LED-VID-0009 the next-line statements for BXR and
 BYR, LED-VID-0014 the trigger, the length and the DCR bits of the VRAM copy (the cancel at a display start is a modelling reading), and
 LED-VID-0017 exactly the control register contents 00h and 01h. LED-AUD-0005 covers the wave RAM modes with the D/A load stated for
-chON 1 and DDA 1 only (a latch load with chON 0 is a labelled assumption). For the PSG, E1 documentary: the entries the README lists as supported equal
+chON 1 and DDA 1 only (a latch load with chON 0 is a labelled assumption), and LED-AUD-0008 covers silence at chON 0, at R1 or R5 $00 and at a P8-10 sum of
+16 or more, and a strictly lower level per register step only while that sum stays at most 4. For the PSG, E1 documentary: the entries the README lists as supported equal
 the cited PSG manual page, not a hardware measurement.
 
 Guest-recorded interrupt positions agree with the model's position for the profile's line count (E2 self-consistency); the position

@@ -7,15 +7,17 @@
 # ER-22 per clause (MAN groups of fixtures/src/psg_tone.aexp in guest-fixture cases): chON 0: silent_pre_L and silent_pre_R (audio_tone_sel0) and same_Y (audio_tone_atten), MAN:P8-4; R1 or R5 $00: sil_P5 (R1 $00) and sil_P4 (R5 $00) of audio_tone_atten, MAN:P8-10;
 # sum 16 or more: sil_P3_R of audio_tone_atten (R1 $C7: 8 + 1 + 7) and sil_C1_R and sil_C2_L of audio_tone_pan01, -pan23 and -pan45, MAN:P8-10; the strict decrease: ao_r1 (R1 $FF, $EF), ao_al (AL $1F, $1E) and ao_lal (R5 $FF, $EF, $DF) of audio_tone_atten, MAN:P8-3+P8-4+P8-10.
 # No clause holds a disputed point (ER-15: the sum-15 rows are ASSUMED and outside the statement) or an unstated converse (ER-16: nothing is said of an audible side); DX-5 is the in-page conflict on the sum 15 only.
+# Statement narrowed (Phase 5 review fix WR-05, 2026-11-14): the strict-decrease clause held for every step, but a step from a sum of 16 to 17 takes a silent side from 0 to 0, and an order at sums 5 to 14 would state an audible side ER-16 keeps out of MAN rows.
+# It now holds while the sum stays at most 4, the audible range of the P8-10 worked example (ER-16). ER-2 re-run: conditions 1 to 5 unchanged; ER-22: the same MAN groups cover it (every row at a sum of 0 to 2), with no in-page conflict there. Status kept.
 id = "LED-AUD-0008"
-statement = "VL0 (E1 documentary): DuoSpool models a channel side as silent when chON is 0, when R1 or R5 is $00, or when the P8-10 sum (15 - MAL) + (15 - AL high 4 bits) + (15 - LAL) is 16 or more, and its level as strictly decreasing per one-step decrease of the R1, R4 and R5 fields, equal to the manual's stated rules (P8-3, P8-4, P8-10); nothing is claimed at a sum of exactly 15."
+statement = "VL0 (E1 documentary): DuoSpool models a channel side as silent when chON is 0, when R1 or R5 is $00, or when the P8-10 sum (15 - MAL) + (15 - AL high 4 bits) + (15 - LAL) is 16 or more, and its level as strictly decreasing per one-step decrease of an R1, R4 or R5 field that leaves the sum at most 4, equal to the manual's stated rules (P8-3, P8-4, P8-10); sums 5 to 15 imply nothing."
 profile = "pce-hucard-2btn"
 status = "supported"
 sources = ["FACT|P8-3 P8-4|gsd-executor images 2026-11-13: R1 and R5 about 3 dB per step, AL about 1.5 dB per step, F and $1F the maxima; chON 0 turns the output off", "FACT|P8-10|same read: silent if R1, R4 or R5 is 0 or the sum exceeds F; example sums 4 (12 dB) and 15 (45 dB, no sound); about 45 dB range, a little leak"]
 evidence = ["E1|tests/conformance/cases/audio_tone_atten.toml: MAN rows of fixtures/src/psg_tone.aexp: silent at S = 16, R5 $00, R1 $00 (sil_P3_R, sil_P4, sil_P5); lower peak per R1, AL, LAL step (ao_r1, ao_al, ao_lal); chON 0 adds nothing (same_Y); also silent_pre, sil_C1_R, sil_C2_L", "E0|tests/conformance/cases/audio_tone_atten.toml: PCM and DSPE hashes beside the verdict, repeatability only"]
 disagreement = "DX-5 silence at sum 15: the P8-10 text says no sound when the sum exceeds F while its worked example has a sum of exactly 15 and no sound; Mednafen silences only at its reduction >= 31 on a non-linear table and MAME spreads 48 dB. The model follows the example and the 45 dB sentence; 15 stays outside the statement."
 pinning_test = "TEST:audio_tone_atten"
-updated = "2026-11-13"
+updated = "2026-11-14"
 assumption = "att = 2(15 - MAL) + (31 - AL) + 2(15 - LAL) >= 30 is the same as a P8-10 sum >= 15 for both values of AL bit 0; MAN silent rows sit at chON 0, sums >= 16 and R1 or R5 $00, while sum-15 and field-zero rows below 16 are ASSUMED (ER-15, ER-16). The level values themselves follow the assumed curve of LED-AUD-0009; only their order is in this entry."
 revisit_phase = 5
 withheld = ["the sum-15 boundary", "any dB value", "any loudness claim", "hardware-verified", "any claim of hardware accuracy", "any claim about timing", "any claim of game compatibility"]
