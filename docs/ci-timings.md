@@ -1511,7 +1511,7 @@ Where the growth sits (instructions retired, the 16 new cases run alone in this 
 |------|-------------|-----------------|
 | growth of the full list over `a759c01` | +55.03 G | +168.90 G |
 | the 16 new cases of Phase 5.1 together | 33.16 G (1.9 s user), 60.2 percent of the growth | 131.27 G (7.2 s user), 77.7 percent of the growth |
-| the rest, in the 388 existing cases (the coupled LFO branch in every guest step's fold, and the wider `psg_fold`, `psg_lfo_trg` and judges) | 21.88 G | 37.63 G |
+| the rest, in the 388 existing cases (the coupled LFO branch in every guest step's fold; `psg_fold`, `psg_lfo_trg` and `psg_random_regs` are only 0.22 G of it, the next row) | 21.88 G | 37.63 G |
 | `psg_fold`, `psg_lfo_trg` and `psg_random_regs` together | 4.14 G against 3.93 G at `a759c01` (+0.22 G) | |
 
 Each new case run alone (instructions retired, one process each, so every figure carries the runner's own start-up; G = 10^9). The two costliest cases are `observer_psg_lfo` and `chunk_equiv_audio_psg_lfo`, 59 percent of the gate cost and 58 percent of the sanitize cost of the 16 together:
