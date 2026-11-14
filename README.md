@@ -30,16 +30,19 @@ leftmost-pixel bit order, flips, the CGY field value 2, the 12-slot and 17th spr
 flag that stays clear while its enable is clear and every other collision row are assumptions. Withheld for sprites: overflow timing,
 collision timing, collision of transparent pixels, the sprite width modes (SM and VM other than 0) and sprite pattern addressing for CGY 2.
 
-Phase 5 (PSG raw audio) covers the tone, attenuation, DDA and noise paths; LFO modulation was split off at the cut line into Phase 5.1.
+Phase 5 (PSG raw audio) covers the tone, attenuation, DDA and noise paths; LFO modulation was split off at the cut line into Phase 5.1, which adds it.
 DuoSpool executes the authored PSG diagnostic fixtures and emits a timestamped PSG register-event log (DSPE v1) and PCM (DSPA v1: one
 point sample per 192 master clocks, 2 x u32 unsigned) before any host resampling. The PSG entries listed as supported below are E1
 documentary: they equal the cited PSG manual page, not a hardware measurement. The channel period rows equal the manual formula under the
 bound psg_tick_divisor 6; the PSG clock stays an open profile field, so no pitch or timing claim is made. Noise output repeats across
-fresh runs under the same power-on policy (E0). LFO modulation is Phase 5.1: an R9 write with CTL not 0 is logged with the UNMODELLED
-effect bit, and select 0 is not modulated. A hash of either stream is repeatability evidence (E0) only, never a verdict. Withheld for
+fresh runs under the same power-on policy (E0). Select 1 modulates select 0 through the LFO (P8-6): the manual-literal (MAN) LFO rows (lfo_static,
+lfo_ctl1, lfo_needs_sel1 and lfo_dynamic) equal the P8-6 to P8-9 formulas under the bound psg_tick_divisor 6, the PSG clock staying an open profile
+field, and the sign extension of w - 16 is the P8-7 reading (P8-8 draws 4 added bits, DX-4 of LED-AUD-0011). The restart after a TRG release
+and the 12-bit wrap of the modulated value are labelled assumptions, LED-AUD-0011 is a labelled assumption, and no LFO rate, depth or
+timing claim is made. A hash of either stream is repeatability evidence (E0) only, never a verdict. Withheld for
 audio: any pitch in Hz, the PSG clock, any absolute period or frequency ratio as a hardware fact, the sample rate as the hardware's, the
 noise sequence or spectrum, the volume curve or dB values, DC level or centring, the HuC6280A, leak, filtering, F = 0, NFc = 0 or FLF = 0
-behaviour, R6 writes while playing, the key-on phase, LFO timing, the sum-15 boundary, PSG read values, and how any commercial software sounds.
+behaviour, R6 writes while playing, the key-on phase, LFO timing, an LFO rate or depth, the sum-15 boundary, PSG read values, and how any commercial software sounds.
 
 Supported entries (evidence tier E1, documentary): LED-CPU-0001, LED-CPU-0002, LED-CPU-0005, LED-CPU-0014, LED-CPU-0016,
 LED-IRQ-0002, LED-IRQ-0004 (part a only), LED-VID-0006, LED-VID-0008, LED-VID-0009, LED-VID-0014, LED-VID-0016,

@@ -9,6 +9,7 @@
 # frozen and select 0 at 6 x 520 from wave[1][0] = $18 [MAN:P8-6, D-219, D-231]; select 0 keyed on at 56,643 under CTL 1 and TRG 1 first reloads at 56,640 + 6 x 520 = 59,760 [ASSUMED:LED-AUD-0011]; R9 $01 at 60,003 (F1 128, FLF 150) gives the next select-1
 # event 60,000 + 115,200 = 175,200 [ASSUMED:LED-AUD-0011]; at 175,200 the select-1 step comes before the select-0 reload, which reads wave[1][1] = $08 (next 178,224) [ASSUMED:LED-AUD-0011, D-185 tie order]; select 1 steps once and its next event moves by
 # 115,200 between 100,000 and 215,200 [MAN:P8-6+P8-9+H8-23, phase-free]; R9 $00 at 250,000 keeps the pending event 290,400 and the next one comes 768 later [ASSUMED:LED-AUD-0011]; FLF 0 steps every 6 x 128 x 256 = 196,608 [ASSUMED:LED-AUD-0007]. Evidence tier E0.
+# Pin (plan 05.1-03, 05.1-CONTEXT C-07): LED-AUD-0011 is pinned by audio_lfo_static since plan 05.1-03; this case keeps its C-level rows and names no ledger entry in pins.
 id = "psg_lfo_trg"
 kind = "psg_lfo_trg"
 fixture = "plain-256k"
@@ -18,4 +19,4 @@ meaning = "R9 with TRG 1 resets and freezes select 1, a TRG release restarts it 
 required = true
 control = false
 expect_outcome = "pass"
-pins = ["LED-AUD-0011"]
+pins = []

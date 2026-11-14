@@ -2,8 +2,14 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 # Seed entry for research open gap 9 (PSG channel numbering). A modelling assumption, not an established hardware fact.
 # Amended by plan 05-01 (05-CONTEXT D-189, D-213): the second-hand sources are replaced by image-read P8 pages; the disagreement records a naming-base difference only.
-# E1 candidate (D-213): promotion only by ER-2 and ER-22 in plan 05-08 or 05-10. If the LFO is cut, its placement clause has no guest row and the entry stays assumed until Phase 5.1.
-# ER-2 review (plan 05-10): stays assumed. Its LFO clause (select 1 modulates select 0) has no Phase 5 row: RULES aud02-c is the limit lfo-in-5.1 since the D-217 cut (D-234); plan 05.1-02 reviews the entry.
+# E1 candidate (D-213): promotion only by ER-2 and ER-22 in plan 05-08 or 05-10. The LFO was cut to Phase 5.1 (D-234), which gave its placement clause guest rows; see the plan 05.1-03 review below.
+# ER-22 review (plan 05.1-03, 2026-11-14), clause by clause: every clause of the statement now has a MAN group in a guest-fixture case, and the status stays assumed because no promotion edit was made (last line of this block).
+# Clause 1, numbering select 0 to 5 = ch1 to ch6 (P8-3): ev_decode_sel0 (audio_tone_sel0), ev_1 (audio_tone_pan01), ev_2 and ev_3 (audio_tone_atten), ev_4 and ev_5 (audio_tone_pan45), MAN:P8-2+P8-3+P8-4, and the per-channel period rows of the same cases (MAN:P8-9+H8-23).
+# Clause 2, noise on select 4 and 5 (P8-2, P8-9): n4_ev, n4_two, n4_grid of audio_mod_noise4 and n5_ev, n5_two, n5_grid, n5_ratio of audio_mod_noise5 (MAN:P8-2+P8-3+P8-4+P8-6 decode rows, MAN:P8-2+P8-6+P8-9+H8-23 output rows); the LFSR sequence and the level rows are ASSUMED and outside the statement.
+# Clause 3, select 1 modulates select 0 through the LFO (P8-2, P8-6): lfo2 and lfo3 (audio_lfo_static, CTL 2 and 3), lfo1 (audio_lfo_ctl1), need (audio_lfo_needs_sel1: no modulation with select 1 off) and dyn (audio_lfo_dynamic: running modulation), MAN:P8-6 to P8-9 with H8-23 where a period is judged, under the bound psg_tick_divisor 6.
+# In-page conflicts: none on placement (DX-2 is the naming base only). DX-4 (the extension width of w - 16 against the 4 added bits of P8-8) and DX-16 (TRG level or pulse) concern the LFO arithmetic and the TRG instant, which this statement does not state; the TRG release restart and the 12-bit wrap stay ASSUMED rows of LED-AUD-0011.
+# C-level-only clauses found by the 05.1-02 mutant re-run, none a clause of this statement: W30 (the TRG freeze) belongs to LED-AUD-0011; C01 (the 12-bit period mask) and W26 (the R8 store) belong to LED-AUD-0003.
+# Status kept assumed: the ER-2 promotion step was not taken in plan 05.1-03 (the statement still reads Modelling assumption, there is no E1 evidence row, the README supported list is unchanged). The clause coverage above is the input to that separate decision, which needs those edits and the full gate.
 id = "LED-AUD-0002"
 statement = "DuoSpool numbers the PSG channels by the R0 select value 0 to 5, equal to the manual ch1 to ch6 (P8-3); noise is on select 4 and 5 (P8-2, P8-9) and select 1 modulates select 0 through the LFO (P8-2, P8-6). Modelling assumption."
 profile = "pce-hucard-2btn"

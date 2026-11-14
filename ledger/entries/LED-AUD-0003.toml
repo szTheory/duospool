@@ -2,7 +2,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 # The PSG register map VL0 (05-CONTEXT D-188, D-189, D-213; AUD-01). A modelling assumption until promoted, not a hardware measurement.
 # E1 candidate (D-213): every clause is stated on an image-read manual page; promotion only by ER-2 and ER-22 in plan 05-08 or 05-10, never by this plan.
-# ER-2 review (plan 05-10): stays assumed. Its disputed clauses ($A to $F none, select 6 and 7 none) and the converse R7 at select 4 and 5 only stay in the statement, and the guest rows of its mask clause (R8, R9 bits 1-0, an F of $800 or more) come with psg_lfo in 05.1-01 (05.1-CONTEXT C-05); 05.1-02 reviews it.
+# ER-2 and ER-22 re-run (plan 05.1-03, 2026-11-14) with the psg_lfo decode rows: the status stays assumed and the statement is unchanged (05.1-CONTEXT deferred).
+# Now covered by guest MAN groups (stored, not the dropped bits): R9 bits 1-0 (ev_lfo, R9 $82 and $83, audio_lfo_static; ev_ctl1, R9 $81, audio_lfo_ctl1; MAN:P8-2+P8-3+P8-6; mutants K10 and W27 turn them red), R3 bit 3 and R2 bits 1-0 (ev_lfo: select 1 R3 $08 then R2 $83 posts $0883; mutants K03 and K04 red)
+# And the R8 value $96 (ev_r8, audio_lfo_dynamic; mutant K09 red). The other clauses are as in 05-08.
+# Still blocking: the disputed clauses "$A to $F none" and "6, 7 none" (ER-15, ASSUMED edge rows only) and the converse "R7 exists for select 4 and 5 only" (ER-16, ASSUMED edge row); no MAN row can state them. A promotion would need a statement decision for those clauses.
+# C-level-only (no psg_lfo group turns red, 05.1-02 mutant re-run): the F of $800 or more used as a 12-bit period (C01, the mask 0x7FF; no F of $800 or more is heard in any guest scene; killed by psg_pure_function) and the R8 store as a register (W26: ev_r8 judges the logged post, not the stored FLF, and no row times the switch, D-208; killed by psg_decode).
 id = "LED-AUD-0003"
 statement = "DuoSpool models the PSG map as: A3-A0 0 to 9 select R0 to R9, $A to $F none; R0 bits 2-0 pick channel 0 to 5 (6, 7 none); stored masks R0 $07, R3 $0F, R4 $DF, R6 $1F, R7 $9F, R9 $83, others $FF; R2 and R3 form the 12-bit F; R1, R8 and R9 ignore R0; R7 exists for select 4 and 5 only. Modelling assumption."
 profile = "pce-hucard-2btn"
