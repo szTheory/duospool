@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT OR Apache-2.0 */
 /* SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors */
 /*
- * audiokinds.c - the audio case kind (plan 05-04, grown by 05-05..05-09; D-183, D-187, D-196, D-197, D-199, D-201, D-204, D-206..D-208, D-211, D-230, ER-19, ER-20, ER-21, PR-13, RF-13, RF-14, F-85, F-86). Test code only.
+ * audiokinds.c - the audio case kind (plan 05-04, grown by 05-05..05-07 and 05-10; the LFO judges come with 05.1-01; D-183, D-187, D-196, D-197, D-199, D-201, D-204, D-206..D-208, D-211, D-230, ER-19, ER-20, ER-21, PR-13, RF-13, RF-14, F-85, F-86). Test code only.
  *   audio   boots a ROM that scripts/fixture-build assembled, attaches a psg sink (16,384 records), a pcm sink (ceil((until - T0 + ds_max_step_mclk()) / 192) + 1 frames, D-201) and a dev sink, runs it with ds_run to the end of its DSV1 verdict (rq.stop = dsv1_done, until_mclk the hard
  *           bound), judges the DSV1 block as the guest kind does, then reads the DSPE records and DSPA frames the core wrote and judges the scene by GROUP. Records and frames are parsed with the OFFSETS OF D-196 AND D-197 WRITTEN IN THIS FILE: the runner never includes a core
  *           record writer, and no expected value comes from the core, another emulator or a hash (ER-19, R7). The run is made under the zero policy and under seeded-prng-v4 seed 1, and the DSPE and DSPA streams of the two must be byte-identical (D-204: the fixture
@@ -18,7 +18,7 @@
  * SELECTOR items (semicolons): anchor=ev:ch=<0..5|G>;reg=R<n>;[val=$hh;]nth=N (the N-th DSPE record of that channel, G the global chan $FE, register and value); ev=+K (the K-th record after the anchor, form EV); from=+M and to=+M (master clocks after the anchor) or from=M and to=M
  * (absolute, no anchor); to=ev:ch=..;reg=..;[val=..;]nth=N (an end anchor, RF-13: the reg, val and nth items after it belong to it); side=L|R. A window [from, to) holds the samples s with from <= s x sample_mclk < to (D-187), converted to stream indices with the DSPA header's
  * sample_mclk and first frame. LITERAL items (semicolons) are closed keys: the judged ones of each kind and the inputs of the 05-05 arithmetic lint (accepted, not judged here).
- * Plan 05-05 grammar: every kind of tests/audio/KINDCLASS is parsed with its form (an unknown kind or a form that is not the kind's is refused); kinds whose judge lands later (05-06, 05-07, 05-09) are harness_failure when judged, never a pass. A row golden SCENE pcm_sha256=HEX psg_sha256=HEX
+ * Plan 05-05 grammar: every kind of tests/audio/KINDCLASS is parsed with its form (an unknown kind or a form that is not the kind's is refused); kinds whose judge lands later (05-06, 05-07; the LFO kinds with 05.1-01) are harness_failure when judged, never a pass. A row golden SCENE pcm_sha256=HEX psg_sha256=HEX
  * pins the digests of a golden scene; class DEF:<LED ids> marks a definition (ER-19); selector items stream=dspa|dspe (the STRUCT header rows) and nth=N+M on the end anchor (an offset of M master clocks, PR-13); an expect_red scene (D-211, D-225) carries twin= and expect_red= and the
  * case judging it takes the red list from the scene row. Forms added in 05-05: REL (period_ratio, same, atten_order, atten_equal over the windows of a group's rows in order), STRUCT (header, count) and the ROWS kind live (two rising crossings and at least 3 distinct levels between them).
  * The kind audio_fault_sweep applies AF0..AF9 of D-209 in memory to copies of the captured streams of one run; audio_judge_forms shows every form able to fail (05-05).
@@ -275,7 +275,6 @@ enum {
     AK_PERIOD_RATIO,
     AK_CYCLE_ORDER,
     AK_CYCLE_PHASE,
-    AK_CYCLE_LINEAR,
     AK_LEVELS_EXACT,
     AK_SILENT,
     AK_LIVE,
@@ -285,7 +284,6 @@ enum {
     AK_DDA_HOLD,
     AK_DDA_ORDER,
     AK_DDA_RAM_KEPT,
-    AK_DDA_EQUALS_WAVE,
     AK_DDA_LEVEL_EXACT,
     AK_TWO_LEVEL,
     AK_RUN_GRID,
@@ -300,21 +298,20 @@ enum {
     AK_END
 };
 
-/* the kinds of tests/audio/KINDCLASS with their form (scripts/audio-check reads the same table as data) and the plan that brings the judge of a kind this file does not judge yet (NULL: judged here; plan 05-07 judges the noise and DDA kinds and cycle_phase, and moves cycle_linear and
- * dda_equals_wave, which no plan has a row for, to the close-out plan 05-10 to implement or drop) */
+/* the kinds of tests/audio/KINDCLASS with their form (scripts/audio-check reads the same table as data) and the plan that brings the judge of a kind this file does not judge yet (NULL: judged here; plan 05-07 judges the noise and DDA kinds and cycle_phase; the three LFO kinds
+ * are judged from Phase 5.1 plan 05.1-01, after the D-217 cut, D-234; the close-out plan 05-10 dropped the two kinds that no plan had a row for) */
 static const struct au_kind_def {
     const char *name;
     int form;
     const char *later;
 } au_kinds[] = {
     {"ev_value", AX_FORM_EV, NULL},           {"ev_decode", AX_FORM_EV, NULL},         {"ev_edge", AX_FORM_EV, NULL},           {"period", AX_FORM_ROWS, NULL},
-    {"period_ratio", AX_FORM_REL, NULL},      {"cycle_order", AX_FORM_ROWS, NULL},     {"cycle_phase", AX_FORM_ROWS, NULL},     {"cycle_linear", AX_FORM_ROWS, "05-10"},
-    {"levels_exact", AX_FORM_ROWS, NULL},     {"silent", AX_FORM_ROWS, NULL},          {"live", AX_FORM_ROWS, NULL},            {"same", AX_FORM_REL, NULL},
-    {"atten_order", AX_FORM_REL, NULL},       {"atten_equal", AX_FORM_REL, NULL},      {"dda_hold", AX_FORM_ROWS, NULL},        {"dda_order", AX_FORM_ROWS, NULL},
-    {"dda_ram_kept", AX_FORM_ROWS, NULL},     {"dda_equals_wave", AX_FORM_REL, "05-10"}, {"dda_level_exact", AX_FORM_ROWS, NULL}, {"two_level", AX_FORM_ROWS, NULL},
-    {"run_grid", AX_FORM_ROWS, NULL},         {"noise_ratio", AX_FORM_REL, NULL},      {"run_min", AX_FORM_ROWS, NULL},         {"noise_seq", AX_FORM_ROWS, NULL},
-    {"lfo_static", AX_FORM_ROWS, "05-09"},    {"lfo_needs_sel1", AX_FORM_REL, "05-09"}, {"lfo_dynamic", AX_FORM_ROWS, "05-09"}, {"count", AX_FORM_STRUCT, NULL},
-    {"header", AX_FORM_STRUCT, NULL},
+    {"period_ratio", AX_FORM_REL, NULL},      {"cycle_order", AX_FORM_ROWS, NULL},     {"cycle_phase", AX_FORM_ROWS, NULL},     {"levels_exact", AX_FORM_ROWS, NULL},
+    {"silent", AX_FORM_ROWS, NULL},           {"live", AX_FORM_ROWS, NULL},            {"same", AX_FORM_REL, NULL},             {"atten_order", AX_FORM_REL, NULL},
+    {"atten_equal", AX_FORM_REL, NULL},       {"dda_hold", AX_FORM_ROWS, NULL},        {"dda_order", AX_FORM_ROWS, NULL},       {"dda_ram_kept", AX_FORM_ROWS, NULL},
+    {"dda_level_exact", AX_FORM_ROWS, NULL},  {"two_level", AX_FORM_ROWS, NULL},       {"run_grid", AX_FORM_ROWS, NULL},        {"noise_ratio", AX_FORM_REL, NULL},
+    {"run_min", AX_FORM_ROWS, NULL},          {"noise_seq", AX_FORM_ROWS, NULL},       {"lfo_static", AX_FORM_ROWS, "05.1-01"}, {"lfo_needs_sel1", AX_FORM_REL, "05.1-01"},
+    {"lfo_dynamic", AX_FORM_ROWS, "05.1-01"}, {"count", AX_FORM_STRUCT, NULL},         {"header", AX_FORM_STRUCT, NULL},
 };
 
 struct ax_scene {
@@ -2935,7 +2932,7 @@ static void aj_forms(struct aj_ctx *j, const struct au_cap *x)
     aj_want(j, "ROWS cycle_phase of the words from word 0 passes", aj_eval(j, "ROWS", "cycle_phase", AJ_C ";side=L", AJ_WORDS, NULL, NULL, x, 0), AU_PASS);
     aj_want(j, "ROWS cycle_phase of the words rotated by one fails (cycle_order passes it)", aj_eval(j, "ROWS", "cycle_phase", AJ_C ";side=L", "words=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,0", NULL, NULL, x, 0), AU_FAIL);
     aj_want(j, "ROWS dda_ram_kept of the words passes", aj_eval(j, "ROWS", "dda_ram_kept", AJ_A ";side=R", AJ_WORDS, NULL, NULL, x, 0), AU_PASS);
-    aj_want(j, "ROWS a kind judged from a later plan (cycle_linear) is harness", aj_eval(j, "ROWS", "cycle_linear", AJ_A ";side=L", "r1=$FF", NULL, NULL, x, 0), AU_HARNESS);
+    aj_want(j, "ROWS a kind judged from a later plan (lfo_static) is harness", aj_eval(j, "ROWS", "lfo_static", AJ_A ";side=L", "r1=$FF", NULL, NULL, x, 0), AU_HARNESS);
     aj_want(j, "ROWS an unknown kind is refused", aj_eval(j, "ROWS", "loud", AJ_A ";side=L", "r1=$FF", NULL, NULL, x, 0), AU_HARNESS);
     aj_want(j, "ROWS the kind period under form REL is refused", aj_eval(j, "REL", "period", AJ_A ";side=L", "f=64;k=4;d=512", NULL, NULL, x, 0), AU_HARNESS);
     /* REL: period_ratio, same, atten_order, atten_equal (window A at x 1000, window B at x 500) */
@@ -2956,7 +2953,7 @@ static void aj_forms(struct aj_ctx *j, const struct au_cap *x)
     aj_want(j, "REL noise_ratio 1:1 of A and B (both on a 4-sample grid) passes", aj_eval(j, "REL", "noise_ratio", AJ_A ";side=L", "p0=1;p1=1", AJ_B ";side=L", "r1=$FF", x, 0), AU_PASS);
     aj_want(j, "REL noise_ratio 1:2 fails", aj_eval(j, "REL", "noise_ratio", AJ_A ";side=L", "p0=1;p1=2", AJ_B ";side=L", "r1=$FF", x, 0), AU_FAIL);
     aj_want(j, "REL noise_ratio AF0 (p0 + 1) fails", aj_eval(j, "REL", "noise_ratio", AJ_A ";side=L", "p0=1;p1=1", AJ_B ";side=L", "r1=$FF", x, 1), AU_FAIL);
-    aj_want(j, "REL a kind judged from a later plan (dda_equals_wave) is harness", aj_eval(j, "REL", "dda_equals_wave", AJ_A ";side=L", "r1=$FF", AJ_B ";side=L", "r1=$FF", x, 0), AU_HARNESS);
+    aj_want(j, "REL a kind judged from a later plan (lfo_needs_sel1) is harness", aj_eval(j, "REL", "lfo_needs_sel1", AJ_A ";side=L", "r1=$FF", AJ_B ";side=L", "r1=$FF", x, 0), AU_HARNESS);
     /* STRUCT: count (frame 0 of 357,630 master clocks holds ceil(357630 / 192) = 1863 samples) and header */
     aj_want(j, "STRUCT count m=357630 n=1863 passes", aj_eval(j, "STRUCT", "count", "from=0;to=357630", "m=357630;n=1863", NULL, NULL, x, 0), AU_PASS);
     aj_want(j, "STRUCT count n=1862 fails", aj_eval(j, "STRUCT", "count", "from=0;to=357630", "m=357630;n=1862", NULL, NULL, x, 0), AU_FAIL);
@@ -3721,7 +3718,7 @@ static uint64_t au_dda_stamp(const struct au_cap *cp, unsigned n)
 /* the restore stops of one ROM. Set 0 (psg_tone): at a sample instant (a step boundary on the 192 grid), mid-interval (a boundary 64 to 128 clocks past one), between the R2 and R3 writes, between the R0 and R4 writes of the scene, and inside the TIN to $0806 (after its 10th
  * byte). Set 1 (psg_mod, plan 05-07): between two timer-paced DDA writes (after the 5th DDA_LOAD record, timer write 4, before the 6th) and inside a noise run of mod_noise4 (a mid-interval boundary 100,000 clocks after select 4's key-on, the first R4 $9F, with select 4 keyed on
  * at NE 1). The prefix run stops there, a snapshot is restored into a poisoned second boot, and the resumed run's DSPE records and DSPA frames appended to the prefix must equal the whole run's streams byte for byte, with first(i+1) = first(i) + seq(i), the same end machine time
- * and the same end digest. The count of restores is added to *done; 05-09 adds the LFO TRG stop */
+ * and the same end digest. The count of restores is added to *done; 05.1-01 adds the LFO TRG stop */
 static void au_restore_rom(struct ctx *c, const char *rom, const char *req, uint64_t until, int set, unsigned *done, uint32_t *frames, uint32_t *events)
 {
     static const char *const names[2][5] = {{"sample", "mid", "r2r3", "r0r4", "tin"}, {"dda", "noise", "", "", ""}};

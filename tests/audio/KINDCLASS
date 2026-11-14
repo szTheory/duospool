@@ -11,7 +11,6 @@ period	MAN:P8-9+P8-10+H8-23	ROWS
 period_ratio	MAN:P8-9	REL
 cycle_order	MAN:P8-4+P8-5	ROWS
 cycle_phase	ASSUMED	ROWS
-cycle_linear	ASSUMED	ROWS
 levels_exact	ASSUMED	ROWS
 silent	MAN:P8-4+P8-10	ROWS
 live	MAN:P8-4+P8-5+P8-9+P8-10+H8-23	ROWS
@@ -21,7 +20,6 @@ atten_equal	ASSUMED	REL
 dda_hold	MAN:P8-4+P8-5	ROWS
 dda_order	MAN:P8-4+P8-5	ROWS
 dda_ram_kept	MAN:P8-4+P8-5	ROWS
-dda_equals_wave	ASSUMED	REL
 dda_level_exact	ASSUMED	ROWS
 two_level	MAN:P8-2+P8-6+P8-9+H8-23	ROWS
 run_grid	MAN:P8-2+P8-6+P8-9+H8-23	ROWS

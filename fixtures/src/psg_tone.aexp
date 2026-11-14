@@ -21,7 +21,7 @@ row	tone_sel0	ev_value_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+37	reg=R1;va
 row	tone_sel0	ev_value_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+38	reg=R5;val=$FF
 row	tone_sel0	ev_value_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+39	reg=R4;val=$9F
 # ev_decode_sel0 (MAN:P8-2+P8-3+P8-4): the decoded fields (chan, effect, wave_idx, post) of the same records, written by hand from the register pages and D-196: R0 and R1 are global (chan $FE, wave_idx $FF); R4 $40 sets DDA, so effect IDX_RESET ($08) and the index 0;
-#   R6 write k = 1..32 stores word k - 1 at the index, which then steps: WAVE_STORE ($01), wave_idx k & 31, post the word; R2 and R3 post the 12-bit F ($000, then $100); R4 posts value & $DF; R5 posts the byte.
+#   R6 write k = 1..32 stores word k - 1 at the index, which then steps: WAVE_STORE ($01), wave_idx k & 31, post the word; R3 posts the 12-bit F $100 (the R2 row before it is ev_decode_sel0_pw); R4 posts value & $DF; R5 posts the byte.
 group	tone_sel0	ev_decode_sel0	form=EV	kind=ev_decode	class=MAN:P8-2+P8-3+P8-4	kills=AF0,AF8,AF9
 row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+0	chan=$FE;effect=$00;wave_idx=$FF;post=$0000
 row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+1	chan=0;effect=$08;wave_idx=0;post=$0040
@@ -58,11 +58,13 @@ row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+31	chan=0;e
 row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+32	chan=0;effect=$01;wave_idx=30;post=$0005
 row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+33	chan=0;effect=$01;wave_idx=31;post=$0009
 row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+34	chan=0;effect=$01;wave_idx=0;post=$000D
-row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+35	chan=0;effect=$00;wave_idx=0;post=$0000
 row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+36	chan=0;effect=$00;wave_idx=0;post=$0100
 row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+37	chan=$FE;effect=$00;wave_idx=$FF;post=$00FF
 row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+38	chan=0;effect=$00;wave_idx=0;post=$00FF
 row	tone_sel0	ev_decode_sel0	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+39	chan=0;effect=$00;wave_idx=0;post=$009F
+# ev_decode_sel0_pw (ASSUMED:LED-PROF-0003; 05-12 deviation 1): the first R2 $00 posts $0000, whose high nibble is the power-on F (D-204), so the row rests on the power-on policy and is no MAN row (ER-10); R2 rows after a program-written R3 are ev_probe and ev_2..ev_5.
+group	tone_sel0	ev_decode_sel0_pw	form=EV	kind=ev_decode	class=ASSUMED:LED-PROF-0003	kills=AF0,AF8,AF9
+row	tone_sel0	ev_decode_sel0_pw	anchor=ev:ch=G;reg=R0;val=$00;nth=2;ev=+35	chan=0;effect=$00;wave_idx=0;post=$0000
 # period_L, period_R (MAN:P8-9+H8-23; ER-14: documentary under the bound divisor 6, no pitch claim): a cycle is 32 x 1536 = 49,152 = 256 x 192 master clocks, so the rising crossing (word 31 -> word 0, the only one: the threshold (min + max) / 2 lies between words 15 and 16)
 #   of cycle k is sample c_k = ceil((w' + 49152 k) / 192) = ceil(w' / 192) + 256 k. c_1 (w' + 49,152 <= w + 49,152) is before the window start w + 50,000; c_2 is the first inside and c_6 (w' + 294,912 < w + 300,000) the fifth: c_6 - c_2 = 4 x 256 = 1,024 (f=256;k=4;d=1024, d = k x f).
 #   At d = 3 (audio_tone_sel0_d3) a cycle is 128 samples, the distance 512: the period groups are red there and every other group green (D-183, D-211).
