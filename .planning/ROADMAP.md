@@ -22,7 +22,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: VCE/VDC Raw Video** - Per-scanline raw video and guest-recorded interrupt timing, checked against literal expectations for background, DMA, palette, and dot clock (sprites moved to Phase 04.1 at the D-180 cut) (completed 2026-11-12)
 - [x] **Phase 04.1: VDC Sprites** - Sprites from the SAT with the per-line limit and the overflow and collision flags written into guest RAM, checked against literal expectations (split from Phase 4 at the D-180 cut) (completed 2026-11-12)
 - [x] **Phase 5: PSG Raw Audio** - Timestamped PSG event log and PCM at a recorded format, checked by semantic properties. Can run in parallel with Phase 4 (LFO modulation moved to Phase 05.1 at the D-217 cut) (completed 2026-11-14)
-- [ ] **Phase 05.1: PSG LFO (frequency modulation)** - Select 1 modulates select 0 through the LFO, judged by hand literals in a third audio fixture with the shift toy red where the shift matters (split from Phase 5 at the D-217 cut)
+- [x] **Phase 05.1: PSG LFO (frequency modulation)** - Select 1 modulates select 0 through the LFO, judged by hand literals in a third audio fixture with the shift toy red where the shift matters (split from Phase 5 at the D-217 cut) (completed 2026-11-14)
 - [ ] **Phase 6: Headless Runner, Installed-Consumer Proof and Staged Verification** - Separate observation artifacts, an independent consumer against the installed artifact, staged fuzzing, a benchmark, and a LibFuturo fit evaluation
 
 ## Phase Details
@@ -259,7 +259,7 @@ Plans:
   2. The R8 and R9 records decode into the event log as the pages state, an R9 write no longer sets UNMODELLED, and the LFO pair folds composably and boundedly (at most one fold span of 600 master clocks per fold).
   3. A toy that changes the CTL shifts turns the CTL 2 and CTL 3 rows red and leaves CTL 1 green, and the new fixture carries observer, chunk, restore (including a stop under TRG 1 with a non-zero select-1 index) and non-interference coverage.
   4. No LFO rate, depth or switch-timing claim is made: LED-AUD-0011 stays assumed (ER-14), and the README and ledger state only what the gate shows.
-**Plans**: 3/3 plans executed in 3 sequential waves (CONTEXT plan 05-09, former file 05-09-PLAN.md, is split into 05.1-01 and 05.1-02 at plan check 1; 05.1-03, former file 05.1-02, is the close-out for the LFO scope that 05-10 no longer covers)
+**Plans**: 3/3 plans complete in 3 sequential waves (CONTEXT plan 05-09, former file 05-09-PLAN.md, is split into 05.1-01 and 05.1-02 at plan check 1; 05.1-03, former file 05.1-02, is the close-out for the LFO scope that 05-10 no longer covers)
 
 Plans:
 - [x] 05.1-01-PLAN.md - the combined LFO counter, TRG, CTL shifts and F0' in the fold with C-level rows, the coupled select-1 restore bound (C-09), the modelled LFO ledger statements (C-10), psg_lfo with lfo_static, lfo_ctl1 and lfo_needs_sel1, the R9 and F >= $800 decode rows, toy psg-lfo-shift
@@ -312,5 +312,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phases 4 and 5
 | 4. VCE/VDC Raw Video | 16/16 | Complete    | 2026-11-12 |
 | 04.1. VDC Sprites | 3/3 | Complete    | 2026-11-12 |
 | 5. PSG Raw Audio | 10/10 | Complete    | 2026-11-14 |
-| 05.1. PSG LFO (frequency modulation) | 3/3 | In Progress | - |
+| 05.1. PSG LFO (frequency modulation) | 3/3 | Complete    | 2026-11-14 |
 | 6. Headless Runner, Installed-Consumer Proof and Staged Verification | 0/TBD | Not started | - |
