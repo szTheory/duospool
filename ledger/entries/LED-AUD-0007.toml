@@ -2,16 +2,17 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 # PSG zero and wrap conventions (05-CONTEXT D-184; AUD-01). Modelling assumptions: the pages call these values forbidden or undefined.
 # Constants (plan 05-03, this ledger id): psg_f0_as 4096, psg_lfo_f0_as 256, psg_noise_nf0_ticks 32. Every value here is on the ER-15 DISPUTED list.
+# Phase 5 review fix WR-06 (2026-11-14): the two LFO conventions are stated as not modelled, since no LFO runs before 05.1-01 (D-234); 05.1-01 returns them to the modelled clauses.
 id = "LED-AUD-0007"
-statement = "DuoSpool models F = 0 as 4096 (psg_f0_as), FLF = 0 as 256 (psg_lfo_f0_as), NFc = 0 as a noise clock of 32 ticks (psg_noise_nf0_ticks), and the modulated select-0 value masked to 12 bits with 0 read as 4096. Modelling assumption."
+statement = "DuoSpool models F = 0 as 4096 (psg_f0_as) and NFc = 0 as a noise clock of 32 ticks (psg_noise_nf0_ticks). FLF = 0 as 256 (psg_lfo_f0_as) and the modulated select-0 value masked to 12 bits with 0 read as 4096 are LFO conventions, held as constants but not modelled until Phase 5.1. Modelling assumption."
 profile = "pce-hucard-2btn"
 status = "assumed"
 sources = ["FACT|P8-9|gsd-executor image 2026-11-13: F = 0 forbidden, NF = 0 undefined; FLF = 0 is not mentioned", "CODE|MAME, Mednafen, Geargrafx, Mesen2|reading material only, nothing copied: 4096, 256 and 32 ticks", "REPORT|pcetech.txt|$000 described as the lowest frequency; not re-read"]
 evidence = []
 disagreement = "DX-14 zero values: P8-9 calls F = 0 forbidden and NF = 0 undefined and says nothing of FLF = 0; pcetech calls $000 the lowest frequency; the emulators read as material use 4096, 256 and 32 ticks."
 pinning_test = "TEST:psg_wave_ptr"
-updated = "2026-11-13"
-assumption = "Named constants with this ledger id so that hostile register programs stay bounded; no MAN row may touch them (ER-15) and fixtures write no zero value in a judged window."
+updated = "2026-11-14"
+assumption = "Named constants with this ledger id so that hostile register programs stay bounded; no MAN row may touch them (ER-15) and fixtures write no zero value in a judged window. Planned for Phase 5.1 (05.1-01), not modelled in this build: FLF = 0 read as 256 and the select-0 wrap; psg_lfo_f0_as bounds no behaviour yet."
 revisit_phase = 5
 withheld = ["any claim about F = 0, NFc = 0 or FLF = 0 behaviour", "any claim about a wrapped modulated frequency"]
 origin = "05-CONTEXT D-184"

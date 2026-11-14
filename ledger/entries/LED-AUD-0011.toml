@@ -1,17 +1,19 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
-# PSG LFO (05-CONTEXT D-192 as amended by D-219 and D-231; AUD-01). ER-14 hold: the statement gives an LFO rate, so the status stays assumed until the owner settles the PSG clock.
+# PSG LFO (05-CONTEXT D-192 as amended by D-219 and D-231; AUD-01). ER-14 hold on the planned statement below (it gives an LFO rate); the status stays assumed until the owner settles the PSG clock.
+# Phase 5 review fix WR-06 (2026-11-14): the statement is the register side that runs in this build; the LFO moved to Phase 5.1 (D-234). Planned for 05.1-01, not modelled in this build: modulation applies while LF CTL != 0 and select 0 and 1 have chON 1,
+# select 0 using the value (F0 + $1000 + (w << s) - (16 << s)) & $FFF, s 0, 2, 4; TRG 1 holds w at wave[1][0] whatever widx[1] is and freezes the select-1 counter; TRG 0 lets select 1 step every d x F1e x FLFe (one combined counter).
 # The R9 write with TRG 1 sets widx[1] to 0; later R6 writes may advance it, which is legal and restorable (D-231); the held value is wave[1][0] - 16 whatever widx[1] is (P8-6: the data of address 0).
 id = "LED-AUD-0011"
-statement = "DuoSpool models the LFO as: modulation applies while LF CTL != 0 and select 0 and 1 have chON 1, select 0 using the value (F0 + $1000 + (w << s) - (16 << s)) & $FFF, s 0, 2, 4; TRG 1 holds w at wave[1][0] whatever widx[1] is and freezes the select-1 counter; TRG 0 lets select 1 step every d x F1e x FLFe (one combined counter). Modelling assumption."
+statement = "DuoSpool decodes and logs the LFO registers but does not model modulation until Phase 5.1: R8 and R9 (masked $83) are stored; R9 with TRG 1 sets the select-1 wave index to 0 and freezes the select-1 counter until TRG 0 (later R6 writes may advance the index); R9 with CTL != 0 is logged with the DSPE UNMODELLED bit and select 0 stays unmodulated. Modelling assumption."
 profile = "pce-hucard-2btn"
 status = "assumed"
 sources = ["FACT|P8-6|images 2026-11-13: R8 with ch2 R2 R3 one counter; TRG 1 resets, halts with address-0 data, resets the counter; ch1 and ch2 enabled", "FACT|P8-7 P8-8 P8-9|same read: value - $10; CTL shifts 0, 2, 4; fLFO = fmaster/(2 x 32 x F2 x FLF), 20-bit counter", "CODE|Mednafen, Mesen2|reading material only, nothing copied: counter held while TRG 1"]
 evidence = []
 disagreement = "DX-4 LFO arithmetic: P8-8 draws 4 added bits while P8-7 maps the 5-bit word to w - 16; the extension width is a reading, and the read instant and the TRG restart instant have no page. DX-16 TRG level versus pulse: the page says modulation is halted until 0 is written; Mednafen and Mesen2 hold the counter while TRG is 1."
 pinning_test = "TEST:psg_lfo_trg"
-updated = "2026-11-13"
-assumption = "Held by ER-14. The modulated value is read at each select-0 reload after a select-1 step at the same instant, the TRG 1 -> 0 restart is (w - w mod d) + d x F1e x FLFe (LED-AUD-0004), and enabled is read as chON 1; all three are project choices. Until plan 05-09 an R9 write with CTL != 0 is logged UNMODELLED."
+updated = "2026-11-14"
+assumption = "Held by ER-14 for the planned statement (a comment above). The TRG 1 -> 0 restart of an uncoupled select 1 at (w - w mod d) + d x F1e (psg_trg_release_restart, LED-AUD-0004) is a project choice. The read instant at a select-0 reload after a select-1 step and enabled read as chON 1 are choices of the planned model."
 revisit_phase = 5
 withheld = ["LFO-accurate", "any LFO rate claim", "any LFO depth claim", "any LFO switch timing claim"]
 origin = "05-CONTEXT D-192"

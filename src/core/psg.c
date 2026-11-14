@@ -82,7 +82,7 @@ static uint64_t noise_period(const struct ds_instance *inst, uint32_t n, uint32_
     return (uint64_t)d * (nfc != 0u ? 64u * nfc : (uint32_t)DS_CONST_psg_noise_nf0_ticks);
 }
 
-/* the step period of channel ch in master clocks: d x Fe with Fe = F, or psg_f0_as when F = 0 (D-184); uncoupled for every channel until plan 05-09 */
+/* the step period of channel ch in master clocks: d x Fe with Fe = F, or psg_f0_as when F = 0 (D-184); uncoupled for every channel until plan 05.1-01 (Phase 5.1, D-234) */
 static uint64_t chan_period(const struct ds_instance *inst, uint32_t ch, uint32_t d)
 {
     uint32_t f = (uint32_t)inst->psg_freq[ch] & 0xFFFu;
@@ -329,7 +329,7 @@ uint32_t ds_psg_write(struct ds_instance *inst, uint32_t reg, uint32_t value, ui
             chan_start(inst, 1u, stamp); /* TRG 1 -> 0 with select 1 otherwise running (psg_trg_release_restart, D-220) */
         }
         if ((m & 0x03u) != 0u) {
-            effect |= (uint32_t)DS_PSGE_UNMODELLED; /* the modulation is plan 05-09's */
+            effect |= (uint32_t)DS_PSGE_UNMODELLED; /* the modulation is plan 05.1-01's (Phase 5.1, D-234) */
         }
         break;
     }
