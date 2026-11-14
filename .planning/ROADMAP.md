@@ -21,7 +21,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad** - Authored fixtures report guest-RAM verdicts for the CPU, MMU, timer, IRQ, and SEL/CLR pad, with negative controls and resumable bounded runs (completed 2026-11-11)
 - [x] **Phase 4: VCE/VDC Raw Video** - Per-scanline raw video and guest-recorded interrupt timing, checked against literal expectations for background, DMA, palette, and dot clock (sprites moved to Phase 04.1 at the D-180 cut) (completed 2026-11-12)
 - [x] **Phase 04.1: VDC Sprites** - Sprites from the SAT with the per-line limit and the overflow and collision flags written into guest RAM, checked against literal expectations (split from Phase 4 at the D-180 cut) (completed 2026-11-12)
-- [ ] **Phase 5: PSG Raw Audio** - Timestamped PSG event log and PCM at a recorded format, checked by semantic properties. Can run in parallel with Phase 4 (LFO modulation moved to Phase 05.1 at the D-217 cut)
+- [x] **Phase 5: PSG Raw Audio** - Timestamped PSG event log and PCM at a recorded format, checked by semantic properties. Can run in parallel with Phase 4 (LFO modulation moved to Phase 05.1 at the D-217 cut) (completed 2026-11-14)
 - [ ] **Phase 05.1: PSG LFO (frequency modulation)** - Select 1 modulates select 0 through the LFO, judged by hand literals in a third audio fixture with the shift toy red where the shift matters (split from Phase 5 at the D-217 cut)
 - [ ] **Phase 6: Headless Runner, Installed-Consumer Proof and Staged Verification** - Separate observation artifacts, an independent consumer against the installed artifact, staged fuzzing, a benchmark, and a LibFuturo fit evaluation
 
@@ -233,7 +233,7 @@ Plans:
   2. PCM is emitted at a defined, recorded sample rate and format before any host resampling. The per-frame sample count is reported, so a non-integer cadence is visible.
   3. Audio checks assert semantic properties: a channel period that matches the programmed frequency under the current clock assumption, the expected waveform content, and silence where a channel is off. A deliberately mis-programmed fixture (wrong frequency or a silent channel) fails them. "Buffer is nonzero" is never accepted.
   4. Noise output is identical across repeated fresh runs under the same power-on policy. The PSG clock and revision are profile parameters whose ledger status stays open, and no PSG pitch or timing correctness claim is made until C1 is settled.
-**Plans**: 10/10 plans executed in 8 waves (context waves W1-W7 and W9 of 05-CONTEXT; 05-01 and 05-02 are parallel-safe in W1; 05-04 is the tracer; the D-217 cut was taken at checkpoint 05-08 (D-234), so W8, the LFO plan 05-09, became Phase 05.1 plan 05.1-01 and 05-10 closes Phase 5 next; 05-11..05-15 are reserved for stop-rule splits and 05-16 onward for revision plans)
+**Plans**: 10/10 plans complete in 8 waves (context waves W1-W7 and W9 of 05-CONTEXT; 05-01 and 05-02 are parallel-safe in W1; 05-04 is the tracer; the D-217 cut was taken at checkpoint 05-08 (D-234), so W8, the LFO plan 05-09, became Phase 05.1 plan 05.1-01 and 05-10 closes Phase 5 next; 05-11..05-15 are reserved for stop-rule splits and 05-16 onward for revision plans)
 
 Plans:
 - [x] 05-01-PLAN.md - W1: evidence data: ER-1 image reads and the P8 label rules, 12 new and 6 amended ledger entries, withheld words, 05-HANDBOOK.md, CI lever (a), the local gate baseline (no C)
@@ -310,6 +310,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phases 4 and 5
 | 3. HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad | 38/38 | Complete    | 2026-11-11 |
 | 4. VCE/VDC Raw Video | 16/16 | Complete    | 2026-11-12 |
 | 04.1. VDC Sprites | 3/3 | Complete    | 2026-11-12 |
-| 5. PSG Raw Audio | 10/10 | In Progress | - |
+| 5. PSG Raw Audio | 10/10 | Complete    | 2026-11-14 |
 | 05.1. PSG LFO (frequency modulation) | 0/2 | Not started | - |
 | 6. Headless Runner, Installed-Consumer Proof and Staged Verification | 0/TBD | Not started | - |

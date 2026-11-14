@@ -55,6 +55,13 @@ and evidenced is not supported, regardless of how it looks in a frontend.
   RAM through the status register) — Phase 4.1 (evidence tier E0
   repeatability; no sprite ledger entry is supported, the sprite statements
   are labelled assumptions with their page disagreements recorded)
+- ✓ Raw PSG audio: six channels, wave RAM, noise and DDA, a 30-step volume curve, a
+  timestamped PSG event log and PCM at one point sample per 192 master clocks,
+  judged by hand-written literals in the audio-check stage with a fault sweep and
+  toy controls — Phase 5 (evidence tier E0 repeatability; LED-AUD-0005 and
+  LED-AUD-0008 are supported at E1 documentary, the other audio entries are
+  labelled assumptions; the PSG clock divisor stays an open profile field, and
+  LFO decode is logged but its modulation is not modelled until Phase 5.1)
 
 ### Active
 
@@ -71,7 +78,7 @@ live in `.planning/REQUIREMENTS.md`.
       (PSG events and PCM, before device playback), and guest progress.
       (Instruction and device-write sinks, the pad read log, machine time and
       guest-RAM verdicts exist from Phase 3, the raw video sink from Phase 4,
-      sprites from Phase 4.1; audio is Phase 5.)
+      sprites from Phase 4.1, the PSG event and PCM sinks from Phase 5.)
 - [ ] A headless runner (or equivalent consumer) that can load content, apply a
       scripted input, run for a bounded machine time, and emit observations.
 - [ ] Original, rights-cleared diagnostic fixtures with a manifest (source,
@@ -220,4 +227,4 @@ This document evolves at phase transitions and milestone boundaries.
 5. Refresh only the sibling/LibFuturo evidence that could change the live decision
 
 ---
-*Last updated: 2026-11-12 after Phase 4.1 (VDC sprites in the raw video record; E0 repeatability, no sprite entry supported; the supported set stays thirteen E1 entries)*
+*Last updated: 2026-11-14 after Phase 5 (raw PSG audio; E0 repeatability; LED-AUD-0005 and LED-AUD-0008 added to the supported set, now fifteen E1 entries; the LFO moved to Phase 5.1)*
