@@ -4003,7 +4003,7 @@ void kind_video_out_rights(const struct kase *k, struct ctx *c, char *got, size_
                     }
                     swapped.val[K_FIXTURE] = keys[j];
                     swapped.has[K_FIXTURE] = 1;
-                    snprintf(msg, sizeof msg, "case %.40s with the permitted fixture key %.40s in place of its own is not refused (WR-04)", v, keys[j]);
+                    snprintf(msg, sizeof msg, "case %.40s with the fixture key %.40s in its place is not refused (WR-04)", v, keys[j]);
                     check(c, vo_case_check(&swapped, &until) == VO_NOT_PERMITTED, msg);
                     swaps++;
                 }
