@@ -5,16 +5,16 @@ current_phase_name: PSG Raw Audio
 current_plan: 9
 status: executing
 stopped_at: Completed 05-08-PLAN.md
-last_updated: "2026-11-14T00:07:33.346Z"
+last_updated: "2026-11-14T00:26:28.243Z"
 last_activity: 2026-11-12
 last_activity_desc: Phase 04.1 complete, transitioned to Phase 5
-state_head: 33cba951343d7b1a14529e8a6aa624b7c44b8888
+state_head: b540c1d3c10d848d7f1c6529e0beba4917524ac0
 progress:
-  total_phases: 7
+  total_phases: 8
   completed_phases: 5
-  total_plans: 102
+  total_plans: 103
   completed_plans: 100
-  percent: 71
+  percent: 63
 ---
 
 # Project State
@@ -30,11 +30,11 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 
 Phase: 5 (PSG Raw Audio) — READY TO EXECUTE
 Current Plan: 9
-Total Plans in Phase: 11
+Total Plans in Phase: 10
 Status: Ready to execute
 Last activity: 2026-11-12 — Phase 04.1 complete, transitioned to Phase 5
 
-Progress: [███████░░░] 71%
+Progress: [██████░░░░] 63%
 
 ## Performance Metrics
 
@@ -373,6 +373,7 @@ Recent decisions affecting current work:
 - [Phase 5]: 05-07: aud12-d becomes a named limit (the wave is unheard under NE); rf5-a goes to later:05-09; cycle_linear and dda_equals_wave move to 05-10
 - [Phase 05]: 05-08: LED-AUD-0008 supported (E1 documentary) under ER-2 and ER-22; LED-AUD-0003 and -0005 stay assumed on recorded blocking clauses
 - [Phase 05]: 05-08: cut trigger (3) borderline (+20.0 / +32.4 percent user CPU in two pairs, +22.2 / +25.2 percent instructions); executor recommends the cut (LFO to Phase 5.1); the orchestrator decides
+- [Phase 05]: D-234: the orchestrator took the D-217 cut: plan 05-09 (LFO) is Phase 05.1 plan 05.1-01, 05.1-02 closes the LFO scope, and 05-10 closes Phase 5 next with the LFO under DSPE UNMODELLED (AUD-02 and AUD-03 complete there, AUD-01 completes in 05.1)
 
 ### Pending Todos
 

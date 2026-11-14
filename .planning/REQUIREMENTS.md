@@ -172,7 +172,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | VID-04 | Phase 4 | Complete |
 | VID-05 | Phase 4 | Complete |
 | VID-06 | Phase 4.1 | Complete |
-| AUD-01 | Phase 5 | Pending |
+| AUD-01 | Phase 5.1 | Pending |
 | AUD-02 | Phase 5 | Pending |
 | AUD-03 | Phase 5 | Pending |
 | INP-01 | Phase 3 | Complete |

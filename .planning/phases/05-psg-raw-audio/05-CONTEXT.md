@@ -479,6 +479,13 @@ Community and prior art (evidence class E4 at best, agreement is not correctness
 - **D-233 (amends D-230, orchestrator, after plan 05-06).** The `.aexp` reader cap rises from 32768 to 49152 bytes per file, because the event rows of `psg_tone` (plan 05-06 Task 3b, run as plan 05-12) need about 4.3 KB on top of a file already at 32,406 bytes. The cap stays one named constant
   (`AEXP_MAX_BYTES` in the audio-check reader) with a control that a file one byte over it is refused (harness error, exit 2, fail closed) and a control that a file of exactly the cap size passes. The `.vexp` cap of 16384 is unchanged. Plans keep one comment line per group; the rise is not licence
   to grow comments. The reason is recorded, not a weakening: the cap is a bound on hand-written literal files, and both its controls are kept and retargeted.
+- **D-234 (applies D-217, orchestrator, after checkpoint 05-08). The cut is taken: the LFO moves to an inserted Phase 05.1.** What moved: CONTEXT plan 05-09 (wave W8: the combined counter, TRG, the CTL shifts and F0', `psg_lfo`, toy `psg-lfo-shift`, the `psg_lfo` proof set) is now
+  `.planning/phases/05.1-psg-lfo/05.1-01-PLAN.md`; plan 05.1-02 closes the LFO scope that 05-10 no longer covers. 05-10 runs next and closes Phase 5 with the LFO under DSPE UNMODELLED; it depends on 05-08 and 05-12.
+  Why: trigger (3) is borderline (user CPU +20.0 and +32.4 percent in two bracketed pairs against the 05-01 baseline, instructions retired +22.2 percent gate and +25.2 percent sanitize; two of four measures over +25 percent) and trigger (2) is unmeasured (no Phase 5 CI run;
+  critical path estimated 525 to 670 s against 600 s, about 665 s on a slow runner draw); triggers (1), (4), (5) and (6) did not fire (05-08-SUMMARY.md, docs/ci-timings.md "Cut-line record (D-217)"). The precedent is the D-180 sprite cut (Phase 04.1).
+  Authority: the owner's approval of D-217 already covers the cut (it is recorded, never a gate failure); no new owner gate is crossed. Consequences: AUD-02 and AUD-03 complete with 05-10; AUD-01 stays advanced in Phase 5 and completes in Phase 05.1 (its text names the LFO);
+  the 17 `later:05-09` lines of `tests/audio/RULES` become `limit` lines named `lfo-in-5.1` at 05-10 (the RULES lint accepts only `later:05-06`..`later:05-10`) and 05.1-01 returns them to `row`; the toy count stays 32 in Phase 5 (33 after 05.1-01);
+  ROADMAP criterion 1 gains "LFO registers logged and decoded; LFO modulation in 5.1". Every 05-09 reference in this file and in 05-RESEARCH.md, 05-PATTERNS.md and 05-HANDBOOK.md reads as 05.1-01 from here on; the binding rules for 05.1 are listed in `05.1-CONTEXT.md`.
 </errata>
 
 <specifics>
