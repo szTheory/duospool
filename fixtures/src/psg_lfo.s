@@ -13,6 +13,8 @@
 ; Scene lfo_static (sc_static): R9 $80 (CTL 0), 28 units; R9 $82 (CTL 2, TRG 1), 30 units; R9 $83 (CTL 3, TRG 1), 35 units. Scene lfo_ctl1 (sc_ctl1): R9 $81 (CTL 1, TRG 1), 29 units. Scene lfo_needs_sel1 (sc_needs): select 1 R4 $00 (chON 0), R9 $80, 28 units;
 ;   R9 $81, 28 units. Each phase lasts at least 5.2 select-0 cycles of 192 x F0' master clocks plus 2,000 (28 units >= 516,096 > 5.2 x 98,304 + 2,000; 30 >= 552,960 > 5.2 x 104,448 + 2,000; 35 >= 645,120 > 5.2 x 122,880 + 2,000; 29 >= 534,528 > 5.2 x 99,840 + 2,000).
 ; Plan 05.1-02 appends its scenes after sc_needs and before the checks, and writes nothing before them, so every anchor of psg_lfo.aexp keeps its count. Checks 1 and 2 judge the guest's own table data (GUEST, ER-21).
+; Scene lfo_release (sc_release, plan 05.1-02; C-04, D-220): select 0 R4 $00 (off); R9 $80 (CTL 0, TRG 1: widx[1] = 0, the select-1 counter frozen); select 1 R3 $01, R2 $00 (F1 = 256 again), R5 $FF, the key-on R4 $9F (AL $1F) under TRG 1: frozen at word 0; 1 unit
+;   (at least 18,432 master clocks, above 2,000); R9 $00 (TRG 0): the uncoupled select 1 restarts from word 0 and steps every 6 x 256 = 1,536 master clocks; 4 units (at least 73,728 master clocks, past the window end of + 60,000).
         .setcpu "huc6280"
 
 DSV_ID = 29
@@ -56,6 +58,8 @@ sc_ctl1:                                ; lfo_ctl1: CTL 1 under TRG 1
         .byte 9, $81, SC_DLY + 29, SC_END
 sc_needs:                               ; lfo_needs_sel1: select 1 off, then CTL 0 and CTL 1
         .byte 0, 1, 4, $00, 9, $80, SC_DLY + 28, 9, $81, SC_DLY + 28, SC_END
+sc_release:                             ; lfo_release: select 0 off, select 1 keyed on under TRG 1, then the TRG 1 -> 0 release
+        .byte 0, 0, 4, $00, 9, $80, 0, 1, 3, $01, 2, $00, 5, $FF, 4, $9F, SC_DLY + 1, 9, $00, SC_DLY + 4, SC_END
         .popseg
 
 ; PLAY script: the script player run over one script of RODATA
@@ -82,6 +86,7 @@ chans:  stx a:PSG_R0
         PLAY sc_static
         PLAY sc_ctl1
         PLAY sc_needs
+        PLAY sc_release
 ; checks 1 and 2: tables 0 and 1 summed by a table walk against the sum of the counter 0..31, two computations of 496; A = (low XOR low) OR (high XOR high), expected 0
         ldx #0
         jsr tsum

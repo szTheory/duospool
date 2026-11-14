@@ -399,3 +399,5 @@ audio_fault_sweep_lfo_static
 audio_fault_sweep_lfo_ctl1
 audio_fault_sweep_lfo_needs_sel1
 mutate_sweep_psg_lfo
+audio_lfo_release
+audio_fault_sweep_lfo_release

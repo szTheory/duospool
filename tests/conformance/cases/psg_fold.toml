@@ -6,6 +6,11 @@
 # (wave index 0, 1, 1 after a key-on at 1003 with F = 10: E = (w - w mod d) + d x F); and a key-on at the sample instant 3840 is heard from sample 21, not 20.
 # The 600 of the partitions and of the fold-offset bound of psg.c is the largest step: a row requires ds_max_step_mclk() <= 600 (review IN-03). The one jump has no rebase but, with its pcm channel, folds at every sample instant (pieces of at most
 # 192 clocks); the sink-less fold over a whole step is compared by the state digests of aud_noninterference (review IN-05). Evidence tier E0; no hardware claim.
+# Plan 05.1-02 (D-186, D-221, C-09, T-05.1-06) adds, every row with its class: three coupled-pair programs (select 0 and 1 on, CTL 1..3, TRG 0; the extreme F1 = FLF = 1 with a table of $10 and F0 = 1, F1 = FLF = 0, and drawn values) folded in one jump and in the same
+# 8 partitions with the D-186 invariant after every step (E0 composability, no class); a row that their largest select-1 distance after a step is above d x 4096 = 24,576, so the select-1 bound d x 4096 x 256 of pf_invariant (05.1-01) is exercised, never narrowed
+# (ASSUMED:LED-AUD-0011, the coupled step; MAN:P8-6+P8-9 for 6 x F1 x FLF); and the fold extreme at d = 3 (bind.psg_tick_divisor=3): F1 = FLF = 1, CTL 1, TRG 0, select 1's table all $10 (w - 16 = 0) and F0 = 1 (F0' = 1), so both counters step every 3 clocks and one
+# sink-less fold of 600 clocks (the largest step of the IN-03 row) from the event instant 999 moves widx[1] and widx[0] by 200 mod 32 = 8 and each next event by 600 (200 steps each: at most 600 iterations of the coupled loop per fold, here 200), equal to 600 folds of
+# one clock (ASSUMED:LED-AUD-0011, hand-derived, phase-free). The meaning of a pass is unchanged.
 id = "psg_fold"
 kind = "psg_fold"
 fixture = "plain-256k"

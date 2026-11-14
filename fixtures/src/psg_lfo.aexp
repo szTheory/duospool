@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: 0BSD
 # SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
 #
-# psg_lfo.aexp - the hand-derived literal rows of the audio scenes of fixtures/src/psg_lfo.s (plan 05.1-01; D-184, D-185, D-192, D-206..D-212, D-219, D-230, D-233, C-05, ER-14..ER-21). scripts/fixture-build writes it without comments as build/gate/fixtures/psg-lfo.aexp.tsv
+# psg_lfo.aexp - the hand-derived literal rows of the audio scenes of fixtures/src/psg_lfo.s (plan 05.1-01, grown by 05.1-02; D-184, D-185, D-192, D-206..D-212, D-219, D-230, D-233, C-05, ER-14..ER-21). scripts/fixture-build writes it without comments as build/gate/fixtures/psg-lfo.aexp.tsv
 # for the runner kind audio; scripts/audio-check judges this source. Selectors and windows as in psg_tone.aexp (a window holds the samples s with from <= 192s < to, D-187). No literal comes from a case file, a run or a hash (R7). One comment line per group (D-233).
 # Byte budget (D-230, D-233): this file stays under 32,768 bytes and 512 rows after 05.1-01 and 05.1-02 (the reader cap is 49,152). Every row with a window carries r1, al, r5 and a side: R1 $FF, AL $1F, R5 $FF give S = 0 on both sides (att 0) for select 0.
 # Anchor counts from boot (05-06, 05-12 notes): R9 (ch=G) $80 nth 1 setup, 2 lfo_static, 3 lfo_needs_sel1; $82 nth 1; $83 nth 1; $81 nth 1 lfo_ctl1, 2 lfo_needs_sel1. R0 $00 nth 1 (a), 2 the select-0 setup; R0 $01 nth 1 (a), 2 the select-1 setup, 3 lfo_needs_sel1;
-#   R0 $02..$05 nth 1 (a). 05.1-02 appends its writes after the last write of lfo_needs_sel1, so none of these counts moves.
+#   R0 $02..$05 nth 1 (a). 05.1-02 appends its writes after the last write of lfo_needs_sel1, so none of these counts moves: lfo_release adds R0 $00 nth 3, R9 $80 nth 4, R0 $01 nth 4 and R9 $00 nth 1.
 # The modulation (D-184, D-219): select 1 holds word 0 = $18 under TRG 1 (frozen), select 0 at F0 = 512 reloads with F0' = (512 + 4096 + (24 << s) - (16 << s)) & 4095, s = 2 x (CTL - 1): CTL 1 520, CTL 2 544, CTL 3 640 (the lint recomputes F' and d = k x F').
 #   A phase starts at its R9 write w; the select-0 reload after it comes within 6 x 640 master clocks, so from w + 192 F' + 2,000 every step is 6 F' apart: the rising crossing (word 31 -> word 0, the only one: the table's words 0..15 are 16..31, words 16..31 are 0..15)
 #   of each cycle is 192 F' master clocks = F' samples after the last; the first crossing in the window comes before w + 2 x 192 F' + 2,000 and the third before w + 4 x 192 F' + 2,000 < to = w + 5 x 192 F', so the distance of k = 2 cycles is d = 2 F'.
@@ -60,3 +60,8 @@ scene	lfo_needs_sel1	case=audio_lfo_needs_sel1	role=literal
 group	lfo_needs_sel1	need	form=REL	kind=lfo_needs_sel1	class=MAN:P8-6+P8-9	kills=AF0,AF5,AF6
 row	lfo_needs_sel1	need	anchor=ev:ch=G;reg=R9;val=$80;nth=3;from=+100304;to=+491520;side=L	n=1024;r1=$FF;al=$1F;r5=$FF
 row	lfo_needs_sel1	need	anchor=ev:ch=G;reg=R9;val=$81;nth=2;from=+100304;to=+491520;side=L	r1=$FF;al=$1F;r5=$FF
+# lfo_release (plan 05.1-02; C-04, D-220): CTL 0, select 0 off, select 1 keyed on under TRG 1 (R9 $80: widx[1] = 0, frozen at word 0), then R9 $00: the uncoupled select 1 restarts; select 1 alone is audible (R1 $FF, AL $1F, R5 $FF: S = 0, att 0).
+scene	lfo_release	case=audio_lfo_release	role=literal
+# rel (ASSUMED:LED-AUD-0004+LED-AUD-0011, D-220; the d_rel shape of psg_mod): from the R9 $00 release + 192 the first 32 plateaus are select 1's table from word 0 (16 + ((5i + 8) mod 16), then (3i + 1) mod 16): its counter restarts from word 0 on TRG 1 -> 0.
+group	lfo_release	rel	form=ROWS	kind=cycle_phase	class=ASSUMED:LED-AUD-0004+LED-AUD-0011	kills=AF0,AF5,AF6,AF7,AF8
+row	lfo_release	rel	anchor=ev:ch=G;reg=R9;val=$00;nth=1;from=+192;to=+60000;side=L	words=24,29,18,23,28,17,22,27,16,21,26,31,20,25,30,19,1,4,7,10,13,0,3,6,9,12,15,2,5,8,11,14;r1=$FF;al=$1F;r5=$FF

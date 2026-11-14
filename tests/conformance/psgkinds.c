@@ -653,7 +653,9 @@ void kind_psg_restore_divisor(const struct kase *k, struct ctx *c, char *got, si
  * The tie order of D-185 at a write: an R6 write to a running channel at its next step event E minus 1 stores at the old index, at E and at E + 1 at the new one (the event at the write stamp is processed first; E = (w - w mod d) + d x F after a key-on at w, the formula written here);
  * a key-on stamped at a sample instant is heard from the next sample on (the sample at the stamp sees the state before the write).
  * The one jump is a fold with no rebase, not a long-span fold: with its pcm channel ds_psg_advance folds to every sample instant, so it is folded in pieces of at most 192 clocks. The sink-less fold over a whole step (up to 600 clocks) is compared only by the
- * state digests of aud_noninterference (review IN-05). */
+ * state digests of aud_noninterference (review IN-05).
+ * Plan 05.1-02 adds three coupled-pair programs (pf_program_lfo) folded the same way, with a row that their largest select-1 distance after a step_end fold is above d x 4096 (the C-09 bound of pf_invariant exercised), and the fold extreme of D-221 at d = 3
+ * (pf_fold_extreme): one sink-less fold of 600 clocks holds 200 steps of each counter of the coupled pair. */
 
 static uint32_t pf_u32(const uint8_t *p)
 {
@@ -716,6 +718,60 @@ static unsigned pf_program(uint64_t seed, struct pf_w *w)
     return n;
 }
 
+/* the coupled-pair programs of plan 05.1-02 (D-186, D-221, C-09): select 1 (table, F1, FLF, R5 $FF, keyed on under TRG 1) and select 0 keyed on, then R9 with TRG 0 and CTL 1..3, so the LFO applies from the start, then later writes at random stamps. Variant 0 is the
+ * hostile extreme at d = 6: select 1's table all $10 (w - 16 = 0), F1 = FLF = 1, F0 = 1, CTL 1 (both counters step every 6 clocks), later writes R9 only; variant 1 has F1 = 0 and FLF = 0 (the coupled maximum 6 x 4096 x 256 = 6,291,456, so a pending select-1 distance
+ * near the widened bound), later writes R2, R3, R6 at select 0 and R9 with TRG 0; variant 2 draws F1 (12 bits), FLF, the table and CTL, later writes R0 (select 0 or 1), R2, R3, R4, R6, R8 and R9 */
+static unsigned pf_program_lfo(uint64_t seed, unsigned variant, struct pf_w *w)
+{
+    static const uint8_t regs2[8] = {0u, 2u, 3u, 4u, 6u, 8u, 9u, 9u};
+    static const uint8_t ctl4[4] = {0x9Fu, 0x80u, 0x00u, 0x9Fu};
+    uint64_t s = seed ^ (UINT64_C(0x5DEECE66D) * (variant + 1u));
+    uint64_t t = 16u;
+    unsigned n = 0u;
+    unsigned j;
+    uint32_t f1 = variant == 0u ? 1u : variant == 1u ? 0u : (uint32_t)(pf_next(&s) & 0xFFFu);
+    uint32_t flf = variant == 0u ? 1u : variant == 1u ? 0u : (uint32_t)(pf_next(&s) & 0xFFu);
+
+    w[n++] = (struct pf_w){t, 1u, 0xFFu};
+    w[n++] = (struct pf_w){t += 30u, 0u, 1u};
+    w[n++] = (struct pf_w){t += 30u, 9u, 0x80u}; /* TRG 1: widx[1] = 0, select 1 frozen */
+    for (j = 0u; j < 32u; j++) {
+        w[n++] = (struct pf_w){t += 30u, 6u, variant == 0u ? 0x10u : (uint32_t)(pf_next(&s) & 0x1Fu)}; /* chON 0: stored, the index wraps back to 0 */
+    }
+    w[n++] = (struct pf_w){t += 30u, 2u, f1 & 0xFFu};
+    w[n++] = (struct pf_w){t += 30u, 3u, f1 >> 8};
+    w[n++] = (struct pf_w){t += 30u, 5u, 0xFFu};
+    w[n++] = (struct pf_w){t += 30u, 8u, flf};
+    w[n++] = (struct pf_w){t += 30u, 4u, 0x9Fu};
+    w[n++] = (struct pf_w){t += 30u, 0u, 0u};
+    w[n++] = (struct pf_w){t += 30u, 2u, variant == 0u ? 1u : (uint32_t)(8u + pf_next(&s) % 64u)};
+    w[n++] = (struct pf_w){t += 30u, 3u, 0u};
+    w[n++] = (struct pf_w){t += 30u, 5u, 0xFFu};
+    w[n++] = (struct pf_w){t += 30u, 4u, 0x9Fu};
+    w[n++] = (struct pf_w){t += 30u, 9u, variant == 0u ? 1u : (uint32_t)(1u + pf_next(&s) % 3u)}; /* TRG 0 with select 1 on: the coupled restart */
+    while (n < PF_WMAX) {
+        uint64_t r = pf_next(&s);
+        uint32_t reg;
+        uint32_t val = (uint32_t)((r >> 24) & 0xFFu);
+
+        t += 1u + r % 2900u;
+        if (t >= (uint64_t)PF_END - 2u) {
+            break;
+        }
+        if (variant == 0u) {
+            reg = 9u;
+        } else if (variant == 1u) {
+            reg = (uint32_t)"2369"[(r >> 16) % 4u] - (uint32_t)'0';
+            val = reg == 9u ? val & 0x03u : val;
+        } else {
+            reg = regs2[(r >> 16) % 8u];
+            val = reg == 0u ? val & 1u : reg == 4u ? ctl4[val & 3u] : val;
+        }
+        w[n++] = (struct pf_w){t, reg, val};
+    }
+    return n;
+}
+
 /* the frozen rule of D-185: chON 0, DDA 1, or select 1 with TRG 1 */
 static int pf_frozen(const struct ds_instance *w, uint32_t ch)
 {
@@ -768,6 +824,143 @@ static uint64_t pf_abs(const struct ds_instance *w, uint32_t r)
     return r == 0u ? 0u : w->machine_time - 1u + (uint64_t)r;
 }
 
+/* one program folded on w1 in one jump and on w2 in parts random step partitions, each against the jump: equal state and absolute next events, byte-identical samples (two checks per partition), and the D-186 invariant after every step_end fold (one check); max1
+ * gets the largest select-1 distance seen after a step_end fold. label prefixes the messages ("" for the program of the seed) */
+static void pf_compare(struct ctx *c, struct ds_instance *w1, struct ds_instance *w2, struct pf_pcm *p1, struct pf_pcm *p2, const struct pf_w *prog, unsigned np, uint64_t seed, uint64_t parts, uint32_t d, const char *label, uint64_t *steps, uint32_t *max1)
+{
+    struct ds_psg_write_info info;
+    unsigned bad_inv = 0u;
+    uint64_t part;
+    unsigned i;
+    char msg[280];
+
+    /* the one jump */
+    pk_reset(w1);
+    pf_pcm_open(p1);
+    for (i = 0u; i < np; i++) {
+        ds_psg_advance(w1, prog[i].t, 0u, &p1->log);
+        (void)ds_psg_write(w1, prog[i].reg, prog[i].val, prog[i].t, &info);
+    }
+    ds_psg_advance(w1, (uint64_t)PF_END - 1u, 0u, &p1->log);
+    ds_obs_end(&p1->log);
+    /* the partitions: P runs with different step lengths, each against the one jump */
+    for (part = 0u; part < parts; part++) {
+        uint64_t s = seed ^ (UINT64_C(0xA5A5A5A5) * (part + 1u));
+        uint64_t m = 0u;
+        unsigned wi = 0u;
+        int same = 1;
+        uint32_t ch;
+
+        pk_reset(w2);
+        pf_pcm_open(p2);
+        while (m < (uint64_t)PF_END) {
+            uint64_t len = 1u + pf_next(&s) % 600u;
+
+            if (len > (uint64_t)PF_END - m) {
+                len = (uint64_t)PF_END - m;
+            }
+            while (wi < np && prog[wi].t < m + len) {
+                ds_psg_advance(w2, prog[wi].t, 0u, &p2->log);
+                (void)ds_psg_write(w2, prog[wi].reg, prog[wi].val, prog[wi].t, &info);
+                wi++;
+            }
+            ds_psg_advance(w2, m + len - 1u, 1u, &p2->log);
+            m += len;
+            w2->machine_time = m;
+            (*steps)++;
+            if (pf_invariant(w2, d) != 0) {
+                bad_inv++;
+            }
+            *max1 = w2->psg_rem[1] > *max1 ? w2->psg_rem[1] : *max1;
+        }
+        ds_obs_end(&p2->log);
+        same = memcmp(w1->psg_freq, w2->psg_freq, sizeof w1->psg_freq) == 0 && memcmp(w1->psg_ctl, w2->psg_ctl, sizeof w1->psg_ctl) == 0 && memcmp(w1->psg_bal, w2->psg_bal, sizeof w1->psg_bal) == 0 &&
+               memcmp(w1->psg_widx, w2->psg_widx, sizeof w1->psg_widx) == 0 && memcmp(w1->psg_dda, w2->psg_dda, sizeof w1->psg_dda) == 0 && memcmp(w1->psg_wave, w2->psg_wave, sizeof w1->psg_wave) == 0 &&
+               memcmp(w1->psg_noise, w2->psg_noise, sizeof w1->psg_noise) == 0 && memcmp(w1->psg_lfsr, w2->psg_lfsr, sizeof w1->psg_lfsr) == 0 && w1->psg_select == w2->psg_select && w1->psg_main_bal == w2->psg_main_bal &&
+               w1->psg_lfo_freq == w2->psg_lfo_freq && w1->psg_lfo_ctl == w2->psg_lfo_ctl;
+        for (ch = 0u; ch < 6u; ch++) {
+            same = same && pf_abs(w1, w1->psg_rem[ch]) == pf_abs(w2, w2->psg_rem[ch]);
+        }
+        for (ch = 0u; ch < 2u; ch++) {
+            same = same && pf_abs(w1, w1->psg_nrem[ch]) == pf_abs(w2, w2->psg_nrem[ch]);
+        }
+        snprintf(msg, sizeof msg, "%.40spartition %llu: the PSG state after the stepped folds differs from the one jump (registers, wave RAM, indices, LFSRs or the absolute time of a next event)", label, (unsigned long long)part);
+        check(c, same, msg);
+        snprintf(msg, sizeof msg, "%.40spartition %llu: the samples of the stepped folds differ from the one jump (count %u against %u)", label, (unsigned long long)part, (unsigned)pf_u32(p2->fsk.header), (unsigned)pf_u32(p1->fsk.header));
+        check(c, pf_u32(p1->fsk.header) == PF_END / 192u && pf_u32(p2->fsk.header) == pf_u32(p1->fsk.header) && pf_u32(p1->fsk.header + 4) == 0u && memcmp(p1->frames, p2->frames, (size_t)pf_u32(p1->fsk.header) * 8u) == 0, msg);
+    }
+    snprintf(msg, sizeof msg, "%.40sthe D-186 invariant (1 <= r <= the largest period, r = 0 exactly when frozen, the tick grid) failed after a step_end fold", label);
+    check(c, bad_inv == 0u, msg);
+}
+
+/* the writes of the fold extreme on a fresh d = 3 state (plan 05.1-02): select 1's table all $10 by 32 R6 writes at chON 0 under TRG 1 (the index wraps to 0), F1 = 1, FLF = 1, select 1 keyed on under TRG 1 (frozen); select 0 F0 = 1 keyed on at 150 under R9 $81
+ * (F0' = 1 + $10 - 16 = 1, step 3); R9 $01 at 160 (TRG 0): select 1 restarts, coupled step 3 x 1 x 1 = 3. Both counters then step at every multiple of 3 */
+static void pf_extreme_writes(struct ds_instance *w)
+{
+    struct ds_psg_write_info info;
+    uint32_t i;
+
+    pk_reset(w);
+    (void)pk_w(w, 0u, 1u, 10u, &info);
+    (void)pk_w(w, 9u, 0x80u, 20u, &info);
+    for (i = 0u; i < 32u; i++) {
+        (void)pk_w(w, 6u, 0x10u, 30u + i, &info);
+    }
+    (void)pk_w(w, 2u, 0x01u, 70u, &info);
+    (void)pk_w(w, 3u, 0x00u, 80u, &info);
+    (void)pk_w(w, 8u, 0x01u, 90u, &info);
+    (void)pk_w(w, 4u, 0x80u, 100u, &info);
+    (void)pk_w(w, 0u, 0u, 110u, &info);
+    (void)pk_w(w, 2u, 0x01u, 120u, &info);
+    (void)pk_w(w, 3u, 0x00u, 130u, &info);
+    (void)pk_w(w, 9u, 0x81u, 140u, &info);
+    (void)pk_w(w, 4u, 0x80u, 150u, &info);
+    (void)pk_w(w, 9u, 0x01u, 160u, &info);
+}
+
+/* the fold extreme (plan 05.1-02; D-221, T-05.1-06; ASSUMED:LED-AUD-0011, hand-derived): d = 3, F1 = FLF = 1, CTL 1, TRG 0, select 1's table all $10, F0 = 1, both on. From the event instant 999 one fold of 600 master clocks (instants 1,000 to 1,599, the largest step
+ * of the IN-03 row) holds the events 1,002, 1,005, ..., 1,599 of each counter: 200 select-1 steps (200 iterations of the coupled loop) and 200 select-0 steps, so widx[1] and widx[0] advance by 200 mod 32 = 8 and each next event moves by 600 (phase-free: any 600
+ * consecutive instants hold 200 multiples of 3). The same span folded in 600 folds of one clock gives the same indices and distances */
+static void pf_fold_extreme(const struct kase *k, struct ctx *c)
+{
+    struct booted b3;
+    struct ds_instance *w3 = pk_boot(c, k->val[K_FIXTURE], "bind.psg_tick_divisor=3", &b3);
+    uint32_t wi0;
+    uint32_t wi1;
+    uint32_t r0;
+    uint32_t r1;
+    uint32_t a[4];
+    uint64_t t;
+    char msg[240];
+
+    if (w3 == NULL) {
+        return;
+    }
+    check(c, ds_psg_divisor(w3) == 3u, "the fold extreme: bind.psg_tick_divisor=3 does not give d = 3");
+    pf_extreme_writes(w3);
+    ds_psg_advance(w3, 999u, 0u, NULL);
+    wi0 = w3->psg_widx[0];
+    wi1 = w3->psg_widx[1];
+    r0 = w3->psg_rem[0];
+    r1 = w3->psg_rem[1];
+    ds_psg_advance(w3, 1599u, 0u, NULL);
+    snprintf(msg, sizeof msg, "the fold extreme at d = 3: one fold of 600 clocks moved select 1 from index %u, distance %u to %u, %u (200 steps: index + 8 mod 32, distance + 600)", (unsigned)wi1, (unsigned)r1, (unsigned)w3->psg_widx[1], (unsigned)w3->psg_rem[1]);
+    check(c, r1 != 0u && w3->psg_widx[1] == ((wi1 + 8u) & 31u) && w3->psg_rem[1] == r1 + 600u, msg);
+    snprintf(msg, sizeof msg, "the fold extreme at d = 3: one fold of 600 clocks moved select 0 from index %u, distance %u to %u, %u (200 steps at F0' = 1: index + 8 mod 32, distance + 600)", (unsigned)wi0, (unsigned)r0, (unsigned)w3->psg_widx[0], (unsigned)w3->psg_rem[0]);
+    check(c, r0 != 0u && w3->psg_widx[0] == ((wi0 + 8u) & 31u) && w3->psg_rem[0] == r0 + 600u, msg);
+    a[0] = w3->psg_widx[0];
+    a[1] = w3->psg_widx[1];
+    a[2] = w3->psg_rem[0];
+    a[3] = w3->psg_rem[1];
+    pf_extreme_writes(w3);
+    ds_psg_advance(w3, 999u, 0u, NULL);
+    for (t = 1000u; t < 1600u; t++) {
+        ds_psg_advance(w3, t, 0u, NULL);
+    }
+    check(c, w3->psg_widx[0] == a[0] && w3->psg_widx[1] == a[1] && w3->psg_rem[0] == a[2] && w3->psg_rem[1] == a[3], "the fold extreme at d = 3: 600 folds of one clock differ from one fold of 600 (indices or distances)");
+    release_boot(&b3);
+}
+
 void kind_psg_fold(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
 {
     char list[PK_LIST_MAX];
@@ -785,10 +978,12 @@ void kind_psg_fold(const struct kase *k, struct ctx *c, char *got, size_t gotcap
     struct pf_pcm *p2 = NULL;
     struct ds_psg_write_info info;
     uint64_t steps = 0u;
-    unsigned bad_inv = 0u;
-    uint64_t part;
+    uint32_t max1 = 0u;
+    unsigned nl;
+    unsigned nlfo = 0u;
+    unsigned v;
     uint32_t d;
-    unsigned i;
+    char fmsg[220];
 
     if (!k->has[K_EXPECT] || pk_copy_text(k->val[K_EXPECT], list, sizeof list) != 0) {
         harness_error(c, "a psg_fold case needs expect = seed=N;partitions=P");
@@ -831,62 +1026,20 @@ void kind_psg_fold(const struct kase *k, struct ctx *c, char *got, size_t gotcap
         return;
     }
     d = ds_psg_divisor(w1);
-    /* the one jump */
-    pk_reset(w1);
-    pf_pcm_open(p1);
-    for (i = 0u; i < np; i++) {
-        ds_psg_advance(w1, prog[i].t, 0u, &p1->log);
-        (void)ds_psg_write(w1, prog[i].reg, prog[i].val, prog[i].t, &info);
-    }
-    ds_psg_advance(w1, (uint64_t)PF_END - 1u, 0u, &p1->log);
-    ds_obs_end(&p1->log);
-    /* the partitions: P runs with different step lengths, each against the one jump */
-    for (part = 0u; part < parts; part++) {
-        uint64_t s = seed ^ (UINT64_C(0xA5A5A5A5) * (part + 1u));
-        uint64_t m = 0u;
-        unsigned wi = 0u;
-        int same = 1;
-        uint32_t ch;
-        char msg[200];
+    pf_compare(c, w1, w2, p1, p2, prog, np, seed, parts, d, "", &steps, &max1);
+    /* the coupled-pair programs (plan 05.1-02, D-186, C-09): the same jump against the same partitions; together they reach a select-1 distance above d x 4096, so the widened bound of pf_invariant is exercised, never only stated */
+    max1 = 0u;
+    for (v = 0u; v < 3u; v++) {
+        char label[40];
 
-        pk_reset(w2);
-        pf_pcm_open(p2);
-        while (m < (uint64_t)PF_END) {
-            uint64_t len = 1u + pf_next(&s) % 600u;
-
-            if (len > (uint64_t)PF_END - m) {
-                len = (uint64_t)PF_END - m;
-            }
-            while (wi < np && prog[wi].t < m + len) {
-                ds_psg_advance(w2, prog[wi].t, 0u, &p2->log);
-                (void)ds_psg_write(w2, prog[wi].reg, prog[wi].val, prog[wi].t, &info);
-                wi++;
-            }
-            ds_psg_advance(w2, m + len - 1u, 1u, &p2->log);
-            m += len;
-            w2->machine_time = m;
-            steps++;
-            if (pf_invariant(w2, d) != 0) {
-                bad_inv++;
-            }
-        }
-        ds_obs_end(&p2->log);
-        same = memcmp(w1->psg_freq, w2->psg_freq, sizeof w1->psg_freq) == 0 && memcmp(w1->psg_ctl, w2->psg_ctl, sizeof w1->psg_ctl) == 0 && memcmp(w1->psg_bal, w2->psg_bal, sizeof w1->psg_bal) == 0 &&
-               memcmp(w1->psg_widx, w2->psg_widx, sizeof w1->psg_widx) == 0 && memcmp(w1->psg_dda, w2->psg_dda, sizeof w1->psg_dda) == 0 && memcmp(w1->psg_wave, w2->psg_wave, sizeof w1->psg_wave) == 0 &&
-               memcmp(w1->psg_noise, w2->psg_noise, sizeof w1->psg_noise) == 0 && memcmp(w1->psg_lfsr, w2->psg_lfsr, sizeof w1->psg_lfsr) == 0 && w1->psg_select == w2->psg_select && w1->psg_main_bal == w2->psg_main_bal &&
-               w1->psg_lfo_freq == w2->psg_lfo_freq && w1->psg_lfo_ctl == w2->psg_lfo_ctl;
-        for (ch = 0u; ch < 6u; ch++) {
-            same = same && pf_abs(w1, w1->psg_rem[ch]) == pf_abs(w2, w2->psg_rem[ch]);
-        }
-        for (ch = 0u; ch < 2u; ch++) {
-            same = same && pf_abs(w1, w1->psg_nrem[ch]) == pf_abs(w2, w2->psg_nrem[ch]);
-        }
-        snprintf(msg, sizeof msg, "partition %llu: the PSG state after the stepped folds differs from the one jump (registers, wave RAM, indices, LFSRs or the absolute time of a next event)", (unsigned long long)part);
-        check(c, same, msg);
-        snprintf(msg, sizeof msg, "partition %llu: the samples of the stepped folds differ from the one jump (count %u against %u)", (unsigned long long)part, (unsigned)pf_u32(p2->fsk.header), (unsigned)pf_u32(p1->fsk.header));
-        check(c, pf_u32(p1->fsk.header) == PF_END / 192u && pf_u32(p2->fsk.header) == pf_u32(p1->fsk.header) && pf_u32(p1->fsk.header + 4) == 0u && memcmp(p1->frames, p2->frames, (size_t)pf_u32(p1->fsk.header) * 8u) == 0, msg);
+        snprintf(label, sizeof label, "coupled program %u: ", v);
+        nl = pf_program_lfo(seed, v, prog);
+        nlfo += nl;
+        pf_compare(c, w1, w2, p1, p2, prog, nl, seed, parts, d, label, &steps, &max1);
     }
-    check(c, bad_inv == 0u, "the D-186 invariant (1 <= r <= the largest period, r = 0 exactly when frozen, the tick grid) failed after a step_end fold");
+    snprintf(fmsg, sizeof fmsg, "the coupled-pair programs reached a largest select-1 distance of %u after a step_end fold, not above d x 4096 = %u: the widened bound is not exercised", (unsigned)max1, (unsigned)(d * 4096u));
+    check(c, max1 > d * 4096u, fmsg);
+    pf_fold_extreme(k, c);
     /* the tie order of D-185 at an R6 write to a running channel: select 0, F = 10, key-on at w = 1003; E = (w - w mod d) + d x 10 */
     {
         static const int64_t dts[3] = {-1, 0, 1};
@@ -933,7 +1086,7 @@ void kind_psg_fold(const struct kase *k, struct ctx *c, char *got, size_t gotcap
     release_boot(&b2);
     free(p1);
     free(p2);
-    snprintf(got, gotcap, "writes=%u partitions=%llu steps=%llu d=%u", np, (unsigned long long)parts, (unsigned long long)steps, (unsigned)d);
+    snprintf(got, gotcap, "writes=%u+%u parts=%llu steps=%llu d=%u rem1=%u", np, nlfo, (unsigned long long)parts, (unsigned long long)steps, (unsigned)d, (unsigned)max1);
 }
 
 /* ---- plan 05-06: psg_vol_table and psg_pure_function ---- */
