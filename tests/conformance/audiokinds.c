@@ -4119,7 +4119,7 @@ static void au_restore_rom(struct ctx *c, const char *rom, const char *req, uint
         struct au_cap cp;
         struct au_end e;
         int placed;
-        char msg[260];
+        char msg[400];
 
         if (at[i] == UINT64_MAX || at[i] >= until) {
             snprintf(msg, sizeof msg, "the restore stop %s of %.40s has no deadline inside the run (no step boundary or write found)", names[set][i], rom);
