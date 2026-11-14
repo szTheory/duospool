@@ -51,7 +51,7 @@ aud10-d	LED-AUD-0010	row	two_level	the noise replaces the wave when NE is 1
 aud11-a	LED-AUD-0011	row	lfo_static,lfo_needs_sel1	modulation applies while LF CTL != 0 and select 0 and 1 have chON 1 (05.1-01)
 aud11-b	LED-AUD-0011	row	lfo_static	select 0 uses (F0 + $1000 + (w << s) - (16 << s)) & $FFF, s 0, 2, 4 (05.1-01)
 aud11-c	LED-AUD-0011	row	lfo_static	TRG 1 holds w at wave[1][0] whatever widx[1] is and freezes the select-1 counter (05.1-01: the held word in the lfo_static rows; widx[1] != 0 under TRG 1 judged at C level only (psg_lfo_trg))
-aud11-d	LED-AUD-0011	row	lfo_dynamic	TRG 0 lets select 1 step every d x F1e x FLFe (one combined counter) (05.1-02: lfo_dynamic, select 1 stepping after R9 $01; the step length at C level in psg_lfo_trg)
+aud11-d	LED-AUD-0011	row	lfo_dynamic	with TRG 0 select 1 steps every d x F1e x FLFe while LF CTL != 0 and select 0 and 1 have chON 1 (one combined counter), and every d x F1e otherwise, as with CTL 0 (05.1-02: lfo_dynamic, select 1 stepping after R9 $01; the step length at C level in psg_lfo_trg)
 aud12-a	LED-AUD-0012	row	period	counters tick at k x d master clocks (the period groups at d = 6; the tick phase 0 is ASSUMED)
 aud12-b	LED-AUD-0012	row	noise_seq	R2, R3 and R7 writes apply at the next reload (R7: the noise_seq ordinals of mod_noise4 keep the old period up to the first reload after the write; R2 and R3 at a reload are not judged by a row)
 aud12-c	LED-AUD-0012	row	cycle_phase	a counter is frozen while chON 0 or DDA 1 (select 1 also while TRG 1) (d_rel of mod_dda: frozen while DDA 1 with chON 1; the chON 0 and TRG 1 halves have no row of their own)
@@ -74,7 +74,7 @@ d183-a	D-183	row	case:audio_tone_sel0_d3	psg_tick_divisor d (3 or 6, OPEN) divid
 d184-a	D-184	row	period	step d x Fe and cycle 32 x d x Fe (Fe = F)
 d184-b	D-184	limit	disputed-zero	Fe = 4096 for F = 0, FLFe = 256 for FLF = 0 and 32 ticks for NFc = 0 are disputed points (ER-15), ASSUMED rows only
 d184-c	D-184	row	run_grid,noise_ratio	noise d x 64 x NFc with NFc = 31 - (R7 & $1F)
-d184-d	D-184	row	lfo_dynamic	coupled select-1 step d x F1e x FLFe (05.1-02: lfo_dynamic; the length at C level in psg_lfo_trg)
+d184-d	D-184	row	lfo_dynamic	select 1 with TRG 0 steps d x F1e x FLFe while LF CTL != 0 and select 0 and 1 have chON 1 (the coupled step), and d x F1e otherwise (05.1-02: lfo_dynamic; the length at C level in psg_lfo_trg)
 d184-e	D-184	row	lfo_static	F0' = (F0 + $1000 + (w << s) - (16 << s)) & $FFF, 0 -> 4096, s = 2((R9 & 3) - 1) (05.1-01)
 d185-a	D-185	row	cycle_phase	key-on next = (w - w mod d) + d x Fe with the index unchanged; R2, R3 and R7 apply at the next reload; frozen while chON 0 or DDA 1 (d_phase and d_rel of mod_dda: the index unchanged at key-on and frozen under DDA 1; R7 at the next reload by n4_seq; the instants are not judged)
 d185-b	D-185	row	case:psg_wave_ptr	NE keeps the wave counter running; a counter starts at key-on on the tick grid, freezes at chON 0 and restarts on a DDA release (C level)
