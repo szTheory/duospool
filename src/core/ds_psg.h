@@ -7,8 +7,8 @@
  * PR-1 (the D-222 carrier, no struct ds_bus member): inside a step machine_time is the step start, so the stored PSG distances stay relative to machine_time - 1 for the whole step; a step_end 0 call processes every event with time <= stamp without rebasing,
  * and the step_end 1 call folds to the step's last clock and rebases the distances to it. An out-of-step bus write (a test with no bus) folds at its stamp with no rebase. obs is the observer log or NULL: its pcm channel (on, and the cursor of the next sample index, plan 05-04)
  * is read to visit the sample instants and nothing else of it is read; samples are emitted through ds_obs_pcm, the DSPE record of a write through ds_obs_psg in bus.c.
- * A distance r of PSGT names the next event at machine_time + r - 1 (D-186); r = 0 is a frozen channel counter. Between steps the D-203 ranges hold at the instance's d: a running channel 1..d x 4096 (select 1 too: no LFO couples it before 05.1-01, which
- * adds the coupled range up to d x 4096 x 256), a noise counter 1..d x 64 x 31, and every next event on the tick grid of d (psg_tick_divisor, 3 or 6, read from the profile by ds_psg_divisor and stored nowhere, D-183, D-223). The restore decoder refuses
+ * A distance r of PSGT names the next event at machine_time + r - 1 (D-186); r = 0 is a frozen channel counter. Between steps the D-203 ranges hold at the instance's d: a running channel 1..d x 4096 (a running select 1 1..d x 4096 x 256, the coupled range
+ * of plan 05.1-01, whatever the coupling, C-09), a noise counter 1..d x 64 x 31, and every next event on the tick grid of d (psg_tick_divisor, 3 or 6, read from the profile by ds_psg_divisor and stored nowhere, D-183, D-223). The restore decoder refuses
  * anything outside these (snapshot.c dec_psgt, review WR-02).
  */
 #ifndef DS_PSG_H
@@ -20,7 +20,7 @@
 #include "ds_core.h"
 #include "ds_obs.h"
 
-/* the largest distances at d = 6 (D-195): a channel step 6 x 4096, a coupled select-1 step 6 x 4096 x 256 (05.1-01; it bounds the fold offsets now and no restore yet), a noise period 6 x 64 x 31; the restore bounds at d are these / 6 x d */
+/* the largest distances at d = 6 (D-195): a channel step 6 x 4096, a coupled select-1 step 6 x 4096 x 256 (plan 05.1-01: it bounds the fold offsets and a running select 1 on restore, C-09), a noise period 6 x 64 x 31; the restore bounds at d are these / 6 x d */
 #define DS_PSG_CHAN_REM_MAX 24576u
 #define DS_PSG_COUPLED_REM_MAX 6291456u
 #define DS_PSG_NOISE_REM_MAX 11904u

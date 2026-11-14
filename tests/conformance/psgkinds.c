@@ -5,9 +5,11 @@
  * independent script outside the repository; never a value read back from the core first. The class of each row is named in the case comment. Evidence tier E0: these kinds show the core follows the project's written rules, nothing about hardware.
  *   psg_decode           expect rows=all: the mirror (offsets r, r + $10, r + $3F0 through the bus), the storage masks, reg $A..$F, R2..R7 at select 6/7, R7 at select 0..3, R1/R8/R9 at any select, sel_before
  *   psg_wave_ptr         expect rows=all: the R6 wave pointer and DDA latch procedures and the channel counter bookkeeping (key-on, freeze, F = 0, DDA release)
- *   psg_lfo_trg          expect rows=all: R9 TRG reset and freeze, the TRG release restart, UNMODELLED, the D-231 TRG state with widx[1] = 5 restored
+ *   psg_lfo_trg          expect rows=all: R9 TRG reset and freeze, the TRG release restart, no UNMODELLED, the D-231 TRG state with widx[1] = 5 restored, and the LFO of plan 05.1-01: F0' at CTL 1, 2, 3 and the wrap, the TRG hold at wave[1][0], the coupled
+ *                        step (FLF 150 and 0), the coupled release, the select-0 key-on, the read-after-step tie and a coupling change
  *   psg_poweron          expect rows=all: the PSG power-on state under zero, v1, v2, v3 and v4 (seeds 1, 2), the v4 wave draw, the noise counters from time 0
- *   psg_restore_divisor  expect rows=all: a psg_tick_divisor=3 snapshot is refused by a default instance as snapshot.profile and restored by a d = 3 one (D-223), within the d = 3 distance bounds and refused past them (D-203, review WR-02)
+ *   psg_restore_divisor  expect rows=all: a psg_tick_divisor=3 snapshot is refused by a default instance as snapshot.profile and restored by a d = 3 one (D-223), within the d = 3 distance bounds and refused past them (D-203, review WR-02, the coupled select-1
+ *                        bound of C-09)
  *   psg_vol_table        expect rows=all: the 30 rows of psg_vol.def strictly decrease from 32768 to 219, and att 29, 30 and 91 contribute 31 x 219, 0 and 0 (plan 05-06)
  *   psg_pure_function    expect rows=all: widx(T + 6F) = widx(T) + 1 and widx(T + 192F) = widx(T) for four F, the noise distance periodic with 384 x NFc for three NFc (plan 05-06)
  * (later plans add psg_fold and others to this file.) Test code only, never installed. Includes the core's private ds_psg.h as vdckinds.c includes ds_vdc.h.
@@ -301,6 +303,104 @@ void kind_psg_wave_ptr(const struct kase *k, struct ctx *c, char *got, size_t go
     release_boot(&b);
 }
 
+/* the F0' row helper (plan 05.1-01): select 1 holds word 0 = word under TRG 1 (keyed on when sel1_on, else chON 0); select 0 at F = f0 is keyed on at the tick 6,000 under R9 = r9; 1 when its first two events are at 6,000 + 6 x fp and 6,000 + 12 x fp (distances one more,
+ * B = -1): the key-on and the first reload both read the period 6 x fp */
+static int pk_lfo_f0_row(struct ds_instance *w, uint32_t f0, uint32_t word, uint32_t r9, uint32_t sel1_on, uint32_t fp)
+{
+    struct ds_psg_write_info info;
+    int ok;
+
+    pk_reset(w);
+    (void)pk_w(w, 0u, 1u, 10u, &info);
+    (void)pk_w(w, 9u, 0x80u, 20u, &info);
+    (void)pk_w(w, 6u, word, 30u, &info);
+    (void)pk_w(w, 4u, sel1_on != 0u ? 0x80u : 0x00u, 40u, &info);
+    (void)pk_w(w, 0u, 0u, 50u, &info);
+    (void)pk_w(w, 2u, f0 & 0xFFu, 60u, &info);
+    (void)pk_w(w, 3u, f0 >> 8, 70u, &info);
+    (void)pk_w(w, 9u, r9, 80u, &info);
+    (void)pk_w(w, 4u, 0x80u, 6000u, &info);
+    ok = w->psg_rem[0] == 6001u + 6u * fp;
+    ds_psg_advance(w, 6000u + 6u * fp, 0u, NULL);
+    return ok && w->psg_widx[0] == 1u && w->psg_rem[0] == 6001u + 12u * fp;
+}
+
+/*
+ * The LFO rows of plan 05.1-01 (D-184, D-185, D-192, D-219, D-220, D-231; d = 6, machine time 0, distances from B = -1). Classes: F0' at F0 512 with w $18 and CTL 1, 2, 3 (520, 544, 640) and w $08 at CTL 1 (504) MAN:P8-6+P8-7+P8-8 (the key-on phase of the row
+ * ASSUMED:LED-AUD-0012, so the rows are ASSUMED); F0 16, w $00, CTL 1 gives 0 read as 4096 ASSUMED:LED-AUD-0007+LED-AUD-0011 (lfo_wrap, a disputed point); select 1 off with CTL 1 leaves select 0 at 512 MAN:P8-6+P8-9; TRG 1 holds w at wave[1][0] with widx[1] = 5
+ * MAN:P8-6 (D-219, D-231); the coupled step 6 x 128 x 150 = 115,200 MAN:P8-6+P8-9+H8-23 (phase-free: one step and the pending event + 115,200 between T and T + 115,200); FLF 0 as 256 (196,608) ASSUMED:LED-AUD-0007; the coupled release, the select-0 key-on,
+ * the read-after-step tie and the coupling change ASSUMED:LED-AUD-0011. Expected values are hand arithmetic from those rules, never read from the core.
+ */
+static void pk_lfo_rows(struct ds_instance *w, struct ctx *c)
+{
+    struct ds_psg_write_info info;
+    uint32_t i;
+    uint32_t w1;
+    uint32_t r1;
+    char msg[240];
+
+    check(c, pk_lfo_f0_row(w, 512u, 0x18u, 0x81u, 1u, 520u), "F0 512, w $18, CTL 1: select 0 does not step every 6 x 520 (F0' = 512 + $18 - 16)");
+    check(c, pk_lfo_f0_row(w, 512u, 0x18u, 0x82u, 1u, 544u), "F0 512, w $18, CTL 2: select 0 does not step every 6 x 544 (F0' = 512 + ($18 << 2) - (16 << 2))");
+    check(c, pk_lfo_f0_row(w, 512u, 0x18u, 0x83u, 1u, 640u), "F0 512, w $18, CTL 3: select 0 does not step every 6 x 640 (F0' = 512 + ($18 << 4) - (16 << 4))");
+    check(c, pk_lfo_f0_row(w, 512u, 0x08u, 0x81u, 1u, 504u), "F0 512, w $08, CTL 1: select 0 does not step every 6 x 504 (F0' = 512 + 8 - 16)");
+    check(c, pk_lfo_f0_row(w, 16u, 0x00u, 0x81u, 1u, 4096u), "F0 16, w $00, CTL 1: select 0 does not step every 6 x 4096 (F0' = 0 read as 4096, lfo_wrap ASSUMED)");
+    check(c, pk_lfo_f0_row(w, 512u, 0x18u, 0x81u, 0u, 512u), "select 1 off with CTL 1: select 0 is modulated (it must step every 6 x 512)");
+    /* TRG 1 holds w at wave[1][0] whatever widx[1] is: R9 $81 (widx[1] 0), five R6 writes at chON 0 ($18, then 1..4; wave[1][5] stays 0, which would give 496), select 1 keyed on under TRG 1 (frozen, widx[1] 5 kept, LED-AUD-0004), select 0 F 512 keyed on at 6,000 */
+    pk_reset(w);
+    (void)pk_w(w, 0u, 1u, 10u, &info);
+    (void)pk_w(w, 9u, 0x81u, 20u, &info);
+    for (i = 0u; i < 5u; i++) {
+        (void)pk_w(w, 6u, i == 0u ? 0x18u : i, 30u + i, &info);
+    }
+    (void)pk_w(w, 4u, 0x80u, 40u, &info);
+    (void)pk_w(w, 0u, 0u, 50u, &info);
+    (void)pk_w(w, 3u, 0x02u, 60u, &info);
+    (void)pk_w(w, 4u, 0x80u, 6000u, &info);
+    ds_psg_advance(w, 9120u, 0u, NULL);
+    check(c, w->psg_widx[1] == 5u && w->psg_rem[1] == 0u && w->psg_widx[0] == 1u && w->psg_rem[0] == 12241u, "TRG 1 with widx[1] = 5: select 1 not frozen at index 5, or select 0 not stepping every 6 x 520 from wave[1][0] = $18 (events 9,120 and 12,240)");
+    /* the coupled pair: wave[1][0] = $18, wave[1][1] = $08, R9 $81 again (widx[1] 0), F1 128 (R2 $80), select 1 keyed on under TRG 1, FLF 150 (R8 $96), select 0 F 512 keyed on at 56,643 under CTL 1 and TRG 1: its first reload at 56,640 + 6 x 520 = 59,760 */
+    pk_reset(w);
+    (void)pk_w(w, 0u, 1u, 10u, &info);
+    (void)pk_w(w, 9u, 0x81u, 20u, &info);
+    (void)pk_w(w, 6u, 0x18u, 30u, &info);
+    (void)pk_w(w, 6u, 0x08u, 40u, &info);
+    (void)pk_w(w, 9u, 0x81u, 50u, &info);
+    (void)pk_w(w, 2u, 0x80u, 60u, &info);
+    (void)pk_w(w, 4u, 0x80u, 70u, &info);
+    (void)pk_w(w, 8u, 0x96u, 80u, &info);
+    (void)pk_w(w, 0u, 0u, 90u, &info);
+    (void)pk_w(w, 3u, 0x02u, 100u, &info);
+    (void)pk_w(w, 4u, 0x80u, 56643u, &info);
+    snprintf(msg, sizeof msg, "select 0 keyed on at 56,643 under CTL 1 and TRG 1 has the distance %u, not 59,761 (first reload at 56,640 + 6 x 520)", (unsigned)w->psg_rem[0]);
+    check(c, w->psg_rem[0] == 59761u, msg);
+    /* the coupled release: R9 $01 at 60,003 restarts select 1 at 60,000 + 6 x 128 x 150 = 175,200 */
+    (void)pk_w(w, 9u, 0x01u, 60003u, &info);
+    snprintf(msg, sizeof msg, "R9 $01 at 60,003 with select 0 and 1 on gives select 1 the distance %u, not 175,201 (next event 60,000 + 115,200)", (unsigned)w->psg_rem[1]);
+    check(c, w->psg_rem[1] == 175201u && w->psg_widx[1] == 0u, msg);
+    /* the tie at 175,200: select 0 steps at 59,760 + 3,120 j, and j = 37 is 175,200, the select-1 step; the step comes first, so that select-0 reload reads wave[1][1] = $08 (F0' 504): next select-0 event 175,200 + 3,024 = 178,224, index 38 mod 32 = 6 */
+    ds_psg_advance(w, 100000u, 0u, NULL);
+    w1 = w->psg_widx[1];
+    r1 = w->psg_rem[1];
+    ds_psg_advance(w, 175200u, 0u, NULL);
+    snprintf(msg, sizeof msg, "the tie at 175,200: select 0 has the distance %u and index %u, not 178,225 and 6 (the select-1 step first, then the reload reads $08)", (unsigned)w->psg_rem[0], (unsigned)w->psg_widx[0]);
+    check(c, w->psg_widx[1] == 1u && w->psg_rem[0] == 178225u && w->psg_widx[0] == 6u, msg);
+    /* the coupled step, phase-free: between T = 100,000 and T + 115,200 select 1 steps once and its pending event moves by 115,200 */
+    ds_psg_advance(w, 215200u, 0u, NULL);
+    check(c, w->psg_widx[1] == ((w1 + 1u) & 31u) && w->psg_rem[1] == r1 + 115200u, "F1 128, FLF 150, CTL 1, TRG 0: select 1 does not step once with its next event 115,200 later between 100,000 and 215,200");
+    /* a coupling change: R9 $00 at 250,000 leaves the pending event at 290,400; the next one is 290,400 + 6 x 128 = 291,168 */
+    (void)pk_w(w, 9u, 0x00u, 250000u, &info);
+    ds_psg_advance(w, 290400u, 0u, NULL);
+    check(c, w->psg_widx[1] == 2u && w->psg_rem[1] == 291169u, "R9 $00 at 250,000: select 1 did not step at its coupled instant 290,400 with the next event an uncoupled 768 later");
+    /* FLF 0 read as 256: R8 $00, R9 $01 (no restart, TRG was 0); from the step at 291,168 select 1 steps every 6 x 128 x 256 = 196,608 (phase-free between 300,000 and 496,608) */
+    (void)pk_w(w, 8u, 0x00u, 290500u, &info);
+    (void)pk_w(w, 9u, 0x01u, 290600u, &info);
+    ds_psg_advance(w, 300000u, 0u, NULL);
+    w1 = w->psg_widx[1];
+    r1 = w->psg_rem[1];
+    ds_psg_advance(w, 496608u, 0u, NULL);
+    check(c, w->psg_widx[1] == ((w1 + 1u) & 31u) && w->psg_rem[1] == r1 + 196608u, "FLF 0, F1 128, CTL 1: select 1 does not step once with its next event 196,608 later between 300,000 and 496,608");
+}
+
 void kind_psg_lfo_trg(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
 {
     struct booted b;
@@ -336,11 +436,11 @@ void kind_psg_lfo_trg(const struct kase *k, struct ctx *c, char *got, size_t got
     check(c, w->psg_widx[1] == 0u, "TRG release: select 1 stepped before 6,534");
     ds_psg_advance(w, 6534u, 0u, NULL);
     check(c, w->psg_widx[1] == 1u, "TRG release: select 1 did not step at 6,534");
-    /* R9 with CTL != 0 sets UNMODELLED and stores value & $83 (D-192, until plan 05-09) */
+    /* R9 with CTL != 0 stores value & $83 and posts no UNMODELLED bit since plan 05.1-01 (MAN:P8-6; D-192, D-234) */
     e = pk_w(w, 9u, 0x7Du, 7000u, &info);
-    check(c, e == (uint32_t)DS_PSGE_UNMODELLED && w->psg_lfo_ctl == 0x01u && info.post == 0x01u, "R9 $7D did not store $01 with UNMODELLED");
+    check(c, e == 0u && w->psg_lfo_ctl == 0x01u && info.post == 0x01u, "R9 $7D did not store $01 with no effect bit (UNMODELLED retired in plan 05.1-01)");
     e = pk_w(w, 9u, 0xFFu, 7001u, &info);
-    check(c, e == ((uint32_t)DS_PSGE_UNMODELLED | (uint32_t)DS_PSGE_LFO_RESET) && w->psg_lfo_ctl == 0x83u, "R9 $FF did not store $83 with LFO_RESET and UNMODELLED");
+    check(c, e == (uint32_t)DS_PSGE_LFO_RESET && w->psg_lfo_ctl == 0x83u, "R9 $FF did not store $83 with LFO_RESET alone (UNMODELLED retired in plan 05.1-01)");
     /* D-231: R9 $80, R0 1, R4 $00 and five R6 writes leave widx[1] = 5 under TRG 1; the state is reachable, and its snapshot restores */
     pk_reset(w);
     (void)ds_psg_write(w, 9u, 0x80u, 0u, &info);
@@ -359,7 +459,8 @@ void kind_psg_lfo_trg(const struct kase *k, struct ctx *c, char *got, size_t got
     }
     check(c, ds_snapshot(w, snap, size, NULL) == (uint32_t)DS_SNAPREF_NONE && ds_restore(w, snap, size) == (uint32_t)DS_SNAPREF_NONE && w->psg_widx[1] == 5u, "the TRG state with widx[1] = 5 is not restored (D-231 dropped the rule TRG implies widx[1] = 0)");
     free(snap);
-    snprintf(got, gotcap, "rows=10");
+    pk_lfo_rows(w, c);
+    snprintf(got, gotcap, "rows=23");
     release_boot(&b);
 }
 
@@ -502,19 +603,20 @@ void kind_psg_restore_divisor(const struct kase *k, struct ctx *c, char *got, si
     check(c, ds_snapshot(w3, snap, size, NULL) == (uint32_t)DS_SNAPREF_NONE, "ds_snapshot of the d = 3 instance was refused");
     check(c, ds_restore(w6, snap, size) == (uint32_t)DS_SNAPREF_profile, "a d = 3 snapshot restored into a default (d = 6) instance is not refused as snapshot.profile (D-223)");
     check(c, ds_restore(t3, snap, size) == (uint32_t)DS_SNAPREF_NONE && t3->psg_nrem[0] == 4u, "a d = 3 snapshot is not restored by a d = 3 instance");
-    /* the restore bounds at d = 3 (review WR-02): at time 0 the d = 3 grid is r = 1 mod 3, so the largest on-grid distances are 12,286 (the step bound 3 x 4096 = 12,288, select 1 included) and 5,950 (the noise bound 3 x 64 x 31 = 5,952), and the next on-grid ones are
-     * refused as field. The d = 6 bounds (24,576, 11,904) and the coupled bound would accept every row, so a decoder that ignores d or couples select 1 fails here */
+    /* the restore bounds at d = 3 (review WR-02, C-09): at time 0 the d = 3 grid is r = 1 mod 3, so the largest on-grid distances are 12,286 (the step bound 3 x 4096 = 12,288) and 5,950 (the noise bound 3 x 64 x 31 = 5,952), and the next on-grid ones are refused as
+     * field; a running select 1 has the coupled bound 3 x 4096 x 256 = 3,145,728 whatever the coupling (DS_PSG_COUPLED_REM_MAX / 6 x d), so 12,289 is accepted and 3,145,729, the next on-grid distance past it, is refused. The d = 6 bounds (24,576, 6,291,456,
+     * 11,904) would accept every row, so a decoder that ignores d fails here, and one that gives select 1 the channel bound refuses 12,289 */
     {
         static const struct {
             uint32_t ch; /* 0..5 a running channel (chON 1, DDA 0), 6 noise counter 0 */
             uint32_t r;
             uint32_t want;
-        } rows3[6] = {{0u, 12286u, (uint32_t)DS_SNAPREF_NONE}, {0u, 12289u, (uint32_t)DS_SNAPREF_field}, {1u, 12286u, (uint32_t)DS_SNAPREF_NONE},
-                      {1u, 12289u, (uint32_t)DS_SNAPREF_field}, {6u, 5950u, (uint32_t)DS_SNAPREF_NONE}, {6u, 5953u, (uint32_t)DS_SNAPREF_field}};
+        } rows3[7] = {{0u, 12286u, (uint32_t)DS_SNAPREF_NONE}, {0u, 12289u, (uint32_t)DS_SNAPREF_field}, {1u, 12286u, (uint32_t)DS_SNAPREF_NONE}, {1u, 12289u, (uint32_t)DS_SNAPREF_NONE},
+                      {1u, 3145729u, (uint32_t)DS_SNAPREF_field}, {6u, 5950u, (uint32_t)DS_SNAPREF_NONE}, {6u, 5953u, (uint32_t)DS_SNAPREF_field}};
         unsigned i;
         char msg[200];
 
-        for (i = 0u; i < 6u; i++) {
+        for (i = 0u; i < 7u; i++) {
             uint32_t got_code = UINT32_MAX;
 
             if (rows3[i].ch < 6u) {
@@ -541,7 +643,7 @@ void kind_psg_restore_divisor(const struct kase *k, struct ctx *c, char *got, si
     release_boot(&b3);
     release_boot(&b6);
     release_boot(&bt);
-    snprintf(got, gotcap, "rows=9");
+    snprintf(got, gotcap, "rows=10");
 }
 
 /* ---- psg_fold (plan 05-04 Task 2; D-185, D-186, D-195, D-200, D-221, F-64; the kind_vdc_fold shape) ----
@@ -620,15 +722,17 @@ static int pf_frozen(const struct ds_instance *w, uint32_t ch)
     return (w->psg_ctl[ch] & 0x80u) == 0u || (w->psg_ctl[ch] & 0x40u) != 0u || (ch == 1u && (w->psg_lfo_ctl & 0x80u) != 0u);
 }
 
-/* the D-186 invariant between steps: 0 when it holds */
+/* the D-186 invariant between steps: 0 when it holds. A running select 1 is bounded by d x (DS_PSG_COUPLED_REM_MAX / 6), the coupled bound of dec_psgt, whatever the coupling (plan 05.1-01, C-09): the random programs write R8 and R9, and a pending coupled distance
+ * outlives a coupling change until its next reload */
 static int pf_invariant(const struct ds_instance *w, uint32_t d)
 {
     uint32_t k;
 
     for (k = 0u; k < 6u; k++) {
         uint32_t r = w->psg_rem[k];
+        uint32_t lim = k == 1u ? d * (DS_PSG_COUPLED_REM_MAX / 6u) : 6u * 4096u;
 
-        if (pf_frozen(w, k) ? r != 0u : (r == 0u || r > 6u * 4096u || (w->machine_time - 1u + r) % d != 0u)) {
+        if (pf_frozen(w, k) ? r != 0u : (r == 0u || r > lim || (w->machine_time - 1u + r) % d != 0u)) {
             return -1;
         }
     }

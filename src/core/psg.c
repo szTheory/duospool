@@ -4,7 +4,8 @@
  * psg.c - the PSG (plans 05-02, 05-03; D-183..D-186, D-188..D-193, D-202..D-204, D-220, PR-1, PR-2, PR-7). The fold and its two call sites are described in ds_psg.h. Plan 05-03 adds the state, the register decode and storage (ds_psg_write), the tick divisor,
  * the register mask table, the power-on values and the fold of the
  * counters (the two noise counters and LFSRs clock from time 0 under every policy, a running channel counter advances its wave index in closed form); plan 05-04 adds the synthesis (ds_psg_sample, the volume curve psg_vol.def) and the frame emission on the 192-clock grid
- * (the DSPE record of a write is built in bus.c); plan 05-07 adds the noise level under NE (psg_noise_bit, RF-6). No allocation, no global, no clock.
+ * (the DSPE record of a write is built in bus.c); plan 05-07 adds the noise level under NE (psg_noise_bit, RF-6); plan 05.1-01 adds the LFO (D-184, D-185, D-192, D-219, D-231): the coupled select-1 step and the modulated select-0 value F0' in the fold
+ * (lfo_applies, lfo_f0, chan_period, fold_lfo). No allocation, no global, no clock.
  * In-fold times are offsets from the base B = machine_time - 1 (D-221, RF-8): an event at offset o is at time B + o, the stamp is at offset t = stamp - B, and no absolute time near 2^64 is ever formed.
  */
 #include <stddef.h>
@@ -82,12 +83,81 @@ static uint64_t noise_period(const struct ds_instance *inst, uint32_t n, uint32_
     return (uint64_t)d * (nfc != 0u ? 64u * nfc : (uint32_t)DS_CONST_psg_noise_nf0_ticks);
 }
 
-/* the step period of channel ch in master clocks: d x Fe with Fe = F, or psg_f0_as when F = 0 (D-184); uncoupled for every channel until plan 05.1-01 (Phase 5.1, D-234) */
+/* a channel counter runs while chON is 1 and DDA is 0, and for select 1 while TRG is 0 (D-185, D-192) */
+static uint32_t chan_running(const struct ds_instance *inst, uint32_t ch)
+{
+    uint32_t ctl = inst->psg_ctl[ch];
+
+    return (ctl & 0x80u) != 0u && (ctl & 0x40u) == 0u && !(ch == 1u && (inst->psg_lfo_ctl & 0x80u) != 0u) ? 1u : 0u;
+}
+
+/* the LFO applies while LF CTL != 0 and select 0 and select 1 both have chON 1 (D-192 as amended by D-219; MAN:P8-6+P8-9, "enabled" read as chON ASSUMED LED-AUD-0011; plan 05.1-01) */
+static uint32_t lfo_applies(const struct ds_instance *inst)
+{
+    return ((uint32_t)inst->psg_lfo_ctl & 3u) != 0u && ((uint32_t)inst->psg_ctl[0] & 0x80u) != 0u && ((uint32_t)inst->psg_ctl[1] & 0x80u) != 0u ? 1u : 0u;
+}
+
+/* the modulated select-0 value F0' = (F0 + $1000 + (w << s) - (16 << s)) & $FFF, 0 read as psg_f0_as, with s = 2 x (CTL - 1) and w the select-1 word at its counter, wave[1][0] while TRG = 1 whatever widx[1] is (D-184, D-219, D-231; MAN:P8-6+P8-7+P8-8;
+ * the 12-bit mask, the zero rule and the read instant ASSUMED LED-AUD-0007, LED-AUD-0011). Called only while the LFO applies (CTL 1..3, so s is 0, 2 or 4); the unsigned sum lies in 3,840..8,431 before the mask, so it never wraps (D-195) */
+static uint32_t lfo_f0(const struct ds_instance *inst)
+{
+    uint32_t ctl = (uint32_t)inst->psg_lfo_ctl;
+    uint32_t w = (uint32_t)inst->psg_wave[32u + ((ctl & 0x80u) != 0u ? 0u : ((uint32_t)inst->psg_widx[1] & 31u))] & 0x1Fu;
+    uint32_t s = 2u * ((ctl & 3u) - 1u); /* the CTL shift 0, 2 or 4: one statement, the anchor of the toy psg-lfo-shift (plan 05.1-01) */
+    uint32_t f = (((uint32_t)inst->psg_freq[0] & 0xFFFu) + 0x1000u + (w << s) - (16u << s)) & 0xFFFu;
+
+    return f != 0u ? f : (uint32_t)DS_CONST_psg_f0_as;
+}
+
+/* the step period of channel ch in master clocks (D-184): d x Fe with Fe = F, or psg_f0_as when F = 0; while the LFO applies select 0 steps every d x F0' and select 1, with TRG 0, every d x F1e x FLFe with FLFe = FLF, or psg_lfo_f0_as when FLF = 0
+ * (one combined counter, D-185; MAN:P8-6+P8-9, FLF = 0 ASSUMED LED-AUD-0007). Read at each reload and at a start (key-on, a DDA or TRG release), so a coupling change applies from the next reload of a running counter (plan 05.1-01) */
 static uint64_t chan_period(const struct ds_instance *inst, uint32_t ch, uint32_t d)
 {
     uint32_t f = (uint32_t)inst->psg_freq[ch] & 0xFFFu;
+    uint64_t fe = f != 0u ? f : (uint32_t)DS_CONST_psg_f0_as;
 
-    return (uint64_t)d * (f != 0u ? f : (uint32_t)DS_CONST_psg_f0_as);
+    if (ch <= 1u && lfo_applies(inst) != 0u) {
+        if (ch == 0u) {
+            fe = lfo_f0(inst);
+        } else if (((uint32_t)inst->psg_lfo_ctl & 0x80u) == 0u) {
+            uint32_t flf = (uint32_t)inst->psg_lfo_freq;
+
+            fe *= flf != 0u ? flf : (uint32_t)DS_CONST_psg_lfo_f0_as;
+        }
+    }
+    return (uint64_t)d * fe;
+}
+
+/* the closed-form catch-up of one running channel counter to offset t (RESEARCH section 4): with its next event at offset o <= t it steps k = (t - o) / q + 1 times with the period q read now, and its wave index advances by k mod 32. Exact while q is constant over the span */
+static void chan_catch_up(struct ds_instance *inst, uint32_t ch, uint64_t t, uint32_t d)
+{
+    uint64_t o = inst->psg_rem[ch];
+
+    if (o != 0u && o <= t) {
+        uint64_t q = chan_period(inst, ch, d);
+        uint64_t steps = (t - o) / q + 1u;
+
+        inst->psg_widx[ch] = (uint8_t)(((uint32_t)inst->psg_widx[ch] + (uint32_t)(steps & 31u)) & 31u);
+        inst->psg_rem[ch] = (uint32_t)(o + steps * q);
+    }
+}
+
+/* select 0 and select 1 while the LFO applies (D-185, D-186, RESEARCH section 4, plan 05.1-01): F0' is constant between two select-1 steps, so select 0 is caught up in closed form to the instant before the next select-1 step, then select 1 steps (index + 1 mod 32, next event
+ * + d x F1e x FLFe), and the select-0 reload at that same instant comes after it and reads the new word (the tie order of D-185). With select 1 frozen (TRG 1, chON 0 or DDA 1) select 0 is caught up to t at once. One iteration per select-1 step at or before t:
+ * a coupled step is at least d >= 3 master clocks, so a fold of at most 600 clocks (ds_max_step_mclk, D-221) runs at most 200 iterations plus one */
+static void fold_lfo(struct ds_instance *inst, uint64_t t, uint32_t d)
+{
+    for (;;) {
+        uint64_t o1 = chan_running(inst, 1u) != 0u ? inst->psg_rem[1] : 0u;
+
+        if (o1 == 0u || o1 > t) {
+            chan_catch_up(inst, 0u, t, d);
+            break;
+        }
+        chan_catch_up(inst, 0u, o1 - 1u, d);
+        inst->psg_widx[1] = (uint8_t)(((uint32_t)inst->psg_widx[1] + 1u) & 31u);
+        inst->psg_rem[1] = (uint32_t)(o1 + chan_period(inst, 1u, d));
+    }
 }
 
 /* the volume curve (psg_vol.def, LED-AUD-0009): VOL[a] for a = 0..29, indexed only below psg_silence_att (D-194, D-195) */
@@ -100,7 +170,7 @@ _Static_assert(sizeof vol / sizeof vol[0] == (size_t)DS_CONST_psg_silence_att, "
 _Static_assert(6u * 31u * 32768u < (1u << 31), "the sum of six channels at level 31 and VOL[0] (6,094,848) must stay below 2^31 (D-194, D-195)");
 
 /* every event at an offset <= t from B, with no rebase (PR-1): the noise counters in time order, select 4's counter before select 5's at one instant, each event one LFSR step and a reload with the period in force (D-185, D-193); then every running channel counter in closed form
- * (RESEARCH section 4): with its next event at offset o <= t it steps k = (t - o) / q + 1 times with the period q read at its last reload, and its wave index advances by k mod 32. Called once per sample instant and once at the stamp, so a repeated call with a larger t continues the fold */
+ * (chan_catch_up), select 0 and select 1 event by event while the LFO applies (fold_lfo). Called once per sample instant and once at the stamp, so a repeated call with a larger t continues the fold */
 static void fold_to(struct ds_instance *inst, uint64_t t, uint32_t d)
 {
     uint64_t no[2];
@@ -119,16 +189,13 @@ static void fold_to(struct ds_instance *inst, uint64_t t, uint32_t d)
     }
     inst->psg_nrem[0] = (uint32_t)no[0];
     inst->psg_nrem[1] = (uint32_t)no[1];
-    for (k = 0u; k < 6u; k++) {
-        uint64_t o = inst->psg_rem[k];
-
-        if (o != 0u && o <= t) {
-            uint64_t q = chan_period(inst, k, d);
-            uint64_t steps = (t - o) / q + 1u;
-
-            inst->psg_widx[k] = (uint8_t)(((uint32_t)inst->psg_widx[k] + (uint32_t)(steps & 31u)) & 31u);
-            inst->psg_rem[k] = (uint32_t)(o + steps * q);
-        }
+    k = 0u;
+    if (lfo_applies(inst) != 0u) {
+        fold_lfo(inst, t, d);
+        k = 2u;
+    }
+    for (; k < 6u; k++) {
+        chan_catch_up(inst, k, t, d);
     }
 }
 
@@ -222,15 +289,8 @@ void ds_psg_sample(const struct ds_instance *inst, uint32_t *l, uint32_t *r)
     *r = sum_r;
 }
 
-/* a channel counter runs while chON is 1 and DDA is 0, and for select 1 while TRG is 0 (D-185, D-192) */
-static uint32_t chan_running(const struct ds_instance *inst, uint32_t ch)
-{
-    uint32_t ctl = inst->psg_ctl[ch];
-
-    return (ctl & 0x80u) != 0u && (ctl & 0x40u) == 0u && !(ch == 1u && (inst->psg_lfo_ctl & 0x80u) != 0u) ? 1u : 0u;
-}
-
-/* key-on or a restart at stamp w (D-185, ASSUMED LED-AUD-0012): the next event is (w - w mod d) + d x Fe, stored as its offset from B = machine_time - 1 (the stamp is at offset w - B >= 1), with the wave index unchanged (psg_keyon_widx_step 0) */
+/* key-on or a restart at stamp w (D-185, ASSUMED LED-AUD-0012): the next event is (w - w mod d) + d x Fe, stored as its offset from B = machine_time - 1 (the stamp is at offset w - B >= 1), with the wave index unchanged (psg_keyon_widx_step 0); Fe is the coupled one
+ * where the LFO applies (chan_period: F0' for select 0, F1e x FLFe for select 1, D-185, D-192, D-220) */
 static void chan_start(struct ds_instance *inst, uint32_t ch, uint64_t stamp)
 {
     uint32_t d = ds_psg_divisor(inst);
@@ -328,10 +388,7 @@ uint32_t ds_psg_write(struct ds_instance *inst, uint32_t reg, uint32_t value, ui
         } else if (trg_was != 0u && was == 0u && chan_running(inst, 1u) != 0u && DS_CONST_psg_trg_release_restart != 0) {
             chan_start(inst, 1u, stamp); /* TRG 1 -> 0 with select 1 otherwise running (psg_trg_release_restart, D-220) */
         }
-        if ((m & 0x03u) != 0u) {
-            effect |= (uint32_t)DS_PSGE_UNMODELLED; /* the modulation is plan 05.1-01's (Phase 5.1, D-234) */
-        }
-        break;
+        break; /* a CTL change on a running counter applies at its next reload (chan_period); no write sets UNMODELLED since plan 05.1-01 (D-192, D-234) */
     }
     }
     info->chan = (uint8_t)chan;

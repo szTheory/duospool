@@ -816,10 +816,10 @@ static uint32_t dec_satb(struct ds_instance *inst, struct vctx *v, struct rd *r,
 /*
  * The PSG regions (plan 05-03; D-202, D-203, D-231, F-59). Pass 1 refuses as field, before any arithmetic, every PSG0 byte outside its register mask (the one table ds_psg_reg_mask of psg.c that the write path stores through), a wave index or DDA latch
  * above 31, a DDA channel whose wave index is not 0 (R4 with DDA 1 resets it), every wave byte above 31, an LFSR outside 1..$3FFFF (0 is the locked state no step leaves), a channel distance that is not 0 exactly when the channel is frozen (chON 0, DDA 1, or
- * select 1 under TRG), a running distance outside 1..d x 4096 (24,576 at d = 6, 12,288 at d = 3; select 1 too, see below), a noise distance outside 1..d x 64 x 31 (11,904 at d = 6, 5,952 at d = 3), and a running or noise counter whose next event
+ * select 1 under TRG), a running distance outside 1..d x 4096 (24,576 at d = 6, 12,288 at d = 3; select 1 has the coupled bound, see below), a noise distance outside 1..d x 64 x 31 (11,904 at d = 6, 5,952 at d = 3), and a running or noise counter whose next event
  * machine_time + r - 1 is off the tick grid of the restoring instance's d (computed only once r >= 1 is known, so it never wraps). d is the restoring instance's (D-223: a snapshot of the other d is refused by the profile identity first), so the bounds are the
- * reachable ones of that d (review WR-02). Select 1 has the channel bound, not the coupled bound 6,291,456 of D-203: no LFO couples it before 05.1-01, which restores the coupled bound with the coupled fold (05.1-CONTEXT C-09). D-231 dropped the rule "TRG implies
- * widx[1] = 0": R6 writes under TRG 1 advance widx[1] legally. The PSG0 values pass 1 has read are kept in struct vctx for the PSGT judgement.
+ * reachable ones of that d (review WR-02). A running select 1 has the coupled bound d x 4096 x 256 (6,291,456 at d = 6, 3,145,728 at d = 3; D-203, plan 05.1-01, 05.1-CONTEXT C-09) whatever the current coupling, because a pending coupled distance outlives an R9
+ * or R4 write that ends the coupling until its next reload. D-231 dropped the rule "TRG implies widx[1] = 0": R6 writes under TRG 1 advance widx[1] legally. The PSG0 values pass 1 has read are kept in struct vctx for the PSGT judgement.
  */
 static uint32_t psg_frozen(const struct vctx *v, uint32_t ch)
 {
@@ -912,7 +912,7 @@ static uint32_t dec_psgw(struct ds_instance *inst, struct vctx *v, struct rd *r,
     return bad != 0u ? (uint32_t)DS_SNAPREF_field : (uint32_t)DS_SNAPREF_NONE;
 }
 
-_Static_assert(DS_PSG_CHAN_REM_MAX % 6u == 0u && DS_PSG_NOISE_REM_MAX % 6u == 0u, "the d = 6 bounds of ds_psg.h must divide by 6 for the per-d bounds of dec_psgt");
+_Static_assert(DS_PSG_CHAN_REM_MAX % 6u == 0u && DS_PSG_COUPLED_REM_MAX % 6u == 0u && DS_PSG_NOISE_REM_MAX % 6u == 0u, "the d = 6 bounds of ds_psg.h must divide by 6 for the per-d bounds of dec_psgt");
 
 /* the next event machine_time + r - 1 of a counter with r >= 1 lies on the tick grid of d (D-185, D-203) */
 static uint32_t psg_on_grid(const struct vctx *v, uint32_t rem, uint32_t d)
@@ -928,6 +928,7 @@ static uint32_t dec_psgt(struct ds_instance *inst, struct vctx *v, struct rd *r,
     uint32_t k;
     uint32_t d;
     uint32_t chan_max;
+    uint32_t coupled_max;
     uint32_t noise_max;
     uint32_t bad = 0u;
 
@@ -949,13 +950,14 @@ static uint32_t dec_psgt(struct ds_instance *inst, struct vctx *v, struct rd *r,
         return (uint32_t)DS_SNAPREF_NONE;
     }
     d = ds_psg_divisor(inst);
-    chan_max = d * (DS_PSG_CHAN_REM_MAX / 6u);   /* d x 4096, the largest step at this d */
-    noise_max = d * (DS_PSG_NOISE_REM_MAX / 6u); /* d x 64 x 31, the largest noise period at this d */
+    chan_max = d * (DS_PSG_CHAN_REM_MAX / 6u);       /* d x 4096, the largest step at this d */
+    coupled_max = d * (DS_PSG_COUPLED_REM_MAX / 6u); /* d x 4096 x 256, the largest coupled select-1 step at this d (C-09) */
+    noise_max = d * (DS_PSG_NOISE_REM_MAX / 6u);     /* d x 64 x 31, the largest noise period at this d */
     for (k = 0u; k < 6u; k++) {
         if (psg_frozen(v, k) != 0u) {
             bad |= rem[k] != 0u ? 1u : 0u; /* a frozen counter has no pending event */
-        } else if (rem[k] == 0u || rem[k] > chan_max) {
-            bad |= 1u; /* a running counter has one, within its largest period (select 1 uncoupled until 05.1-01) */
+        } else if (rem[k] == 0u || rem[k] > (k == 1u ? coupled_max : chan_max)) {
+            bad |= 1u; /* a running counter has one, within its largest period (select 1: the coupled one, whatever the coupling) */
         } else {
             bad |= psg_on_grid(v, rem[k], d) == 0u ? 1u : 0u;
         }
