@@ -486,6 +486,8 @@ Community and prior art (evidence class E4 at best, agreement is not correctness
   Authority: the owner's approval of D-217 already covers the cut (it is recorded, never a gate failure); no new owner gate is crossed. Consequences: AUD-02 and AUD-03 complete with 05-10; AUD-01 stays advanced in Phase 5 and completes in Phase 05.1 (its text names the LFO);
   the 17 `later:05-09` lines of `tests/audio/RULES` become `limit` lines named `lfo-in-5.1` at 05-10 (the RULES lint accepts only `later:05-06`..`later:05-10`) and 05.1-01 returns them to `row`; the toy count stays 32 in Phase 5 (33 after 05.1-01);
   ROADMAP criterion 1 gains "LFO registers logged and decoded; LFO modulation in 5.1". Every 05-09 reference in this file and in 05-RESEARCH.md, 05-PATTERNS.md and 05-HANDBOOK.md reads as 05.1-01 from here on; the binding rules for 05.1 are listed in `05.1-CONTEXT.md`.
+- **D-235 (amends D-203, orchestrator, after the Phase 5 review fix WR-02).** Restore at the restoring instance's divisor d bounds a running channel, select 1 included, by d x 4096 and noise by d x 64 x 31; the D-203 text "6,291,456 for i = 1" is the LFO-coupled bound and is not accepted while the
+  core has no LFO model. Phase 5.1 plan 05.1-01 puts the coupled select-1 bound back (ruling C-09 in 05.1-CONTEXT). Tightening a restore rule does not change the serial layout, so no version bump follows (04.1 L-02 precedent).
 </errata>
 
 <specifics>
