@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Case ids that must come out guest_failure on the toy, one per line; a second column pass (a TAB and the word pass) marks a case that must STAY pass (F-4). Audio cases only (F-72): the red groups are lfo2 (CTL 2: 1,056 for 1,088) and lfo3 (CTL 3: 1,088 for 1,280) of lfo_static;
+# audio_lfo_ctl1 stays green because CTL 1 has the shift 0 under both rules (F0' 520, group lfo1).
+audio_lfo_static
+audio_lfo_ctl1	pass

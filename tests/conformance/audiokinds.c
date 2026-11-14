@@ -2993,7 +2993,12 @@ static void aj_forms(struct aj_ctx *j, const struct au_cap *x)
     aj_want(j, "ROWS cycle_phase of the words from word 0 passes", aj_eval(j, "ROWS", "cycle_phase", AJ_C ";side=L", AJ_WORDS, NULL, NULL, x, 0), AU_PASS);
     aj_want(j, "ROWS cycle_phase of the words rotated by one fails (cycle_order passes it)", aj_eval(j, "ROWS", "cycle_phase", AJ_C ";side=L", "words=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,0", NULL, NULL, x, 0), AU_FAIL);
     aj_want(j, "ROWS dda_ram_kept of the words passes", aj_eval(j, "ROWS", "dda_ram_kept", AJ_A ";side=R", AJ_WORDS, NULL, NULL, x, 0), AU_PASS);
-    aj_want(j, "ROWS a kind judged from a later plan (lfo_static) is harness", aj_eval(j, "ROWS", "lfo_static", AJ_A ";side=L", "r1=$FF", NULL, NULL, x, 0), AU_HARNESS);
+    /* lfo_static (plan 05.1-01): the period judge on k and d, d = k x F'; here F' = 128 + $10 - 16 = 128 at shift 0, the 128-sample cycle of A, so k = 4 cycles are d = 512 */
+    aj_want(j, "ROWS lfo_static f=128 w=$10 shift=0 k=4 d=512 passes", aj_eval(j, "ROWS", "lfo_static", AJ_A ";side=L", "f=128;w=$10;shift=0;k=4;d=512", NULL, NULL, x, 0), AU_PASS);
+    aj_want(j, "ROWS lfo_static with a wrong d (4 x 130 = 520) fails", aj_eval(j, "ROWS", "lfo_static", AJ_A ";side=L", "f=128;w=$12;shift=0;k=4;d=520", NULL, NULL, x, 0), AU_FAIL);
+    aj_want(j, "ROWS lfo_static AF0 (d + 1) fails", aj_eval(j, "ROWS", "lfo_static", AJ_A ";side=L", "f=128;w=$10;shift=0;k=4;d=512", NULL, NULL, x, 1), AU_FAIL);
+    aj_want(j, "ROWS lfo_static without d is harness", aj_eval(j, "ROWS", "lfo_static", AJ_A ";side=L", "f=128;w=$10;shift=0;k=4", NULL, NULL, x, 0), AU_HARNESS);
+    aj_want(j, "ROWS a kind judged from a later plan (lfo_dynamic, 05.1-02) is harness", aj_eval(j, "ROWS", "lfo_dynamic", AJ_A ";side=L", "r1=$FF", NULL, NULL, x, 0), AU_HARNESS);
     aj_want(j, "ROWS an unknown kind is refused", aj_eval(j, "ROWS", "loud", AJ_A ";side=L", "r1=$FF", NULL, NULL, x, 0), AU_HARNESS);
     aj_want(j, "ROWS the kind period under form REL is refused", aj_eval(j, "REL", "period", AJ_A ";side=L", "f=64;k=4;d=512", NULL, NULL, x, 0), AU_HARNESS);
     /* REL: period_ratio, same, atten_order, atten_equal (window A at x 1000, window B at x 500) */
@@ -3014,7 +3019,26 @@ static void aj_forms(struct aj_ctx *j, const struct au_cap *x)
     aj_want(j, "REL noise_ratio 1:1 of A and B (both on a 4-sample grid) passes", aj_eval(j, "REL", "noise_ratio", AJ_A ";side=L", "p0=1;p1=1", AJ_B ";side=L", "r1=$FF", x, 0), AU_PASS);
     aj_want(j, "REL noise_ratio 1:2 fails", aj_eval(j, "REL", "noise_ratio", AJ_A ";side=L", "p0=1;p1=2", AJ_B ";side=L", "r1=$FF", x, 0), AU_FAIL);
     aj_want(j, "REL noise_ratio AF0 (p0 + 1) fails", aj_eval(j, "REL", "noise_ratio", AJ_A ";side=L", "p0=1;p1=1", AJ_B ";side=L", "r1=$FF", x, 1), AU_FAIL);
-    aj_want(j, "REL a kind judged from a later plan (lfo_needs_sel1) is harness", aj_eval(j, "REL", "lfo_needs_sel1", AJ_A ";side=L", "r1=$FF", AJ_B ";side=L", "r1=$FF", x, 0), AU_HARNESS);
+    /* lfo_needs_sel1 (plan 05.1-01): the same judge over two windows (no REL kind is judged from a later plan any more); the fail row compares A with a copy of the capture whose B is rewritten at x 1000 with 2 samples per word, a 64-sample cycle: the period alone differs */
+    aj_want(j, "REL lfo_needs_sel1 of A on L and on R passes", aj_eval(j, "REL", "lfo_needs_sel1", AJ_A ";side=L", "n=256", AJ_A ";side=R", "r1=$FF", x, 0), AU_PASS);
+    aj_want(j, "REL lfo_needs_sel1 AF0 (one sample later) fails", aj_eval(j, "REL", "lfo_needs_sel1", AJ_A ";side=L", "n=256", AJ_A ";side=R", "r1=$FF", x, 1), AU_FAIL);
+    aj_want(j, "REL lfo_needs_sel1 with one row is harness", aj_eval(j, "REL", "lfo_needs_sel1", AJ_A ";side=L", "n=256", NULL, NULL, x, 0), AU_HARNESS);
+    {
+        struct au_cap y = *x;
+        uint32_t i;
+
+        y.frames = (uint8_t *)malloc((size_t)x->fcap * AU_F_BYTES);
+        if (y.frames == NULL) {
+            aj_want(j, "REL lfo_needs_sel1 of two windows of different period: out of memory", AU_HARNESS, AU_FAIL);
+        } else {
+            memcpy(y.frames, x->frames, (size_t)x->fcap * AU_F_BYTES);
+            for (i = 1024u; i < AJ_KEYOFF; i++) {
+                au_put_frame(&y, i, 1000u * aj_word((i / 2u) % 32u), 1000u * aj_word((i / 2u) % 32u));
+            }
+            aj_want(j, "REL lfo_needs_sel1 of two windows of different period (128 and 64 samples) fails", aj_eval(j, "REL", "lfo_needs_sel1", AJ_A ";side=L", "n=256", AJ_B ";side=L", "r1=$FF", &y, 0), AU_FAIL);
+            free(y.frames);
+        }
+    }
     /* STRUCT: count (frame 0 of 357,630 master clocks holds ceil(357630 / 192) = 1863 samples) and header */
     aj_want(j, "STRUCT count m=357630 n=1863 passes", aj_eval(j, "STRUCT", "count", "from=0;to=357630", "m=357630;n=1863", NULL, NULL, x, 0), AU_PASS);
     aj_want(j, "STRUCT count n=1862 fails", aj_eval(j, "STRUCT", "count", "from=0;to=357630", "m=357630;n=1862", NULL, NULL, x, 0), AU_FAIL);
