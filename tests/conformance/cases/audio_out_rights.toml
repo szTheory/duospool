@@ -3,7 +3,8 @@
 #
 # The rights rule of --audio-out (plan 05-04; D-199, T-05-16, F-85; video_out_rights row for row): kind audio_out_rights (audiokinds.c) judges, without writing a file, that an audio request is permitted only for an audio case whose fixture is an authored image listed in
 # build/gate/fixtures-authored.used or a synthetic recipe, that its three paths lie directly under build/gate/audio/, that a refused request (a fixture that is not permitted, a case that is not an audio case, no such case) leaves no file, and that an id with a slash, dot-dot or a
-# character outside [a-z0-9_] builds no path. The writing itself is the --audio-out step of scripts/conformance-run, which recomputes both digests with a host tool. Evidence tier E0; no hardware claim.
+# character outside [a-z0-9_] builds no path. The permission covers the image that runs: the expect's rom= must be the authored image the fixture key names, so audio_tone_sel0 with the permitted key plain-256k in place of authored:psg-tone is refused (review WR-04).
+# The writing itself is the --audio-out step of scripts/conformance-run, which recomputes both digests with a host tool. Evidence tier E0; no hardware claim.
 id = "audio_out_rights"
 kind = "audio_out_rights"
 fixture = "none"

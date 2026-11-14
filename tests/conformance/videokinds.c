@@ -3637,7 +3637,7 @@ static const char *vo_reason(int r)
     case VO_NO_CASE:
         return "no case carries that id";
     case VO_NOT_PERMITTED:
-        return "the fixture of the case is neither an authored image listed in build/gate/fixtures-authored.used nor a synthetic recipe";
+        return "the fixture of the case is neither an authored image listed in build/gate/fixtures-authored.used nor a synthetic recipe, or the expect's rom= is not the authored image that fixture key names";
     case VO_NOT_VIDEO:
         return "the case is not a video case";
     case VO_NO_DEADLINE:
@@ -3668,32 +3668,66 @@ static int vo_paths(const char *id, char *dsvr, char *tsv, size_t cap)
     return a > 0 && b > 0 && (size_t)a < cap && (size_t)b < cap ? 0 : -1;
 }
 
-/* the checks that come before any file is opened: the id, the case, its fixture (T-04-17: authored and listed, or synthetic), its kind and its deadline */
-static int vo_request(const char *id, const struct kase **kout, uint64_t *until)
+/* the case of an id, NULL when none */
+static const struct kase *vo_find_case(const char *id)
 {
     size_t i;
+
+    for (i = 0u; i < case_count(); i++) {
+        if (strcmp(case_get(i)->val[K_ID], id) == 0) {
+            return case_get(i);
+        }
+    }
+    return NULL;
+}
+
+/*
+ * The checks of one case that come before any file is opened: its fixture (T-04-17: authored and listed, or synthetic), its kind, its deadline, and that its expect's rom= names the image of that fixture key. The image that runs and whose stream is written
+ * is build/gate/fixtures/ROM.pce of rom=, so the permission must cover that image: rom= must be the authored image the fixture key names, and listed (Phase 5 review WR-04). An expect with no parsable rom= ties the permission to no image and is refused.
+ */
+static int vo_case_check(const struct kase *k, uint64_t *until)
+{
+    struct vk_expect e;
+    char want[64];
+    int n;
+
+    if (!k->has[K_FIXTURE] || !output_fixture_permitted(k->val[K_FIXTURE])) {
+        return VO_NOT_PERMITTED;
+    }
+    if (!k->has[K_KIND] || strcmp(k->val[K_KIND], "video") != 0) {
+        return VO_NOT_VIDEO;
+    }
+    if (!k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], until) != 0 || *until == 0u) {
+        return VO_NO_DEADLINE;
+    }
+    if (!k->has[K_EXPECT] || vk_parse(k->val[K_EXPECT], &e) != 0) {
+        return VO_NOT_PERMITTED;
+    }
+    n = snprintf(want, sizeof want, "authored:%s", e.rom);
+    if (n < 0 || (size_t)n >= sizeof want || strcmp(want, k->val[K_FIXTURE]) != 0 || !output_fixture_permitted(want)) {
+        return VO_NOT_PERMITTED;
+    }
+    return VO_OK;
+}
+
+/* the checks that come before any file is opened: the id, the case, then vo_case_check */
+static int vo_request(const char *id, const struct kase **kout, uint64_t *until)
+{
+    const struct kase *k;
+    int r;
 
     if (!vo_id_valid(id)) {
         return VO_BAD_ID;
     }
-    for (i = 0u; i < case_count(); i++) {
-        const struct kase *k = case_get(i);
-
-        if (strcmp(k->val[K_ID], id) == 0) {
-            if (!k->has[K_FIXTURE] || !output_fixture_permitted(k->val[K_FIXTURE])) {
-                return VO_NOT_PERMITTED;
-            }
-            if (!k->has[K_KIND] || strcmp(k->val[K_KIND], "video") != 0) {
-                return VO_NOT_VIDEO;
-            }
-            if (!k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], until) != 0 || *until == 0u) {
-                return VO_NO_DEADLINE;
-            }
-            *kout = k;
-            return VO_OK;
-        }
+    k = vo_find_case(id);
+    if (k == NULL) {
+        return VO_NO_CASE;
     }
-    return VO_NO_CASE;
+    r = vo_case_check(k, until);
+    if (r == VO_OK) {
+        *kout = k;
+    }
+    return r;
 }
 
 /* the text form of the stream (D-163): one tab-separated row per record, after one header row of the column names; the pixels of a row are run-length groups COUNT*INDEX/COLOUR (the index array and the colour array of the record, equal neighbours grouped), empty for a record with no active window. Offsets are those of this file. 0 on success */
@@ -3878,10 +3912,32 @@ static int vo_file_exists(const char *path)
     return 1;
 }
 
+#define VO_KEYS_MAX 8u
+
+/* the values of the allow_fixture items of an expect (at most VO_KEYS_MAX of at most 40 characters; longer items are left to the item loop, which refuses them) */
+static void vo_allow_keys(const char *expect, char (*keys)[41], unsigned *nkeys)
+{
+    char pre[PK_LIST_MAX];
+    char *rest = pre;
+    char *it;
+
+    *nkeys = 0u;
+    if (pk_copy_text(expect, pre, sizeof pre) != 0) {
+        return;
+    }
+    while ((it = pk_next_item(&rest, ';')) != NULL) {
+        if (strncmp(it, "allow_fixture=", 14u) == 0 && strlen(it + 14) <= 40u && *nkeys < VO_KEYS_MAX) {
+            memcpy(keys[*nkeys], it + 14, strlen(it + 14) + 1u);
+            (*nkeys)++;
+        }
+    }
+}
+
 /*
  * kind video_out_rights: expect is a list of items separated by ';', each value at most 40 characters, at least one of each of the five kinds (the lists of trace_out_rights, cloned):
  *   allow_fixture=KEY  the fixture key is permitted (authored and listed, or a synthetic recipe)      deny_fixture=KEY  it is not (an unlisted authored image, none, a path, a commercial name)
- *   allow_case=ID      the request for the case passes every check that comes before a file is opened, and the paths are build/gate/video/ID.dsvr and .tsv with no further slash
+ *   allow_case=ID      the request for the case passes every check that comes before a file is opened, and the paths are build/gate/video/ID.dsvr and .tsv with no further slash; and an in-memory copy of the case with its fixture key replaced by each
+ *                      other allow_fixture key of the expect (at least one) is refused, because the permission must cover the image its rom= runs (Phase 5 review WR-04)
  *   deny_case=ID       the request is refused (a case whose fixture is not permitted, a case that is not a video case, or no such case) and no file appears        bad_id=ID  the id is not of the form [a-z0-9_]+ and is refused with no path built and no file at any naive join
  * Nothing is written by this kind: the writing of an allowed request is the --video-out run of scripts/conformance-run, whose digest it recomputes with a host tool. E0: the rule is a literal one of this plan (T-04-17).
  */
@@ -3893,11 +3949,14 @@ void kind_video_out_rights(const struct kase *k, struct ctx *c, char *got, size_
     unsigned classes = 0u;
     unsigned n = 0u;
     char msg[160];
+    char keys[VO_KEYS_MAX][41];
+    unsigned nkeys = 0u;
 
     if (pk_copy_text(k->val[K_EXPECT], list, sizeof list) != 0) {
         harness_error(c, "the video_out_rights expect list is too long");
         return;
     }
+    vo_allow_keys(k->val[K_EXPECT], keys, &nkeys);
     while ((item = pk_next_item(&rest, ';')) != NULL) {
         char *eq = strchr(item, '=');
         const char *v;
@@ -3931,6 +3990,26 @@ void kind_video_out_rights(const struct kase *k, struct ctx *c, char *got, size_
                  && strstr(dpath, "..") == NULL && strstr(tpath, "..") == NULL;
             snprintf(msg, sizeof msg, "the paths of case %s are not directly under build/gate/video/", v);
             check(c, ok, msg);
+            {
+                const struct kase *ck = vo_find_case(v);
+                unsigned j;
+                unsigned swaps = 0u;
+
+                for (j = 0u; ck != NULL && j < nkeys; j++) {
+                    struct kase swapped = *ck;
+
+                    if (strcmp(keys[j], ck->val[K_FIXTURE]) == 0) {
+                        continue;
+                    }
+                    swapped.val[K_FIXTURE] = keys[j];
+                    swapped.has[K_FIXTURE] = 1;
+                    snprintf(msg, sizeof msg, "case %.40s with the permitted fixture key %.40s in place of its own is not refused (WR-04)", v, keys[j]);
+                    check(c, vo_case_check(&swapped, &until) == VO_NOT_PERMITTED, msg);
+                    swaps++;
+                }
+                snprintf(msg, sizeof msg, "case %.40s: no other allow_fixture key of the expect to swap in for its own (WR-04)", v);
+                check(c, swaps >= 1u, msg);
+            }
         } else if (strcmp(item, "deny_case") == 0) {
             int before;
             int r1;

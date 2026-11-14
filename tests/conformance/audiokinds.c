@@ -4208,7 +4208,7 @@ static const char *ao_reason(int r)
     case AO_NO_CASE:
         return "no case carries that id";
     case AO_NOT_PERMITTED:
-        return "the fixture of the case is neither an authored image listed in build/gate/fixtures-authored.used nor a synthetic recipe";
+        return "the fixture of the case is neither an authored image listed in build/gate/fixtures-authored.used nor a synthetic recipe, or the expect's rom= is not the authored image that fixture key names";
     case AO_NOT_AUDIO:
         return "the case is not an audio case";
     case AO_NO_DEADLINE:
@@ -4241,32 +4241,66 @@ static int ao_paths(const char *id, char *e, char *p, char *t, size_t cap)
     return a > 0 && b > 0 && d > 0 && (size_t)a < cap && (size_t)b < cap && (size_t)d < cap ? 0 : -1;
 }
 
-/* the checks before any file is opened: the id, the case, its fixture (authored and listed, or synthetic), its kind and its deadline */
-static int ao_request(const char *id, const struct kase **kout, uint64_t *until)
+/* the case of an id, NULL when none */
+static const struct kase *ao_find_case(const char *id)
 {
     size_t i;
+
+    for (i = 0u; i < case_count(); i++) {
+        if (strcmp(case_get(i)->val[K_ID], id) == 0) {
+            return case_get(i);
+        }
+    }
+    return NULL;
+}
+
+/*
+ * The checks of one case before any file is opened: its fixture (authored and listed, or synthetic), its kind, its deadline, and that its expect's rom= names the image of that fixture key. The image that runs and whose streams are written is
+ * build/gate/fixtures/ROM.pce of rom=, so the permission must cover that image: rom= must be the authored image the fixture key names, and listed (review WR-04). An expect with no parsable rom= ties the permission to no image and is refused.
+ */
+static int ao_case_check(const struct kase *k, uint64_t *until)
+{
+    struct au_expect e;
+    char want[64];
+    int n;
+
+    if (!k->has[K_FIXTURE] || !output_fixture_permitted(k->val[K_FIXTURE])) {
+        return AO_NOT_PERMITTED;
+    }
+    if (!k->has[K_KIND] || strcmp(k->val[K_KIND], "audio") != 0) {
+        return AO_NOT_AUDIO;
+    }
+    if (!k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], until) != 0 || *until == 0u) {
+        return AO_NO_DEADLINE;
+    }
+    if (!k->has[K_EXPECT] || au_parse(k->val[K_EXPECT], &e) != 0) {
+        return AO_NOT_PERMITTED;
+    }
+    n = snprintf(want, sizeof want, "authored:%s", e.rom);
+    if (n < 0 || (size_t)n >= sizeof want || strcmp(want, k->val[K_FIXTURE]) != 0 || !output_fixture_permitted(want)) {
+        return AO_NOT_PERMITTED;
+    }
+    return AO_OK;
+}
+
+/* the checks before any file is opened: the id, the case, then ao_case_check */
+static int ao_request(const char *id, const struct kase **kout, uint64_t *until)
+{
+    const struct kase *k;
+    int r;
 
     if (!ao_id_valid(id)) {
         return AO_BAD_ID;
     }
-    for (i = 0u; i < case_count(); i++) {
-        const struct kase *k = case_get(i);
-
-        if (strcmp(k->val[K_ID], id) == 0) {
-            if (!k->has[K_FIXTURE] || !output_fixture_permitted(k->val[K_FIXTURE])) {
-                return AO_NOT_PERMITTED;
-            }
-            if (!k->has[K_KIND] || strcmp(k->val[K_KIND], "audio") != 0) {
-                return AO_NOT_AUDIO;
-            }
-            if (!k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], until) != 0 || *until == 0u) {
-                return AO_NO_DEADLINE;
-            }
-            *kout = k;
-            return AO_OK;
-        }
+    k = ao_find_case(id);
+    if (k == NULL) {
+        return AO_NO_CASE;
     }
-    return AO_NO_CASE;
+    r = ao_case_check(k, until);
+    if (r == AO_OK) {
+        *kout = k;
+    }
+    return r;
 }
 
 /* the frame length in master clocks of the profile binding of the run: lines_per_frame (262 or 263) x 1365 (ASSUMED LED-VID-0001, LED-VID-0004) */
@@ -4441,10 +4475,32 @@ static int ao_file_exists(const char *path)
     return 1;
 }
 
+#define AO_KEYS_MAX 8u
+
+/* the values of the allow_fixture items of an expect (at most AO_KEYS_MAX of at most 40 characters; longer items are left to the item loop, which refuses them) */
+static void ao_allow_keys(const char *expect, char (*keys)[41], unsigned *nkeys)
+{
+    char pre[PK_LIST_MAX];
+    char *rest = pre;
+    char *it;
+
+    *nkeys = 0u;
+    if (pk_copy_text(expect, pre, sizeof pre) != 0) {
+        return;
+    }
+    while ((it = pk_next_item(&rest, ';')) != NULL) {
+        if (strncmp(it, "allow_fixture=", 14u) == 0 && strlen(it + 14) <= 40u && *nkeys < AO_KEYS_MAX) {
+            memcpy(keys[*nkeys], it + 14, strlen(it + 14) + 1u);
+            (*nkeys)++;
+        }
+    }
+}
+
 /*
  * kind audio_out_rights (the video_out_rights rows, cloned): expect is a list of items separated by ';', each value at most 40 characters, at least one of each of the five kinds:
  *   allow_fixture=KEY  the fixture key is permitted (authored and listed, or a synthetic recipe)      deny_fixture=KEY  it is not (an unlisted authored image, none, a path, a commercial name)
- *   allow_case=ID      the request for the case passes every check before a file is opened, and the paths are build/gate/audio/ID.dspe, .dspa and .tsv with no further slash
+ *   allow_case=ID      the request for the case passes every check before a file is opened, and the paths are build/gate/audio/ID.dspe, .dspa and .tsv with no further slash; and an in-memory copy of the case with its fixture key replaced by each other
+ *                      allow_fixture key of the expect (at least one) is refused, because the permission must cover the image its rom= runs (review WR-04)
  *   deny_case=ID       the request is refused (a fixture not permitted, a case that is not an audio case, or no such case) and no file appears        bad_id=ID  the id is refused with no path built and no file at any naive join
  * Nothing is written by this kind: the writing of an allowed request is the --audio-out run of scripts/conformance-run, whose digests it recomputes with a host tool. E0: the rule is a literal one of this plan (T-05-16).
  */
@@ -4456,11 +4512,14 @@ void kind_audio_out_rights(const struct kase *k, struct ctx *c, char *got, size_
     unsigned classes = 0u;
     unsigned n = 0u;
     char msg[160];
+    char keys[AO_KEYS_MAX][41];
+    unsigned nkeys = 0u;
 
     if (pk_copy_text(k->val[K_EXPECT], list, sizeof list) != 0) {
         harness_error(c, "the audio_out_rights expect list is too long");
         return;
     }
+    ao_allow_keys(k->val[K_EXPECT], keys, &nkeys);
     while ((item = pk_next_item(&rest, ';')) != NULL) {
         char *eq = strchr(item, '=');
         const char *v;
@@ -4496,6 +4555,26 @@ void kind_audio_out_rights(const struct kase *k, struct ctx *c, char *got, size_
                  strchr(tpath + dl, '/') == NULL && strstr(epath, "..") == NULL && strstr(ppath, "..") == NULL && strstr(tpath, "..") == NULL;
             snprintf(msg, sizeof msg, "the paths of case %.40s are not directly under build/gate/audio/", v);
             check(c, ok, msg);
+            {
+                const struct kase *ck = ao_find_case(v);
+                unsigned j;
+                unsigned swaps = 0u;
+
+                for (j = 0u; ck != NULL && j < nkeys; j++) {
+                    struct kase swapped = *ck;
+
+                    if (strcmp(keys[j], ck->val[K_FIXTURE]) == 0) {
+                        continue;
+                    }
+                    swapped.val[K_FIXTURE] = keys[j];
+                    swapped.has[K_FIXTURE] = 1;
+                    snprintf(msg, sizeof msg, "case %.40s with the permitted fixture key %.40s in place of its own is not refused (WR-04)", v, keys[j]);
+                    check(c, ao_case_check(&swapped, &until) == AO_NOT_PERMITTED, msg);
+                    swaps++;
+                }
+                snprintf(msg, sizeof msg, "case %.40s: no other allow_fixture key of the expect to swap in for its own (WR-04)", v);
+                check(c, swaps >= 1u, msg);
+            }
         } else if (strcmp(item, "deny_case") == 0) {
             int before;
             int r1;
