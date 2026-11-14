@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: "05.1"
 current_phase_name: PSG LFO (frequency modulation)
-current_plan: 2
+current_plan: 3
 status: executing
-stopped_at: Completed 05.1-01-PLAN.md
-last_updated: "2026-11-14T08:53:06.798Z"
+stopped_at: Completed 05.1-02-PLAN.md
+last_updated: "2026-11-14T10:01:15.812Z"
 last_activity: 2026-11-14
 last_activity_desc: Phase 5 complete, transitioned to Phase 05.1
-state_head: 07584c47aecfe0444d4c138c20ade34e4bcd5d01
+state_head: 2c8508a8856178e503245caaa2b65178d4ec74c8
 progress:
   total_phases: 8
   completed_phases: 6
   total_plans: 104
-  completed_plans: 102
+  completed_plans: 103
   percent: 75
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 05.1 — PSG LFO (frequency modulation)
-Current Plan: 2
+Current Plan: 3
 Total Plans in Phase: 3
 Status: Ready to execute
 Last activity: 2026-11-14 — Phase 5 complete, transitioned to Phase 05.1
@@ -163,6 +163,7 @@ Progress: [████████░░] 75%
 | Phase 05 P08 | 3h40m | 3 tasks | 5 files |
 | Phase 05 P10 | 4h35m | 4 tasks | 34 files |
 | Phase 05.1 P01 | 45min | 3 tasks | 31 files |
+| Phase 05.1 P02 | 64min | 3 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -383,6 +384,10 @@ Recent decisions affecting current work:
 - [Phase 05.1]: 05.1-01: select 0 is folded in closed form between select-1 steps (F0' is constant there), one iteration per select-1 step; the select-1 period is coupled only while the LFO applies and TRG = 0, and key-on and the DDA and TRG releases start from that period
 - [Phase 05.1]: 05.1-01: the lfo_ctl1 decode group is AF0 only and listed in AUDIO_TOY_EXEMPT; audio_judge_forms is at 130 assertions (05.1-02 gates above it); psg_lfo runs to 15M make 335,585 insn records, so proof-set cases keep their own until
 - [Phase 05.1]: 05.1-01: no epoch, serial or text bump; the LFO fills behaviour into the unreleased epoch 6 (C-08)
+- [Phase 05.1]: 05.1-02: the lfo_dynamic judge reads only the stream (no switch instant), so dyn is MAN and judges neither the TRG restart (D-220) nor switch timing (D-208)
+- [Phase 05.1]: 05.1-02: kill lists as the sweep observes: rel AF0,AF5,AF6,AF7,AF8; dyn AF0,AF2,AF4,AF5,AF6,AF7,AF8; ev_r8 AF0,AF8 (AF9 relabels no global record)
+- [Phase 05.1]: 05.1-02: chunk_equiv_audio_psg_lfo runs to 8,000,000 (chunk_equiv needs the DSV1 done state, 7,951,284, before its deadline, D-95); the other proof-set cases stop at 3,750,000 = R9 $01 stamp 3,509,820 + 2 x 115,200, rounded up
+- [Phase 05.1]: 05.1-02: no epoch, serial or text bump; the LFO scenes fill behaviour into the unreleased epoch 6 (C-08)
 
 ### Pending Todos
 
@@ -406,6 +411,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-14T08:53:05.568Z
-Stopped at: Completed 05.1-01-PLAN.md
+Last session: 2026-11-14T10:01:14.670Z
+Stopped at: Completed 05.1-02-PLAN.md
 Resume file: None
