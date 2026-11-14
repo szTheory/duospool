@@ -20,6 +20,8 @@ _Static_assert(6u * 64u * 31u == DS_PSG_NOISE_REM_MAX && 6u * (uint32_t)DS_CONST
 _Static_assert(600u + DS_PSG_COUPLED_REM_MAX < (1u << 23), "a fold offset does not stay below 2^23 (D-195, D-221)");
 _Static_assert((uint32_t)DS_CONST_psg_lfsr_taps == ((1u << 0) | (1u << 1) | (1u << 11) | (1u << 12) | (1u << 17)), "the taps constant does not name bits 0, 1, 11, 12 and 17");
 _Static_assert(DS_CONST_reset_cost_mclk == 0, "the PSG power-on state is the state at machine time 0: the boot must charge no reset cost (RF-15)");
+_Static_assert(DS_CONST_psg_tick_phase_mclk == 0 && DS_CONST_psg_sample_phase_mclk == 0,
+               "psg.c (the tick grid stamp % d, the sample instants cursor x 192) and obs.c (first = ceil(T0 / 192)) implement only phase 0 of both grids (LED-AUD-0012, LED-AUD-0014): implement a phase before printing another value");
 
 uint32_t ds_psg_divisor(const struct ds_instance *inst)
 {

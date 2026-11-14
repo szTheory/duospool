@@ -338,7 +338,8 @@ void ds_obs_begin(struct ds_obs_log *log, const struct ds_run_request *request, 
     vchan_open(&log->vid, request->vid);
     chan_open(&log->psg, psg != NULL ? psg->header : NULL, psg != NULL ? psg->records : NULL, psg != NULL ? psg->capacity : 0u, psg != NULL);
     chan_open(&log->pcm, pcm != NULL ? pcm->header : NULL, pcm != NULL ? pcm->frames : NULL, pcm != NULL ? pcm->capacity : 0u, pcm != NULL);
-    /* the first sample instant at or after T0 (D-187, PR-4): ceil(T0 / 192), written without forming T0 + 191 */
+    /* the first sample instant at or after T0 (D-187, PR-4): ceil(T0 / 192), written without forming T0 + 191; the sample grid has phase 0 (pinned below and in psg.c) */
+    _Static_assert(DS_CONST_psg_sample_phase_mclk == 0, "ds_obs_begin computes the first frame on the phase-0 sample grid only (LED-AUD-0014)");
     log->pcm.first = machine_time / (uint64_t)DS_CONST_psg_mclk_per_sample + (machine_time % (uint64_t)DS_CONST_psg_mclk_per_sample != 0u ? UINT64_C(1) : UINT64_C(0));
     log->pcm.cursor = log->pcm.first;
     write_pheader(&log->pcm); /* chan_open wrote the first 16 bytes of the 32-byte pcm header; this writes all of them */
