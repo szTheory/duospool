@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Restores at the LFO stops of psg_lfo (plan 05.1-02; D-200, D-231, C-09, C-11, C-12; the snapshot_restore_audio shape): kind snapshot_restore_audio with the third stop set of au_restore_rom, each stop placed by DSPE records: trg halfway between the R9 write with TRG 1 and the
+# next R9 write with TRG 0 (lfo_release: select 1 keyed on and frozen under TRG 1); upload after the 10th R6 store of the lfo_dynamic select-1 upload (inside the TIN, TRG 1 with widx[1] not 0: expected ACCEPTED, D-231); coupled 1,000 clocks after the first coupled select-1 step
+# of lfo_dynamic, where the kind requires rem[1] > d x 4096 = 24,576 (the C-09 bound exercised; harness_failure otherwise). The prefix streams with the resumed streams appended must equal the whole run's DSPE and DSPA streams byte for byte, and the run must end at the same machine
+# time and digest. until_mclk = 3,750,000 is the stamp 3,509,820 of the lfo_dynamic R9 $01 record (read from the DSPE records of a run of audio_lfo_dynamic under the zero policy) plus 2 x 115,200 (two coupled select-1 steps, 6 x 128 x 150) = 3,740,220, rounded up; the reference run's instruction count (insn= in the evidence) stays within AU_INSN_CAP. The Phase 5 case
+# snapshot_restore_audio is unchanged. Evidence tier E0; no hardware claim.
+id = "snapshot_restore_audio_lfo"
+kind = "snapshot_restore_audio"
+fixture = "authored:psg-lfo"
+request = ""
+expect = "rom=psg-lfo;stops=trg,upload,coupled"
+meaning = "A snapshot restored under TRG 1 with select 1 frozen, inside the select-1 table upload with widx[1] not 0, and between two coupled select-1 steps with a distance above the uncoupled bound continues psg_lfo so that the prefix and resumed audio streams equal the whole run byte for byte and the run ends in the same state (E0)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 3750000

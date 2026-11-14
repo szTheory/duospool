@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Audio sink non-interference on psg_lfo (plan 05.1-02; D-200, C-12, R6; the aud_noninterference shape): kind aud_noninterference runs psg_lfo to until_mclk twice under each of zero, seeded-prng-v4 seed 1 and seed 2, once with no sink and once with the psg, pcm and dev sinks,
+# and requires the same stop reason, machine time, steps, verdict RAM and state digest; the sink runs must hold DSPE records and DSPA frames. until_mclk = 3,750,000 is the stamp 3,509,820 of the lfo_dynamic R9 $01 record (read from the DSPE records of a run of audio_lfo_dynamic under the zero policy) plus 2 x 115,200 (two coupled select-1 steps, 6 x 128 x 150) = 3,740,220, rounded up, so the
+# coupled select-1 loop runs with and without sinks. The Phase 5 case aud_noninterference is unchanged. Evidence tier E0 (non-interference of the observation path); no hardware claim.
+id = "aud_noninterference_lfo"
+kind = "aud_noninterference"
+fixture = "authored:psg-lfo"
+request = ""
+expect = "rom=psg-lfo"
+meaning = "Attaching the psg, pcm and dev sinks to a run of psg_lfo up to two coupled select-1 steps of lfo_dynamic changes no stop reason, machine time, step count, verdict byte or state digest under zero and seeded-prng-v4 seeds 1 and 2 (E0)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 3750000

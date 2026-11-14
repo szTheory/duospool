@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The observer matrix on psg_lfo (plan 05.1-02; D-200, D-201, C-12, R6, PR-1, PR-4; the observer_psg_mod shape): kind observer runs the fixture with no sink and with the insn, dev, vid, psg and pcm sinks in five configurations (large, 4-record and 4-frame drop-newest, poisoned
+# headers, capacity 0 and 1), whole, in 7 chunks and stopped by the callback, under zero and seeded-prng-v4 seed 1: identical verdict RAM, machine time, steps, stop sequence and state digest in every configuration, with the pcm and psg header rules of observer_psg_mod.
+# until_mclk = 3,750,000 is the stamp 3,509,820 of the lfo_dynamic R9 $01 record (read from the DSPE records of a run of audio_lfo_dynamic under the zero policy) plus 2 x 115,200 (two coupled select-1 steps, 6 x 128 x 150) = 3,740,220, rounded up, so the run reaches the coupled scene (the held scenes, lfo_release, the lfo_dynamic upload and two coupled steps) and stays far below
+# the 262,144 records of a large insn sink (the run stops at until_mclk, before
+# the DSV1 verdict). Evidence tier E0; no hardware claim.
+id = "observer_psg_lfo"
+kind = "observer"
+fixture = "authored:psg-lfo"
+request = ""
+expect = "compare=verdict,machine_time,stops,digest"
+meaning = "Enabling the insn, dev, vid, psg and pcm sinks in any of five configurations, whole, in 7 chunks or stopped by the callback, changes neither the verdict RAM, the machine time, the stop sequence nor the digest of psg_lfo up to two coupled select-1 steps of lfo_dynamic under zero and seeded-prng-v4 seed 1; pcm seq follows ceil(M / 192) and psg seq the dev log"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 3750000
+sinks = "large,drop4,poison,cap0,cap1"
+chunks = "whole,chunk:7,stop:5000"
+policies = "||bind.powerup_policy=seeded-prng-v4;seed=1"

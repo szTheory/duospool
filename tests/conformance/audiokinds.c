@@ -36,6 +36,7 @@
 
 #include "ds_core.h"
 #include "ds_obs.h"
+#include "ds_psg.h" /* ds_psg_divisor for the coupled restore stop of plan 05.1-02, as psgkinds.c includes it */
 #include "ds_serial.h"
 #include "ds_sha256.h"
 #include "ds_snapshot.h"
@@ -3981,14 +3982,50 @@ static uint64_t au_dda_stamp(const struct au_cap *cp, unsigned n)
     return UINT64_MAX;
 }
 
+/* the stamps of the LFO TRG stops of psg_lfo (plan 05.1-02), all read from the DSPE records of R9 (the global channel) and R6 of the reference run: *t1 the last R9 record with TRG 1 before the first R9 record with TRG 0 (*t0); *up the 10th R6 record after the first R9
+ * record with TRG 1 after *t0 (inside the select-1 upload of lfo_dynamic); *rel the first R9 record with TRG 0 and CTL != 0 after it (the release that starts the coupled select-1 steps). 0 when all four exist */
+static int au_lfo_stamps(const struct au_cap *cp, uint64_t *t1, uint64_t *t0, uint64_t *up, uint64_t *rel)
+{
+    uint32_t i;
+    unsigned stage = 0u;
+    unsigned n6 = 0u;
+
+    *t1 = UINT64_MAX;
+    for (i = 0u; i < cp->ecount && stage < 4u; i++) {
+        const uint8_t *r = cp->erec + (size_t)i * AU_E_REC;
+        uint64_t t = au_u64(r + AU_E_STAMP);
+        int trg = (r[AU_E_VALUE] & 0x80u) != 0u;
+
+        if (r[AU_E_REG] == 9u && stage == 0u && trg) {
+            *t1 = t;
+        } else if (r[AU_E_REG] == 9u && stage == 0u && !trg && *t1 != UINT64_MAX) {
+            *t0 = t;
+            stage = 1u;
+        } else if (r[AU_E_REG] == 9u && stage == 1u && trg) {
+            stage = 2u;
+        } else if (r[AU_E_REG] == 6u && stage == 2u && ++n6 == 10u) {
+            *up = t;
+            stage = 3u;
+        } else if (r[AU_E_REG] == 9u && stage == 3u && !trg && (r[AU_E_VALUE] & 0x03u) != 0u) {
+            *rel = t;
+            stage = 4u;
+        }
+    }
+    return stage == 4u ? 0 : -1;
+}
+
+#define AU_LFO_STEP 115200u /* the coupled select-1 step of lfo_dynamic: 6 x F1 x FLF = 6 x 128 x 150 (MAN:P8-6+P8-9+H8-23, the step literal of the dyn row of psg_lfo.aexp) */
+
 /* the restore stops of one ROM. Set 0 (psg_tone): at a sample instant (a step boundary on the 192 grid), mid-interval (a boundary 64 to 128 clocks past one), between the R2 and R3 writes, between the R0 and R4 writes of the scene, and inside the TIN to $0806 (after its 10th
  * byte). Set 1 (psg_mod, plan 05-07): between two timer-paced DDA writes (after the 5th DDA_LOAD record, timer write 4, before the 6th) and inside a noise run of mod_noise4 (a mid-interval boundary 100,000 clocks after select 4's key-on, the first R4 $9F, with select 4 keyed on
- * at NE 1). The prefix run stops there, a snapshot is restored into a poisoned second boot, and the resumed run's DSPE records and DSPA frames appended to the prefix must equal the whole run's streams byte for byte, with first(i+1) = first(i) + seq(i), the same end machine time
- * and the same end digest. The count of restores is added to *done; 05.1-01 adds the LFO TRG stop */
-static void au_restore_rom(struct ctx *c, const char *rom, const char *req, uint64_t until, int set, unsigned *done, uint32_t *frames, uint32_t *events)
+ * at NE 1). Set 2 (psg_lfo, plan 05.1-02; D-200, D-231, C-09, C-11): trg halfway between an R9 write with TRG 1 and the next with TRG 0 (lfo_release: select 1 keyed on and frozen under TRG 1); upload after the 10th R6 store of lfo_dynamic's select-1 upload (inside the TIN,
+ * TRG 1 with widx[1] not 0, accepted, D-231); coupled 1,000 clocks after the first coupled select-1 step of lfo_dynamic (between the first and the second), where rem[1] must exceed d x 4096 (the C-09 bound exercised; harness_failure otherwise). Every stop is placed by DSPE
+ * records, never by an absolute time. The prefix run stops there, a snapshot is restored into a poisoned second boot, and the resumed run's DSPE records and DSPA frames appended to the prefix must equal the whole run's streams byte for byte, with first(i+1) = first(i) + seq(i),
+ * the same end machine time and the same end digest. The count of restores is added to *done, the reference run's instruction count goes to *insn_n (the run must stay within AU_INSN_CAP) and one line per restore (the stop, its machine time, rem[1]) is appended to det */
+static void au_restore_rom(struct ctx *c, const char *rom, const char *req, uint64_t until, int set, int note, unsigned *done, uint32_t *frames, uint32_t *events, uint32_t *insn_n, char *det, size_t detcap)
 {
-    static const char *const names[2][5] = {{"sample", "mid", "r2r3", "r0r4", "tin"}, {"dda", "noise", "", "", ""}};
-    unsigned nstops = set == 0 ? 5u : 2u;
+    static const char *const names[3][5] = {{"sample", "mid", "r2r3", "r0r4", "tin"}, {"dda", "noise", "", "", ""}, {"trg", "upload", "coupled", "", ""}};
+    unsigned nstops = set == 0 ? 5u : set == 1 ? 2u : 3u;
     struct booted b;
     const struct ds_instance *ci = NULL;
     struct ds_insn_sink isk;
@@ -4001,6 +4038,10 @@ static void au_restore_rom(struct ctx *c, const char *rom, const char *req, uint
     uint32_t ninsn = 0u;
     uint64_t at[5];
     uint64_t k4 = UINT64_MAX;
+    uint64_t t1 = 0u;
+    uint64_t t0 = 0u;
+    uint64_t up = 0u;
+    uint64_t rel = 0u;
     unsigned i;
     const char *err;
 
@@ -4024,7 +4065,7 @@ static void au_restore_rom(struct ctx *c, const char *rom, const char *req, uint
         goto out;
     }
     au_end_of(&eref, ci, &res);
-    if (set == 0) {
+    if (note) {
         note_run(c, res.machine_time, res.reason);
     }
     release_boot(&b);
@@ -4043,6 +4084,7 @@ static void au_restore_rom(struct ctx *c, const char *rom, const char *req, uint
     (void)ds_run((struct ds_instance *)(void *)b.mem, &rq, &res);
     release_boot(&b);
     ninsn = au_u32(isk.header);
+    *insn_n = ninsn > *insn_n ? ninsn : *insn_n;
     if (au_u32(isk.header + 4) != 0u) {
         harness_error(c, "the instruction sink of the restore kind lost a record");
         goto out;
@@ -4057,11 +4099,17 @@ static void au_restore_rom(struct ctx *c, const char *rom, const char *req, uint
         for (i = 2u; i < 5u; i++) {
             at[i] = at[i] != UINT64_MAX ? at[i] + 1u : UINT64_MAX;
         }
-    } else {
+    } else if (set == 1) {
         at[0] = au_dda_stamp(&ref, 5u);
         at[0] = at[0] != UINT64_MAX ? at[0] + 1u : UINT64_MAX;
         k4 = au_stamp_of(&ref, 4u, 0x9Fu, 1u);
         at[1] = k4 != UINT64_MAX ? au_step_at(insn, ninsn, k4 + 100000u, 64u, 128u) : UINT64_MAX;
+    } else if (au_lfo_stamps(&ref, &t1, &t0, &up, &rel) == 0) {
+        at[0] = t1 + (t0 - t1) / 2u;
+        at[1] = up + 1u;
+        at[2] = rel + AU_LFO_STEP + 1000u;
+    } else {
+        at[0] = UINT64_MAX;
     }
     for (i = 0u; i < nstops && !c->harness; i++) {
         struct booted a;
@@ -4095,10 +4143,26 @@ static void au_restore_rom(struct ctx *c, const char *rom, const char *req, uint
 
             if (set == 0) {
                 placed = i == 0u ? m % 192u == 0u : i == 1u ? m % 192u != 0u : i == 2u ? m > at[2] - 1u && m <= au_stamp_of(&ref, 3u, 256u, 1u) : i == 3u ? m > at[3] - 1u && m <= au_stamp_of(&ref, 4u, 0x40u, 1u) : ca->blk_active != 0u;
-            } else {
+            } else if (set == 1) {
                 placed = i == 0u ? m > at[0] - 1u && m <= au_dda_stamp(&ref, 6u) : m % 192u != 0u && m > k4 && m < k4 + 312096u && (ca->psg_ctl[4] & 0x80u) != 0u && (ca->psg_noise[0] & 0x80u) != 0u;
+            } else if (i == 0u) { /* trg: under TRG 1 with select 1 keyed on and frozen, before the TRG 0 write */
+                placed = m > t1 && m <= t0 && (ca->psg_lfo_ctl & 0x80u) != 0u && (ca->psg_ctl[1] & 0x80u) != 0u && ca->psg_rem[1] == 0u;
+            } else if (i == 1u) { /* upload: inside the TIN at select 1, TRG 1, chON 0, widx[1] not 0 (D-231) */
+                placed = ca->blk_active != 0u && ca->psg_select == 1u && (ca->psg_lfo_ctl & 0x80u) != 0u && (ca->psg_ctl[1] & 0x80u) == 0u && ca->psg_widx[1] != 0u;
+            } else { /* coupled: TRG 0, CTL != 0, one select-1 step after the release, and the C-09 distance */
+                uint32_t d = ds_psg_divisor(ca);
+
+                if (ca->psg_rem[1] <= d * 4096u) {
+                    snprintf(msg, sizeof msg, "the coupled restore stop of %.40s has the select-1 distance %u, not above d x 4096 = %u: the C-09 bound is not exercised", rom, (unsigned)ca->psg_rem[1], (unsigned)(d * 4096u));
+                    harness_error(c, msg);
+                    au_cap_free(&cp);
+                    release_boot(&a);
+                    release_boot(&t);
+                    break;
+                }
+                placed = m > rel + AU_LFO_STEP && (ca->psg_lfo_ctl & 0x80u) == 0u && (ca->psg_lfo_ctl & 0x03u) != 0u && ca->psg_widx[1] == 1u;
             }
-            snprintf(msg, sizeof msg, "the restore stop %s of %.40s landed at machine time %llu, not where it was chosen (a sample instant, mid-interval, between the two writes, inside the TIN, between two DDA writes, inside a noise run)", names[set][i], rom, (unsigned long long)m);
+            snprintf(msg, sizeof msg, "the restore stop %s of %.40s landed at machine time %llu, not where it was chosen (a sample instant, mid-interval, between the two writes, inside the TIN, between two DDA writes, inside a noise run, under TRG 1, inside the upload, between two coupled steps)", names[set][i], rom, (unsigned long long)m);
             check(c, placed, msg);
             if (ds_snapshot(ca, snap, ds_snapshot_size(), NULL) != (uint32_t)DS_SNAPREF_NONE) {
                 check(c, 0, "ds_snapshot at an audio restore stop was refused");
@@ -4113,6 +4177,9 @@ static void au_restore_rom(struct ctx *c, const char *rom, const char *req, uint
                     snprintf(msg, sizeof msg, "restore of %.40s at %s: the resumed run ends at another machine time or digest than the whole run", rom, names[set][i]);
                     check(c, e.mclk == eref.mclk && e.digest_ok && eref.digest_ok && memcmp(e.digest, eref.digest, DS_DIGEST_BYTES) == 0, msg);
                     (*done)++;
+                    if (strlen(det) + 120u < detcap) {
+                        snprintf(det + strlen(det), detcap - strlen(det), "restore %s of %.40s at machine time %llu, rem[1] %u, widx[1] %u\n", names[set][i], rom, (unsigned long long)m, (unsigned)ca->psg_rem[1], (unsigned)ca->psg_widx[1]);
+                    }
                 }
             }
         }
@@ -4128,10 +4195,10 @@ out:
     free(snap);
 }
 
-/* snapshot_restore_audio (D-200): expect = rom=psg-tone;stops=sample,mid,r2r3,r0r4,tin[;rom=psg-mod;stops=dda,noise]: each ROM with its stop set (au_restore_rom), in that order */
+/* snapshot_restore_audio (D-200): expect = rom=NAME;stops=SET[;rom=NAME;stops=SET] with SET one of sample,mid,r2r3,r0r4,tin (psg_tone), dda,noise (psg_mod) and trg,upload,coupled (psg_lfo, plan 05.1-02): each ROM with its stop set (au_restore_rom), in that order */
 void kind_snapshot_restore_audio(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
 {
-    static const char *const sets[2] = {"sample,mid,r2r3,r0r4,tin", "dda,noise"};
+    static const char *const sets[3] = {"sample,mid,r2r3,r0r4,tin", "dda,noise", "trg,upload,coupled"};
     char list[PK_LIST_MAX];
     char *rest = list;
     char *item;
@@ -4143,8 +4210,12 @@ void kind_snapshot_restore_audio(const struct kase *k, struct ctx *c, char *got,
     unsigned done = 0u;
     uint32_t frames = 0u;
     uint32_t events = 0u;
+    uint32_t insn_n = 0u;
+    char det[1200];
     unsigned i;
     int ok = k->has[K_EXPECT] && pk_copy_text(k->val[K_EXPECT], list, sizeof list) == 0;
+
+    det[0] = '\0';
 
     while (ok && (item = pk_next_item(&rest, ';')) != NULL) {
         const char *v;
@@ -4152,8 +4223,8 @@ void kind_snapshot_restore_audio(const struct kase *k, struct ctx *c, char *got,
         if (want_rom && n < 2u && (v = ax_val(item, "rom")) != NULL && strlen(v) > 0u && strlen(v) < 48u && strspn(v, "abcdefghijklmnopqrstuvwxyz0123456789-") == strlen(v)) {
             memcpy(roms[n], v, strlen(v) + 1u);
             want_rom = 0u;
-        } else if (!want_rom && (v = ax_val(item, "stops")) != NULL && (strcmp(v, sets[0]) == 0 || strcmp(v, sets[1]) == 0)) {
-            set[n] = strcmp(v, sets[0]) == 0 ? 0 : 1;
+        } else if (!want_rom && (v = ax_val(item, "stops")) != NULL && (strcmp(v, sets[0]) == 0 || strcmp(v, sets[1]) == 0 || strcmp(v, sets[2]) == 0)) {
+            set[n] = strcmp(v, sets[0]) == 0 ? 0 : strcmp(v, sets[1]) == 0 ? 1 : 2;
             n++;
             want_rom = 1u;
         } else {
@@ -4161,13 +4232,14 @@ void kind_snapshot_restore_audio(const struct kase *k, struct ctx *c, char *got,
         }
     }
     if (!ok || n == 0u || !want_rom || (n == 2u && set[0] == set[1]) || !k->has[K_UNTIL_MCLK] || parse_u64(k->val[K_UNTIL_MCLK], &until) != 0 || until < 400000u) {
-        harness_error(c, "a snapshot_restore_audio case needs until_mclk (at least 400,000) and expect = rom=NAME;stops=sample,mid,r2r3,r0r4,tin[;rom=NAME;stops=dda,noise]");
+        harness_error(c, "a snapshot_restore_audio case needs until_mclk (at least 400,000) and expect = rom=NAME;stops=SET[;rom=NAME;stops=SET] (SET sample,mid,r2r3,r0r4,tin or dda,noise or trg,upload,coupled)");
         return;
     }
     for (i = 0u; i < n && !c->harness; i++) {
-        au_restore_rom(c, roms[i], k->has[K_REQUEST] ? k->val[K_REQUEST] : "", until, set[i], &done, &frames, &events);
+        au_restore_rom(c, roms[i], k->has[K_REQUEST] ? k->val[K_REQUEST] : "", until, set[i], i == 0u, &done, &frames, &events, &insn_n, det, sizeof det);
     }
-    snprintf(got, gotcap, "roms=%u restores=%u frames=%u events=%u", n, done, (unsigned)frames, (unsigned)events);
+    set_evidence_detail(det);
+    snprintf(got, gotcap, "roms=%u restores=%u frames=%u events=%u insn=%u", n, done, (unsigned)frames, (unsigned)events, (unsigned)insn_n);
 }
 
 /* ---- audio_noise_repeat and psg_block_flood (plan 05-07 Task 3; D-200, D-201, D-210, D-212, criterion 4) ---- */

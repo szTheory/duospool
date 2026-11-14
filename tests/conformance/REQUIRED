@@ -403,3 +403,7 @@ audio_lfo_release
 audio_fault_sweep_lfo_release
 audio_lfo_dynamic
 audio_fault_sweep_lfo_dynamic
+observer_psg_lfo
+chunk_equiv_audio_psg_lfo
+snapshot_restore_audio_lfo
+aud_noninterference_lfo
