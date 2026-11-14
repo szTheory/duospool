@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 current_phase: 5
 current_phase_name: PSG Raw Audio
-current_plan: 8
+current_plan: 9
 status: executing
-stopped_at: Completed 05-07-PLAN.md (noise, DDA, psg_mod and its proof set)
-last_updated: "2026-11-13T20:28:45.451Z"
+stopped_at: Completed 05-08-PLAN.md
+last_updated: "2026-11-14T00:07:33.346Z"
 last_activity: 2026-11-12
 last_activity_desc: Phase 04.1 complete, transitioned to Phase 5
-state_head: aa4e0b74fb51dd6be0119d5fa025f58cf772f95e
+state_head: 33cba951343d7b1a14529e8a6aa624b7c44b8888
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 102
-  completed_plans: 99
+  completed_plans: 100
   percent: 71
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 ## Current Position
 
 Phase: 5 (PSG Raw Audio) — READY TO EXECUTE
-Current Plan: 8
+Current Plan: 9
 Total Plans in Phase: 11
 Status: Ready to execute
 Last activity: 2026-11-12 — Phase 04.1 complete, transitioned to Phase 5
@@ -159,6 +159,7 @@ Progress: [███████░░░] 71%
 | Phase 05 P06 | 135 min | 3 tasks | 35 files |
 | Phase 05 P12 | 90 min | 2 tasks | 15 files |
 | Phase 5 P07 | about 1 h | 3 tasks | 33 files |
+| Phase 05 P08 | 3h40m | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -370,6 +371,8 @@ Recent decisions affecting current work:
 - [Phase 5]: 05-07: the noise level is recomputed from the stored LFSR state by the RF-6 parity (mask $30C01); PSGT stores no output bit, the wave counter keeps running under NE
 - [Phase 5]: 05-07: the 256-bit noise_seq string is committed in psg_mod.aexp, drawn outside the repository after reproducing the 40-bit RESEARCH string; no gate-time generator
 - [Phase 5]: 05-07: aud12-d becomes a named limit (the wave is unheard under NE); rf5-a goes to later:05-09; cycle_linear and dda_equals_wave move to 05-10
+- [Phase 05]: 05-08: LED-AUD-0008 supported (E1 documentary) under ER-2 and ER-22; LED-AUD-0003 and -0005 stay assumed on recorded blocking clauses
+- [Phase 05]: 05-08: cut trigger (3) borderline (+20.0 / +32.4 percent user CPU in two pairs, +22.2 / +25.2 percent instructions); executor recommends the cut (LFO to Phase 5.1); the orchestrator decides
 
 ### Pending Todos
 
@@ -393,6 +396,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-13T20:28:45.092Z
-Stopped at: Completed 05-07-PLAN.md (noise, DDA, psg_mod and its proof set)
+Last session: 2026-11-14T00:07:32.676Z
+Stopped at: Completed 05-08-PLAN.md
 Resume file: None
