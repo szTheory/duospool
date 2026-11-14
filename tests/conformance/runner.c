@@ -1042,6 +1042,20 @@ static const struct {
     {"spin_forever", kind_spin, 0},
     {"guest", kind_guest, 0},
     {"video", kind_video, 0},
+    {"audio", kind_audio, 0},
+    {"audio_fault_sweep", kind_audio_fault_sweep, 0},
+    {"audio_judge_forms", kind_audio_judge_forms, 0},
+    {"audio_hash_not_verdict", kind_audio_hash_not_verdict, 0},
+    {"aud_noninterference", kind_aud_noninterference, 0},
+    {"psg_dev_join", kind_psg_dev_join, 0},
+    {"snapshot_restore_audio", kind_snapshot_restore_audio, 0},
+    {"aud_poweron_policy_diff", kind_aud_poweron_policy_diff, 0},
+    {"psg_fold", kind_psg_fold, 0},
+    {"audio_noise_repeat", kind_audio_noise_repeat, 0},
+    {"psg_block_flood", kind_psg_block_flood, 0},
+    {"psg_random_regs", kind_psg_random_regs, 0},
+    {"audio_out_rights", kind_audio_out_rights, 0},
+    {"pcm_cadence", kind_pcm_cadence, 0},
     {"video_out_rights", kind_video_out_rights, 0},
     {"video_fault_sweep", kind_video_fault_sweep, 0},
     {"video_hash_not_verdict", kind_video_hash_not_verdict, 0},
@@ -1054,6 +1068,13 @@ static const struct {
     {"vdc_vram", kind_vdc_vram, 0},
     {"vdc_vram_sweep", kind_vdc_vram_sweep, 0},
     {"vdc_regmask", kind_vdc_regmask, 0},
+    {"psg_decode", kind_psg_decode, 0},
+    {"psg_wave_ptr", kind_psg_wave_ptr, 0},
+    {"psg_lfo_trg", kind_psg_lfo_trg, 0},
+    {"psg_poweron", kind_psg_poweron, 0},
+    {"psg_restore_divisor", kind_psg_restore_divisor, 0},
+    {"psg_vol_table", kind_psg_vol_table, 0},
+    {"psg_pure_function", kind_psg_pure_function, 0},
     {"model_param_vdc", kind_model_param_vdc, 0},
     {"vdc_irq_agree", kind_vdc_irq_agree, 0},
     {"vdc_advance_pure", kind_vdc_advance_pure, 0},
@@ -1068,6 +1089,8 @@ static const struct {
     {"chunk_equiv", kind_chunk_equiv, 0},
     {"dev_log", kind_dev_log, 0},
     {"vid_chan_append", kind_vid_chan_append, 0},
+    {"psg_chan_append", kind_psg_chan_append, 0},
+    {"pcm_chan_append", kind_pcm_chan_append, 0},
     {"trace_out_rights", kind_trace_out_rights, 0},
     {"opcode_table", kind_opcode_table, 0},
     {"cycle_probe", kind_cycle_probe, 0},
@@ -1271,18 +1294,19 @@ int main(int argc, char **argv)
             oracle_path = argv[++a];
         } else if (strcmp(argv[a], "--bank-oracle") == 0 && a + 1 < argc) {
             bank_oracle_path = argv[++a];
-        } else if (cpukinds_arg(argc, argv, &a) || obskinds_arg(argc, argv, &a) || videokinds_arg(argc, argv, &a) || inputkinds_arg(argc, argv, &a)) {
+        } else if (cpukinds_arg(argc, argv, &a) || obskinds_arg(argc, argv, &a) || videokinds_arg(argc, argv, &a) || audiokinds_arg(argc, argv, &a) || inputkinds_arg(argc, argv, &a)) {
             continue;
         } else {
             cases_path = NULL;
             break;
         }
     }
-    if (cases_path == NULL || (evdir == NULL && !list_fx && trace_out_id == NULL && video_out_id == NULL)) {
+    if (cases_path == NULL || (evdir == NULL && !list_fx && trace_out_id == NULL && video_out_id == NULL && audio_out_id == NULL)) {
         emit_err("usage: ds_runner --cases FILE --evidence-dir DIR [--profile-tsv FILE] [--rules-fields FILE]\n"
                         "                 [--oracle FILE] [--bank-oracle FILE] [--opcode-tsv FILE] [--inputs FILE] [--exclude-ids FILE] [--only ID] [--marker-seed N] [--records DIR] [--golden-dir DIR]\n"
                         "       ds_runner --cases FILE --trace-out CASE_ID   (writes build/gate/traces/CASE_ID.insn and .dev for an authored or synthetic case)\n"
                         "       ds_runner --cases FILE --video-out CASE_ID   (writes build/gate/video/CASE_ID.dsvr and .tsv for a video case of an authored or synthetic fixture)\n"
+                        "       ds_runner --cases FILE --audio-out CASE_ID   (writes build/gate/audio/CASE_ID.dspe, .dspa and .tsv for an audio case of an authored or synthetic fixture)\n"
                         "       ds_runner --sweep-lengths | --spec | --emit RECIPE | --hash RECIPE\n");
         return 2;
     }
@@ -1309,6 +1333,9 @@ int main(int argc, char **argv)
     }
     if (video_out_id != NULL) {
         return video_out_main();
+    }
+    if (audio_out_id != NULL) {
+        return audio_out_main();
     }
     if (exclude_path != NULL) {
         char *xt = read_file(exclude_path);

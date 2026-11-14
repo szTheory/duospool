@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Held LFO modulation, CTL 0, 2 and 3 (plan 05.1-01; D-184, D-208, D-219, C-05): scene lfo_static of fixtures/src/psg_lfo.aexp: the decode rows of select 1's R2 $83 (F $883) and of R9 $82 and $83 (MAN), a period group at CTL 0 and lfo_static groups at CTL 2 and 3 (MAN), and the cycle order of select 0 at each. until_mclk is the
+# RF-12 bound of the ROM after 05.1-02 (C-11); the audio run stops at the DSV1 verdict. The toy psg-lfo-shift turns this case red (its CTL 2 and CTL 3 groups).
+# Pin (plan 05.1-03, 05.1-CONTEXT C-07): LED-AUD-0011 is pinned here (pinning_test TEST:audio_lfo_static), the strongest guest case of the entry; the entry stays assumed under ER-14 and the pin makes no LFO rate, depth or timing claim.
+id = "audio_lfo_static"
+kind = "audio"
+fixture = "authored:psg-lfo"
+request = ""
+expect = "rom=psg-lfo;id=29;checks=2;scene=lfo_static"
+meaning = "Under held modulation (TRG 1, select 1 word 0 = $18) select 0 at F0 = 512 repeats its 32-word cycle every 512, 544 and 640 samples at CTL 0, 2 and 3, the order of its table kept, and the R9 and F >= $800 writes decode as the pages state; identical under zero and v4 seed 1 (E0)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = ["LED-AUD-0011"]
+until_mclk = 15000000

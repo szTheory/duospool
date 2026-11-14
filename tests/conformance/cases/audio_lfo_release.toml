@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The TRG 1 -> 0 release of an uncoupled select 1 (plan 05.1-02; C-04, D-220, RF-5): scene lfo_release of fixtures/src/psg_lfo.aexp: select 1 keyed on under TRG 1 (frozen at word 0), then R9 $00; the cycle_phase group rel (ASSUMED:LED-AUD-0004+LED-AUD-0011, no MAN
+# row, D-220) judges the restart from word 0. until_mclk as audio_lfo_static (C-11); the audio run stops at the DSV1 verdict.
+id = "audio_lfo_release"
+kind = "audio"
+fixture = "authored:psg-lfo"
+request = ""
+expect = "rom=psg-lfo;id=29;checks=2;scene=lfo_release"
+meaning = "After R9 $00 releases TRG with CTL 0, select 1 (frozen at word 0 under TRG 1) plays its table from word 0, under the assumed restart convention; identical under zero and v4 seed 1 (E0)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 15000000

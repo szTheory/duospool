@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# disputed-sum: a MAN silent row whose inputs give the right side the P8-10 sum 15 (R1 $C8, AL $1D, R5 $F8): the sum 15 is disputed (ER-15).
+aexp	sample_mclk=192
+scene	t	case=audio_t	role=literal
+group	t	period_R	form=ROWS	kind=period	class=MAN:P8-9+H8-23	kills=AF0,AF2,AF4
+row	t	period_R	anchor=ev:ch=0;reg=R4;val=$9F;nth=1;from=+50000;to=+300000;side=R	f=256;k=4;d=1024;r1=$FF;al=$1F;r5=$FF
+group	t	silent_R	form=ROWS	kind=silent	class=MAN:P8-4	kills=AF0,AF6
+row	t	silent_R	from=0;to=ev:ch=0;reg=R4;val=$9F;nth=1;side=R	chon=0;r1=$C8;al=$1D;r5=$F8

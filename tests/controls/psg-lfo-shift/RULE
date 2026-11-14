@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Toy control (D-210, PR-15, F-4, F-72, R5; the audio toy of plan 05.1-01): the LFO shift taken as s = CTL - 1 (shifts 0, 1, 2) instead of s = 2 x (CTL - 1) (shifts 0, 2, 4, MAN:P8-8), made from the live src/core/psg.c by scripts/control-mutate. The anchor is the one shift
+# statement of lfo_f0. The case audio_lfo_static must come out guest_failure: with select 1 word 0 = $18 held under TRG 1 and F0 = 512, CTL 2 gives 512 + 48 - 32 = 528 (a distance of 1,056 for the literal 1,088, group lfo2) and CTL 3 gives 512 + 96 - 64 = 544 (1,088 for
+# the literal 1,280, group lfo3). The case audio_lfo_ctl1 must STAY pass (F-4): at CTL 1 the shift is 0 under both rules, so F0' stays 520. The real core passes both (REQUIRED cases).
+tag=rule-psg-lfo-shift
+file=src/core/psg.c
+anchor=uint32_t s = 2u * ((ctl & 3u) - 1u);
+replace=uint32_t s = (ctl & 3u) - 1u;

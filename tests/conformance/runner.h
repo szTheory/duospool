@@ -361,6 +361,8 @@ int trace_out_main(void);
 void kind_observer(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_dev_log(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_vid_chan_append(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_psg_chan_append(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_pcm_chan_append(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_trace_out_rights(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 int output_fixture_permitted(const char *fixture); /* 1 for an authored image listed in build/gate/fixtures-authored.used or a synthetic recipe: the rights rule of --trace-out and --video-out (plan 04-05) */
 /* the stop callback that holds once the guest has set the DSV1 done state with its complement (a speed aid only, D-95: the deadline stays the hard bound) */
@@ -405,7 +407,7 @@ int list_fixtures(const size_t *sweep, size_t nsweep);
 
 /* the kinds added after the Phase 3 code review (reviewkinds.c): brk_irq_sample (WR-01, BRK with an interrupt pending, both values of irq_i_sample) and dev_record_pc (WR-02, the pc field of the dev records of a block transfer) */
 /* the VDC and VCE C-level kinds (vdckinds.c, plan 04-05): vdc_fold (random partitions of the fold against one jump, the tie rule through the bus write path, the next-event invariant), vid_noninterference (a vid-only sink in four shapes against no sink under three policies) and snapshot_restore_video (restores at the stops of the video schedules, the concatenated stream
- * compared); vd_policy_request appends policy fragment i (0 zero, 1 and 2 seeded-prng-v3 seeds 1 and 2) to a case's request, as kind_guest does for its default list. VD_POLICIES_VIDEO is the number of policies (zero and seed 1) that the video noninterference and restore runs use since lever (2) of D-176 (plan 04.1-01):
+ * compared); vd_policy_request appends policy fragment i (0 zero, 1 and 2 seeded-prng-v4 seeds 1 and 2 since plan 05-03) to a case's request, as kind_guest does for its default list. VD_POLICIES_VIDEO is the number of policies (zero and seed 1) that the video noninterference and restore runs use since lever (2) of D-176 (plan 04.1-01):
  * the power-on dimension of the video fixtures is carried by vdc_poweron_policy_diff, which keeps all of VD_POLICIES */
 #define VD_POLICIES 3u
 #define VD_POLICIES_VIDEO 2u
@@ -417,6 +419,39 @@ void kind_vdc_poweron_policy_diff(const struct kase *k, struct ctx *c, char *got
 void kind_vdc_vram(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-06: the VRAM words of the instance bytes against literals of the case (D-175 (c)) */
 void kind_vdc_vram_sweep(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-06: all 65,536 word addresses through the accessor pair and the port (D-147) */
 void kind_vdc_regmask(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-06: the register masks, the AR width, the reserved ARs and the status read (D-144, D-146) */
+/* psgkinds.c (plan 05-03): the C-level PSG register, counter, power-on and restore cases */
+void kind_psg_decode(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_psg_wave_ptr(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_psg_lfo_trg(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_psg_poweron(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_psg_restore_divisor(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_psg_vol_table(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_psg_pure_function(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+/* audiokinds.c (plan 05-04): the audio kind, a guest ROM run with a psg, a pcm and a dev sink under the zero policy and seeded-prng-v4 seed 1, its DSV1 verdict, the DSPE records and DSPA frames judged by group against the hand literals of NAME.aexp (EV and ROWS forms),
+ * the expect_red binding of D-211 and the stream digests beside them (E0) */
+void kind_audio(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+/* plan 05-05 (audiokinds.c): the fault sweep of D-209, AF0..AF9 applied in memory to copies of the captured streams of one run; every declared kill must flip its group */
+void kind_audio_fault_sweep(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+/* plan 05-05 Task 2 (audiokinds.c): pass, fail and harness rows of every form and judged kind on a synthetic capture, the AF0 perturbation, the null-synth controls and the missing-sink rule */
+void kind_audio_judge_forms(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+/* plan 05-05 Task 3 (audiokinds.c): an AF7-faulted stream passes a golden taken from itself and fails the literal groups; the refusal audio-hash-only (ER-20) */
+void kind_audio_hash_not_verdict(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+/* the D-200 proof set of plan 05-04 Task 2 (audiokinds.c): sinks on and off under three policies, the DSPE to dev join, restores at audio stops, the power-on policy difference that the identity check must see; psg_fold is in psgkinds.c */
+void kind_aud_noninterference(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_psg_dev_join(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_snapshot_restore_audio(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_aud_poweron_policy_diff(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_psg_fold(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+/* plan 05-07 Task 3: the noise repeat of criterion 4 (E0) and the block-transfer flood (audiokinds.c), the hostile register programs (psgkinds.c) */
+void kind_audio_noise_repeat(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_psg_block_flood(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_psg_random_regs(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+/* plan 05-04 Task 3 (audiokinds.c): the --audio-out CASE_ID option (the --video-out shape: audio_out_id its value, audiokinds_arg parses it, audio_out_main runs the request, exit 0 or 2), kind audio_out_rights (the rule judged without writing a file) and kind pcm_cadence (the per-frame sample counts) */
+extern const char *audio_out_id;
+int audiokinds_arg(int argc, char **argv, int *a);
+int audio_out_main(void);
+void kind_audio_out_rights(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
+void kind_pcm_cadence(const struct kase *k, struct ctx *c, char *got, size_t gotcap);
 void kind_model_param_vdc(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-08: the VD and RR status-read stamps of the vdc_stat guest under the default and the two bound model rows (D-143, D-168) */
 void kind_vdc_irq_agree(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-17: the guest-recorded RCR to VD and VD to RCR = 64 intervals against the dev log read stamps and the hand-derived literals of the case (D-174, ER-3, ER-10) */
 void kind_vdc_advance_pure(const struct kase *k, struct ctx *c, char *got, size_t gotcap); /* plan 04-10: the DMA closed form against a naive per-clock model over seeded random stamp partitions that cross display starts (D-151, D-175) */

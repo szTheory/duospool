@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Noise on select 5 (plan 05-07; D-184, D-191, D-208): scene mod_noise5 of fixtures/src/psg_mod.aexp (two_level, run_grid and noise_ratio MAN, the R7 decode MAN). It judges no LFSR sequence, so the toy psg-noise-taps leaves it green (its F-4 pass column).
+id = "audio_mod_noise5"
+kind = "audio"
+fixture = "authored:psg-mod"
+request = ""
+expect = "rom=psg-mod;id=28;checks=8;scene=mod_noise5"
+meaning = "Select 5 keyed on with NE 1 and NFc 14 gives exactly two levels whose interior runs are multiples of 28 samples, and its run grid is twice that of select 4 at NFc 7; no seed is judged; identical under zero and v4 seed 1 (E0)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = ["LED-AUD-0002"]
+until_mclk = 4000000

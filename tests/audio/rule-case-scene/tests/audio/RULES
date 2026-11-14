@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# rule-case-scene: one clause whose guest case is REQUIRED but whose scene no .aexp holds.
+x-a	LED-AUD-0010	row	case:audio_gone	the noise outputs 31 or 0

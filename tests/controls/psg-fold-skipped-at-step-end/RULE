@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Toy control (D-186, D-200, D-210, PR-1, PR-15, F-72; an audio toy of plan 05-04, the fold-skipped-at-step-end pattern): a step that does not fold the PSG at its end, made from the live src/core/cpu.c by scripts/control-mutate. The anchor is the one statement of ds_cpu_step_obs that folds the PSG to the last clock of the step with step_end 1 (the rebase of PR-1);
+# the replacement is a statement with no effect that only keeps the local start used (so the toy compiles under -Werror). Samples are then emitted only when a window-2 write folds, the counters are never rebased, and the number and content of the frames depend on where the calls stop.
+# The cases in EXPECT must come out guest_failure: chunk_equiv_audio_psg_tone (the frame count of the uninterrupted run is not the closed form ceil(M / 192), the calls' first frames do not chain and the schedules' streams differ) and observer_psg_tone (every call's pcm seq is off the closed form).
+# An E0 toy with no literal group (the Phase 4 amendment A5 precedent); its EXPECT names audio cases only (F-72). The real core passes both (REQUIRED cases).
+tag=rule-psg-fold-skipped-at-step-end
+file=src/core/cpu.c
+anchor=ds_psg_advance(inst, start + (uint64_t)total - UINT64_C(1), 1u, log);
+replace=(void)start;

@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The golden role of psg_tone (plan 05-05; ER-20, D-209, ER-11): the runner kind audio judges the golden scene tone_golden of fixtures/src/psg_tone.aexp by one zero-policy run of psg-tone and compares the SHA-256 of both D-199 streams (DSPA and DSPE) with the digests pinned in its golden row.
+# The digests were made with ds_runner --audio-out and recomputed with the host shasum -a 256 of the .dspa and .dspe files. A golden scene is refused as audio-hash-only unless the ROM has a literal scene whose audio_fault_sweep case exists, and a ROM has at most one golden.
+# A match is E0 repeatability, a change detector and never a verdict: the literal case audio_tone_sel0 decides what the streams must show (audio_hash_not_verdict shows a faulted stream passing its own golden). No pitch, timing or sound claim.
+id = "audio_tone_golden"
+kind = "audio"
+fixture = "authored:psg-tone"
+request = ""
+expect = "rom=psg-tone;id=27;checks=10;scene=tone_golden"
+meaning = "One zero-policy run of psg-tone gives the DSPA and DSPE stream digests pinned beside the literal scene tone_sel0: a change detector (E0 repeatability), never a verdict"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 12000000

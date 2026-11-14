@@ -28,8 +28,8 @@
  *                 negative control of that equality: the byte of every policy after the first must DIFFER from the first one, so a fixture that stopped reading the power-on state turns the case guest_failure (policy-diff).
  *                 Plan 04-17 (D-173, F-4): the item judge=A-B (1 to 255, A at most B, once) judges only the checks A to B (the group of one case, for example the assumption-free ratio rows) while the DSV1 integrity (magic, state, complement, version, count, id, checksum, trailer, summary recomputed over all checks, reserved bytes) is still verified in full;
  *                 the checks outside A to B may read $46 and the case still passes. A B above the checks count is harness_failure.
- *                 Power-on policies (plan 03-11; D-127): the ROM is booted and run once per policy of the list (the optional key policies, request fragments separated by ||, or the built-in default of zero, seeded-prng-v3 seed 1 and
- *                 seeded-prng-v3 seed 2, plan 04-18; plan 03-24 had v2), and the DSV1 result bytes +10..+6F and observed bytes +80..+DF of every run must equal those of the first run; the first difference is a guest_failure naming the check.
+ *                 Power-on policies (plan 03-11; D-127): the ROM is booted and run once per policy of the list (the optional key policies, request fragments separated by ||, or the built-in default of zero, seeded-prng-v4 seed 1 and
+ *                 seeded-prng-v4 seed 2, plan 05-03; plan 04-18 had v3, plan 03-24 v2), and the DSV1 result bytes +10..+6F and observed bytes +80..+DF of every run must equal those of the first run; the first difference is a guest_failure naming the check.
  *                 The RESULT line of a guest case ends machine_time=N stop=REASON (D-95, F11).
  *                 Outcome mapping, one reading of D-124 (the judge below and ds_proto.s carry the same layout):
  *                   harness_failure  a harness-side precondition fails: the ROM is unreadable, a key or the expect is malformed, a DSV1 block is
@@ -861,10 +861,10 @@ static int read_int_keys(const struct kase *k, uint64_t *until, uint64_t *checks
 /*
  * The power-on policy list of a guest case (plan 03-11; D-127, T-03-33). A guest ROM must initialise everything it reads, so the same ROM is booted and run once per policy of the list and the DSV1 result bytes (+10..+6F) and observed
  * bytes (+80..+DF) of every run must equal those of the first run: a check that read power-on state differs between a zero and a seeded power-on, and the case is guest_failure naming the check. The list is the optional case key
- * policies (request fragments separated by ||, an empty fragment is the default zero policy) or, when the key is absent, the built-in default below: zero plus two seeded-prng-v3 seeds since plan 04-18 (D-167; seeded-prng-v2 since plan 03-24, D-114, D-127, and still covered by its own power-on cases), so cases never
+ * policies (request fragments separated by ||, an empty fragment is the default zero policy) or, when the key is absent, the built-in default below: zero plus two seeded-prng-v4 seeds since plan 05-03 (D-204, PR-14; seeded-prng-v3 from plan 04-18, seeded-prng-v2 from plan 03-24, each still covered by its own power-on cases), so cases never
  * repeat the list, and a REQUIRED case with an explicit key needs a meaning that starts with policies-override: and names the reason (the guard of kind_guest, control guest_policies_guard). Each fragment is appended to the case's own request with a semicolon. The poison-t0 control does not run the guest, so it uses the first policy only.
  */
-static const char *const default_policies[] = {"", "bind.powerup_policy=seeded-prng-v3;seed=1", "bind.powerup_policy=seeded-prng-v3;seed=2"};
+static const char *const default_policies[] = {"", "bind.powerup_policy=seeded-prng-v4;seed=1", "bind.powerup_policy=seeded-prng-v4;seed=2"};
 #define GP_DEFAULT_COUNT 3u
 #define GP_MAX 8u
 

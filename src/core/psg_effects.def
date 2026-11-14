@@ -1,0 +1,18 @@
+/* SPDX-License-Identifier: MIT OR Apache-2.0 */
+/* SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors */
+/*
+ * psg_effects.def - the effect bits of one PSG register write (plan 05-03; D-196, PR-7), defined once. ds_psg_write (psg.c) returns them and the DSPE record of plan 05-04 carries them at +14.
+ * One X-macro row per bit: DS_PSG_EFFECT(name, bit, ledger, rule)
+ *   name    the bit as DS_PSGE_name in ds_psg.h
+ *   bit     its position, 0..6; bit 7 is always 0
+ *   ledger  the ledger id that governs the rule (every rule is assumed, a definition of the record)
+ *   rule    the write that sets it
+ */
+DS_PSG_EFFECT(WAVE_STORE, 0, "LED-AUD-0005", "R6 with chON 0 and DDA 0: the word is stored at the wave index, which then advances mod 32 (D-190)")
+DS_PSG_EFFECT(DDA_LOAD, 1, "LED-AUD-0005", "R6 with DDA 1: the word is loaded into the DDA latch, the wave RAM is untouched (D-190)")
+DS_PSG_EFFECT(WAVE_HELD, 2, "LED-AUD-0004", "R6 with chON 1 and DDA 0: the word is stored at the wave index with no increment (psg_wave_write_when_on, D-190)")
+DS_PSG_EFFECT(IDX_RESET, 3, "LED-AUD-0005", "R4 with DDA 1: the wave index of the channel is set to 0 (D-190)")
+DS_PSG_EFFECT(LFO_RESET, 4, "LED-AUD-0011", "R9 with TRG 1: the wave index of select 1 is set to 0 and its counter freezes (D-192)")
+DS_PSG_EFFECT(NO_TARGET, 5, "LED-AUD-0003", "reg $A..$F, R2..R7 at select 6 or 7, R7 at select 0..3: nothing is stored (D-188, D-189)")
+/* bit 6 stays defined (the DSPE layout of plan 05-04 keeps it) but no write sets it since plan 05.1-01, which models the LFO modulation (D-192, D-234) */
+DS_PSG_EFFECT(UNMODELLED, 6, "LED-AUD-0011", "none since plan 05.1-01; before it, R9 with CTL != 0 (the LFO was stored but not modelled, D-192, D-234)")

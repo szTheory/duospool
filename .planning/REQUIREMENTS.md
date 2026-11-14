@@ -46,9 +46,9 @@ E4 = differential vs another emulator (finds disagreements, decides nothing).
 
 ### Audio (PSG)
 
-- [ ] **AUD-01**: The PSG implements 6 channels with waveform RAM, frequency, volume/balance, noise (on the two noise-capable channels; channel numbering normalized in the claim ledger), DDA mode, and LFO to the documented level, verified by fixtures that assert register-to-event behavior (E1).
-- [ ] **AUD-02**: Raw audio is emitted as a timestamped PSG register-event log and as PCM at a defined, recorded sample rate and format, before any host resampling or device playback.
-- [ ] **AUD-03**: Audio checks assert semantic properties (e.g. expected channel frequency/period, waveform content, silence where expected) rather than "buffer is nonzero". Noise generation is deterministic.
+- [x] **AUD-01**: The PSG implements 6 channels with waveform RAM, frequency, volume/balance, noise (on the two noise-capable channels; channel numbering normalized in the claim ledger), DDA mode, and LFO to the documented level, verified by fixtures that assert register-to-event behavior (E1).
+- [x] **AUD-02**: Raw audio is emitted as a timestamped PSG register-event log and as PCM at a defined, recorded sample rate and format, before any host resampling or device playback.
+- [x] **AUD-03**: Audio checks assert semantic properties (e.g. expected channel frequency/period, waveform content, silence where expected) rather than "buffer is nonzero". Noise generation is deterministic.
 
 ### Input
 
@@ -172,9 +172,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | VID-04 | Phase 4 | Complete |
 | VID-05 | Phase 4 | Complete |
 | VID-06 | Phase 4.1 | Complete |
-| AUD-01 | Phase 5 | Pending |
-| AUD-02 | Phase 5 | Pending |
-| AUD-03 | Phase 5 | Pending |
+| AUD-01 | Phase 5.1 | Complete |
+| AUD-02 | Phase 5 | Complete |
+| AUD-03 | Phase 5 | Complete |
 | INP-01 | Phase 3 | Complete |
 | INP-02 | Phase 3 | Complete |
 | INP-03 | Phase 3 | Complete |

@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# fixture-lint control mini-root: a P8 page label that cites.txt does not list (P8-11 has no img row; no decision uses it, plan 05-01)
+id=1
+checks=1
+1	one	MAN:P8-11	no such registered page

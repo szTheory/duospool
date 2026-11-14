@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Held LFO modulation, CTL 1 (plan 05.1-01; D-184, D-208, D-219, C-05): scene lfo_ctl1 of fixtures/src/psg_lfo.aexp: the decode row of R9 $81 (MAN, AF0 only: AUDIO_TOY_EXEMPT), an lfo_static group at CTL 1 (F' 520, MAN) and the cycle order of select 0. Its own case so that the toy psg-lfo-shift (s = 0 either way) keeps it green (D-210). until_mclk as audio_lfo_static (C-11).
+id = "audio_lfo_ctl1"
+kind = "audio"
+fixture = "authored:psg-lfo"
+request = ""
+expect = "rom=psg-lfo;id=29;checks=2;scene=lfo_ctl1"
+meaning = "Under held modulation at CTL 1 (shift 0) select 0 at F0 = 512 repeats its cycle every 520 samples with the order of its table kept, and R9 $81 decodes as the page states; identical under zero and v4 seed 1 (E0)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 15000000

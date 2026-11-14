@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# The PSG register map VL0 (05-CONTEXT D-188, D-189, D-213; AUD-01). A modelling assumption until promoted, not a hardware measurement.
+# E1 candidate (D-213): every clause is stated on an image-read manual page; promotion only by ER-2 and ER-22 in plan 05-08 or 05-10, never by this plan.
+# ER-2 and ER-22 re-run (plan 05.1-03, 2026-11-14) with the psg_lfo decode rows: the status stays assumed and the statement is unchanged (05.1-CONTEXT deferred).
+# Now covered by guest MAN groups (stored, not the dropped bits): R9 bits 1-0 (ev_lfo, R9 $82 and $83, audio_lfo_static; ev_ctl1, R9 $81, audio_lfo_ctl1; MAN:P8-2+P8-3+P8-6; mutants K10 and W27 turn them red), R3 bit 3 and R2 bits 1-0 (ev_lfo: select 1 R3 $08 then R2 $83 posts $0883; mutants K03 and K04 red)
+# And the R8 value $96 (ev_r8, audio_lfo_dynamic; mutant K09 red). The other clauses are as in 05-08.
+# Still blocking: the disputed clauses "$A to $F none" and "6, 7 none" (ER-15, ASSUMED edge rows only) and the converse "R7 exists for select 4 and 5 only" (ER-16, ASSUMED edge row); no MAN row can state them. A promotion would need a statement decision for those clauses.
+# C-level-only (no psg_lfo group turns red, 05.1-02 mutant re-run): the F of $800 or more used as a 12-bit period (C01, the mask 0x7FF; no F of $800 or more is heard in any guest scene; killed by psg_pure_function) and the R8 store as a register (W26: ev_r8 judges the logged post, not the stored FLF, and no row times the switch, D-208; killed by psg_decode).
+id = "LED-AUD-0003"
+statement = "DuoSpool models the PSG map as: A3-A0 0 to 9 select R0 to R9, $A to $F none; R0 bits 2-0 pick channel 0 to 5 (6, 7 none); stored masks R0 $07, R3 $0F, R4 $DF, R6 $1F, R7 $9F, R9 $83, others $FF; R2 and R3 form the 12-bit F; R1, R8 and R9 ignore R0; R7 exists for select 4 and 5 only. Modelling assumption."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|P8-2 P8-3|images 2026-11-13: bit map; A3-A0 0-9 = R0-R9, A-F shaded; one R0 R1 R8 R9 per PSG; R0 0-5 = ch1-ch6", "FACT|P8-4 P8-6 P8-9|same read: R4 R6 R7 R9 fields and shaded bits; F = R3 bits 3-0 : R2; R7 ch5 and ch6 only", "FACT|H8-24|same read: PSG $1FE800-$1FEBFF, decode A3-A0, no read function"]
+evidence = []
+disagreement = "none recorded on the map itself: the emulators read as material agree on it; which bits a write stores where the pages shade a field is this project choice (D-189)"
+pinning_test = "TEST:psg_decode"
+updated = "2026-11-13"
+assumption = "The stored masks live in one table ds_psg_reg_mask shared by the write path and the restore decoder; nothing reads a PSG register back, so the map is seen only through the DSPE post field and the synthesised output (ER-21)."
+revisit_phase = 5
+withheld = ["register read-back", "any claim about the undefined register slots", "hardware-verified"]
+origin = "05-CONTEXT D-188"

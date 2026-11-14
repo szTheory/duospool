@@ -131,7 +131,7 @@ void ds_profile_hash(const struct ds_profile *profile, uint8_t out[DS_DIGEST_BYT
 
 /* ---- the region table ---- */
 
-enum region_id { R_PROF, R_CONT, R_POWR, R_TIME, R_RAM8, R_MPRS, R_CPU0, R_BUS0, R_TIMR, R_IRQC, R_IRQS, R_BLKT, R_IOPT, R_SCHD, R_VCE0, R_PALT, R_VDC0, R_BEAM, R_VDMA, R_VRAM, R_SATB, R_COUNT };
+enum region_id { R_PROF, R_CONT, R_POWR, R_TIME, R_RAM8, R_MPRS, R_CPU0, R_BUS0, R_TIMR, R_IRQC, R_IRQS, R_BLKT, R_IOPT, R_SCHD, R_VCE0, R_PALT, R_VDC0, R_BEAM, R_VDMA, R_VRAM, R_SATB, R_PSG0, R_PSGW, R_PSGT, R_COUNT };
 
 struct region {
     char tag[5];            /* four ASCII bytes and a NUL, which is not written */
@@ -196,6 +196,16 @@ _Static_assert(offsetof(struct ds_instance, vdc_wlatch) + 1u == offsetof(struct 
 _Static_assert(offsetof(struct ds_instance, vce_cta) + sizeof(uint16_t) == offsetof(struct ds_instance, vce_pal) && offsetof(struct ds_instance, vce_pal) + DS_PAL_BYTES == offsetof(struct ds_instance, vdc_vram) && offsetof(struct ds_instance, vdc_vram) + DS_VRAM_BYTES == offsetof(struct ds_instance, vdc_satb),
                "the palette, VRAM and SATB arrays are not neighbours");
 
+/*
+ * The PSG regions (plan 05-03; D-202, F-59): each one live span in the order of the declarations of ds_core.h. PSG0 is psg_freq[6] (u16) then psg_select, psg_main_bal, psg_lfo_freq, psg_lfo_ctl and psg_ctl, psg_bal, psg_widx, psg_dda (6 each) and psg_noise[2]: 42 bytes;
+ * psg_pad (6 bytes) is in no region; PSGW the 192 bytes of psg_wave; PSGT psg_rem[6], psg_nrem[2] and psg_lfsr[2] (u32 each): 40 bytes. Every field is written explicitly little-endian.
+ */
+_Static_assert(offsetof(struct ds_instance, psg_noise) + 2u - offsetof(struct ds_instance, psg_freq) == 42u, "the PSG register fields are not the 42 bytes of the PSG0 payload");
+_Static_assert(offsetof(struct ds_instance, psg_select) == offsetof(struct ds_instance, psg_freq) + 12u && offsetof(struct ds_instance, psg_ctl) == offsetof(struct ds_instance, psg_select) + 4u && offsetof(struct ds_instance, psg_noise) == offsetof(struct ds_instance, psg_ctl) + 24u,
+               "the PSG0 fields are not neighbours");
+_Static_assert(offsetof(struct ds_instance, psg_wave) == offsetof(struct ds_instance, psg_pad) + 6u && offsetof(struct ds_instance, psg_rem) == offsetof(struct ds_instance, psg_wave) + 192u, "psg_pad, the wave RAM and PSGT are not neighbours");
+_Static_assert(offsetof(struct ds_instance, psg_lfsr) + 2u * sizeof(uint32_t) - offsetof(struct ds_instance, psg_rem) == 40u, "the PSG counter fields are not the 40 bytes of the PSGT payload");
+
 static const struct region regions[R_COUNT] = {
     [R_PROF] = {"PROF", DS_DIGEST_BYTES, offsetof(struct ds_instance, profile), sizeof(struct ds_profile)},
     [R_CONT] = {"CONT", DS_CONTENT_ID_BYTES + 4u + 4u, offsetof(struct ds_instance, content_id), DS_CONTENT_ID_BYTES},
@@ -219,6 +229,9 @@ static const struct region regions[R_COUNT] = {
     [R_VDMA] = {"VDMA", 25u, offsetof(struct ds_instance, satb_pending), offsetof(struct ds_instance, dma_state) + 1u - offsetof(struct ds_instance, satb_pending)},
     [R_VRAM] = {"VRAM", DS_VRAM_BYTES, offsetof(struct ds_instance, vdc_vram), DS_VRAM_BYTES},
     [R_SATB] = {"SATB", DS_SATB_BYTES, offsetof(struct ds_instance, vdc_satb), DS_SATB_BYTES},
+    [R_PSG0] = {"PSG0", 42u, offsetof(struct ds_instance, psg_freq), 42u},
+    [R_PSGW] = {"PSGW", 192u, offsetof(struct ds_instance, psg_wave), 192u},
+    [R_PSGT] = {"PSGT", 40u, offsetof(struct ds_instance, psg_rem), 40u},
 };
 
 /* the payload of one region: exactly regions[index].payload_len bytes, one explicit field per call, never a struct */
@@ -369,6 +382,40 @@ static void emit_payload(struct writer *w, const struct ds_instance *inst, uint3
     case R_SATB:
         w_bytes(w, inst->vdc_satb, DS_SATB_BYTES);
         break;
+    case R_PSG0: { /* the PSG registers in the order of ds_core.h (plan 05-03; D-202), one explicit field per line */
+        uint32_t ch;
+
+        for (ch = 0u; ch < 6u; ch++) {
+            w_u16(w, inst->psg_freq[ch]);
+        }
+        w_u8(w, inst->psg_select);
+        w_u8(w, inst->psg_main_bal);
+        w_u8(w, inst->psg_lfo_freq);
+        w_u8(w, inst->psg_lfo_ctl);
+        w_bytes(w, inst->psg_ctl, 6u);
+        w_bytes(w, inst->psg_bal, 6u);
+        w_bytes(w, inst->psg_widx, 6u);
+        w_bytes(w, inst->psg_dda, 6u);
+        w_bytes(w, inst->psg_noise, 2u);
+        break;
+    }
+    case R_PSGW: /* the wave RAM, byte ch x 32 + i */
+        w_bytes(w, inst->psg_wave, 192u);
+        break;
+    case R_PSGT: { /* the six channel distances, the two noise distances and the two LFSRs, each a u32 */
+        uint32_t k;
+
+        for (k = 0u; k < 6u; k++) {
+            w_u32(w, inst->psg_rem[k]);
+        }
+        for (k = 0u; k < 2u; k++) {
+            w_u32(w, inst->psg_nrem[k]);
+        }
+        for (k = 0u; k < 2u; k++) {
+            w_u32(w, inst->psg_lfsr[k]);
+        }
+        break;
+    }
     default:
         break;
     }

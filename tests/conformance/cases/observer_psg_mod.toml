@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The observer matrix on psg_tone (plan 05-04; D-200, D-201, R6, PR-1, PR-4): kind observer runs the fixture with no sink and with the insn, dev, vid, psg and pcm sinks in five configurations (large, 4-record and 4-frame drop-newest, poisoned headers, capacity 0 and 1), whole, in 7 chunks and
+# stopped by the callback, under zero and seeded-prng-v4 seed 1: identical verdict RAM, machine time, steps, stop sequence and state digest in every configuration. Per call the pcm header must read first = ceil(T0 / 192) and seq = ceil(T1 / 192) - first (the closed form, written by hand in
+# obskinds.c), sample_mclk 192, frame_bytes 8, version 1, format 1, count + lost = seq; the psg seq must equal the window-2 writes of the call's dev log (cross-counted); the chunked logs equal the whole run's. The toys psg-emit-mutates and psg-fold-skipped-at-step-end turn this case red.
+# Evidence tier E0; no hardware claim.
+id = "observer_psg_mod"
+kind = "observer"
+fixture = "authored:psg-mod"
+request = ""
+expect = "compare=verdict,machine_time,stops,digest"
+meaning = "Enabling the insn, dev, vid, psg and pcm sinks in any of five configurations, whole, in 7 chunks or stopped by the callback, changes neither the verdict RAM, the machine time, the stop sequence nor the digest of psg_mod (noise, the r7 write and the timer-paced DDA scene with its interrupts) under zero and seeded-prng-v4 seed 1; pcm seq follows ceil(M / 192) and psg seq the dev log"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 2500000
+sinks = "large,drop4,poison,cap0,cap1"
+chunks = "whole,chunk:7,stop:5000"
+policies = "||bind.powerup_policy=seeded-prng-v4;seed=1"

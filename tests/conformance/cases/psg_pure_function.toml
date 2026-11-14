@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The PSG periods as relations (plan 05-06; D-182, D-184, D-212; kind psg_pure_function of psgkinds.c), on a fresh d = 6 state at machine time 0 driven by direct ds_psg_write and ds_psg_advance calls. For F = 1, 254 (P8-12 A4), 3421 (P8-12 C1) and 4095 select 0 is keyed on at 1,000
+# and at three times T after its first step widx(T + 6F) = widx(T) + 1 mod 32 and widx(T + 192F) = widx(T), with 6F = 6, 1,524, 20,526, 24,570 and 192F = 192, 48,768, 656,832, 786,240 [MAN:P8-9+P8-12+H8-23]; for NFc = 1, 7, 31 (R7 $1E, $18, $00 at select 4) the
+# distance to the next noise event is the same at T and T + 384 x NFc (384, 2,688, 11,904). Relations only: the key-on phase and the tick phase (ASSUMED:LED-AUD-0012) do not enter, and no LFSR model is in the test. Documentary under the bound divisor 6 (ER-14). Evidence tier E0.
+id = "psg_pure_function"
+kind = "psg_pure_function"
+fixture = "plain-256k"
+request = ""
+expect = "rows=all"
+meaning = "A channel's wave index advances by one every 6F and returns every 192F master clocks for F = 1, 254, 3421 and 4095, and a noise counter repeats every 384 x NFc master clocks for NFc = 1, 7 and 31, at d = 6 (E0)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

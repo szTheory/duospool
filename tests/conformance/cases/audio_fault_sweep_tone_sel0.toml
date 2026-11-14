@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The fault sweep of the tracer scene (plan 05-05; D-209, ER-20, R3): the runner kind audio_fault_sweep (tests/conformance/audiokinds.c) runs psg-tone once under the zero policy, then applies each fault AF0..AF9 in memory to copies of the captured DSPE and DSPA streams and judges every group of the
+# scene tone_sel0 of fixtures/src/psg_tone.aexp on each copy: AF0 a perturbed literal, AF1 the PCM one sample later against the log, AF2 one sample dropped mid-window, AF3 L and R swapped, AF4 every 32nd sample of the window duplicated, AF5 the window zeroed, AF6 the window constant and non-silent,
+# AF7 each 32-sample cycle of the window reversed, AF8 the group's event record dropped, AF9 one event's channel k -> k + 1 mod 6. Every kill the .aexp declares must flip its group and a group no declared fault flips fails (vacuous); the evidence prints the observed kill matrix of all ten faults. E0.
+id = "audio_fault_sweep_tone_sel0"
+kind = "audio_fault_sweep"
+fixture = "authored:psg-tone"
+request = ""
+expect = "rom=psg-tone;id=27;checks=10;scene=tone_sel0"
+meaning = "Every literal group of the tracer scene turns into a failure under each stream fault it declares (a perturbed literal, a dropped, duplicated, zeroed, constant or reversed stretch of samples, a dropped or relabelled event), so no group of the scene is vacuous (E0)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 12000000

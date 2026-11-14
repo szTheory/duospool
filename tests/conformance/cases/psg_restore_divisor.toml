@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The tick divisor across a restore (plan 05-03; D-183, D-223, T-05-12; kind psg_restore_divisor of psgkinds.c): d is read from the profile and stored in no region, so a snapshot of an instance bound psg_tick_divisor=3 (its noise events at time 3, on the
+# d = 3 grid only) is refused by a default (d = 6) instance as snapshot.profile through the PROF identity, and restored by another d = 3 instance.
+# The D-203 distance bounds are those of the restoring d (review WR-02): at d = 3 and time 0 a running select-0 or select-1 distance of 12,286 and a noise distance of 5,950 (the largest on the d = 3 grid within 3 x 4096 and 3 x 64 x 31) are
+# accepted, and a select-0 distance of 12,289 and a noise distance of 5,953 are refused as snapshot.field. A running select 1 has the coupled bound at d = 3, 3 x 4096 x 256 = 3,145,728, whatever the coupling (plan 05.1-01, 05.1-CONTEXT C-09): its 12,289 is
+# accepted and 3,145,729 (the next d = 3 grid point past the bound) is refused as snapshot.field. The d = 6 bounds would accept all seven. Evidence tier E0.
+id = "psg_restore_divisor"
+kind = "psg_restore_divisor"
+fixture = "plain-256k"
+request = ""
+expect = "rows=all"
+meaning = "A snapshot of a psg_tick_divisor=3 instance is refused as snapshot.profile by a default instance and accepted by a d = 3 instance, within the d = 3 distance bounds and refused past them"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

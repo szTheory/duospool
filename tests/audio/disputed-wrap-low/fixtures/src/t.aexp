@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# disputed-wrap-low: a MAN lfo_static row whose unmasked LFO sum f + (w << s) - (16 << s) is below 0 (f 1, w $00, shift 2: 1 - 64 = -63): the 12-bit mask wraps it to 4033, a disputed point (ER-15, tests/audio/DISPUTED lfo_wrap). d = k x 4033 holds, so only the wrap rule can report it.
+aexp	sample_mclk=192
+scene	t	case=audio_t	role=literal
+group	t	lfo_w	form=ROWS	kind=lfo_static	class=MAN:P8-6+P8-7+P8-8+P8-9+H8-23	kills=AF0,AF2,AF4
+row	t	lfo_w	anchor=ev:ch=G;reg=R9;val=$82;nth=1;from=+100000;to=+500000;side=L	f=1;w=$00;shift=2;k=2;d=8066;r1=$FF;al=$1F;r5=$FF

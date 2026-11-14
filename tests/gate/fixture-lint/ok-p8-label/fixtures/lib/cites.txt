@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# fixture-lint control mini-root registry: one P8 page, flagged img (a copy of the P8-9 row of fixtures/lib/cites.txt, plan 05-01)
+P8-9	img	gsd-executor	2026-11-13	F = R3 bits 3-0 : R2, 12 bits; fOUT = fmaster/(2 x 32 x F), fmaster 7.16 MHz from the CPU, F = 0 forbidden; fLFO = fmaster/(2 x 32 x F2 x FLF), effective at LF CTL 1-3, 20-bit combined counter, the time for the 32 ch2 words; fNCL = fmaster/(2 x 32 x 2 x NF), NF = complement of the 5 bits, NF = 0 undefined; R7 for ch5 and ch6 only

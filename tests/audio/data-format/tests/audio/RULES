@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# data-format: a malformed line.
+x-a	LED-AUD-0010	row	period

@@ -11,7 +11,7 @@
  *                                         line (the tie rule of D-138, ASSUMED LED-VID-0004, and the divider values of CR 0 and 1, MAN H6-3); line_dirty bit 0 is on exactly the record that carries the change.
  *                             invariant   the fixture runs under a stop callback that is called before the first step and after every step: at every call the pending event time (ds_vdc_pending_time, valid) is at least the machine time (D-137: no event older than machine_time) and the next line index equals the closed
  *                                         form of the lines due at the machine time; the same run is repeated in 64 calls to seeded random deadlines, so the property holds after every ds_run stop. A pure query is made only at a folded point and never ds_irq_pending_query (F-21).
- *   vid_noninterference       expect = rom=NAME;compare=verdict,machine_time,steps,digest (until_mclk needed): for each of the two power-on policies of VD_POLICIES_VIDEO (zero and seeded-prng-v3 seed 1; lever (2) of D-176, plan 04.1-01) the fixture runs with no vid sink and with a vid sink only in four shapes (large, 4 records drop-newest taken from the sizes of the large
+ *   vid_noninterference       expect = rom=NAME;compare=verdict,machine_time,steps,digest (until_mclk needed): for each of the two power-on policies of VD_POLICIES_VIDEO (zero and seeded-prng-v4 seed 1; lever (2) of D-176, plan 04.1-01) the fixture runs with no vid sink and with a vid sink only in four shapes (large, 4 records drop-newest taken from the sizes of the large
  *                             run, capacity 0 and capacity 1): the machine time, the steps, the verdict RAM and the digest equal those of the run with no sink, the header counts whole records stored, lost = seq - count, bytes is their sum, seq is the closed-form line count, and the bytes past the count are untouched (D-164, F-2).
  *   snapshot_restore_video    expect = rom=NAME;schedules=1364,1366,7;stride=N (until_mclk needed): the fixture is run on each schedule (calls to the deadlines j * size) with a vid sink on every call; at every stop of the schedules 1364 and 1366, which fall at every phase inside a line, and at every stride-th stop and
  *                             at every stop whose machine time is a multiple of 1365 (a pending line event at the machine time itself) of the schedule 7, the machine is snapshotted, restored into a fresh poisoned boot of the same image (member by member equal to the source) and the run goes on with the target. The concatenated
@@ -24,7 +24,7 @@
  *   vdc_poweron_policy_diff   expect = roms=NAME@FRAME,...;control=NAME@FRAME (until_mclk needed; plan 04-13, D-167, Pitfall 13, T-04-45): each named fixture runs under the three policies with a vid sink; the verdict RAM and every
  *                             record from the first judged frame FRAME on must be byte for byte equal (the frames before it are setup frames and may differ); the control image (vce-pal-nopal, whose palette is never initialised) must show a different border in
  *                             the window between the zero policy and each v3 seed, which shows the guard can fail. E0.
- * The policy list of this file (zero, seeded-prng-v3 seed 1, seeded-prng-v3 seed 2) is the default list of a guest case (D-167); vd_policy_request appends a fragment to the request of a case as kind_guest does.
+ * The policy list of this file (zero, seeded-prng-v4 seed 1, seeded-prng-v4 seed 2; v3 until plan 05-03, PR-14: v4 draws the v3 bytes first, so the video draws are unchanged) is the default list of a guest case (D-167); vd_policy_request appends a fragment to the request of a case as kind_guest does.
  */
 #include <stddef.h>
 #include <stdint.h>
@@ -57,7 +57,7 @@
 
 /* ---- the three policies, shared with the observer kind ---- */
 
-static const char *const vd_policies[VD_POLICIES] = {"", "bind.powerup_policy=seeded-prng-v3;seed=1", "bind.powerup_policy=seeded-prng-v3;seed=2"};
+static const char *const vd_policies[VD_POLICIES] = {"", "bind.powerup_policy=seeded-prng-v4;seed=1", "bind.powerup_policy=seeded-prng-v4;seed=2"};
 
 const char *vd_policy_name(unsigned i)
 {
@@ -337,6 +337,7 @@ struct vf_fold {
 static int vf_open(struct ctx *c, struct vf_fold *f, const char *rom, uint32_t cap)
 {
     const char *err;
+    struct ds_run_request orq;
 
     memset(f, 0, sizeof *f);
     f->cap = cap;
@@ -356,7 +357,9 @@ static int vf_open(struct ctx *c, struct vf_fold *f, const char *rom, uint32_t c
     f->w = (struct ds_instance *)(void *)f->b.mem;
     f->vsk.bytes = f->bytes;
     f->vsk.capacity = cap;
-    ds_obs_begin(&f->log, NULL, NULL, &f->vsk);
+    memset(&orq, 0, sizeof orq); /* the request form of ds_obs_begin (plan 05-02, D-198): a zeroed request carrying only the vid sink */
+    orq.vid = &f->vsk;
+    ds_obs_begin(&f->log, &orq, f->w->machine_time);
     return 0;
 }
 

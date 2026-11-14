@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# rule-no-row: one clause, no group of its kind.
+x-a	LED-AUD-0010	row	two_level	the noise outputs 31 or 0

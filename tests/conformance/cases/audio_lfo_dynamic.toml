@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Running LFO modulation (plan 05.1-02; D-184, D-208, D-219, D-231, C-05): scene lfo_dynamic of fixtures/src/psg_lfo.aexp: the decode row of R8 $96 (MAN) and the lfo_dynamic group (MAN): after R9 $01, select 0 alone is heard in complete cycles of 200 or 184 samples, both
+# present, in runs read from the stream (no switch instant computed, so no restart edge and no switch timing is judged, D-208, D-220). until_mclk as audio_lfo_static (C-11); the audio run stops at the DSV1 verdict.
+id = "audio_lfo_dynamic"
+kind = "audio"
+fixture = "authored:psg-lfo"
+request = ""
+expect = "rom=psg-lfo;id=29;checks=2;scene=lfo_dynamic"
+meaning = "With select 1 stepping through a table of sixteen $18 and sixteen $08 at CTL 1, select 0 at F0 = 192 repeats its cycle in runs of 200 and of 184 samples, the two lengths the page arithmetic gives, and R8 $96 decodes as the pages state; identical under zero and v4 seed 1 (E0)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 15000000

@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The audio judge shown able to fail (plan 05-05; D-207, D-208, D-209, ER-19, R4): the runner kind audio_judge_forms (tests/conformance/audiokinds.c) judges hand-built rows of every form and judged kind (ROWS period, cycle_order, silent, live; REL period_ratio, same, atten_order, atten_equal;
+# STRUCT count, header; EV ev_value, ev_decode, ev_edge) on a synthetic capture whose values follow from its construction (a 32-word table of one rising crossing per 128-sample cycle at two levels, then silence), requires each pass, fail and harness verdict and the AF0 perturbation of each pass row to fail,
+# refuses a kind judged from a later plan and an unknown kind, then runs psg-tone and replaces its PCM by a null synthesiser (no frame, every frame 0, every frame one constant): every period, cycle_order and live group of tone_sel0 fails and every silent group has a failing live partner on its side.
+# The missing-sink rule is shown: a zero pcm header and a capture with no frame although samples were due are harness_failure. E0: the judge, not the core, is under test.
+id = "audio_judge_forms"
+kind = "audio_judge_forms"
+fixture = "authored:psg-tone"
+request = ""
+expect = "rom=psg-tone;id=27;checks=10;scene=tone_sel0"
+meaning = "Every form and judged kind of the audio judge passes its right literal, fails a wrong or perturbed one and refuses a malformed row; a null synthesiser fails every live row of the tracer scene; a missing sink is a harness failure (E0)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 12000000

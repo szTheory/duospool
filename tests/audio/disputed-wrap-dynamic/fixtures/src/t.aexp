@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# disputed-wrap-dynamic: a MAN lfo_dynamic row whose second word gives the unmasked sum f + w2 - 16 = 8 + 0 - 16 = -8 (f 8, w1 $18, w2 $00): the 12-bit mask wraps it to 4088, a disputed point (ER-15, tests/audio/DISPUTED lfo_wrap). set = 16,4088 is F'(w1), F'(w2), so only the wrap rule can report it.
+aexp	sample_mclk=192
+scene	t	case=audio_t	role=literal
+group	t	dyn	form=ROWS	kind=lfo_dynamic	class=MAN:P8-6+P8-7+P8-8+P8-9+H8-23	kills=AF0,AF2,AF4
+row	t	dyn	anchor=ev:ch=G;reg=R9;val=$01;nth=1;from=+0;to=+4032000;side=L	f=8;w1=$18;w2=$00;f2=128;flf=150;step=115200;set=16,4088;r1=$FF;al=$1F;r5=$FF

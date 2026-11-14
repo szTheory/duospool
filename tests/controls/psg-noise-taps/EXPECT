@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Case ids that must come out guest_failure on the toy, one per line; a second column pass (a TAB and the word pass) marks a case that must STAY pass (F-4). Audio cases only (F-72): the red group of mod_noise4 is n4_seq; two_level, run_grid and run_min stay green.
+audio_mod_noise4
+audio_mod_noise5	pass
+audio_tone_sel0	pass

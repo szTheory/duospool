@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# PSG periods at psg_tick_divisor 6 (05-CONTEXT D-182, D-183, D-184; AUD-01). ER-14 hold: the statement gives periods, so the status stays assumed until the owner settles the PSG clock (decision 10).
+# Evidence will list the MAN period rows (MAN:P8-9+H8-23) as they land; MAN row classes are allowed under the hold, promotion and claim words are not.
+# Phase 5 review fix WR-06 (2026-11-14) moved the LFO-coupled step to the assumption field, since no LFO ran before 05.1-01 (D-234); plan 05.1-01 (2026-11-14) returned it to the statement with the coupled fold (05.1-CONTEXT C-10).
+id = "LED-AUD-0006"
+statement = "DuoSpool models, with psg_tick_divisor bound to 6, a channel cycle of 192 x F master clocks for F >= 1, a noise clock of 384 x NFc for NFc >= 1 (NFc the complement of the 5 NOISE FRQ bits) and an LFO-coupled select-1 step of 6 x F2 x FLF for F2, FLF >= 1, equal to P8-9 with fmaster = OSC1/3 (H8-23); the cycle also matches the P8-12 table. Modelling assumption."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|P8-9|gsd-executor image 2026-11-13: fOUT = fmaster/(2 x 32 x F), fLFO = fmaster/(2 x 32 x F2 x FLF), fNCL = fmaster/(2 x 32 x 2 x NF), fmaster 7.16 MHz from the CPU", "FACT|H8-23|same read: the CPU supplies CLKP with f = OSC1/3", "FACT|P8-12|same read: A4 F 254 at 440.45 Hz and C1 F 3,421 at 32.70 Hz, both 7.16 MHz/(64 F)"]
+evidence = []
+disagreement = "none against the pages: pcetech and the emulators write the same formula as master/6 with 32F ticks per cycle (DX-1, LED-AUD-0001); what stays unmeasured is the hardware clock (criterion 4)"
+pinning_test = "TEST:audio_tone_sel0"
+updated = "2026-11-14"
+assumption = "Held by ER-14 until C1 is settled; the bound value is never used to compute a literal (D-183), and the d = 3 binding is the expect_red control of D-211. The LFO-coupled select-1 step of 6 x F2 x FLF (P8-9), planned for Phase 5.1, returned to the statement with plan 05.1-01 (05.1-CONTEXT C-10)."
+revisit_phase = 5
+withheld = ["pitch-accurate", "any PSG timing claim", "any pitch in Hz", "cycle-accurate"]
+origin = "05-CONTEXT D-182"

@@ -21,7 +21,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad** - Authored fixtures report guest-RAM verdicts for the CPU, MMU, timer, IRQ, and SEL/CLR pad, with negative controls and resumable bounded runs (completed 2026-11-11)
 - [x] **Phase 4: VCE/VDC Raw Video** - Per-scanline raw video and guest-recorded interrupt timing, checked against literal expectations for background, DMA, palette, and dot clock (sprites moved to Phase 04.1 at the D-180 cut) (completed 2026-11-12)
 - [x] **Phase 04.1: VDC Sprites** - Sprites from the SAT with the per-line limit and the overflow and collision flags written into guest RAM, checked against literal expectations (split from Phase 4 at the D-180 cut) (completed 2026-11-12)
-- [ ] **Phase 5: PSG Raw Audio** - Timestamped PSG event log and PCM at a recorded format, checked by semantic properties. Can run in parallel with Phase 4
+- [x] **Phase 5: PSG Raw Audio** - Timestamped PSG event log and PCM at a recorded format, checked by semantic properties. Can run in parallel with Phase 4 (LFO modulation moved to Phase 05.1 at the D-217 cut) (completed 2026-11-14)
+- [x] **Phase 05.1: PSG LFO (frequency modulation)** - Select 1 modulates select 0 through the LFO, judged by hand literals in a third audio fixture with the shift toy red where the shift matters (split from Phase 5 at the D-217 cut) (completed 2026-11-14)
 - [ ] **Phase 6: Headless Runner, Installed-Consumer Proof and Staged Verification** - Separate observation artifacts, an independent consumer against the installed artifact, staged fuzzing, a benchmark, and a LibFuturo fit evaluation
 
 ## Phase Details
@@ -221,19 +222,51 @@ Plans:
 
 **Research**: No research needed beyond the Phase 4 context (the sprite decisions D-155, D-159 and D-160 in 04-CONTEXT).
 
-### Phase 5: PSG Raw Audio
+### Phase 5: PSG Raw Audio (cut at checkpoint 05-08; LFO modulation in Phase 05.1)
 **Goal**: Authored audio fixtures produce a timestamped PSG event log and PCM at a recorded format. Semantic properties are checked, and no pitch or timing claim goes beyond the available evidence.
 **Mode:** mvp
 **Depends on**: Phase 3 (timer, timestamped CPU writes). Can run in parallel with Phase 4.
-**Requirements**: AUD-01, AUD-02, AUD-03
+**Requirements**: AUD-02, AUD-03 (AUD-01 is advanced here and completes in Phase 05.1, which carries the LFO)
 **Owner gates**: PSG revision comes from the first-profile record (decision 2). Settling the PSG clock conflict (C1) needs a primary source or an owner-approved capture (decision 10). None is assumed.
 **Success Criteria** (what must be TRUE):
-  1. Fixtures program all 6 channels: waveform RAM, frequency, volume/balance, noise on the two noise-capable channels, DDA, and LFO. The resulting entries in the timestamped register-event log match the fixture's literal expected writes and the documented semantics (E1). Channel numbering follows the ledger's normalised scheme.
+  1. Fixtures program all 6 channels: waveform RAM, frequency, volume/balance, noise on the two noise-capable channels, DDA, and LFO. The resulting entries in the timestamped register-event log match the fixture's literal expected writes and the documented semantics (E1). Channel numbering follows the ledger's normalised scheme. LFO registers logged and decoded; LFO modulation in 5.1 (D-234).
   2. PCM is emitted at a defined, recorded sample rate and format before any host resampling. The per-frame sample count is reported, so a non-integer cadence is visible.
   3. Audio checks assert semantic properties: a channel period that matches the programmed frequency under the current clock assumption, the expected waveform content, and silence where a channel is off. A deliberately mis-programmed fixture (wrong frequency or a silent channel) fails them. "Buffer is nonzero" is never accepted.
   4. Noise output is identical across repeated fresh runs under the same power-on policy. The PSG clock and revision are profile parameters whose ledger status stays open, and no PSG pitch or timing correctness claim is made until C1 is settled.
-**Plans**: TBD
-**Research**: Needed. Read the PSG manual (S4, downloaded but unread) before planning. Also: clock conflict C1; LFO registers; the noise generator and its seed; wave-pointer behaviour when playback is off.
+**Plans**: 10/10 plans complete in 8 waves (context waves W1-W7 and W9 of 05-CONTEXT; 05-01 and 05-02 are parallel-safe in W1; 05-04 is the tracer; the D-217 cut was taken at checkpoint 05-08 (D-234), so W8, the LFO plan 05-09, became Phase 05.1 plan 05.1-01 and 05-10 closes Phase 5 next; 05-11..05-15 are reserved for stop-rule splits and 05-16 onward for revision plans)
+
+Plans:
+- [x] 05-01-PLAN.md - W1: evidence data: ER-1 image reads and the P8 label rules, 12 new and 6 amended ledger entries, withheld words, 05-HANDBOOK.md, CI lever (a), the local gate baseline (no C)
+- [x] 05-02-PLAN.md - W1: psg and pcm sink plumbing with no producer, ds_obs_begin once, the IN-03 call-overlap refusal, OX_ROMS_MAX 48, the inert fold at both call sites
+- [x] 05-03-PLAN.md - W2: the complete PSG layout and the one serial 9 / epoch 6 / text 8 bump, 15 PSG constants rows, restore domain, noise counters, register decode and counters, seeded-prng-v4 (policy 5), golden compaction and CROWS_MAX
+- [x] 05-04-PLAN.md - W3: TRACER: select-0 writes to DSPE records and DSPA samples judged by hand literals, the d = 3 negative, the D-200 proof set, --audio-out, pcm_cadence, two toys, the fold cost
+- [x] 05-05-PLAN.md - W4: the audio judge: full .aexp grammar, REL and STRUCT, AF0..AF9 sweep, audio-check stage 58 with KINDCLASS, DISPUTED, the arithmetic lint and RULES, the golden role
+- [x] 05-06-PLAN.md - W5: six channels: pan-pair scenes with solo phases, event rows for every register, attenuation and silence rows, the in-ROM twin, psg_vol_table, two toys
+- [x] 05-12-PLAN.md - W5 split of 05-06 Task 3b (runs before 05-07): the D-233 .aexp cap 49,152 and the psg_tone event rows (mask probe, R7 $78, decode rows for selects 1..5, the edge script)
+- [x] 05-07-PLAN.md - W6: noise and DDA: the NE level path, psg_mod, the timer-paced DDA scene, audio_noise_repeat, psg_random_regs, psg_block_flood, two toys, the psg_mod proof set
+- [x] 05-08-PLAN.md - W7: checkpoint A: dash, the second awk and all six Linux parts, cost against D-214, the scratch mutant sweep, E1 promotions, THE CUT DECISION
+- [x] 05-10-PLAN.md - W9: close-out: phase gate, final pins and promotions (the LED-AUD-0005 narrowing), LFO clauses as named limits moved to 5.1, README audio paragraph, 05-VALIDATION.md, verification-report inputs
+
+**Research**: Done (05-RESEARCH.md, 05-PATTERNS.md; errata D-219..D-227 in 05-CONTEXT). The PSG manual pages P8-2..P8-10 and P8-12 and H8-18, H8-23, H8-24 were read as images; plan 05-01 records the ER-1 read.
+
+### Phase 05.1: PSG LFO (frequency modulation) (INSERTED)
+**Goal**: Authored audio fixtures show select 1 modulating select 0 through the LFO exactly as the PSG pages state (held, absent and running modulation in the select-0 period), judged by hand literals and never by a hash alone, with the LFO entry still an assumption under the criterion-4 hold. This closes the LFO part of AUD-01 and of Phase 5 criterion 1 that Phase 5 left at the D-217 cut.
+**Mode:** mvp
+**Depends on:** Phase 5
+**Requirements**: AUD-01
+**Success Criteria** (what must be TRUE):
+  1. With LF TRG held, CTL 0, 1, 2 and 3 give select-0 two-cycle distances of 1,024, 1,040, 1,088 and 1,280 samples from a select-1 word 0 of $18 at F0 = 512, CTL 1 without select 1 gives the CTL 0 distance, and a running modulator gives select-0 cycles of exactly 200 or 184 samples, each a MAN row from P8-6..P8-9 and H8-23 (the LFO half of Phase 5 criterion 1).
+  2. The R8 and R9 records decode into the event log as the pages state, an R9 write no longer sets UNMODELLED, and the LFO pair folds composably and boundedly (at most one fold span of 600 master clocks per fold).
+  3. A toy that changes the CTL shifts turns the CTL 2 and CTL 3 rows red and leaves CTL 1 green, and the new fixture carries observer, chunk, restore (including a stop under TRG 1 with a non-zero select-1 index) and non-interference coverage.
+  4. No LFO rate, depth or switch-timing claim is made: LED-AUD-0011 stays assumed (ER-14), and the README and ledger state only what the gate shows.
+**Plans**: 3/3 plans complete in 3 sequential waves (CONTEXT plan 05-09, former file 05-09-PLAN.md, is split into 05.1-01 and 05.1-02 at plan check 1; 05.1-03, former file 05.1-02, is the close-out for the LFO scope that 05-10 no longer covers)
+
+Plans:
+- [x] 05.1-01-PLAN.md - the combined LFO counter, TRG, CTL shifts and F0' in the fold with C-level rows, the coupled select-1 restore bound (C-09), the modelled LFO ledger statements (C-10), psg_lfo with lfo_static, lfo_ctl1 and lfo_needs_sel1, the R9 and F >= $800 decode rows, toy psg-lfo-shift
+- [x] 05.1-02-PLAN.md - lfo_release and lfo_dynamic with the R8 decode row and the lfo_dynamic judge, the 600-iteration fold proof, psg_lfo's observer, chunk, restore and non-interference cases
+- [x] 05.1-03-PLAN.md - close-out for the LFO scope: phase-gate set and cost, LFO pins and the LED-AUD-0002/-0003 review, README LFO sentence, 05.1-VALIDATION.md sign-off
+
+**Research**: No research needed beyond the Phase 5 context (05-CONTEXT D-184, D-185, D-186, D-192, D-208, D-210, D-212, D-219..D-221, D-231, D-234; 05-RESEARCH sections 2, 4 and 6).
 
 ### Phase 6: Headless Runner, Installed-Consumer Proof and Staged Verification
 **Goal**: A user outside the source tree installs the core, runs a fixture through the headless runner or an independent consumer, and gets a reproducible verdict, with every observation in its own artifact. Staged fuzzing, a benchmark, and the LibFuturo fit evaluation run without slowing the fast gate.
@@ -269,7 +302,7 @@ These decisions are open unless a record says otherwise. Research defaults are p
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phases 4 and 5 depend only on Phase 3, so they may run in parallel.
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phases 4 and 5 depend only on Phase 3, so they may run in parallel. Inserted decimal phases run after their parent: 04.1 after 4, 05.1 after 5.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -278,5 +311,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6. Phases 4 and 5
 | 3. HuC6280 CPU, Bus, Timer, Interrupts and 2-Button Pad | 38/38 | Complete    | 2026-11-11 |
 | 4. VCE/VDC Raw Video | 16/16 | Complete    | 2026-11-12 |
 | 04.1. VDC Sprites | 3/3 | Complete    | 2026-11-12 |
-| 5. PSG Raw Audio | 0/TBD | Not started | - |
+| 5. PSG Raw Audio | 10/10 | Complete    | 2026-11-14 |
+| 05.1. PSG LFO (frequency modulation) | 3/3 | Complete    | 2026-11-14 |
 | 6. Headless Runner, Installed-Consumer Proof and Staged Verification | 0/TBD | Not started | - |

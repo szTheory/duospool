@@ -13,6 +13,7 @@
 #   Beside every image it writes OUT/fixtures/NAME.observe, the observe rows of the fixture's .checks file (write_observe below; plan 03-10), and OUT/fixtures/NAME.classes, one line per check of the
 #   .checks file, the index, a TAB and the class MAN, GUEST or ASSUMED of its tag (write_classes below; plan 03-32, ER-4): the guest judge of the runner reads it and prints the per-class counts in the evidence file.
 #   A stem with a SRC/STEM.vexp (the hand-written literal rows of a video scene, plan 04-07) also gets OUT/fixtures/NAME.vexp.tsv, the rows with the comments dropped (write_vexp below): the runner kind video reads it, and scripts/video-check judges the source.
+#   A stem with a SRC/STEM.aexp (the literal rows of the audio scenes, plan 05-04) gets OUT/fixtures/NAME.aexp.tsv the same way (write_aexp below): the runner kind audio reads it.
 #   Assembler identity is by behaviour (the encoding matrix of a later plan and the image hash pins), never by --version: the V2.19 tag prints
 #   V2.18 (D-128).
 # stdout: PREFLIGHT_MISSING NAME for each missing tool, or on success the marker line  STATUS fixture-build ok n=N
@@ -179,6 +180,39 @@ write_vexp() {
   fi
 }
 
+# write_aexp STEM NAME (plan 05-04; D-206, D-207, D-230, F-73, PR-13): OUT/fixtures/NAME.aexp.tsv carries the rows of SRC/STEM.aexp, the hand-written literal rows of the audio scenes, to the runner kind audio (tests/conformance/audiokinds.c reads build/gate/fixtures/NAME.aexp.tsv by a
+# relative path). Comments and blank lines are dropped; every other line is a row of one of five kinds with a field-count range (F-73 (b): the optional twin= and expect_red= of a scene): aexp (the header, 2 fields: aexp sample_mclk=N), scene (4 to 6), group (7), row (5) and golden (4: the two
+# stream digests of a golden scene, plan 05-05, ER-20), TAB separated,
+# no empty field and no space inside a field. The grammar, the class lint and the kill rules are judged by scripts/audio-check (plan 05-05) and again by the runner, so this writer only shapes the file. A malformed row, an unknown kind or no row at all is a harness error (exit 2).
+# The file is written only for the base image of a stem that has a .aexp source. awk runs with its status tested and nothing on the left of a pipe (CR-01).
+write_aexp() {
+  wa_aexp=$src/$1.aexp
+  [ -f "$wa_aexp" ] || return 0
+  if awk -F '\t' '
+    /^#/ || /^[ \t]*$/ { next }
+    {
+      lo = 0; hi = 0
+      if ($1 == "aexp") { lo = 2; hi = 2 }
+      else if ($1 == "scene") { lo = 4; hi = 6 }
+      else if ($1 == "group") { lo = 7; hi = 7 }
+      else if ($1 == "row") { lo = 5; hi = 5 }
+      else if ($1 == "golden") { lo = 4; hi = 4 }
+      if (lo == 0 || NF < lo || NF > hi) { bad = 1; next }
+      for (i = 1; i <= NF; i++) {
+        if ($i == "" || index($i, " ") > 0) bad = 1
+      }
+      n++
+      print $0
+    }
+    END { exit (bad || n == 0) ? 1 : 0 }
+  ' "$wa_aexp" > "$out/fixtures/$2.aexp.tsv"; then
+    :
+  else
+    echo "HARNESS_ERROR $wa_aexp has a row of an unknown kind, a row with a field count outside its range, an empty field or a space inside a field, or no row at all"
+    exit 2
+  fi
+}
+
 # build_one STEM NAME ROMBANKS [ca65 flags...]: assemble SRC/STEM.s with ROMBANKS banks and link it into OUT/fixtures/NAME.pce, then hash and measure the image and append its used-list line
 build_one() {
   b_stem=$1
@@ -220,6 +254,7 @@ for s in "$src"/*.s; do
   name=$(printf '%s' "$stem" | tr '_' '-')
   build_one "$stem" "$name" 32
   write_vexp "$stem" "$name"
+  write_aexp "$stem" "$name"
   # the variants of this source: one image per line of the list, built from the same source with the -D switches of that line
   while read -r v_stem v_name v_banks v_flags; do
     [ "$v_stem" = "$stem" ] || continue

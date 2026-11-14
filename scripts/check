@@ -1008,6 +1008,78 @@ stage_video_check() {
   return 0
 }
 
+# audio-check (AUD-03; D-206..D-210, D-224, D-230, D-232, D-233, ER-15..ER-20, F-51, F-52, F-72, F-73, PR-15, PR-18; plan 05-05): the audio literal files fixtures/src/*.aexp against the grammar (closed keys, limits), the class ceilings of tests/audio/KINDCLASS, the disputed points of tests/audio/DISPUTED, the arithmetic lint,
+# the rule map tests/audio/RULES, the kill, vacuity and hash rules, the silence pairing, the toy registry and the inventory link. Static, so it is registered right after video-check, before the build: ONE stage (F-51), 58 stages in all (PR-18). The stage runs the checker on this repository, then the negative
+# mini-roots of tests/audio (every tests/audio/<case>/ is a mini-root with fixtures/src/t.aexp; ok-<case> must pass and every other case must fail with exactly the codes in its EXPECT; the data files KINDCLASS, DISPUTED and RULES beside them are plain files, which run_controls skips), then the generated lex controls, then the exit-2 size control.
+# ac_gen_limits DIR: one mini-root per stage 1 limit of scripts/lib/aexp-lex.awk under DIR, built on the body of tests/audio/ok-audio (lex-line-too-long, lex-non-ascii, lex-no-spdx, lex-too-many-rows with 513 rows under the byte cap), and ok-size-cap, a valid file of exactly 49,152 bytes (the cap of D-233) that must pass
+# (D-230: the cap is inclusive). Generated, not committed: no committed file may hold a line over 400 characters, a byte outside ASCII or 513 rows.
+ac_pad_to() {
+  ap_f=$1
+  ap_need=$(($2 - $(wc -c < "$ap_f" | tr -d ' ')))
+  ap_line=$(printf '#%098d' 0)
+  while [ "$ap_need" -gt 201 ]; do
+    printf '%s\n' "$ap_line" >> "$ap_f" || return 2
+    ap_need=$((ap_need - 100))
+  done
+  [ "$ap_need" -ge 2 ] || return 2
+  awk -v n="$ap_need" 'BEGIN { s = "#"; while (length(s) < n - 1) s = s "z"; print s }' >> "$ap_f" || return 2
+  return 0
+}
+ac_gen_limits() {
+  ag_d=$1
+  ag_base=tests/audio/ok-audio/fixtures/src/t.aexp
+  rm -rf "$ag_d"
+  for ag_n in lex-line-too-long lex-non-ascii lex-no-spdx lex-too-many-rows ok-size-cap; do
+    mkdir -p "$ag_d/$ag_n/fixtures/src" || return 2
+  done
+  { cat "$ag_base"; awk 'BEGIN { s = "#"; while (length(s) < 401) s = s "x"; print s }'; } > "$ag_d/lex-line-too-long/fixtures/src/t.aexp" || return 2
+  echo AEXP_LINE_TOO_LONG > "$ag_d/lex-line-too-long/EXPECT"
+  { cat "$ag_base"; printf '# a byte outside ASCII: \351\n'; } > "$ag_d/lex-non-ascii/fixtures/src/t.aexp" || return 2
+  echo AEXP_NON_ASCII > "$ag_d/lex-non-ascii/EXPECT"
+  grep -v 'SPDX-' "$ag_base" > "$ag_d/lex-no-spdx/fixtures/src/t.aexp" || return 2
+  echo AEXP_NO_SPDX > "$ag_d/lex-no-spdx/EXPECT"
+  { cat "$ag_base"; awk 'BEGIN { for (i = 0; i < 507; i++) printf "row\tt\tsilent_L\tfrom=0;to=1;side=L\tchon=0\n" }'; } > "$ag_d/lex-too-many-rows/fixtures/src/t.aexp" || return 2
+  echo AEXP_TOO_MANY_ROWS > "$ag_d/lex-too-many-rows/EXPECT"
+  cp "$ag_base" "$ag_d/ok-size-cap/fixtures/src/t.aexp" || return 2
+  ac_pad_to "$ag_d/ok-size-cap/fixtures/src/t.aexp" 49152 || return 2
+  return 0
+}
+# ac_oversize_control SCRIPT (D-230, D-232, D-233; the pf_empty_path_control pattern): a root whose only .aexp is the valid body of ok-audio padded to 49,153 bytes (one over the cap) must make SCRIPT exit 2 with a line FILE TAB AEXP_FILE_TOO_LARGE and never print the STATUS line; exit 1 (a violation) is not enough, because
+# run_controls turns any exit 2 into a harness error, so this control lives outside it. Output goes to $tmp/ac-big.out. Returns 0 when the control holds. The selftest mutation-audio-file-too-large runs it against a copy of the script with the tagged size check removed.
+ac_oversize_control() {
+  ao_d="$tmp/ac-big"
+  rm -rf "$ao_d"
+  mkdir -p "$ao_d/fixtures/src" || return 1
+  cp tests/audio/ok-audio/fixtures/src/t.aexp "$ao_d/fixtures/src/t.aexp" || return 1
+  ac_pad_to "$ao_d/fixtures/src/t.aexp" 49153 || return 1
+  [ "$(wc -c < "$ao_d/fixtures/src/t.aexp" | tr -d ' ')" -eq 49153 ] || return 1
+  if sh "$1" --root "$ao_d" --cites fixtures/lib/cites.txt --ledger ledger/entries --data tests/audio > "$tmp/ac-big.out" 2>&1; then ao_r=0; else ao_r=$?; fi
+  if [ "$ao_r" -ne 2 ] || ! grep -q "$(printf '\tAEXP_FILE_TOO_LARGE\t')" "$tmp/ac-big.out" || grep -q '^STATUS audio-check ok' "$tmp/ac-big.out"; then
+    return 1
+  fi
+  return 0
+}
+
+stage_audio_check() {
+  ac_a=0
+  ac_b=0
+  ac_c=0
+  ac_d=0
+  checker sh "$here/audio-check" || ac_a=$?
+  run_controls --ok-prefix --require-negative tests/audio tests/audio sh "$here/audio-check" --root @DIR@ @EXPECT@ || ac_b=$?
+  ac_gen_limits "$tmp/ac-gen" || return 2
+  [ "$(wc -c < "$tmp/ac-gen/ok-size-cap/fixtures/src/t.aexp" | tr -d ' ')" -eq 49152 ] || { echo "HARNESS_ERROR ok-size-cap is not 49152 bytes"; return 2; }
+  run_controls --ok-prefix --require-negative "$tmp/ac-gen" "$tmp/ac-gen" sh "$here/audio-check" --root @DIR@ @EXPECT@ || ac_c=$?
+  if ac_oversize_control "$here/audio-check"; then :; else
+    echo "CONTROL BROKEN audio-file-too-large (wanted exit 2 with an AEXP_FILE_TOO_LARGE line and no STATUS line for a 49,153-byte .aexp, D-230, D-232, D-233)"
+    sed 's/^/  /' "$tmp/ac-big.out"
+    ac_d=1
+  fi
+  if [ "$ac_a" -eq 2 ] || [ "$ac_b" -eq 2 ] || [ "$ac_c" -eq 2 ]; then return 2; fi
+  if [ "$ac_a" -ne 0 ] || [ "$ac_b" -ne 0 ] || [ "$ac_c" -ne 0 ] || [ "$ac_d" -ne 0 ]; then return 1; fi
+  return 0
+}
+
 # xasm (FIX-01, CPU-01, CPU-06; D-129, D-130; plan 03-08): the assembler encoding oracle. scripts/xasm-check assembles one line per defined row of tests/oracle/huc6280-opcodes.tsv (the
 # manual transcription) with ca65 and ld65 and requires the bytes to equal the TSV encodings; WLA-DX, when it happens to be on PATH, is compared in the same way, else the status line says
 # wla=optional-absent and no cross-assembler claim is made. The table must hold exactly 234 defined rows and 22 UNDEF rows (H8-1: 234 instructions). Static, so it is registered before the build; it reads only
@@ -2819,6 +2891,115 @@ selftest() {
     done
   fi
 
+  # (z7e) the three D-207 mutations of the audio checker (plan 05-05; D-207, D-216 R4, F-52): each control (a mini-root of tests/audio, run with its EXPECT and the data of tests/audio) is met on an unmutated copy of scripts/; with the lines tagged rule-audio-hash-only, rule-audio-group-vacuous or
+  # rule-aexp-class-lint deleted from the copy of lib/aexp-rules.awk the code is no longer reported, so the same run must exit 1. One line per rule: SELFTEST mutation-audio-hash-only, mutation-audio-group-vacuous and mutation-aexp-class-lint CASE PASS|FAIL, selectable by name.
+  for am_e in mutation-audio-hash-only:hash-only:rule-audio-hash-only mutation-audio-group-vacuous:group-vacuous:rule-audio-group-vacuous mutation-aexp-class-lint:class-inflated:rule-aexp-class-lint; do
+    am_name=${am_e%%:*}
+    am_rest=${am_e#*:}
+    am_case=${am_rest%%:*}
+    am_tag=${am_rest#*:}
+    if st_want "$am_name"; then
+      st_ran=1
+      rm -rf "$cp_dir"
+      cp -R "$here" "$cp_dir"
+      fxr="tests/audio/$am_case"
+      am_want=$(cat "$fxr/EXPECT")
+      if sh "$cp_dir/audio-check" --root "$fxr" --cites fixtures/lib/cites.txt --ledger ledger/entries --data tests/audio --expect "$am_want" > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+      st_alive=0
+      if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+      before=$(grep -c "$am_tag" "$cp_dir/lib/aexp-rules.awk" || true)
+      grep -v "$am_tag" "$cp_dir/lib/aexp-rules.awk" > "$cp_dir/lib/aexp-rules.awk.mutated" || true
+      mv "$cp_dir/lib/aexp-rules.awk.mutated" "$cp_dir/lib/aexp-rules.awk"
+      after=$(grep -c "$am_tag" "$cp_dir/lib/aexp-rules.awk" || true)
+      if sh "$cp_dir/audio-check" --root "$fxr" --cites fixtures/lib/cites.txt --ledger ledger/entries --data tests/audio --expect "$am_want" > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+      if [ "$st_alive" -eq 1 ] && [ "$before" -ge 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+        echo "SELFTEST $am_name $am_case PASS"
+      else
+        echo "SELFTEST $am_name $am_case FAIL (alive $st_alive, tagged lines $before then $after, mutated run exit $r)"; failed=1
+      fi
+    fi
+  done
+
+  # (z7f) every other tagged rule of the audio checker is removable and detected (D-216 R4): one line per control, SELFTEST mutation-audio-rules CASE PASS|FAIL. Each entry is CASE:TAG, the mini-root under tests/audio and the tag of the statements that report its code in lib/aexp-rules.awk.
+  if st_want mutation-audio-rules; then
+    st_ran=1
+    for ar_e in format:rule-format unknown-key:rule-unknown-key arith:rule-aexp-arith class-label:rule-aexp-class-label live-class:rule-aexp-live-class silent-class:rule-aexp-silent-class disputed-mark:rule-audio-disputed-mark disputed-sum:rule-audio-disputed-sum \
+      rule-no-row:rule-audio-rule-no-row silence-unpaired:rule-audio-silence-unpaired group-unkilled:rule-audio-group-unkilled group-af0:rule-audio-group-af0 scene-no-case:rule-audio-scene-case scene-no-sweep:rule-audio-scene-sweep toy-no-literal:rule-audio-toy-no-literal \
+      exempt-format:rule-audio-exempt-format data-format:rule-data-format \
+      disputed-wrap-zero:rule-audio-disputed-wrap-static disputed-wrap-dynamic:rule-audio-disputed-wrap-dynamic rule-case-scene:rule-audio-rule-case-scene; do
+      ar_case=${ar_e%%:*}
+      ar_tag=${ar_e#*:}
+      rm -rf "$cp_dir"
+      cp -R "$here" "$cp_dir"
+      fxr="tests/audio/$ar_case"
+      ar_want=$(cat "$fxr/EXPECT")
+      if sh "$cp_dir/audio-check" --root "$fxr" --cites fixtures/lib/cites.txt --ledger ledger/entries --data tests/audio --expect "$ar_want" > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+      st_alive=0
+      if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+      before=$(grep -c "$ar_tag" "$cp_dir/lib/aexp-rules.awk" || true)
+      grep -v "$ar_tag" "$cp_dir/lib/aexp-rules.awk" > "$cp_dir/lib/aexp-rules.awk.mutated" || true
+      mv "$cp_dir/lib/aexp-rules.awk.mutated" "$cp_dir/lib/aexp-rules.awk"
+      after=$(grep -c "$ar_tag" "$cp_dir/lib/aexp-rules.awk" || true)
+      if sh "$cp_dir/audio-check" --root "$fxr" --cites fixtures/lib/cites.txt --ledger ledger/entries --data tests/audio --expect "$ar_want" > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+      if [ "$st_alive" -eq 1 ] && [ "$before" -ge 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+        echo "SELFTEST mutation-audio-rules $ar_case PASS"
+      else
+        echo "SELFTEST mutation-audio-rules $ar_case FAIL (alive $st_alive, tagged lines $before then $after, mutated run exit $r)"; failed=1
+      fi
+    done
+  fi
+
+  # (z7g) each stage 1 limit of the audio checker is removable and detected (the z7d pattern): the controls are generated by ac_gen_limits; each must be met on an unmutated copy of scripts/, and with the tagged line of its limit deleted from the copy of lib/aexp-lex.awk (rule-lex-NAME), or with the
+  # line of lib/aexp-rules.awk that turns stage 1 rows into violations deleted (rule-stage1-limits, judged on lex-line-too-long), the same run must exit 1. One line per control: SELFTEST mutation-audio-lex CASE TAG PASS|FAIL. These controls keep their exit 0 / exit 1 expectations (D-232).
+  if st_want mutation-audio-lex; then
+    st_ran=1
+    ac_gen_limits "$tmp/ac-gen-st" || failed=1
+    for al_e in lex-line-too-long:lex:rule-lex-line-too-long lex-non-ascii:lex:rule-lex-non-ascii lex-no-spdx:lex:rule-lex-no-spdx lex-too-many-rows:lex:rule-lex-too-many-rows lex-line-too-long:rules:rule-stage1-limits; do
+      al_case=${al_e%%:*}
+      al_rest=${al_e#*:}
+      al_file=${al_rest%%:*}
+      al_tag=${al_rest#*:}
+      if [ "$al_file" = lex ]; then al_awk=aexp-lex.awk; else al_awk=aexp-rules.awk; fi
+      rm -rf "$cp_dir"
+      cp -R "$here" "$cp_dir"
+      fxr="$tmp/ac-gen-st/$al_case"
+      al_want=$(cat "$fxr/EXPECT")
+      if sh "$cp_dir/audio-check" --root "$fxr" --cites fixtures/lib/cites.txt --ledger ledger/entries --data tests/audio --expect "$al_want" > "$tmp/st.out" 2>&1; then r0=0; else r0=$?; fi
+      st_alive=0
+      if [ "$r0" -eq 0 ] && grep -qx 'EXPECT_OK' "$tmp/st.out"; then st_alive=1; fi
+      before=$(grep -c "$al_tag" "$cp_dir/lib/$al_awk" || true)
+      grep -v "$al_tag" "$cp_dir/lib/$al_awk" > "$cp_dir/lib/$al_awk.mutated" || true
+      mv "$cp_dir/lib/$al_awk.mutated" "$cp_dir/lib/$al_awk"
+      after=$(grep -c "$al_tag" "$cp_dir/lib/$al_awk" || true)
+      if sh "$cp_dir/audio-check" --root "$fxr" --cites fixtures/lib/cites.txt --ledger ledger/entries --data tests/audio --expect "$al_want" > "$tmp/st.out" 2>&1; then r=0; else r=$?; fi
+      if [ "$st_alive" -eq 1 ] && [ "$before" -ge 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ]; then
+        echo "SELFTEST mutation-audio-lex $al_case $al_tag PASS"
+      else
+        echo "SELFTEST mutation-audio-lex $al_case $al_tag FAIL (alive $st_alive, tagged lines $before then $after, mutated run exit $r)"; failed=1
+      fi
+    done
+  fi
+
+  # (z7h) the size cap of D-230 (49,152 bytes since D-233) is removable and detected (D-232): the exit-2 control ac_oversize_control must hold on an unmutated copy of scripts/ (exit 2 and an AEXP_FILE_TOO_LARGE line for a 49,153-byte file); with the line tagged rule-lex-file-too-large deleted from the copy of audio-check the
+  # file reaches the parser and the control must no longer see exit 2 (the alive condition is exit 2 for this case only). One line: SELFTEST mutation-audio-file-too-large PASS|FAIL.
+  if st_want mutation-audio-file-too-large; then
+    st_ran=1
+    rm -rf "$cp_dir"
+    cp -R "$here" "$cp_dir"
+    st_alive=0
+    if ac_oversize_control "$cp_dir/audio-check"; then st_alive=1; fi
+    before=$(grep -c 'rule-lex-file-too-large' "$cp_dir/audio-check" || true)
+    grep -v 'rule-lex-file-too-large' "$cp_dir/audio-check" > "$cp_dir/audio-check.mutated" || true
+    mv "$cp_dir/audio-check.mutated" "$cp_dir/audio-check"
+    after=$(grep -c 'rule-lex-file-too-large' "$cp_dir/audio-check" || true)
+    if ac_oversize_control "$cp_dir/audio-check"; then r=0; else r=1; fi
+    if [ "$st_alive" -eq 1 ] && [ "$before" -ge 1 ] && [ "$after" -eq 0 ] && [ "$r" -eq 1 ] && ! grep -q "$(printf '\tAEXP_FILE_TOO_LARGE\t')" "$tmp/ac-big.out"; then
+      echo "SELFTEST mutation-audio-file-too-large PASS"
+    else
+      echo "SELFTEST mutation-audio-file-too-large FAIL (alive $st_alive, tagged lines $before then $after, mutated control $r)"; failed=1
+    fi
+  fi
+
   # (z8) CR-01 for input-check: a stage 1 that prints nothing (an emptied scratch copy of toml-subset.awk) and a stage 2 that prints nothing (an emptied copy of input-rules.awk) must each give INP_STAGE_DEAD and exit 2, never a pass and never the exit 1 of a violation. The
   # unmutated copy must pass on the clean control first, which shows the run is alive. Third, input-rules.awk itself must refuse a stage 1 file without its END row (no RULES row, exit 3): the sentinel is required by stage 2, not only by the shell around it.
   if st_want mutation-input-check-dead-stage; then
@@ -3675,6 +3856,7 @@ run_stage inventory-negatives stage_inventory_negatives
 run_stage fixture-lint stage_fixture_lint
 run_stage fixture-lint-negatives stage_fixture_lint_negatives
 run_stage video-check stage_video_check
+run_stage audio-check stage_audio_check
 run_stage input-check stage_input_check
 run_stage input-check-negatives stage_input_check_negatives
 run_stage xasm stage_xasm

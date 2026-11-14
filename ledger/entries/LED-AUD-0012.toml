@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# PSG counter timing (05-CONTEXT D-185; AUD-01). Modelling assumptions: the manual is silent on reload timing, tick phase and tie order.
+# Constant (plan 05-03, this ledger id): psg_tick_phase_mclk 0.
+id = "LED-AUD-0012"
+statement = "DuoSpool models PSG counter timing as: ticks at k x d master clocks (psg_tick_phase_mclk 0); R2, R3 and R7 writes apply at the next reload; a counter is frozen while chON 0 or DDA 1 (select 1 also while TRG 1); the select 4 and 5 wave counters run under NE 1; volume writes act at their stamp; ties: select 1, select 0 to 5, noise, sample, then a write. Modelling assumption."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["UNKNOWN|the manual|no page gives the reload timing, the tick phase, the freeze rules or the tie order", "CODE|Mednafen, Mesen2, MAME, Geargrafx|reading material only, nothing copied: reload, key-on and NE behaviour as in the disagreement field"]
+evidence = []
+disagreement = "DX-11 the wave counter under NE: Mednafen runs it, Mesen2 stops it. DX-10 key-on: Mednafen advances the index by 1, MAME and Mesen2 reload the period, Geargrafx leaves both (the key-on constant is in LED-AUD-0004)."
+pinning_test = "TEST:psg_fold"
+updated = "2026-11-13"
+assumption = "Fixture rows stay insensitive to these choices: shape rows are rotation-invariant, the first and last plateau of a segment are excluded, and periods are measured between recurrences, never from a write (D-185)."
+revisit_phase = 5
+withheld = ["any sub-period timing claim", "any key-on phase claim"]
+origin = "05-CONTEXT D-185"

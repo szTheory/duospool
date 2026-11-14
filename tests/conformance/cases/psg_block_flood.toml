@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Block flood (plan 05-07; D-200, D-201, D-212, F-81, T-05-25): kind psg_block_flood (tests/conformance/audiokinds.c) runs an in-memory program twice; never under an observer large configuration (F-81).
+id = "psg_block_flood"
+kind = "psg_block_flood"
+fixture = "none"
+request = ""
+expect = "program=tin-65536-r6;psg_cap=1024"
+meaning = "One 65,536-byte TIN to R6 with a psg sink of 1,024 records keeps the first 1,024, counts 64,512 lost and seq 65,536, loses no PCM frame, and ends in the state digest of the same run with no sink (E0)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 5000000

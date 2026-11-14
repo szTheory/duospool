@@ -1,0 +1,246 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# audio-check - the static checker of the audio literal files (AUD-03; plan 05-05; D-206..D-210, D-224, D-225, D-230, D-232, D-233, ER-15..ER-20, F-51, F-52, F-72, F-73, PR-13, PR-15, PR-18; the video-check contract). It reads every fixtures/src/*.aexp (the hand-written literal rows of an audio scene) and judges the grammar,
+# the class of every group against its kind's ceiling (tests/audio/KINDCLASS), the disputed points (tests/audio/DISPUTED), the arithmetic lint of the rows (ER-18: E0 consistency of the expectation file, never an oracle; it writes no value), the rule map (tests/audio/RULES), the kill and vacuity rules, the hash role,
+# the silence pairing, the toy registry and the inventory link. It never judges what a row says about a sound, only that a row cannot inflate its class, contradict its own inputs, be vacuous or hide behind a hash.
+# usage: audio-check [--expect CODE[,CODE...]] [--root DIR] [--cites FILE] [--ledger DIR] [--data DIR]
+#   --root DIR   the root that holds fixtures/src/*.aexp (default: the repository root). A root with no .aexp file is a harness error (exit 2): a check of nothing never passes. A root without its own fixtures/lib/cites.txt or ledger/entries reads those of this repository.
+#   --cites FILE, --ledger DIR   the cite registry and the ledger directory (default: those of the root when it carries them, else those of this repository; the selftests copy scripts/ and name them)
+#   --data DIR   the directory of KINDCLASS and DISPUTED when the root carries none under tests/audio (default: tests/audio of this repository). RULES is read from ROOT/tests/audio/RULES only: a mini-root without one has no rule map; the repository root must carry it (else exit 2).
+#                The toy rules run only where the root carries tests/conformance/AUDIO_TOY_EXEMPT or tests/controls; the inventory rules only where it carries tests/conformance/cases.
+# Size cap (D-230, D-232, D-233): AEXP_MAX_BYTES below is the one named constant (49,152 bytes per file since D-233, raised from 32,768 for the psg_tone event rows of plan 05-12); a file over it is refused BEFORE any parsing with a line FILE TAB AEXP_FILE_TOO_LARGE TAB 1 TAB detail and exit 2 (a harness error, fail closed), never exit 1. The .vexp cap of 16,384 stays for video.
+# Two awk stages, each writing to a file whose exit status is tested (no awk on the left of a pipe), each ending in a sentinel: stage 1 is scripts/lib/aexp-lex.awk (512 rows, 400 characters per line, ASCII, the 0BSD SPDX pair), which prints an END row per file; stage 2 is
+# scripts/lib/aexp-rules.awk, which prints a closing RULES row. A dead stage is AUDIO_STAGE_DEAD (exit 2), never a pass.
+# Codes (printed verbatim; scripts/inventory-check is not edited, F-6): AEXP_FORMAT AEXP_UNKNOWN_KEY AEXP_ARITH AEXP_CLASS_INFLATED AUDIO_DISPUTED_POINT AUDIO_RULE_NO_ROW AUDIO_SILENCE_UNPAIRED AUDIO_GROUP_VACUOUS INV_AUDIO_GROUP_UNKILLED INV_AUDIO_HASH_ONLY AUDIO_SCENE_NO_CASE AUDIO_SCENE_NO_SWEEP
+#   AUDIO_TOY_NO_LITERAL AUDIO_EXEMPT_FORMAT, the stage 1 codes AEXP_NO_SPDX AEXP_LINE_TOO_LONG AEXP_NON_ASCII AEXP_TOO_MANY_ROWS, and AEXP_FILE_TOO_LARGE (exit 2).
+# stdout: sorted violations  FILE<TAB>CODE<TAB>LINE<TAB>DETAIL , then (clean) a line  AUDIO_CHECK files=N scenes=N groups=N rows=N exempt=N clauses=N  and  STATUS audio-check ok n=N
+# stdout on a met --expect: the single line EXPECT_OK (scripts/check treats a silent exit 0 as a dead checker)
+# exit  : 0 pass (or --expect met) | 1 violations (or --expect not met) | 2 usage or harness error (including AUDIO_STAGE_DEAD and AEXP_FILE_TOO_LARGE)
+set -eu
+LC_ALL=C; export LC_ALL
+here=$(cd "$(dirname "$0")" && pwd)
+repo=$(cd "$here/.." && pwd)
+AEXP_MAX_BYTES=49152
+
+usage() {
+  echo "usage: audio-check [--expect CODE[,CODE...]] [--root DIR] [--cites FILE] [--ledger DIR] [--data DIR]" >&2
+  exit 2
+}
+
+expect=""
+have_expect=0
+root=$repo
+cites=""
+ledger=""
+data=""
+while [ $# -gt 0 ]; do
+  case $1 in
+    --expect) [ $# -ge 2 ] || usage; expect=$2; have_expect=1; shift 2 ;;
+    --root) [ $# -ge 2 ] || usage; root=$2; shift 2 ;;
+    --cites) [ $# -ge 2 ] || usage; cites=$2; shift 2 ;;
+    --ledger) [ $# -ge 2 ] || usage; ledger=$2; shift 2 ;;
+    --data) [ $# -ge 2 ] || usage; data=$2; shift 2 ;;
+    *) usage ;;
+  esac
+done
+# an --expect that names no code would make a control assert nothing (WR-05): exit 2, never 0
+if [ "$have_expect" -eq 1 ] && [ -z "$(printf '%s' "$expect" | tr -d ', \t\r\n')" ]; then
+  echo "HARNESS_EMPTY_EXPECT --expect names no code" >&2
+  exit 2
+fi
+if [ ! -d "$root" ]; then
+  echo "HARNESS_NO_FILE $root" >&2
+  exit 2
+fi
+root=$(cd "$root" && pwd)
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+tab=$(printf '\t')
+facts="$tmp/facts"
+rows="$tmp/rows"
+t1="$tmp/stage1"
+t2="$tmp/stage2"
+viol="$tmp/viol"
+: > "$facts"
+: > "$rows"
+
+dead() {
+  echo "AUDIO_STAGE_DEAD $1" >&2
+  exit 2
+}
+
+if [ -z "$cites" ]; then
+  if [ -f "$root/fixtures/lib/cites.txt" ]; then cites="$root/fixtures/lib/cites.txt"; else cites="$repo/fixtures/lib/cites.txt"; fi
+fi
+if [ -z "$ledger" ]; then
+  if [ -d "$root/ledger/entries" ]; then ledger="$root/ledger/entries"; else ledger="$repo/ledger/entries"; fi
+fi
+[ -n "$data" ] || data="$repo/tests/audio"
+kindclass="$root/tests/audio/KINDCLASS"
+[ -f "$kindclass" ] || kindclass="$data/KINDCLASS"
+disputed="$root/tests/audio/DISPUTED"
+[ -f "$disputed" ] || disputed="$data/DISPUTED"
+rulesf="$root/tests/audio/RULES"
+for need in "$cites" "$kindclass" "$disputed"; do
+  [ -f "$need" ] || { echo "HARNESS_NO_FILE $need" >&2; exit 2; }
+done
+[ -d "$ledger" ] || { echo "HARNESS_NO_FILE $ledger" >&2; exit 2; }
+if [ "$root" = "$repo" ] && [ ! -f "$rulesf" ]; then
+  echo "HARNESS_NO_FILE $rulesf: the repository root must carry the rule map (ER-17)" >&2
+  exit 2
+fi
+
+# facts: the manual pages with an img row, the ledger ids
+awk -F '\t' '/^#/ || /^[ \t]*$/ { next } $2 == "img" { print "C\t" $1 }' "$cites" >> "$facts" || dead "the cite reader failed"
+for e in "$ledger"/LED-*.toml; do
+  [ -f "$e" ] || continue
+  printf 'L\t%s\n' "$(basename "$e" .toml)" >> "$facts"
+done
+# the data files: KINDCLASS (kind, maximum class, form), DISPUTED (point, ledger id, markers), RULES (clause, source, status, need, text); a malformed line is a DB row (AEXP_FORMAT on the data file)
+krel=${kindclass#"$root"/}
+awk -F '\t' -v f="$krel" '
+  /^#/ || /^[ \t]*$/ { next }
+  {
+    bad = (NF != 3 || $1 !~ /^[a-z][a-z0-9_]*$/ || ($3 != "ROWS" && $3 != "REL" && $3 != "STRUCT" && $3 != "EV"))
+    if ($2 !~ /^MAN:[A-Z0-9-]+(\+[A-Z0-9-]+)*$/ && $2 !~ /^GUEST:[a-z][a-z0-9_]*$/ && $2 != "ASSUMED" && $2 != "DEF") bad = 1
+    if (bad) printf "DB\t%s\t%d\tKINDCLASS lines are KIND, a TAB, MAN:<labels>|GUEST:<model>|ASSUMED|DEF, a TAB and ROWS|REL|STRUCT|EV\n", f, NR
+    else printf "KC\t%s\t%s\t%s\n", $1, $2, $3
+  }
+' "$kindclass" >> "$facts" || dead "the KINDCLASS reader failed"
+drel=${disputed#"$root"/}
+awk -F '\t' -v f="$drel" '
+  /^#/ || /^[ \t]*$/ { next }
+  { if (NF != 3 || $1 == "" || $2 !~ /^LED-AUD-[0-9][0-9][0-9][0-9]$/ || $3 !~ /^[a-z0-9_]+(=[A-Za-z0-9]+)?(,[a-z0-9_]+(=[A-Za-z0-9]+)?)*$/) printf "DB\t%s\t%d\tDISPUTED lines are POINT, a TAB, a LED-AUD id, a TAB and the comma-separated markers\n", f, NR; else { n = split($3, m, ","); for (i = 1; i <= n; i++) printf "DM\t%s\t%s\n", m[i], $2 } }
+' "$disputed" >> "$facts" || dead "the DISPUTED reader failed"
+if [ -f "$rulesf" ]; then
+  printf 'RA\t1\n' >> "$facts"
+  awk -F '\t' -v f="tests/audio/RULES" '
+    /^#/ || /^[ \t]*$/ { next }
+    {
+      bad = (NF != 5 || $1 !~ /^[a-z0-9][a-z0-9.-]*$/ || $2 !~ /^(LED-AUD-[0-9][0-9][0-9][0-9]|D-[0-9]+|RF-[0-9]+)$/ || $4 !~ /^[a-z0-9_:,.-]+$/ || $5 == "")
+      if ($3 != "row" && $3 != "limit" && $3 !~ /^later:05-(06|07|08|09|10)$/) bad = 1
+      if (bad) printf "DB\t%s\t%d\tRULES lines are CLAUSE, SOURCE, row|limit|later:05-NN, NEED and TEXT, TAB separated\n", f, NR
+      else printf "RL\t%s\t%s\t%s\t%s\t%d\n", $1, $2, $3, $4, NR
+    }
+  ' "$rulesf" >> "$facts" || dead "the RULES reader failed"
+else
+  printf 'RA\t0\n' >> "$facts"
+fi
+
+# the toy registry (D-209, D-210, PR-15, F-72): the exempt list, the toys (RULE file and EXPECT columns)
+exfile="$root/tests/conformance/AUDIO_TOY_EXEMPT"
+ctl="$root/tests/controls"
+if [ -f "$exfile" ] || [ -d "$ctl" ]; then
+  printf 'A\t1\n' >> "$facts"
+  if [ -f "$exfile" ]; then
+    awk -F '\t' '
+      /^#/ || /^[ \t]*$/ { next }
+      { if (NF != 2 || $1 !~ /^[a-z][a-z0-9_]*$/ || $2 == "") printf "XB\t%d\tAUDIO_TOY_EXEMPT lines are CASE_ID, a TAB and a reason\n", NR; else printf "X\t%s\t%s\n", $1, $2 }
+    ' "$exfile" >> "$facts" || dead "the exempt reader failed"
+  fi
+  for d in "$ctl"/*/; do
+    [ -d "$d" ] || continue
+    name=$(basename "$d")
+    if [ -f "${d}RULE" ]; then
+      awk -F '=' -v t="$name" '$1 == "file" { printf "Z\t%s\t%s\n", t, $2; exit }' "${d}RULE" >> "$facts" || dead "the RULE reader failed on $name"
+    fi
+    if [ -f "${d}EXPECT" ]; then
+      awk -v t="$name" '
+        /^[ \t]*(#.*)?$/ { next }
+        NF == 1 { printf "K\t%s\t%s\n", t, $1; next }
+        $2 == "pass" { printf "P\t%s\t%s\n", t, $1 }
+      ' "${d}EXPECT" >> "$facts" || dead "the EXPECT reader failed on $name"
+    fi
+  done
+else
+  printf 'A\t0\n' >> "$facts"
+fi
+# the inventory facts (the gate M-04 lesson): where the root carries tests/conformance/cases, every case with its kind, the scene= item of its expect and its REQUIRED membership (AC rows)
+if [ -d "$root/tests/conformance/cases" ]; then
+  printf 'I\t1\n' >> "$facts"
+  reqf="$root/tests/conformance/REQUIRED"
+  [ -f "$reqf" ] || reqf=/dev/null
+  set -- "$root"/tests/conformance/cases/*.toml
+  if [ -f "$1" ]; then
+    awk '
+      FNR == NR { if ($0 !~ /^#/ && $0 !~ /^[ \t]*$/) req[$1] = 1; next }
+      FNR == 1 { flush() }
+      /^id = "/ { id = $0; sub(/^id = "/, "", id); sub(/".*$/, "", id) }
+      /^kind = "/ { kind = $0; sub(/^kind = "/, "", kind); sub(/".*$/, "", kind) }
+      /^expect = "/ { ex = $0; sub(/^expect = "/, "", ex); sub(/"[ \t]*$/, "", ex) }
+      END { flush() }
+      function flush(   sc) {
+        if (id != "") {
+          sc = "-"
+          if (match(ex, /(^|;)scene=[a-z0-9_]+/)) { sc = substr(ex, RSTART, RLENGTH); sub(/^;?scene=/, "", sc) }
+          printf "AC\t%s\t%s\t%s\t%s\n", id, kind, sc, (id in req) ? 1 : 0
+        }
+        id = ""; kind = ""; ex = ""
+      }
+    ' "$reqf" "$@" >> "$facts" || dead "the inventory reader failed"
+  fi
+else
+  printf 'I\t0\n' >> "$facts"
+fi
+
+# stage 1 for every .aexp file: the byte cap first (D-230, fail closed), then the line reader with its status tested and its sentinel required
+nfiles=0
+for f in "$root"/fixtures/src/*.aexp; do
+  [ -f "$f" ] || continue
+  rel=${f#"$root"/}
+  case $rel in
+    *"$tab"*) echo "HARNESS_BAD_FILENAME a TAB in a file name" >&2; exit 2 ;;
+  esac
+  nfiles=$((nfiles + 1))
+  sz=$(wc -c < "$f" | tr -d ' ')
+  if [ "$sz" -gt "$AEXP_MAX_BYTES" ]; then printf '%s\tAEXP_FILE_TOO_LARGE\t1\t%s bytes: the limit is %s (D-230, D-233), refused before parsing\n' "$rel" "$sz" "$AEXP_MAX_BYTES"; echo "HARNESS_FILE_TOO_LARGE $rel" >&2; exit 2; fi  # rule-lex-file-too-large
+  if awk -f "$here/lib/aexp-lex.awk" "$f" > "$t1" 2> "$tmp/stage1.err"; then :; else
+    dead "stage 1 (aexp-lex.awk) failed on $rel"
+  fi
+  if ! tail -n 1 "$t1" | grep -Eq "^END${tab}[0-9]+\$" || [ "$(grep -c "^END${tab}" "$t1" || true)" -ne 1 ]; then
+    dead "stage 1 (aexp-lex.awk) printed no closing END row for $rel"
+  fi
+  printf 'F\t%s\n' "$rel" >> "$rows"
+  cat "$t1" >> "$rows"
+done
+if [ "$nfiles" -eq 0 ]; then
+  echo "HARNESS_NO_FILE $root/fixtures/src holds no *.aexp: a check of nothing never passes" >&2
+  exit 2
+fi
+cat "$facts" "$rows" > "$tmp/all"
+
+# stage 2: one file, its status tested, its closing row required
+if awk -f "$here/lib/aexp-rules.awk" "$tmp/all" > "$t2" 2> "$tmp/stage2.err"; then :; else
+  cat "$tmp/stage2.err" >&2
+  dead "stage 2 (aexp-rules.awk) failed"
+fi
+if ! tail -n 1 "$t2" | grep -Eq "^RULES${tab}[0-9]+\$"; then
+  dead "stage 2 (aexp-rules.awk) printed no closing RULES row"
+fi
+awk -F '\t' '$1 == "V" { printf "%s\t%s\t%s\t%s\n", $2, $3, $4, $5 }' "$t2" > "$tmp/viol0" || dead "stage 2 row reader failed"
+sort -u "$tmp/viol0" > "$viol"
+summary=$(awk -F '\t' '$1 == "S" { printf "files=%s scenes=%s groups=%s rows=%s exempt=%s clauses=%s", $2, $3, $4, $5, $6, $7 }' "$t2") || dead "stage 2 summary reader failed"
+
+if [ "$have_expect" -eq 1 ]; then
+  cut -f2 "$viol" > "$tmp/got.codes"
+  sort -u "$tmp/got.codes" | tr '\n' ',' | sed 's/,$//' > "$tmp/got"
+  printf '%s\n' "$expect" | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/,$//' > "$tmp/want"
+  if cmp -s "$tmp/got" "$tmp/want"; then
+    echo "EXPECT_OK"
+    exit 0
+  fi
+  echo "EXPECT_MISMATCH wanted '$(cat "$tmp/want")' got '$(cat "$tmp/got")'" >&2
+  cat "$viol" >&2
+  exit 1
+fi
+
+cat "$viol"
+if [ -s "$viol" ]; then
+  exit 1
+fi
+echo "AUDIO_CHECK $summary"
+echo "STATUS audio-check ok n=$nfiles"
+exit 0

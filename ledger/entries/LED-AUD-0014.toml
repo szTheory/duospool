@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# The PCM stream DSPA v1 and its sample grid (05-CONTEXT D-187, D-197; AUD-02). A project definition, not a hardware claim (ER-19). A hash of the stream is E0 repeatability evidence and never a verdict (ER-20).
+# Constants (plan 05-03, this ledger id): psg_mclk_per_sample 192, psg_sample_phase_mclk 0. OSC1/192 is a printed label, never core arithmetic.
+id = "LED-AUD-0014"
+statement = "The pcm stream (DSPA v1) is a project definition: point samples of the modelled stereo output at s x 192 master clocks (psg_mclk_per_sample, psg_sample_phase_mclk 0), frames of 2 x u32 little-endian unsigned (L then R, 0 = nothing contributes), no filtering, resampling or DC removal, events before the sample at one instant; a hash of it is E0 only."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["UNKNOWN|record format|a project definition; no source describes it"]
+evidence = []
+disagreement = "none: project definition; no source is compared"
+pinning_test = "TEST:pcm_cadence"
+updated = "2026-11-13"
+assumption = "The grid, the frame layout and the per-frame counts ceil((k+1)L/192) - ceil(kL/192) are project definitions; a better decimation or a host rate is a new sink or record version, never a silent change (D-201)."
+revisit_phase = 5
+withheld = ["any hardware sample rate claim", "any analog output claim", "band-limited", "sample-accurate"]
+origin = "05-CONTEXT D-187"

@@ -19,8 +19,8 @@
 #define DS_MAPPER_NAME_MAX 16u
 #define DS_CONTENT_ID_BYTES 32u
 /* behaviour epoch (D-53): bumped by any change that can alter what a run observes; goldens compare it, never a build id */
-#define DS_BEHAVIOUR_EPOCH 5u
-/* the version of the power-on policy table that the record prints next to the policy name is ds_policy_version() of ds_poweron.h (D-50, D-134): 1 for zero and seeded-prng-v1, 2 for seeded-prng-v2, 3 for seeded-prng-v3 */
+#define DS_BEHAVIOUR_EPOCH 6u /* 6: plan 05-03, the PSG state, register decode and the always-running noise counters (D-202) */
+/* the version of the power-on policy table that the record prints next to the policy name is ds_policy_version() of ds_poweron.h (D-50, D-134): 1 for zero and seeded-prng-v1, 2 for seeded-prng-v2, 3 for seeded-prng-v3, 4 for seeded-prng-v4 */
 /* field_index of a result that names no profile field */
 #define DS_NO_FIELD 0xffffffffu
 /* power-on state (D-50): the 8 KiB work RAM and the 8 mapping registers */
@@ -141,7 +141,7 @@ struct ds_instance {
     /* power-on state (D-50, D-75, D-91): the work RAM and the mapping registers; none of it is a hardware claim (LED-PROF-0002) */
     uint8_t ram8k[DS_RAM8K_BYTES];
     uint8_t mpr[DS_MPR_COUNT]; /* MPR0 to MPR6 are 0 under zero and seeded-prng-v1 and drawn under seeded-prng-v2, MPR7 is $00 at reset under every policy (D-114) */
-    uint32_t powerup_policy;   /* enum ds_policy of ds_poweron.h: 1 zero, 2 seeded-prng-v1, 3 seeded-prng-v2, 4 seeded-prng-v3 */
+    uint32_t powerup_policy;   /* enum ds_policy of ds_poweron.h: 1 zero, 2 seeded-prng-v1, 3 seeded-prng-v2, 4 seeded-prng-v3, 5 seeded-prng-v4 (plan 05-03, D-228: no gap) */
     uint32_t has_seed;         /* 1 when the request carried a seed */
     uint64_t powerup_seed;     /* the seed of the run, 0 when has_seed is 0 */
     /* the declared IRQ1 and IRQ2 test stimulus (plan 03-22, irq.c; D-112, ER-5): up to DS_IRQ_STIM_MAX events, slot i holding the machine time at which line irq_stim_line[i] (1 or 2, 0 = an unused slot) takes the level irq_stim_level[i] (0 or 1). Written only by ds_irq_stim_set before the first step; the level of a line at a stamp is a pure function of these arrays. A test
@@ -197,7 +197,7 @@ struct ds_instance {
     /*
      * The VCE and VDC state of Phase 4 (plan 04-03; D-165, D-166, D-167, F-10), appended after tail_pad so that the line above stays byte for byte. The block starts at an 8-aligned offset and is declared region by region (VDC0, BEAM, VDMA, VCE0, then the three byte arrays), each region one contiguous live span carried whole by its payload.
      * The members of a region are ordered so that none needs padding: the one-byte members stand where they restore the alignment of the next member (the stream order of serial.c is another order, written field by field). Every byte is 0 at boot under every policy except rcr_counter (a constant), frame_lines (the bound lines_per_frame) and display_k (0xFFFF), and, under
-     * seeded-prng-v3 only, the palette, VRAM and SATB bytes (poweron.c).
+     * seeded-prng-v3 and seeded-prng-v4, the palette, VRAM and SATB bytes (poweron.c).
      * This plan stores the state and carries it through the digest and the snapshot; the behaviour that reads and writes it lands in the plans that follow.
      */
     /* VDC0, 45 bytes: the 20 register slots R00 to R13 (R03 and R04 stay 0; the masks of D-146 are judged on restore), the read buffer, the address register, the status flags and the write latch */
@@ -246,6 +246,26 @@ struct ds_instance {
     uint8_t vdc_satb[DS_SATB_BYTES];
     /* explicit trailing padding of the Phase 4 block (the block is 67,178 bytes, which is 2 modulo 8): in no region of the stream, zero from the zeroing of ds_boot, an identity member of the restore evidence like tail_pad */
     uint8_t vid_pad[6];
+    /*
+     * The PSG block (plan 05-03; D-202, D-203, F-59), 280 bytes after vid_pad, no implicit padding. PSG0, 42 bytes: the 12-bit frequency of each channel (R2/R3), the select (R0 & 7), the main balance (R1), the LFO frequency (R8) and control (R9 & $83), and per
+     * channel R4 & $DF, R5, the wave index (0..31), the DDA latch (5 bits) and per noise channel (select 4, 5) R7 & $9F. psg_pad: explicit padding in no region. PSGW: the wave RAM, byte ch x 32 + i, each 0..31. PSGT, 40 bytes at block offset 240: the counter
+     * distances of D-186 (r = next event - (machine_time - 1), 0 = frozen) of the six channels and the two noise counters, and the two 18-bit noise LFSRs.
+     */
+    uint16_t psg_freq[6];
+    uint8_t psg_select;
+    uint8_t psg_main_bal;
+    uint8_t psg_lfo_freq;
+    uint8_t psg_lfo_ctl;
+    uint8_t psg_ctl[6];
+    uint8_t psg_bal[6];
+    uint8_t psg_widx[6];
+    uint8_t psg_dda[6];
+    uint8_t psg_noise[2];
+    uint8_t psg_pad[6];
+    uint8_t psg_wave[192];
+    uint32_t psg_rem[6];
+    uint32_t psg_nrem[2];
+    uint32_t psg_lfsr[2];
 };
 
 /* the stimulus arrays, the timer block, the controller bytes, the CPU block, the bus block and the block transfer state have no padding and sit in the order of the declarations (the digest regions IRQS, TIMR, IRQC, CPU0, BUS0 and BLKT are each one live span, serial.c): the stimulus times follow the power-up seed, and the ROM array follows the block transfer state */
@@ -292,12 +312,17 @@ _Static_assert(offsetof(struct ds_instance, rom) == offsetof(struct ds_instance,
     X(stage) X(v_state) X(burst) X(line_idx) X(v_togo) X(display_k) X(rcr_counter) X(frame_lines) X(bg_y) X(mwr_active) X(vd_off) X(rcr_off) \
     X(line_dirty) X(sprite_pend) X(lat_div) X(vd_pending) X(vd_irq_phase) X(rcr_origin) \
     X(satb_pending) X(satb_done_valid) X(satb_done_at) X(dma_start) X(dma_done) X(dma_word_mclk) X(dma_state) \
-    X(vce_cr) X(vce_cta) X(vce_pal) X(vdc_vram) X(vdc_satb) X(vid_pad)
+    X(vce_cr) X(vce_cta) X(vce_pal) X(vdc_vram) X(vdc_satb) X(vid_pad) \
+    X(psg_freq) X(psg_select) X(psg_main_bal) X(psg_lfo_freq) X(psg_lfo_ctl) X(psg_ctl) X(psg_bal) X(psg_widx) X(psg_dda) X(psg_noise) \
+    X(psg_pad) X(psg_wave) X(psg_rem) X(psg_nrem) X(psg_lfsr)
 #define DS_TILING_SIZE(m) +sizeof(((struct ds_instance *)0)->m)
 _Static_assert(0u DS_INSTANCE_TILING(DS_TILING_SIZE) == sizeof(struct ds_instance), "the tiling list does not account for every byte of struct ds_instance: a member without an entry, an entry without a member, or implicit padding");
 _Static_assert(offsetof(struct ds_instance, tail_pad) == offsetof(struct ds_instance, rom) + DS_ROM_CAP, "padding between the ROM and the tail padding");
 _Static_assert(offsetof(struct ds_instance, vdc_reg) == offsetof(struct ds_instance, tail_pad) + 6u && offsetof(struct ds_instance, vdc_reg) % 8u == 0u, "the Phase 4 block does not follow tail_pad at an 8-aligned offset");
-_Static_assert(offsetof(struct ds_instance, vid_pad) + sizeof(((struct ds_instance *)0)->vid_pad) == sizeof(struct ds_instance), "vid_pad is not the last member of the instance");
+_Static_assert(offsetof(struct ds_instance, psg_freq) == offsetof(struct ds_instance, vid_pad) + 6u && offsetof(struct ds_instance, psg_freq) % 8u == 0u, "the PSG block does not follow vid_pad at an 8-aligned offset");
+_Static_assert(offsetof(struct ds_instance, psg_pad) == offsetof(struct ds_instance, psg_freq) + 42u, "PSG0 is not 42 bytes");
+_Static_assert(offsetof(struct ds_instance, psg_rem) == offsetof(struct ds_instance, psg_freq) + 240u, "PSGT is not at offset 240 of the PSG block");
+_Static_assert(offsetof(struct ds_instance, psg_lfsr) + sizeof(((struct ds_instance *)0)->psg_lfsr) == sizeof(struct ds_instance), "psg_lfsr is not the last member of the instance");
 
 struct ds_boot_request {
     uint32_t struct_size; /* sizeof(struct ds_boot_request) */
@@ -373,13 +398,16 @@ enum ds_run_refusal {
 /* "run.NAME" for a run refusal number, "ok" for DS_RUNREF_NONE, NULL for a number that is not a member */
 const char *ds_run_refusal_name(uint32_t number);
 
-/* the instruction sink, the device-register sink and the video sink of ds_obs.h (plans 03-10, 03-19 and 04-02) and the running log of one ds_run call, whose layouts live there */
+/* the instruction sink, the device-register sink, the video sink and the two audio sinks psg and pcm of ds_obs.h (plans 03-10, 03-19, 04-02 and 05-02) and the running log of one ds_run call, whose layouts live there */
 struct ds_insn_sink;
 struct ds_dev_sink;
 struct ds_vid_sink;
+struct ds_psg_sink;
+struct ds_pcm_sink;
 struct ds_obs_log;
 
-/* the run request: an absolute deadline in master clocks, never a budget (D-93); insn is the caller-owned instruction sink, dev the caller-owned device-register sink and vid the caller-owned video sink, appended last in plan 04-02 (NULL = none, ds_obs.h) */
+/* the run request: an absolute deadline in master clocks, never a budget (D-93); insn is the caller-owned instruction sink, dev the caller-owned device-register sink, vid the caller-owned video sink (appended last in plan 04-02), psg the PSG register-write
+ * sink and pcm the raw-audio frame sink (appended last together in plan 05-02, D-198) (NULL = none, ds_obs.h) */
 struct ds_run_request {
     uint32_t struct_size; /* sizeof(struct ds_run_request) */
     uint32_t reserved;    /* must be 0 */
@@ -389,6 +417,8 @@ struct ds_run_request {
     struct ds_insn_sink *insn;
     struct ds_dev_sink *dev;
     struct ds_vid_sink *vid;
+    struct ds_psg_sink *psg;
+    struct ds_pcm_sink *pcm;
 };
 
 struct ds_run_result {
@@ -405,8 +435,9 @@ struct ds_run_result {
  * Run the machine in whole instructions until machine time reaches until_mclk (UNTIL) or the stop callback holds (CALLBACK). A deadline at or
  * below the current machine time returns UNTIL with zero steps. Stops only fall between steps, so the end time can pass the deadline by less
  * than ds_max_step_mclk(). No state lives outside the instance between steps: run(N) then run(M) equals run(M) from the start (D-92).
- * A NULL instance or request, a wrong struct_size, a nonzero reserved, a sink with a capacity above DS_SINK_MAX_RECORDS or DS_VID_SINK_MAX_BYTES (sink_unsupported), a sink that overlaps the call's own memory, another sink or itself or is misaligned (memory_invalid) and a deadline that would wrap machine time are
- * refused with REFUSED and a refusal code; the instance is then unchanged. Returns the reason, also written to result when it is not NULL.
+ * A NULL instance or request, a wrong struct_size, a nonzero reserved, a request or result that overlaps the instance (memory_invalid, plan 05-02),
+ * a sink with a capacity above DS_SINK_MAX_RECORDS, DS_VID_SINK_MAX_BYTES or DS_PCM_SINK_MAX_FRAMES (sink_unsupported), a sink that overlaps the call's own memory, another sink or itself or is misaligned (memory_invalid) and a deadline that would wrap machine time are
+ * refused with REFUSED and a refusal code; the instance is then unchanged. Returns the reason, also written to result when it is not NULL and does not overlap the instance (IN-03: such a result is never written).
  */
 uint32_t ds_run(struct ds_instance *inst, const struct ds_run_request *request, struct ds_run_result *result);
 

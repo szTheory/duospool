@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# hash-only: a golden scene whose ROM has no literal scene: a stream digest alone would be a verdict (ER-20).
+aexp	sample_mclk=192
+scene	t_golden	case=audio_t_golden	role=golden
+golden	t_golden	pcm_sha256=0000000000000000000000000000000000000000000000000000000000000000	psg_sha256=0000000000000000000000000000000000000000000000000000000000000000

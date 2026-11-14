@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Toy control (D-200, D-210, PR-15, F-72; an audio toy of plan 05-04, the vid-emit-mutates pattern): a raw-audio writer that changes machine state, made from the live src/core/psg.c by scripts/control-mutate. The anchor is the statement of ds_psg_advance that emits one DSPA frame (it runs only when a pcm sink is attached, the gate of the sample loop);
+# the replacement emits the frame and then adds one to wave word 0 of select 5 of the instance through a cast away from const (the sample function is const and cannot write; only this generated toy writes, F-7). With a pcm sink in the request the toy leaves another wave RAM and another digest than the run without a sink, so the cases in EXPECT must come out guest_failure:
+# aud_noninterference (the sink runs against the runs with no sink under three policies) and observer_psg_tone (every sink configuration against the run with none). An E0 toy with no literal group (the Phase 4 amendment A5 precedent): its EXPECT names audio cases only (F-72). The real core passes both (REQUIRED cases).
+tag=rule-psg-emit-mutates
+file=src/core/psg.c
+anchor=ds_obs_pcm(obs, l, r);
+replace=ds_obs_pcm(obs, l, r); ((struct ds_instance *)(void *)inst)->psg_wave[5u * 32u] = (uint8_t)(((uint32_t)inst->psg_wave[5u * 32u] + 1u) & 0x1Fu);

@@ -1,0 +1,96 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# psg_mod.aexp - the hand-derived literal rows of the audio scenes of fixtures/src/psg_mod.s (plan 05-07; D-184, D-185, D-189..D-193, D-206..D-212, D-230, D-233, RF-6, RF-11, ER-14..ER-21). scripts/fixture-build writes it without comments as build/gate/fixtures/psg-mod.aexp.tsv
+# for the runner kind audio; scripts/audio-check judges this source. Selectors and windows as in psg_tone.aexp (a window holds the samples s with from <= 192s < to, D-187). No literal comes from a case file, a run or a hash (R7). One comment line per group (D-233).
+# Byte budget (D-230, D-233): this file stays under 32,768 bytes (the plan budget) and the reader cap of 49,152. Every row carries r1, al, r5 and a side where it has a window: R1 $FF, AL $1F, R5 $FF give S = 0 on both sides (att 0).
+aexp	sample_mclk=192
+# mod_noise4 (D-184, D-185, D-193, RF-11): select 4 at NE 1, R7 $98 (NFRQ 24, NFc 7) written at stamp w before the key-on K. Noise events run from boot every 384 x 31 = 11,904 = 62 x 192 master clocks; R7 applies at the next reload, the event at (floor(w / 11,904) + 1) x 11,904 < K + 11,904,
+#   after which events come every 384 x 7 = 2,688 = 14 x 192. The windows start at K + 12,096 (past that reload and one sample) and end at K + 312,096: every event inside lies on a sample instant and the level changes only at events, so every interior run is 14 m samples.
+scene	mod_noise4	case=audio_mod_noise4	role=literal
+# n4_ev (MAN:P8-2+P8-3+P8-4+P8-6, D-196 by hand): R7 $98 at select 4 posts & $9F = $98 with chan 4 and the index 0 that the 32 uploads after R4 $40 left.
+group	mod_noise4	n4_ev	form=EV	kind=ev_decode	class=MAN:P8-2+P8-3+P8-4+P8-6	kills=AF0,AF8,AF9
+row	mod_noise4	n4_ev	anchor=ev:ch=4;reg=R7;val=$98;nth=1;ev=+0	chan=4;effect=$00;wave_idx=0;post=$0098
+# n4_two (MAN:P8-2+P8-6+P8-9+H8-23; P8-2 "pseudo random noise (square wave)"): exactly two distinct values on each side; the values (0 and 31 x VOL[0]) are ASSUMED and not judged.
+group	mod_noise4	n4_two	form=ROWS	kind=two_level	class=MAN:P8-2+P8-6+P8-9+H8-23	kills=AF0,AF5,AF6
+row	mod_noise4	n4_two	anchor=ev:ch=4;reg=R4;val=$9F;nth=1;from=+12096;to=+312096;side=L	n=2;r1=$FF;al=$1F;r5=$FF
+row	mod_noise4	n4_two	anchor=ev:ch=4;reg=R4;val=$9F;nth=1;from=+12096;to=+312096;side=R	n=2;r1=$FF;al=$1F;r5=$FF
+# n4_lev (ASSUMED:LED-AUD-0009+LED-AUD-0010): the high noise level is 31 (psg_noise_high_level) at att 0, so the largest sample is 31 x 32768 = 1,015,808 on each side.
+group	mod_noise4	n4_lev	form=ROWS	kind=levels_exact	class=ASSUMED:LED-AUD-0009+LED-AUD-0010	kills=AF0,AF5,AF6
+row	mod_noise4	n4_lev	anchor=ev:ch=4;reg=R4;val=$9F;nth=1;from=+12096;to=+312096;side=L	peak=1015808;r1=$FF;al=$1F;r5=$FF
+# n4_grid (MAN:P8-2+P8-6+P8-9+H8-23): every interior run is a multiple of g = 384 x 7 / 192 = 14 samples (nf=7;g=14, the lint recomputes g = 2 x nf).
+group	mod_noise4	n4_grid	form=ROWS	kind=run_grid	class=MAN:P8-2+P8-6+P8-9+H8-23	kills=AF0,AF2,AF4,AF5,AF6
+row	mod_noise4	n4_grid	anchor=ev:ch=4;reg=R4;val=$9F;nth=1;from=+12096;to=+312096;side=L	nf=7;g=14;r1=$FF;al=$1F;r5=$FF
+row	mod_noise4	n4_grid	anchor=ev:ch=4;reg=R4;val=$9F;nth=1;from=+12096;to=+312096;side=R	nf=7;g=14;r1=$FF;al=$1F;r5=$FF
+# n4_min (ASSUMED:LED-AUD-0010, the sequence decides it): the shortest interior run is one noise clock, 14 samples (the string below has single bits at every ordinal range the window can take).
+group	mod_noise4	n4_min	form=ROWS	kind=run_min	class=ASSUMED:LED-AUD-0010	kills=AF0,AF5,AF6
+row	mod_noise4	n4_min	anchor=ev:ch=4;reg=R4;val=$9F;nth=1;from=+12096;to=+312096;side=L	minrun=14;r1=$FF;al=$1F;r5=$FF
+# n4_seq (ASSUMED:LED-AUD-0010, all power-on policies: the LFSR resets to 1): the level at each event is non-zero when bits[ordinal] is 1 (ordinal 1 at T = 0, the reload floor(w / p0) + 2, then + 1 per p1); bits = LFSR steps 1..256 from 1 by an outside script that first reproduced the 40 bits of RESEARCH section 2; w < 60,000 (hand count), so ordinals <= 123.
+group	mod_noise4	n4_seq	form=ROWS	kind=noise_seq	class=ASSUMED:LED-AUD-0010	kills=AF0,AF1,AF4,AF5,AF6
+row	mod_noise4	n4_seq	anchor=ev:ch=4;reg=R4;val=$9F;nth=1;from=+12096;to=+312096;side=L	p0=11904;p1=2688;bits=1000000000000000001111110000001111101111110000010000110000101111110001101111001111010011110010010011001011010000001001100000111111010011101101101100110100010000110110100001111111101101010001010001110100101001110101100011001111011011100010000011001011110000;r1=$FF;al=$1F;r5=$FF
+# mod_noise5: the same on select 5 with R7 $91 (NFRQ 17, NFc 14): events every 384 x 14 = 5,376 = 28 x 192 after the reload; no LFSR sequence is judged here, so the toy psg-noise-taps leaves this scene green.
+scene	mod_noise5	case=audio_mod_noise5	role=literal
+# n5_ev (MAN:P8-2+P8-3+P8-4+P8-6): R7 $91 at select 5 posts $0091, chan 5, index 0.
+group	mod_noise5	n5_ev	form=EV	kind=ev_decode	class=MAN:P8-2+P8-3+P8-4+P8-6	kills=AF0,AF8,AF9
+row	mod_noise5	n5_ev	anchor=ev:ch=5;reg=R7;val=$91;nth=1;ev=+0	chan=5;effect=$00;wave_idx=0;post=$0091
+# n5_two (MAN:P8-2+P8-6+P8-9+H8-23): exactly two distinct values on each side.
+group	mod_noise5	n5_two	form=ROWS	kind=two_level	class=MAN:P8-2+P8-6+P8-9+H8-23	kills=AF0,AF5,AF6
+row	mod_noise5	n5_two	anchor=ev:ch=5;reg=R4;val=$9F;nth=1;from=+12096;to=+312096;side=L	n=2;r1=$FF;al=$1F;r5=$FF
+row	mod_noise5	n5_two	anchor=ev:ch=5;reg=R4;val=$9F;nth=1;from=+12096;to=+312096;side=R	n=2;r1=$FF;al=$1F;r5=$FF
+# n5_grid (MAN:P8-2+P8-6+P8-9+H8-23): every interior run is a multiple of g = 384 x 14 / 192 = 28 samples (nf=14;g=28).
+group	mod_noise5	n5_grid	form=ROWS	kind=run_grid	class=MAN:P8-2+P8-6+P8-9+H8-23	kills=AF0,AF2,AF4,AF5,AF6
+row	mod_noise5	n5_grid	anchor=ev:ch=5;reg=R4;val=$9F;nth=1;from=+12096;to=+312096;side=L	nf=14;g=28;r1=$FF;al=$1F;r5=$FF
+row	mod_noise5	n5_grid	anchor=ev:ch=5;reg=R4;val=$9F;nth=1;from=+12096;to=+312096;side=R	nf=14;g=28;r1=$FF;al=$1F;r5=$FF
+# n5_ratio (MAN:P8-2+P8-6+P8-9+H8-23): the grid (gcd of the interior runs) of the select-4 window times 2 equals that of the select-5 window: 14 : 28 = NFc 7 : NFc 14 (p0=1;p1=2).
+group	mod_noise5	n5_ratio	form=REL	kind=noise_ratio	class=MAN:P8-2+P8-6+P8-9+H8-23	kills=AF0,AF2,AF4
+row	mod_noise5	n5_ratio	anchor=ev:ch=4;reg=R4;val=$9F;nth=1;from=+12096;to=+312096;side=L	p0=1;p1=2;r1=$FF;al=$1F;r5=$FF
+row	mod_noise5	n5_ratio	anchor=ev:ch=5;reg=R4;val=$9F;nth=1;from=+12096;to=+312096;side=L	r1=$FF;al=$1F;r5=$FF
+# mod_r7 (D-189, D-208): select 2 plays table 2 at F = 256 (a cycle of 256 samples, one rising crossing, word 31 -> word 0); R0 $02 (its 3rd record: the channel loop wrote the 1st, the set-up the 2nd) and R7 $98 come between two windows of 210,000 master clocks.
+scene	mod_r7	case=audio_mod_r7	role=literal
+# r7_same (MAN:P8-2+P8-9: R7 exists for selects 4 and 5 only): the 768 samples (3 cycles) from the first rising crossing of each window are equal, aligned at the crossing, never at a write (D-185).
+group	mod_r7	r7_same	form=REL	kind=same	class=MAN:P8-2+P8-9	kills=AF0,AF2
+row	mod_r7	r7_same	anchor=ev:ch=2;reg=R4;val=$9F;nth=1;from=+50000;to=+260000;side=L	n=768;r1=$FF;al=$1F;r5=$FF
+row	mod_r7	r7_same	anchor=ev:ch=G;reg=R0;val=$02;nth=3;from=+2000;to=+212000;side=L	r1=$FF;al=$1F;r5=$FF
+# r7_drop (ASSUMED:LED-AUD-0004, the record of a dropped write is a project definition): the R7 $98 after the 3rd R0 $02 has no target: chan $FF, effect NO_TARGET ($20), wave_idx $FF, post $FFFF.
+group	mod_r7	r7_drop	form=EV	kind=ev_edge	class=ASSUMED:LED-AUD-0004	kills=AF0,AF8
+row	mod_r7	r7_drop	anchor=ev:ch=G;reg=R0;val=$02;nth=3;ev=+1	chan=$FF;effect=$20;wave_idx=$FF;post=$FFFF
+# mod_dda (D-190, D-191, D-220; P8-5 procedure (3)): (b) R4 $DF of select 2 (its 1st) opens DDA play at the latch 0 of R6 $00; the timer handler writes 5, 5, 20, 3, 31, 0, 12, 12, 27 (R6 $05 is the 3rd R6 $05 of select 2 and R6 $1B the 3rd R6 $1B: tables 2 and T2 hold each once).
+#   (d) R4 $40, R4 $00, R4 $9F (select 2's 3rd R4 $9F) plays T2 again; (e) select 3's R4 $DF and R6 $1F give two latches of 31; (f) R4 $9F (the 4th) releases DDA with chON 1. T2 = table 3 in decimal: 28 21 30 23 16 25 18 27 20 29 22 31 24 17 26 19 4 1 14 11 8 5 2 15 12 9 6 3 0 13 10 7.
+scene	mod_dda	case=audio_mod_dda	role=literal
+# d_ev (GUEST:program, ER-21): the guest's own DDA write schedule from the stream: nine consecutive R6 records of the list values in order (the main loop writes nothing while it waits).
+group	mod_dda	d_ev	form=EV	kind=ev_value	class=GUEST:program	kills=AF0,AF8
+row	mod_dda	d_ev	anchor=ev:ch=2;reg=R6;val=$05;nth=3;ev=+0	reg=R6;vals=$05,$05,$14,$03,$1F,$00,$0C,$0C,$1B
+# d_dec (MAN:P8-2+P8-3+P8-4, D-196 by hand): DDA writes 1 and 9 are DDA_LOAD ($02) at the index 0, post 5 and 27 (first, so AF8 and AF9 move row 2); (b) R4 $40 (select 2's 3rd) resets the index from mid-table to 0 (IDX_RESET $08); R4 $DF posts $DF with IDX_RESET.
+group	mod_dda	d_dec	form=EV	kind=ev_decode	class=MAN:P8-2+P8-3+P8-4	kills=AF0,AF8,AF9
+row	mod_dda	d_dec	anchor=ev:ch=2;reg=R6;val=$05;nth=3;ev=+0	chan=2;effect=$02;wave_idx=0;post=$0005
+row	mod_dda	d_dec	anchor=ev:ch=2;reg=R6;val=$05;nth=3;ev=+8	chan=2;effect=$02;wave_idx=0;post=$001B
+row	mod_dda	d_dec	anchor=ev:ch=2;reg=R4;val=$40;nth=3;ev=+0	chan=2;effect=$08;wave_idx=0;post=$0040
+row	mod_dda	d_dec	anchor=ev:ch=2;reg=R4;val=$DF;nth=1;ev=+0	chan=2;effect=$08;wave_idx=0;post=$00DF
+# d_hold (MAN:P8-4+P8-5; chON 1, DDA 1): from write 1 + 384 (two samples past its stamp, after its change) to write 9 + 2,000 the window holds writes 2..9 as ordinals 1..8; the level changes at 2, 3, 4, 5, 6, 8 (writes 3, 4, 5, 6, 7, 9; 2 and 8 repeat), held between; a change is taken in the sample at or after its stamp or the next, so no tie order is judged.
+group	mod_dda	d_hold	form=ROWS	kind=dda_hold	class=MAN:P8-4+P8-5	kills=AF0,AF5,AF6,AF8
+row	mod_dda	d_hold	anchor=ev:ch=2;reg=R6;val=$05;nth=3;from=+384;to=ev:ch=2;reg=R6;val=$1B;nth=3+2000;side=L	ords=2,3,4,5,6,8;r1=$FF;al=$1F;r5=$FF
+row	mod_dda	d_hold	anchor=ev:ch=2;reg=R6;val=$05;nth=3;from=+384;to=ev:ch=2;reg=R6;val=$1B;nth=3+2000;side=R	ords=2,3,4,5,6,8;r1=$FF;al=$1F;r5=$FF
+# d_hold1 (ASSUMED:LED-AUD-0004, mark=latch_off): from R4 $DF to write 2 the one write 1 changes the level; the level before it is the latch 0 of R6 $00 written with chON 0 (the disputed latch_off point) or the power-on latch (LED-PROF-0003; 05-07 deviation 6), so it is no MAN row (ER-10, ER-15). No AF8 (the next R4 $DF empties the window: a harness outcome, no kill; WR-01).
+group	mod_dda	d_hold1	form=ROWS	kind=dda_hold	class=ASSUMED:LED-AUD-0004	kills=AF0,AF5,AF6
+row	mod_dda	d_hold1	anchor=ev:ch=2;reg=R4;val=$DF;nth=1;from=+0;to=ev:ch=2;reg=R6;val=$05;nth=4;side=L	ords=1;r1=$FF;al=$1F;r5=$FF;mark=latch_off
+row	mod_dda	d_hold1	anchor=ev:ch=2;reg=R4;val=$DF;nth=1;from=+0;to=ev:ch=2;reg=R6;val=$05;nth=4;side=R	ords=1;r1=$FF;al=$1F;r5=$FF;mark=latch_off
+# d_ord (MAN:P8-4+P8-5): from write 1 + 384 (two samples past its stamp) to write 9 + 2,000 the 7 plateaus rank as the held values 5, 20, 3, 31, 0, 12, 27.
+group	mod_dda	d_ord	form=ROWS	kind=dda_order	class=MAN:P8-4+P8-5	kills=AF0,AF5,AF6
+row	mod_dda	d_ord	anchor=ev:ch=2;reg=R6;val=$05;nth=3;from=+384;to=ev:ch=2;reg=R6;val=$1B;nth=3+2000;side=L	vals=5,20,3,31,0,12,27;r1=$FF;al=$1F;r5=$FF
+row	mod_dda	d_ord	anchor=ev:ch=2;reg=R6;val=$05;nth=3;from=+384;to=ev:ch=2;reg=R6;val=$1B;nth=3+2000;side=R	vals=5,20,3,31,0,12,27;r1=$FF;al=$1F;r5=$FF
+# d_lev (ASSUMED:LED-AUD-0009): the same window; at att 0 the held level of value v is v x 32768: 163,840, 655,360, 98,304, 1,015,808, 0, 393,216, 884,736.
+group	mod_dda	d_lev	form=ROWS	kind=dda_level_exact	class=ASSUMED:LED-AUD-0009	kills=AF0,AF5,AF6
+row	mod_dda	d_lev	anchor=ev:ch=2;reg=R6;val=$05;nth=3;from=+384;to=ev:ch=2;reg=R6;val=$1B;nth=3+2000;side=L	vals=163840,655360,98304,1015808,0,393216,884736;r1=$FF;al=$1F;r5=$FF
+# d_ram (MAN:P8-4+P8-5): after (d) the plateaus between two rising crossings (key-on + 50,000 to + 300,000, F = 256) rank as T2 up to rotation: DDA kept the wave RAM.
+group	mod_dda	d_ram	form=ROWS	kind=dda_ram_kept	class=MAN:P8-4+P8-5	kills=AF0,AF5,AF6,AF7
+row	mod_dda	d_ram	anchor=ev:ch=2;reg=R4;val=$9F;nth=3;from=+50000;to=+300000;side=L	words=28,21,30,23,16,25,18,27,20,29,22,31,24,17,26,19,4,1,14,11,8,5,2,15,12,9,6,3,0,13,10,7;r1=$FF;al=$1F;r5=$FF
+row	mod_dda	d_ram	anchor=ev:ch=2;reg=R4;val=$9F;nth=3;from=+50000;to=+300000;side=R	words=28,21,30,23,16,25,18,27,20,29,22,31,24,17,26,19,4,1,14,11,8,5,2,15,12,9,6,3,0,13,10,7;r1=$FF;al=$1F;r5=$FF
+# d_phase (ASSUMED:LED-AUD-0012): from the (d) key-on + 192 the first 32 plateaus are T2 from word 0 in order (DDA set the index 0, the counter is frozen in DDA, key-on keeps the index); toy psg-dda-no-reset turns it red.
+group	mod_dda	d_phase	form=ROWS	kind=cycle_phase	class=ASSUMED:LED-AUD-0012	kills=AF0,AF5,AF6,AF7
+row	mod_dda	d_phase	anchor=ev:ch=2;reg=R4;val=$9F;nth=3;from=+192;to=+60000;side=L	words=28,21,30,23,16,25,18,27,20,29,22,31,24,17,26,19,4,1,14,11,8,5,2,15,12,9,6,3,0,13,10,7;r1=$FF;al=$1F;r5=$FF
+# d_rel (ASSUMED:LED-AUD-0004+LED-AUD-0012, D-220): from the (f) release R4 $9F + 192 the first 32 plateaus are T2 from word 0: the counter, frozen at the index 0 since (e), restarts on DDA 1 -> 0 with chON 1.
+group	mod_dda	d_rel	form=ROWS	kind=cycle_phase	class=ASSUMED:LED-AUD-0004+LED-AUD-0012	kills=AF0,AF5,AF6,AF7
+row	mod_dda	d_rel	anchor=ev:ch=2;reg=R4;val=$9F;nth=4;from=+192;to=+60000;side=L	words=28,21,30,23,16,25,18,27,20,29,22,31,24,17,26,19,4,1,14,11,8,5,2,15,12,9,6,3,0,13,10,7;r1=$FF;al=$1F;r5=$FF
+# d_sum (ASSUMED:LED-AUD-0009, aud09-d): two DDA latches of 31 at att 0 on one side (selects 2 and 3, select 3's R4 $DF + 2,000 to + 20,000) sum linearly: the largest sample is 2 x 31 x 32768 = 2,031,616.
+group	mod_dda	d_sum	form=ROWS	kind=levels_exact	class=ASSUMED:LED-AUD-0009	kills=AF0,AF5,AF6
+row	mod_dda	d_sum	anchor=ev:ch=3;reg=R4;val=$DF;nth=1;from=+2000;to=+20000;side=L	peak=2031616;r1=$FF;al=$1F;r5=$FF

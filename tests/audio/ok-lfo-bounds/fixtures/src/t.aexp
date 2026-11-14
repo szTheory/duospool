@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# ok-lfo-bounds: MAN LFO rows whose unmasked sums sit on the edges of 1..4095 (lfo_static f 17, w $00, shift 0: sum 1; f 4095, w $10, shift 0: sum 4095; lfo_dynamic f 17, w1 $00, w2 $1F: sums 1 and 32): no sum leaves 12 bits, so no disputed point and every rule holds (must pass).
+aexp	sample_mclk=192
+scene	t	case=audio_t	role=literal
+group	t	lfo_lo	form=ROWS	kind=lfo_static	class=MAN:P8-6+P8-7+P8-8+P8-9+H8-23	kills=AF0,AF2,AF4
+row	t	lfo_lo	anchor=ev:ch=G;reg=R9;val=$81;nth=1;from=+100000;to=+500000;side=L	f=17;w=$00;shift=0;k=2;d=2;r1=$FF;al=$1F;r5=$FF
+group	t	lfo_hi	form=ROWS	kind=lfo_static	class=MAN:P8-6+P8-7+P8-8+P8-9+H8-23	kills=AF0,AF2,AF4
+row	t	lfo_hi	anchor=ev:ch=G;reg=R9;val=$81;nth=2;from=+100000;to=+500000;side=L	f=4095;w=$10;shift=0;k=2;d=8190;r1=$FF;al=$1F;r5=$FF
+group	t	dyn	form=ROWS	kind=lfo_dynamic	class=MAN:P8-6+P8-7+P8-8+P8-9+H8-23	kills=AF0,AF2,AF4
+row	t	dyn	anchor=ev:ch=G;reg=R9;val=$01;nth=1;from=+0;to=+4032000;side=L	f=17;w1=$00;w2=$1F;f2=128;flf=150;step=115200;set=1,32;r1=$FF;al=$1F;r5=$FF

@@ -22,7 +22,8 @@
  *   run_refuse      expect is rom=NAME;refuse=CODE where CODE is a name of run_refusals.def (plan 03-35; D-93, F4). On a fresh boot of the built image that has
  *                   run to a nonzero machine time, ds_run is called with each malformed request of that CODE (a table of variants in this file). Every call must
  *                   return REFUSED with refusal run.CODE, take 0 steps, report overshoot 0 and leave the whole instance, digest and raw bytes, unchanged; a
- *                   second call with a NULL result must return REFUSED too. The codes every row observed are kept for run_refusal_coverage.
+ *                   second call with a NULL result must return REFUSED too. The codes every row observed are kept for run_refusal_coverage. The optional item rows=call_overlap (refuse=memory_invalid only, plan 05-02, IN-03)
+ *                   replaces the table by the two call-overlap rows: a request, then a result, inside a malloc'd copy of the instance passed as the instance.
  *   run_overshoot   expect is roms=LIST;calls=N;span=N;seed=N;bound=N (plan 03-09; D-94, CORE-04). LIST is comma-separated: an authored image name (ds-proto) or a synthetic recipe (plain-256k, plain-384k).
  *                   Each ROM is booted once and run by N calls; call i goes to the absolute deadline machine time + 1 (an even call, which takes exactly one instruction) or machine time + 1 +
  *                   (r mod span) (an odd call, r from a fixed generator seeded with seed). Every call must end on an instruction boundary at or past its deadline with overshoot = time - until,
@@ -30,6 +31,7 @@
  *                   the value ds_max_step_mclk() must have: a literal from the manual (17 cycles of a block transfer plus the 8 of an interrupt entry, times 12), so that a change of the derivation shows here.
  *   run_refusal_coverage  DEFERRED (D-86 pattern, evaluated after the case loop): every member of run_refusals.def must have been observed by a run_refuse row.
  */
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -477,6 +479,7 @@ void kind_run_chunk_sum(const struct kase *k, struct ctx *c, char *got, size_t g
 #define RR_SINK_BYTES 64u
 #define RR_REC_RECORDS 4u
 #define RR_VID_BYTES 256u /* the byte capacity of the valid video sink (a vid capacity is a byte count, D-162) */
+#define RR_PCM_FRAMES 4u /* the frame capacity of the valid pcm sink (plan 05-02) */
 #define RR_MACHINE_TIME_FIRST 600u /* the boot is run to this deadline first, so the instance is not at its boot state */
 
 static unsigned char rr_observed[DS_RUNREF_SLOTS];
@@ -497,6 +500,126 @@ static union {
     uint64_t align;
     unsigned char b[RR_VID_BYTES];
 } rr_vrec;
+/* the two audio sinks of plan 05-02 (D-198): psg is dev-shaped (24-byte records), pcm has 8-byte frames and a 32-byte header; each a struct and 8-byte aligned memory of its own, valid beside the other three */
+static struct ds_psg_sink rr_psg;
+static struct ds_pcm_sink rr_pcm;
+static union {
+    uint64_t align;
+    unsigned char b[RR_REC_RECORDS * DS_PSG_RECORD_BYTES];
+} rr_prec;
+static union {
+    uint64_t align;
+    unsigned char b[RR_PCM_FRAMES * DS_PCM_FRAME_BYTES];
+} rr_frec;
+
+/* the five sinks of the table by index (0 insn, 1 dev, 2 vid, 3 psg, 4 pcm): the valid static sink, its own record memory, and a request member set to a struct pointer of that sink */
+#define RR_SINKS 5u
+static void *rr_valid(unsigned k)
+{
+    switch (k) {
+    case 0u:
+        rr_insn.records = rr_rec.b;
+        rr_insn.capacity = RR_REC_RECORDS;
+        return &rr_insn;
+    case 1u:
+        rr_dev.records = rr_drec.b;
+        rr_dev.capacity = RR_REC_RECORDS;
+        return &rr_dev;
+    case 2u:
+        rr_vid.bytes = rr_vrec.b;
+        rr_vid.capacity = RR_VID_BYTES;
+        return &rr_vid;
+    case 3u:
+        rr_psg.records = rr_prec.b;
+        rr_psg.capacity = RR_REC_RECORDS;
+        return &rr_psg;
+    default:
+        rr_pcm.frames = rr_frec.b;
+        rr_pcm.capacity = RR_PCM_FRAMES;
+        return &rr_pcm;
+    }
+}
+
+static unsigned char *rr_mem(unsigned k)
+{
+    return k == 0u ? rr_rec.b : k == 1u ? rr_drec.b : k == 2u ? rr_vrec.b : k == 3u ? rr_prec.b : rr_frec.b;
+}
+
+static void rr_put(struct ds_run_request *rq, unsigned k, void *sink)
+{
+    switch (k) {
+    case 0u:
+        rq->insn = (struct ds_insn_sink *)sink;
+        break;
+    case 1u:
+        rq->dev = (struct ds_dev_sink *)sink;
+        break;
+    case 2u:
+        rq->vid = (struct ds_vid_sink *)sink;
+        break;
+    case 3u:
+        rq->psg = (struct ds_psg_sink *)sink;
+        break;
+    default:
+        rq->pcm = (struct ds_pcm_sink *)sink;
+        break;
+    }
+}
+
+/* local copies of the five sink structs (stack memory that overlaps nothing): a copy of sink k with its record pointer and capacity replaced; the capacity is in that sink's unit (records, bytes for vid, frames for pcm) */
+struct rr_copies {
+    struct ds_insn_sink insn;
+    struct ds_dev_sink dev;
+    struct ds_vid_sink vid;
+    struct ds_psg_sink psg;
+    struct ds_pcm_sink pcm;
+};
+
+static void *rr_copy(struct rr_copies *f, unsigned k, unsigned char *rec, uint32_t cap)
+{
+    memset(f, 0, sizeof *f);
+    switch (k) {
+    case 0u:
+        f->insn.records = rec;
+        f->insn.capacity = cap;
+        return &f->insn;
+    case 1u:
+        f->dev.records = rec;
+        f->dev.capacity = cap;
+        return &f->dev;
+    case 2u:
+        f->vid.bytes = rec;
+        f->vid.capacity = cap;
+        return &f->vid;
+    case 3u:
+        f->psg.records = rec;
+        f->psg.capacity = cap;
+        return &f->psg;
+    default:
+        f->pcm.frames = rec;
+        f->pcm.capacity = cap;
+        return &f->pcm;
+    }
+}
+
+/* the smallest capacity of sink k that covers at least 8 bytes (vid counts bytes) */
+static uint32_t rr_unit_cap(unsigned k)
+{
+    return k == 2u ? 16u : 1u;
+}
+
+static void rr_base_request(struct ds_run_request *rq, uint64_t until);
+
+/* a base request with all five valid sinks: every refusal of an audio row is judged beside four valid other sinks (W6) */
+static void rr_five_request(struct ds_run_request *rq, uint64_t until)
+{
+    unsigned k;
+
+    rr_base_request(rq, until);
+    for (k = 0u; k < RR_SINKS; k++) {
+        rr_put(rq, k, rr_valid(k));
+    }
+}
 
 /*
  * One refused call on instance arg (the live block w, or NULL) with request rq (or NULL): the refusal, the result fields and the unchanged instance. res is the result struct of the first call;
@@ -577,11 +700,12 @@ static void rr_variants(struct ctx *c, const char *code_name, struct ds_instance
     uint64_t until = inst->machine_time + UINT64_C(600);
 
     if (strcmp(code_name, "struct_size") == 0) {
-        /* the last variant is the request of the OLD size, before the vid member was appended (plan 04-02, F-16, T-04-06): a host built against the earlier layout is refused, never read past its end */
-        const uint32_t size[6] = {(uint32_t)sizeof rq - 1u, (uint32_t)sizeof rq + 1u, (uint32_t)sizeof rq + 4u, 0u, 0xFFFFFFFFu, (uint32_t)(sizeof rq - sizeof(void *))};
+        /* the last two variants are the requests of the OLD sizes: one pointer less (the layout before plan 05-02 minus vid, the plan 04-02 control, F-16, T-04-06) and two pointers less (the layout before psg and pcm were appended, 56 bytes on LP64; plan 05-02,
+         * F-68, T-05-07): a host built against an earlier layout is refused, never read past its end */
+        const uint32_t size[7] = {(uint32_t)sizeof rq - 1u, (uint32_t)sizeof rq + 1u, (uint32_t)sizeof rq + 4u, 0u, 0xFFFFFFFFu, (uint32_t)(sizeof rq - sizeof(void *)), (uint32_t)(sizeof rq - 2u * sizeof(void *))};
         unsigned i;
 
-        for (i = 0u; i < 6u; i++) {
+        for (i = 0u; i < 7u; i++) {
             rr_base_request(&rq, until);
             rq.struct_size = size[i];
             rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_struct_size);
@@ -703,6 +827,79 @@ static void rr_variants(struct ctx *c, const char *code_name, struct ds_instance
                     }
                     check(c, zero, "the accepted 64 MiB vid sink did not get its header written");
                 }
+                free(big_mem);
+                (*calls)++;
+            }
+        }
+        /* the two audio sinks (plan 05-02; D-197, D-198, T-05-06): psg is limited to DS_SINK_MAX_RECORDS records like dev, pcm to DS_PCM_SINK_MAX_FRAMES frames (64 MiB). For each: oversized alone, oversized beside the four valid others, the largest capacity of all,
+         * and a NULL pointer with an oversized capacity (sink_unsupported, judged before the record range); the exact limit with a NULL pointer is memory_invalid (the boundary). An oversized insn sink beside the valid audio sinks is sink_unsupported, and a pcm sink of
+         * exactly 64 MiB of real memory is ACCEPTED (a call that takes no step) with its header written. */
+        {
+            struct ds_psg_sink big_psg;
+            struct ds_pcm_sink big_pcm;
+            struct ds_insn_sink big_i2;
+            unsigned char *big_mem;
+            unsigned k;
+
+            memset(&big_psg, 0, sizeof big_psg);
+            memset(&big_pcm, 0, sizeof big_pcm);
+            memset(&big_i2, 0, sizeof big_i2);
+            big_psg.records = rr_prec.b;
+            big_psg.capacity = (uint32_t)DS_SINK_MAX_RECORDS + 1u;
+            big_pcm.frames = rr_frec.b;
+            big_pcm.capacity = (uint32_t)DS_PCM_SINK_MAX_FRAMES + 1u;
+            big_i2.records = rr_rec.b;
+            big_i2.capacity = (uint32_t)DS_SINK_MAX_RECORDS + 1u;
+            for (k = 3u; k < RR_SINKS; k++) {
+                void *big = k == 3u ? (void *)&big_psg : (void *)&big_pcm;
+
+                rr_base_request(&rq, until);
+                rr_put(&rq, k, big);
+                rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_sink_unsupported);
+                rr_five_request(&rq, until);
+                rr_put(&rq, k, big);
+                rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_sink_unsupported);
+                (*calls) += 2u;
+            }
+            rr_five_request(&rq, until);
+            rq.insn = &big_i2;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_sink_unsupported);
+            big_psg.capacity = UINT32_MAX;
+            big_pcm.capacity = UINT32_MAX;
+            rr_base_request(&rq, until);
+            rq.psg = &big_psg;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_sink_unsupported);
+            rr_base_request(&rq, until);
+            rq.pcm = &big_pcm;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_sink_unsupported);
+            big_psg.capacity = (uint32_t)DS_SINK_MAX_RECORDS + 1u;
+            big_psg.records = NULL;
+            rr_base_request(&rq, until);
+            rq.psg = &big_psg;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_sink_unsupported);
+            big_psg.capacity = (uint32_t)DS_SINK_MAX_RECORDS;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+            big_pcm.capacity = (uint32_t)DS_PCM_SINK_MAX_FRAMES + 1u;
+            big_pcm.frames = NULL;
+            rr_base_request(&rq, until);
+            rq.pcm = &big_pcm;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_sink_unsupported);
+            big_pcm.capacity = (uint32_t)DS_PCM_SINK_MAX_FRAMES;
+            rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+            (*calls) += 7u;
+            big_mem = (unsigned char *)malloc((size_t)DS_PCM_SINK_MAX_FRAMES * (size_t)DS_PCM_FRAME_BYTES);
+            if (big_mem == NULL) {
+                harness_error(c, "out of memory for the 64 MiB pcm sink of the boundary variant");
+            } else {
+                memset(big_pcm.header, 0xFF, sizeof big_pcm.header);
+                big_pcm.frames = big_mem;
+                rr_base_request(&rq, inst->machine_time); /* a deadline that is not ahead: UNTIL with no step once the sink is accepted */
+                rq.pcm = &big_pcm;
+                rr_accept(c, w, inst, &rq, (uint32_t)DS_RUN_REASON_UNTIL);
+                /* count, lost and seq of a call that took no step are 0, frame_bytes 8, version 1, format 1 (hand-written offsets, D-197); first and sample_mclk are not judged here (plan 05-04 sets them, PR-4) */
+                check(c, big_pcm.header[0] == 0u && big_pcm.header[1] == 0u && big_pcm.header[2] == 0u && big_pcm.header[3] == 0u && big_pcm.header[4] == 0u && big_pcm.header[5] == 0u && big_pcm.header[6] == 0u && big_pcm.header[7] == 0u &&
+                          big_pcm.header[8] == 0u && big_pcm.header[15] == 0u && big_pcm.header[28] == 8u && big_pcm.header[29] == 0u && big_pcm.header[30] == 1u && big_pcm.header[31] == 1u,
+                      "the accepted 64 MiB pcm sink did not get its header written (count, lost, seq 0, frame_bytes 8, version 1, format 1)");
                 free(big_mem);
                 (*calls)++;
             }
@@ -892,6 +1089,78 @@ static void rr_variants(struct ctx *c, const char *code_name, struct ds_instance
             rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
             (*calls) += 15u;
         }
+        /* the two audio sinks (plan 05-02; D-198, T-05-04), each beside the four valid others (W6). Own rows of sink X (psg, then pcm): (a) records inside the instance, (b) over the request, (c) the struct inside the instance, (d) a misaligned record pointer,
+         * (e) a NULL record pointer with a nonzero capacity, (f) a record range that would wrap the address space, (g) records over the result struct, (h) a misaligned struct, (i) records over its own struct. Against every other sink Y (insn, dev, vid and the other
+         * audio sink): (j) the X struct over the Y struct, (k) X records over Y records, (l) X records over the Y struct, (m) Y records over the X struct. The base request with all five valid sinks is accepted (a zero-step call), so each row's only defect is its own. */
+        {
+            struct rr_copies f;
+            struct rr_copies g;
+            struct ds_run_result aown;
+            unsigned char asaved[sizeof(struct ds_pcm_sink)];
+            unsigned x;
+            unsigned y;
+
+            _Static_assert(sizeof(struct ds_psg_sink) <= sizeof(struct ds_pcm_sink), "the saved bytes of the audio struct rows serve both structs");
+            memset(rr_rec.b, 0, sizeof rr_rec.b);
+            memset(rr_drec.b, 0, sizeof rr_drec.b);
+            rr_five_request(&rq, inst->machine_time);
+            rr_accept(c, w, inst, &rq, (uint32_t)DS_RUN_REASON_UNTIL);
+            for (x = 3u; x < RR_SINKS; x++) {
+                size_t xbytes = x == 3u ? sizeof(struct ds_psg_sink) : sizeof(struct ds_pcm_sink);
+                size_t xalign = x == 3u ? (size_t)DS_PSG_ALIGN : (size_t)DS_PCM_ALIGN;
+
+                rr_five_request(&rq, until);
+                rr_put(&rq, x, rr_copy(&f, x, (unsigned char *)in_ram, 1u));
+                rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+                rr_put(&rq, x, rr_copy(&f, x, (unsigned char *)(void *)&rq, 1u));
+                rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+                memcpy(asaved, w->ram8k + (in_ram - (uintptr_t)w->ram8k), xbytes);
+                memcpy(w->ram8k + (in_ram - (uintptr_t)w->ram8k), rr_copy(&f, x, rr_mem(x), 1u), xbytes);
+                rr_put(&rq, x, (void *)in_ram);
+                rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+                memcpy(w->ram8k + (in_ram - (uintptr_t)w->ram8k), asaved, xbytes);
+                rr_put(&rq, x, rr_copy(&f, x, rr_mem(x) + 4, 1u));
+                rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+                rr_put(&rq, x, rr_copy(&f, x, NULL, 1u));
+                rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+                rr_put(&rq, x, rr_copy(&f, x, (unsigned char *)(UINTPTR_MAX & ~(uintptr_t)(xalign - 1u)), 1u));
+                rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+                rr_put(&rq, x, rr_copy(&f, x, (unsigned char *)(void *)&aown, 1u));
+                rr_call_ex(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid, &aown, 0);
+                rr_put(&rq, x, (void *)((unsigned char *)rr_valid(x) + 4));
+                rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+                {
+                    void *self = rr_copy(&f, x, NULL, 1u);
+
+                    if (x == 3u) {
+                        f.psg.records = (uint8_t *)self;
+                    } else {
+                        f.pcm.frames = (uint8_t *)self;
+                    }
+                    rr_put(&rq, x, self);
+                    rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+                }
+                (*calls) += 9u;
+                for (y = 0u; y < RR_SINKS; y++) {
+                    if (y == x) {
+                        continue;
+                    }
+                    rr_five_request(&rq, until);
+                    rr_put(&rq, x, rr_valid(y));
+                    rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+                    rr_five_request(&rq, until);
+                    rr_put(&rq, x, rr_copy(&f, x, rr_mem(y), 1u));
+                    rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+                    rr_five_request(&rq, until);
+                    rr_put(&rq, x, rr_copy(&f, x, (unsigned char *)rr_valid(y), 1u));
+                    rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+                    rr_five_request(&rq, until);
+                    rr_put(&rq, y, rr_copy(&g, y, (unsigned char *)rr_valid(x), rr_unit_cap(y)));
+                    rr_call(c, w, inst, w, &rq, (uint32_t)DS_RUNREF_memory_invalid);
+                    (*calls) += 4u;
+                }
+            }
+        }
     } else if (strcmp(code_name, "time_wrap") == 0) {
         uint64_t guard = ds_max_step_mclk();
         uint64_t saved = w->machine_time;
@@ -922,6 +1191,61 @@ static void rr_variants(struct ctx *c, const char *code_name, struct ds_instance
     }
 }
 
+/*
+ * The call-overlap rows (plan 05-02; IN-03, D-198, T-05-05): the instance is a malloc'd copy of the booted instance, so the request and the result can be placed inside it with defined effective types (their bytes are copied in, never
+ * written through a cast). Row 1: a valid request copied into the work RAM of the block and passed both as the request and, through the block, as part of the instance; row 2: the result struct inside the block. Each must return REFUSED, take
+ * no step and leave the block byte-identical (row 1 also reports run.memory_invalid in an outside result; row 2's result is never written, ds_core.h). After each row the same call with the request or the result outside the block is accepted
+ * and runs, so the overlap is the only defect of the row.
+ */
+static void rr_call_overlap(struct ctx *c, struct ds_instance *w, const struct ds_instance *inst, unsigned *calls)
+{
+    size_t size = ds_instance_size();
+    size_t off = ((size_t)offsetof(struct ds_instance, ram8k) + (size_t)7u) & ~(size_t)7u;
+    unsigned char *blk = (unsigned char *)malloc(size);
+    unsigned char *snap = (unsigned char *)malloc(size);
+    struct ds_instance *bi = (struct ds_instance *)(void *)blk;
+    struct ds_run_request rq;
+    struct ds_run_result res;
+    uint64_t until = inst->machine_time + UINT64_C(600);
+    uint32_t reason;
+
+    if (blk == NULL || snap == NULL) {
+        free(blk);
+        free(snap);
+        harness_error(c, "out of memory for the instance block of the call-overlap rows");
+        return;
+    }
+    check(c, off + sizeof rq <= size && off + sizeof res <= size && (size_t)DS_RAM8K_BYTES >= sizeof rq + (size_t)8u, "the work RAM of the instance cannot hold the request or the result of a call-overlap row");
+    /* row 1: the request inside the instance */
+    memcpy(blk, w, size);
+    rr_base_request(&rq, until);
+    memcpy(blk + off, &rq, sizeof rq);
+    memcpy(snap, blk, size);
+    memset(&res, 0xAA, sizeof res);
+    reason = ds_run(bi, (const struct ds_run_request *)(const void *)(blk + off), &res);
+    check(c, reason == (uint32_t)DS_RUN_REASON_REFUSED && res.reason == (uint32_t)DS_RUN_REASON_REFUSED && res.refusal == (uint32_t)DS_RUNREF_memory_invalid && res.steps == 0u,
+          "a request inside the instance was not refused as run.memory_invalid with 0 steps (IN-03)");
+    check(c, memcmp(snap, blk, size) == 0, "a refused call whose request lies inside the instance changed the instance bytes");
+    if (res.refusal < (uint32_t)DS_RUNREF_SLOTS) {
+        rr_observed[res.refusal] = 1u;
+    }
+    reason = ds_run(bi, &rq, &res);
+    check(c, reason == (uint32_t)DS_RUN_REASON_UNTIL && res.steps > 0u, "the request of the call-overlap row 1, outside the instance, was not accepted: the row has a second defect");
+    /* row 2: the result inside the instance (poisoned with $AA; the core must not write it) */
+    memcpy(blk, w, size);
+    memset(blk + off, 0xAA, sizeof res);
+    memcpy(snap, blk, size);
+    reason = ds_run(bi, &rq, (struct ds_run_result *)(void *)(blk + off));
+    check(c, reason == (uint32_t)DS_RUN_REASON_REFUSED, "a result inside the instance was not refused (IN-03)");
+    check(c, memcmp(snap, blk, size) == 0, "a refused call whose result lies inside the instance changed the instance bytes (the result must not be written)");
+    memset(&res, 0xAA, sizeof res);
+    reason = ds_run(bi, &rq, &res);
+    check(c, reason == (uint32_t)DS_RUN_REASON_UNTIL && res.refusal == (uint32_t)DS_RUNREF_NONE && res.steps > 0u, "the call of the call-overlap row 2 with its result outside the instance was not accepted: the row has a second defect");
+    (*calls) += 2u;
+    free(blk);
+    free(snap);
+}
+
 void kind_run_refuse(const struct kase *k, struct ctx *c, char *got, size_t gotcap)
 {
     char list[PK_LIST_MAX];
@@ -934,6 +1258,7 @@ void kind_run_refuse(const struct kase *k, struct ctx *c, char *got, size_t gotc
     const struct ds_instance *inst = NULL;
     struct ds_run_result r;
     unsigned calls = 0u;
+    int overlap = 0;
     const char *err;
 
     rom[0] = '\0';
@@ -958,13 +1283,15 @@ void kind_run_refuse(const struct kase *k, struct ctx *c, char *got, size_t gotc
                    && strspn(eq + 1, "abcdefghijklmnopqrstuvwxyz0123456789_") == strlen(eq + 1)) {
             memcpy(code, eq + 1, strlen(eq + 1) + 1u);
             have |= 2;
+        } else if (strcmp(kv, "rows") == 0 && strcmp(eq + 1, "call_overlap") == 0) { /* plan 05-02, IN-03: the call-overlap rows instead of the table of the code */
+            overlap = 1;
         } else {
             harness_error(c, "a run_refuse expect is rom=NAME;refuse=CODE");
             return;
         }
     }
-    if (have != 3) {
-        harness_error(c, "a run_refuse expect is rom=NAME;refuse=CODE");
+    if (have != 3 || (overlap && strcmp(code, "memory_invalid") != 0)) {
+        harness_error(c, "a run_refuse expect is rom=NAME;refuse=CODE, with rows=call_overlap only for refuse=memory_invalid");
         return;
     }
     err = boot_built_rom(rom, k->val[K_REQUEST], &b, &inst);
@@ -983,7 +1310,11 @@ void kind_run_refuse(const struct kase *k, struct ctx *c, char *got, size_t gotc
         check(c, reason == (uint32_t)DS_RUN_REASON_UNTIL && inst->machine_time >= RR_MACHINE_TIME_FIRST,
               "the valid first run of the run_refuse boot did not reach its deadline");
     }
-    rr_variants(c, code, (struct ds_instance *)(void *)b.mem, inst, &calls);
+    if (overlap) {
+        rr_call_overlap(c, (struct ds_instance *)(void *)b.mem, inst, &calls);
+    } else {
+        rr_variants(c, code, (struct ds_instance *)(void *)b.mem, inst, &calls);
+    }
     check(c, calls >= 1u, "the run_refuse case made no refused call");
     release_boot(&b);
     snprintf(got, gotcap, "calls=%u", calls);

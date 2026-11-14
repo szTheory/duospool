@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The fault sweep of lfo_release (plan 05.1-02; D-209): kind audio_fault_sweep, as for mod_noise4. until_mclk as audio_lfo_static (C-11).
+id = "audio_fault_sweep_lfo_release"
+kind = "audio_fault_sweep"
+fixture = "authored:psg-lfo"
+request = ""
+expect = "rom=psg-lfo;id=29;checks=2;scene=lfo_release"
+meaning = "Every literal group of lfo_release turns into a failure under each stream fault it declares, so no group of the scene is vacuous (E0)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 15000000

@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Chunk equivalence of the audio streams (plan 05-04; D-200, D-201, PR-11, F-71): kind chunk_equiv with the compare item audio runs psg_tone to one absolute deadline past its done state in one call and in calls to the deadlines of five schedules: 7, 191 and 193 (one clock either side of
+# the 192-clock sample grid), 1366 and vframe (one frame of 262 lines). Every call carries a psg and a pcm sink pointing at the free tail of one accumulator each; every call's pcm header must read first = ceil(T0 / 192) and seq = ceil(T1 / 192) - first, first(i+1) = first(i) + seq(i),
+# and the concatenated DSPE records and DSPA frames must memcmp-equal the uninterrupted run, beside its machine time, steps, verdict RAM, stop sequence and digest. The toy psg-fold-skipped-at-step-end turns this case red. Evidence tier E0 repeatability; no hardware claim.
+id = "chunk_equiv_audio_psg_mod"
+kind = "chunk_equiv"
+fixture = "authored:psg-mod"
+request = ""
+expect = "compare=verdict,machine_time,stops,digest,audio"
+meaning = "psg_mod run with a psg and a pcm sink in calls to the deadlines of five chunk schedules (7, 191, 193, 1366 and one frame of 262 lines) ends with the machine time, steps, verdict RAM, stop sequence, digest and concatenated DSPE and DSPA bytes of the uninterrupted run, E0 repeatability"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+chunks = "7,191,193,1366,vframe"

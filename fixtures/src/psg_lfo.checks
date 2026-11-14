@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# psg_lfo.checks - one row per CHECK of fixtures/src/psg_lfo.s (D-125, plan 05.1-01). Columns separated by one TAB: check index (1-based), slug, class tag, meaning. Plan 05.1-02 adds no check (C-11).
+# The PSG is write only (H8-24): these checks judge the guest's own data with two in-guest computations each (GUEST); every judgement of the sound is the runner's, against fixtures/src/psg_lfo.aexp (ER-21). A pass is not a support claim (ER-4).
+id=29
+checks=2
+1	table-sum-0	GUEST:table-sum	Table 0 (select 0, the modulated channel) summed by a table walk equals the sum of the counter 0..31 (496): the low bytes XOR and the high bytes XOR, ORed, are zero
+2	table-sum-1	GUEST:table-sum	Table 1 (select 1, the modulating words, word 0 = $18) summed by a table walk equals the sum of the counter 0..31 (496): the low bytes XOR and the high bytes XOR, ORed, are zero

@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Modulation needs select 1 (plan 05.1-01; D-208, D-219): scene lfo_needs_sel1 of fixtures/src/psg_lfo.aexp: select 1 keyed off, then CTL 0 and CTL 1 windows of select 0 compared sample for sample from their first rising crossings (MAN:P8-6+P8-9). until_mclk as audio_lfo_static (C-11).
+id = "audio_lfo_needs_sel1"
+kind = "audio"
+fixture = "authored:psg-lfo"
+request = ""
+expect = "rom=psg-lfo;id=29;checks=2;scene=lfo_needs_sel1"
+meaning = "With select 1 keyed off, an R9 write of CTL 1 leaves select 0 sample for sample as under CTL 0: the modulation needs select 1 on; identical under zero and v4 seed 1 (E0)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 15000000

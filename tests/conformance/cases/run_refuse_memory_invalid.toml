@@ -9,6 +9,9 @@
 # Plan 04-02 adds a dev wrap (19) and fifteen variants for the video sink (D-162, T-04-04), whose capacity is bytes: (20) vid bytes inside the instance, (21) over the request, (22) the vid struct inside the instance, (23) a misaligned byte pointer,
 # (24) a NULL byte pointer with a nonzero capacity, (25) a range that would wrap the address space, (26) bytes over the result struct, (27) a misaligned vid struct, (28) the vid struct over the insn struct, (29) over the dev struct, (30) vid bytes over the insn records, (31) over the dev records,
 # (32) insn records over the vid struct, (33) dev records over the vid bytes, (34) the vid struct inside the dev records.
+# Plan 05-02 adds the two audio sinks (D-198, T-05-04), each beside the four valid others, after a check that the base request with all five valid sinks is accepted: for psg, then pcm, (a) records inside the instance, (b) over the request, (c) the struct inside the instance,
+# (d) a misaligned record pointer, (e) a NULL record pointer with a nonzero capacity, (f) a range that would wrap the address space, (g) records over the result struct, (h) a misaligned struct, (i) records over its own struct, and against each of the four other sinks
+# (j) the audio struct over the other struct, (k) audio records over the other records, (l) audio records over the other struct, (m) the other records over the audio struct: 50 audio rows in all.
 # Each is refused with 0 steps and overshoot 0 and the instance (raw bytes and digest) is the same before and after.
 # Evidence tier E0 (repeatability and a literal): the refusal names and the non-mutation rule are the specification of this plan, not a hardware claim.
 id = "run_refuse_memory_invalid"
@@ -16,7 +19,7 @@ kind = "run_refuse"
 fixture = "none"
 request = ""
 expect = "rom=ds-proto;refuse=memory_invalid"
-meaning = "A ds_run request whose instruction, device-register or video sink overlaps the instance, the request, the result, itself or another sink, or is misaligned or wraps the address space, is refused as run.memory_invalid and leaves the instance byte-identical"
+meaning = "A ds_run request whose instruction, device-register, video, psg or pcm sink overlaps the instance, the request, the result, itself or another sink, or is misaligned or wraps the address space, is refused as run.memory_invalid and leaves the instance byte-identical"
 required = true
 control = false
 expect_outcome = "pass"

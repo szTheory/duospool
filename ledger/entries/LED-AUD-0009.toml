@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+# PSG output model (05-CONTEXT D-191, D-194; AUD-01, AUD-02). Modelling assumptions: the pages say about 3 dB and 1.5 dB per step and draw a monotone D/A.
+# The volume table psg_vol.def (30 rows, plan 05-04) carries this ledger id; the id joins the fixed [withheld] list in the plan 05-03 bump (PR-8).
+id = "LED-AUD-0009"
+statement = "DuoSpool models each channel as an unsigned 5-bit level (0 when off, the latch in DDA mode, the noise level under NE, else the wave word) scaled per side by VOL[att] = round(32768 x 10^(-3 att/40)) for att < 30 and 0 above, summed linearly over six channels into unsigned L and R, no DC removal or filter; HuC6280 only, not HuC6280A. Modelling assumption."
+profile = "pce-hucard-2btn"
+status = "assumed"
+sources = ["FACT|P8-4 P8-5|gsd-executor images 2026-11-13: the D/A output rises with the data 0 to 31; chON 0 off, DDA to the D/A", "FACT|P8-3 P8-10|same read: about 3 dB per R1 and R5 step and about 1.5 dB per AL step; about 45 dB range", "CODE|Mednafen, MAME|reading material only, nothing copied: 2^(-a/4) with a revision split, a 48 dB spread"]
+evidence = []
+disagreement = "Curve: Mednafen uses 2^(-a/4) with a revision split and MAME a 48 dB spread, against 10^(-3a/40) here. DX-6 revision: HuC6280 versus HuC6280A gating and centring (Mednafen); the profile binds huc6280. DX-7 leak and range: P8-10 gives about 45 dB as a circuit design value and a little leak; no leak is modelled."
+pinning_test = "TEST:psg_vol_table"
+updated = "2026-11-13"
+assumption = "The curve is a project choice because the pages say about; levels_exact rows are ASSUMED, order rows do not use the curve, and the mix stays below 6 x 31 x 32768 = 6,094,848."
+revisit_phase = 5
+withheld = ["volume-accurate", "any loudness or dB claim", "any DC level or centring claim", "any HuC6280A claim"]
+origin = "05-CONTEXT D-191"

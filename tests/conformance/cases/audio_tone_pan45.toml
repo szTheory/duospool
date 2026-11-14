@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The pan-pair scene tone_pan45 of psg_tone (plan 05-06; D-189, D-208, D-212, ER-14, ER-16, ER-19..ER-21): the runner kind audio (tests/conformance/audiokinds.c) runs psg-tone under the zero policy and seeded-prng-v4 seed 1 (byte-identical DSPE and DSPA streams required) and judges the
+# groups of tone_pan45 in fixtures/src/psg_tone.aexp: selects 4 and 5 solo at S = 0 (period over 4 cycles of F = 384 and 448 samples, MAN:P8-9+H8-23; plateau order as each channel's own table, MAN:P8-4+P8-5), then select 4 alone hard left and select 5 alone hard right (the muted side at
+# S = 16 silent, MAN:P8-10; the audible side at S = 1, ASSUMED:LED-AUD-0008) and both at once (ASSUMED isolation rows). Evidence tier E0; the hashes it prints are change detectors; no pitch, timing or sound claim (ER-14).
+# From plan 05-12 the scene also holds the event groups ev_4 and ev_5 (the set-up records of selects 4 and 5 with R7 $78 and R7 $00, and the R5 of C1 and C2): the DSPE chan, effect, wave_idx and post against hand literals of D-196 (MAN:P8-2+P8-3+P8-4+P8-6). Toy psg-chsel-mask turns them red.
+id = "audio_tone_pan45"
+kind = "audio"
+fixture = "authored:psg-tone"
+request = ""
+expect = "rom=psg-tone;id=27;checks=10;scene=tone_pan45"
+meaning = "Selects 4 and 5 of psg_tone each play their own 32-word table with a period of 4 x F samples (1536 and 1792) and their own plateau order on L and R at S = 0, the muted side of a single-channel hard pan reads 0, and a both-panned phase keeps each side to its own channel; the set-up writes of selects 4 and 5 decode as the hand literals (E0)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 12000000

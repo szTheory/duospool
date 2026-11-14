@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Audio sink non-interference (plan 05-04; D-200, R6): kind aud_noninterference (tests/conformance/audiokinds.c) runs psg_tone to its DSV1 verdict twice under each of zero, seeded-prng-v4 seed 1 and seed 2, once with no sink and once with the psg, pcm and dev sinks attached, Plan 05-07 adds psg_mod (D-200, R6).
+# and requires the same stop reason, machine time, steps, verdict RAM and state digest; the sink runs must hold DSPE records and DSPA frames, so the comparison is not vacuous. The psg and pcm pointers are read only at the gate and the emits; the toy psg-emit-mutates turns this case red.
+# Evidence tier E0 (non-interference of the observation path); no hardware claim.
+id = "aud_noninterference"
+kind = "aud_noninterference"
+fixture = "authored:psg-tone"
+request = ""
+expect = "rom=psg-tone;rom=psg-mod"
+meaning = "Attaching the psg, pcm and dev sinks to a run of psg_tone or of psg_mod (noise, timer interrupts and DDA) changes no stop reason, machine time, step count, verdict byte or state digest under zero and seeded-prng-v4 seeds 1 and 2 (E0)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 2500000

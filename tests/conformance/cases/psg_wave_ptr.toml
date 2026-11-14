@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The wave pointer, the DDA latch and the channel counters (plan 05-03; D-185, D-190, D-220, PR-2; kind psg_wave_ptr of psgkinds.c). Rows and classes: 32 R6 writes with chON 0 and DDA 0 fill wave[0..31] and the index wraps to 0, WAVE_STORE [MAN:P8-4+P8-5];
+# R4 $40 then $00 sets the index 0, IDX_RESET on $40 [MAN:P8-4+P8-5]; R6 $00, R4 $DF, R6 v loads the latch v & $1F, wave unchanged, index 0, DDA_LOAD [MAN:P8-4+P8-5]; R6 with chON 0 and DDA 1 loads the latch [ASSUMED:LED-AUD-0004, DX-8];
+# R6 with chON 1 and DDA 0 stores wave[widx] with no increment, WAVE_HELD [ASSUMED:LED-AUD-0004, DX-9]. Counter rows (d = 6, F = 256, direct ds_psg_advance and ds_psg_write calls on a state at time 0): key-on R4 $9F at 100,003 gives w' = 100,002 and steps at
+# w' + 1,536 j, index 4 at 107,681 and 5 at 107,682 [6F step MAN:P8-9+H8-23; tick and key-on phase ASSUMED:LED-AUD-0012, so ASSUMED]; R4 $1F freezes (distance 0, index kept); F = 0 steps every 24,576 [ASSUMED:LED-AUD-0007]; a DDA 1 -> 0 release with chON 1 at
+# w2 = 300,005 restarts at (w2 - w2 mod 6) + 1,536 = 301,536 [ASSUMED:LED-AUD-0004]. Evidence tier E0.
+id = "psg_wave_ptr"
+kind = "psg_wave_ptr"
+fixture = "plain-256k"
+request = ""
+expect = "rows=all"
+meaning = "R6 stores and steps the wave index with chON 0, holds it with chON 1, loads the DDA latch with DDA 1, R4 with DDA 1 resets the index, and a channel counter starts at key-on on the tick grid, freezes at chON 0 and restarts on a DDA release"
+required = true
+control = false
+expect_outcome = "pass"
+pins = ["LED-AUD-0004", "LED-AUD-0007"]

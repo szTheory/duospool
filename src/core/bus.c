@@ -15,6 +15,7 @@
 #include "ds_core.h"
 #include "ds_mapper.h"
 #include "ds_obs.h"
+#include "ds_psg.h"
 #include "ds_timer.h"
 #include "ds_vdc.h"
 
@@ -61,8 +62,10 @@ static uint32_t offset_of(uint16_t addr)
 /*
  * The hardware page, bank $FF: six windows of $400 bytes at physical $1FE000 (H8-9, H8-24), decoded by the offset in the page shifted right by 10 in one switch (D-103, no function-pointer bus).
  * Window 0 is the VDC (register A1-A0), 1 the VCE (A2-A0), 2 the PSG (A3-A0), 3 the timer (A0), 4 the I/O port (one register for the whole window), 5 the interrupt registers (A1-A0: 2 is $1402, 3 is $1403),
- * and windows 6 and 7 ($1800-$1FFF) have no device. The timer, the interrupt controller (plans 03-21 and 03-22), the pad (plan 03-27, io.c), the VCE (plan 04-04, vce.c) and the VDC (plan 04-06, vdc.c) are devices; the PSG is a stub until Phase 5:
- *   the VDC and VCE windows answer from vdc.c and vce.c after the fold; the windows without a device read the unmapped constant and change nothing.
+ * and windows 6 and 7 ($1800-$1FFF) have no device. The timer, the interrupt controller (plans 03-21 and 03-22), the pad (plan 03-27, io.c), the VCE (plan 04-04, vce.c) and the VDC (plan 04-06, vdc.c) are devices;
+ *   the VDC and VCE windows answer from vdc.c and vce.c after the fold; the windows without a device read the unmapped constant and change nothing. The PSG has no read function (H8-24): a read returns the latch, unchanged by the PSG.
+ *   A PSG write folds the PSG first (ds_psg_advance at the access stamp, step_end 0; plan 05-02, D-186, D-188), then ds_psg_write decodes reg = offset & $0F and stores it (plan 05-03), then its DSPE record goes to the psg sink (plan 05-04, D-196) exactly when the dev record does;
+ *   the write also sets io_buffer and is logged.
  *   io_buffer (D-104, ASSUMED LED-CPU-0013) is the byte of the last read or write in $0800-$17FF (windows 2 to 5): a read returns its stub value with the upper bits of the byte the window does not drive taken from io_buffer
  *   (the PSG window all eight bits, the timer bit 7 over its 7-bit counter, $1402 and $1403 the upper five bits over three register bits, the interrupt registers $1400 and $1401 all eight, the I/O window nothing: the pad drives all eight lines), and the byte read becomes the new io_buffer;
  *   a write in those windows stores its byte in io_buffer (the I/O window's byte is also the latch of port O). Reads and writes in the VDC and VCE windows and in the empty windows do not touch io_buffer.
@@ -157,6 +160,33 @@ static uint8_t hw_read(struct ds_instance *inst, struct ds_bus *bus, uint32_t of
     return value;
 }
 
+/* the DSPE v1 record of one window-2 write (plan 05-04; D-196, LED-AUD-0013), built byte by byte little-endian from the decoded fields of ds_psg_write and handed whole to the psg sink: +00 u64 stamp, +08 u16 pc (the pc the bus was given, WR-02), +10 reg (offset & $0F),
+ * +11 value (unmasked), +12 sel (R0 before the write), +13 chan, +14 effect (psg_effects.def), +15 wave_idx, +16 u16 post, +18 version 1, +19..+23 zero. Called only with a bus, so a record exists exactly when the dev record of the same write does (F-66) */
+static void emit_psg(const struct ds_bus *bus, uint64_t stamp, uint32_t offset, uint32_t value, const struct ds_psg_write_info *ev)
+{
+    uint8_t rec[DS_PSG_RECORD_BYTES];
+    uint32_t i;
+
+    for (i = 0u; i < 8u; i++) {
+        rec[i] = (uint8_t)((stamp >> (8u * i)) & 0xFFu);
+    }
+    rec[8] = (uint8_t)(bus->pc & 0xFFu);
+    rec[9] = (uint8_t)((bus->pc >> 8u) & 0xFFu);
+    rec[10] = (uint8_t)(offset & 0x0Fu);
+    rec[11] = (uint8_t)(value & 0xFFu);
+    rec[12] = ev->sel;
+    rec[13] = ev->chan;
+    rec[14] = ev->effect;
+    rec[15] = ev->wave_idx;
+    rec[16] = (uint8_t)((uint32_t)ev->post & 0xFFu);
+    rec[17] = (uint8_t)(((uint32_t)ev->post >> 8u) & 0xFFu);
+    rec[18] = 1u;
+    for (i = 19u; i < DS_PSG_RECORD_BYTES; i++) {
+        rec[i] = 0u;
+    }
+    ds_obs_psg(bus->obs, rec);
+}
+
 /* kind is DS_DEV_WRITE for a write through the mapping registers and DS_DEV_ST for the physical write of ST0 to ST2 */
 static void hw_write(struct ds_instance *inst, struct ds_bus *bus, uint32_t offset, uint8_t value, uint32_t kind)
 {
@@ -183,9 +213,17 @@ static void hw_write(struct ds_instance *inst, struct ds_bus *bus, uint32_t offs
             ds_irq_write(inst, offset & 0x3FFu, value, stamp);
         }
         break;
-    case HW_PSG:
+    case HW_PSG: { /* the latch first, then the fold to the access stamp (D-188, PR-1: step_end 0, no rebase), then the decode and storage (plan 05-03), then the DSPE record of the decoded fields (plan 05-04, D-196); the dev record below stays last */
+        struct ds_psg_write_info ev;
+
         inst->io_buffer = value;
+        ds_psg_advance(inst, stamp, 0u, bus != NULL ? bus->obs : NULL);
+        (void)ds_psg_write(inst, offset & 0x0Fu, value, stamp, &ev);
+        if (bus != NULL) {
+            emit_psg(bus, stamp, offset, value, &ev);
+        }
         break;
+    }
     case HW_IO: /* the byte is the latch of port O (bit 0 SEL, bit 1 CLR) and, as for every write in $0800-$17FF, the new io_buffer */
         inst->io_buffer = value;
         ds_io_write(inst, value);

@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# R9 and the select-1 counter (plan 05-03; D-192, D-220, D-231; kind psg_lfo_trg of psgkinds.c), and the LFO of plan 05.1-01 (D-184, D-185, D-192, D-219, D-220, D-231). Rows and classes: R9 $80 sets widx[1] = 0 and freezes select 1 (distance 0), LFO_RESET [MAN:P8-6];
+# R9 $00 with select 1 chON 1 at w = 5,003 restarts select 1 at (w - w mod 6) + 6 x 256 = 6,534 [ASSUMED:LED-AUD-0004 psg_trg_release_restart]; R9 with CTL != 0 stores value & $83 and posts no UNMODELLED bit since 05.1-01 [MAN:P8-6; D-192, D-234];
+# R9 $80, R0 1, R4 $00 and five R6 writes leave widx[1] = 5 under TRG 1 and that snapshot restores [D-231].
+# LFO rows (d = 6, select 0 keyed on at a tick, so the key-on phase makes each row ASSUMED:LED-AUD-0012 at most): F0 512 with w $18 steps every 6 x 520, 6 x 544 and 6 x 640 at CTL 1, 2, 3 and with w $08 every 6 x 504 at CTL 1 [MAN:P8-6+P8-7+P8-8];
+# F0 16, w $00, CTL 1 gives 0 read as 4096 [ASSUMED:LED-AUD-0007+LED-AUD-0011, lfo_wrap]; select 1 off with CTL 1 leaves select 0 at 6 x 512 [MAN:P8-6+P8-9]; TRG 1 with widx[1] = 5 (five R6 writes at chON 0, then a key-on, both under TRG 1) keeps select 1
+# frozen and select 0 at 6 x 520 from wave[1][0] = $18 [MAN:P8-6, D-219, D-231]; select 0 keyed on at 56,643 under CTL 1 and TRG 1 first reloads at 56,640 + 6 x 520 = 59,760 [ASSUMED:LED-AUD-0011]; R9 $01 at 60,003 (F1 128, FLF 150) gives the next select-1
+# event 60,000 + 115,200 = 175,200 [ASSUMED:LED-AUD-0011]; at 175,200 the select-1 step comes before the select-0 reload, which reads wave[1][1] = $08 (next 178,224) [ASSUMED:LED-AUD-0011, D-185 tie order]; select 1 steps once and its next event moves by
+# 115,200 between 100,000 and 215,200 [MAN:P8-6+P8-9+H8-23, phase-free]; R9 $00 at 250,000 keeps the pending event 290,400 and the next one comes 768 later [ASSUMED:LED-AUD-0011]; FLF 0 steps every 6 x 128 x 256 = 196,608 [ASSUMED:LED-AUD-0007]. Evidence tier E0.
+# Pin (plan 05.1-03, 05.1-CONTEXT C-07): LED-AUD-0011 is pinned by audio_lfo_static since plan 05.1-03; this case keeps its C-level rows and names no ledger entry in pins.
+id = "psg_lfo_trg"
+kind = "psg_lfo_trg"
+fixture = "plain-256k"
+request = ""
+expect = "rows=all"
+meaning = "R9 with TRG 1 resets and freezes select 1, a TRG release restarts it on the tick grid, a CTL write is stored with no UNMODELLED bit, a TRG state with a non-zero select-1 wave index restores, and select 1 modulates select 0 by F0' with the coupled select-1 step"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []

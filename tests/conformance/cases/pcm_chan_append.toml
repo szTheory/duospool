@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The pcm sink channel of ds_run (plan 05-02; D-197, D-198, F-2, T-05-06): the fifth caller-owned sink, 8-byte raw-audio frames (u32 L then u32 R, little-endian) and a 32-byte header (count, lost, seq, first, sample_mclk, frame_bytes 8, version 1, format 1).
+# Since plan 05-04 the sample loop of ds_psg_advance produces the frames, and the header reads first = ceil(T0 / 192) and sample_mclk 192 (PR-4). Part attached: the authored ds-proto is run once with no sink and once with only a pcm sink of 512 frames, header and buffer poisoned with $A5 inside guard bytes;
+# the header after the run must read lost 0, seq = count within the capacity, first 0, sample_mclk 192, frame_bytes 8, version 1 and format 1; the buffer past the stored frames and the guards keep their poison; the run keeps the machine time, steps and digest of the run with no sink.
+# Part append: direct channel calls with capacities 0, 1, 4 and 64: whole frames only, the first count frames stored back to back and read back at hand-written byte offsets (L at +0, R at +4, least significant byte first), lost = seq - count, sticky full;
+# ds_obs_begin overwrites a poisoned header; first is ceil(T0 / 192) for T0 = 0, 1, 191, 192, 193 (0, 1, 1, 1, 2, by hand from the grid of D-187); an absent sink and a NULL log do nothing. Evidence tier E0 (the layout is a definition, LED-AUD-0014): a mechanism check, no hardware claim, and the word pass is not a support claim.
+id = "pcm_chan_append"
+kind = "pcm_chan_append"
+fixture = "authored:ds-proto"
+request = ""
+expect = "parts=attached,append"
+meaning = "A ds_run request that carries only a pcm sink is accepted, overwrites the poisoned header with frame_bytes 8, version 1 and format 1 and leaves the run unchanged; the channel stores whole 8-byte frames (L then R, u32 little-endian), drops the newest with a sticky full rule and counts lost = seq - count (E0 mechanism, no hardware claim)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 40000

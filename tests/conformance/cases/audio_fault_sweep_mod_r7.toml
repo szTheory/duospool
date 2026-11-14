@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The fault sweep of mod_r7 (plan 05-07; D-209): kind audio_fault_sweep, as for mod_noise4.
+id = "audio_fault_sweep_mod_r7"
+kind = "audio_fault_sweep"
+fixture = "authored:psg-mod"
+request = ""
+expect = "rom=psg-mod;id=28;checks=8;scene=mod_r7"
+meaning = "Every literal group of mod_r7 turns into a failure under each stream fault it declares, so no group of the scene is vacuous (E0)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000

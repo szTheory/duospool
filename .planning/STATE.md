@@ -1,20 +1,20 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 5
-current_phase_name: PSG Raw Audio
+current_phase: 6
+current_phase_name: Headless Runner, Installed-Consumer Proof and Staged Verification
 current_plan: Not started
 status: planning
-stopped_at: Phase 04.1 complete, ready to plan Phase 5
-last_updated: "2026-11-13T02:08:07.491Z"
-last_activity: 2026-11-12
-last_activity_desc: Phase 04.1 complete, transitioned to Phase 5
-state_head: 9909561642c7635af558ea8f291dcc121b82e524
+stopped_at: Phase 5.1 complete, ready to plan Phase 6
+last_updated: "2026-11-14T14:21:22.695Z"
+last_activity: 2026-11-14
+last_activity_desc: Phase 5.1 complete, transitioned to Phase 6
+state_head: 807a13bef2a6f8dccc57f8042c0bbc59867322aa
 progress:
-  total_phases: 7
-  completed_phases: 5
-  total_plans: 91
-  completed_plans: 91
-  percent: 71
+  total_phases: 8
+  completed_phases: 7
+  total_plans: 104
+  completed_plans: 104
+  percent: 88
 ---
 
 # Project State
@@ -28,18 +28,18 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 
 ## Current Position
 
-Phase: 5 — PSG Raw Audio
+Phase: 6 — Headless Runner, Installed-Consumer Proof and Staged Verification
 Current Plan: Not started
 Total Plans in Phase: 3
 Status: Ready to plan
-Last activity: 2026-11-12 — Phase 04.1 complete, transitioned to Phase 5
+Last activity: 2026-11-14 — Phase 5.1 complete, transitioned to Phase 6
 
-Progress: [███████░░░] 71%
+Progress: [█████████░] 88%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 91
+- Total plans completed: 104
 - Average duration: -
 - Total execution time: 0.0 hours
 
@@ -52,6 +52,8 @@ Progress: [███████░░░] 71%
 | 3 | 38 | - | - |
 | 4 | 16 | - | - |
 | 04.1 | 3 | - | - |
+| 5 | 10 | - | - |
+| 5.1 | 3 | - | - |
 
 **Recent Trend:**
 - Last 5 plans: -
@@ -151,6 +153,19 @@ Progress: [███████░░░] 71%
 | Phase 04.1 P01 | 57min | 4 tasks | 36 files |
 | Phase 04.1 P02 | about 1.7 h (local) | 3 tasks | 27 files |
 | Phase 04.1 P03 | about 1.9 hours | 3 tasks | 7 files |
+| Phase 5 P01 | 45 min | 3 tasks | 45 files |
+| Phase 05 P02 | 50 min | 2 tasks | 20 files |
+| Phase 05 P03 | 220 min | 3 tasks | 46 files |
+| Phase 05 P04 | 3h10m | 3 tasks | 41 files |
+| Phase 05 P05 | 130 min | 3 tasks | 74 files |
+| Phase 05 P06 | 135 min | 3 tasks | 35 files |
+| Phase 05 P12 | 90 min | 2 tasks | 15 files |
+| Phase 5 P07 | about 1 h | 3 tasks | 33 files |
+| Phase 05 P08 | 3h40m | 3 tasks | 5 files |
+| Phase 05 P10 | 4h35m | 4 tasks | 34 files |
+| Phase 05.1 P01 | 45min | 3 tasks | 31 files |
+| Phase 05.1 P02 | 64min | 3 tasks | 16 files |
+| Phase 05.1 P03 | 144min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -336,6 +351,47 @@ Recent decisions affecting current work:
 - [Phase 04.1]: COLLISION is sprite 0 against a taken entry of another SATB index, both opaque at a dot of the window; the flag is in the record with the IE bits clear and in the status only through ds_vdc_flag at the EV_RCR of the displayed line
 - [Phase 04.1]: The cap of 16 shows only where 2 * (e - 2) exceeds 16, so the 17 sprite scene runs with HDE 5 and carries the guest check the toy vid-spr-limit turns red
 - [Phase 04.1]: 04.1-03: no sprite entry promoted under ER-2 (LED-VID-0011 and 0012 stay assumed, 0015 deferred, 0008 not widened); README sprite paragraph states E0 and labelled assumptions only
+- [Phase 5]: 05-01: the P8 islabel rule has its own negative control p8-fact-no-img (FACT route); the positive root is ok-p8-label
+- [Phase 5]: 05-01: ER-1 image read of the PSG manual found no number that differs from 05-RESEARCH; OCR errata confirmed
+- [Phase 5]: 05-01: local warm gate baseline for cut trigger (3) is 270.0 s user CPU at load 5.7-9.1 (trigger above 337.5 s)
+- [Phase 05]: 05-02: IN-03 is step 0 of ds_obs_sinks_check through one helper ds_obs_overlaps_instance (no fourth ranges_overlap copy)
+- [Phase 05]: 05-02: a result that overlaps the instance is never written; REFUSED as the return value is the only report
+- [Phase 05]: 05-02: pcm reuses struct ds_obs_chan; chan_slot's drop-newest rule is the F-2 sticky full rule for one-size frames
+- [Phase 05]: 05-03: the closed-form channel catch-up landed in Task 2 with the restore domain, so a restored running channel is folded and rebased like the noise counters
+- [Phase 05]: 05-03: the D-203 hostile rows landed with the rules (R4) in two new cases, snapshot_refusal_psg and snapshot_refusal_psgt, because the 400-character line rule leaves no room in snapshot_refusal_fields
+- [Phase 05]: 05-03: a counter starts at offset (stamp - B) + d x Fe - stamp mod d (next event (w - w mod d) + d x Fe); stored distances are offsets from B = machine_time - 1
+- [Phase 05]: 05-04: group ids keep the plan's side suffixes (period_L, cycle_order_R); the runner accepts [a-z][a-zA-Z0-9_]* for group ids, lower case for scene names and case ids
+- [Phase 05]: 05-04: a scene row names one case; another case may judge that scene only with expect_red (the d = 3 control audio_tone_sel0_d3)
+- [Phase 05]: 05-04: aexp selector items are flat; reg, val and nth bind to the most recent anchor; a window [from, to) holds the samples with from <= 192 s < to
+- [Phase 05]: 05-04: in chunk_equiv an audio header off the closed form is a counted check, a lost frame stays harness_failure, so the fold toy turns the case guest_failure
+- [Phase 05]: 05-05: KINDCLASS carries the form of each kind; audio-check and the runner refuse a group whose form is not its kind's
+- [Phase 05]: 05-05: disputed points are found in the row or marked by the author with the literal item mark=MARKER (held, keyon, latch_off, lfo_wrap need the mark)
+- [Phase 05]: 05-05: golden digests live in a golden row (golden SCENE pcm_sha256= psg_sha256=); header groups take class DEF:<ledger ids> (ER-19)
+- [Phase 05]: 05-05: kinds judged by a later plan are parsed and refused as harness_failure when judged, never a pass
+- [Phase 05]: 05-06: every pan, attenuation and twin anchor carries val= (toy psg-chsel-mask moves the R4 $00 writes of (b) at selects 4 and 5 to selects 0 and 1, which would shift a plain nth count)
+- [Phase 05]: 05-06: side pairs of one literal share a group of two rows and group ids are short (D-230 budget); the twin red list is 7 merged groups
+- [Phase 05]: 05-06: Task 3b (event rows, mask probe, ev_edge) split to 05-12: psg_tone.aexp holds 32,406 of 32,768 bytes; 05-12 needs a D-230 decision (cap or relocation) first
+- [Phase 05]: 05-12: AEXP_MAX_BYTES is 49152 (D-233); the oversize control pads to 49,153 bytes and ok-size-cap to exactly 49,152; the C reader has no byte cap
+- [Phase 05]: 05-12: every new R2 decode row follows a program-written R3 (a first R2 after power-on posts the power-on F high nibble, an ASSUMED input under ER-10)
+- [Phase 05]: 05-12: the disputed edges (mirror, $080A, R7 at select 3, selects 6 and 7) are one ASSUMED ev_edge group in tone_atten with mark= items
+- [Phase 5]: 05-07: the noise level is recomputed from the stored LFSR state by the RF-6 parity (mask $30C01); PSGT stores no output bit, the wave counter keeps running under NE
+- [Phase 5]: 05-07: the 256-bit noise_seq string is committed in psg_mod.aexp, drawn outside the repository after reproducing the 40-bit RESEARCH string; no gate-time generator
+- [Phase 5]: 05-07: aud12-d becomes a named limit (the wave is unheard under NE); rf5-a goes to later:05-09; cycle_linear and dda_equals_wave move to 05-10
+- [Phase 05]: 05-08: LED-AUD-0008 supported (E1 documentary) under ER-2 and ER-22; LED-AUD-0003 and -0005 stay assumed on recorded blocking clauses
+- [Phase 05]: 05-08: cut trigger (3) borderline (+20.0 / +32.4 percent user CPU in two pairs, +22.2 / +25.2 percent instructions); executor recommends the cut (LFO to Phase 5.1); the orchestrator decides
+- [Phase 05]: D-234: the orchestrator took the D-217 cut: plan 05-09 (LFO) is Phase 05.1 plan 05.1-01, 05.1-02 closes the LFO scope, and 05-10 closes Phase 5 next with the LFO under DSPE UNMODELLED (AUD-02 and AUD-03 complete there, AUD-01 completes in 05.1)
+- [Phase 05]: 05-10: LED-AUD-0005 supported (E1 documentary) after narrowing clause (c) to chON 1 and DDA 1 (P8-4); the chON 0 latch is the ASSUMED group d_hold1
+- [Phase 05]: 05-10: LED-AUD-0002 and -0003 stay assumed with their blocking clauses recorded; -0001, -0006, -0011 held by ER-14
+- [Phase 05]: 05-10: trigger (3) by instruction count +22.2 percent gate, +25.2 percent sanitize against 9619efe, equal to checkpoint A; recorded, not decided (D-234)
+- [Phase 05.1]: 05.1-01: select 0 is folded in closed form between select-1 steps (F0' is constant there), one iteration per select-1 step; the select-1 period is coupled only while the LFO applies and TRG = 0, and key-on and the DDA and TRG releases start from that period
+- [Phase 05.1]: 05.1-01: the lfo_ctl1 decode group is AF0 only and listed in AUDIO_TOY_EXEMPT; audio_judge_forms is at 130 assertions (05.1-02 gates above it); psg_lfo runs to 15M make 335,585 insn records, so proof-set cases keep their own until
+- [Phase 05.1]: 05.1-01: no epoch, serial or text bump; the LFO fills behaviour into the unreleased epoch 6 (C-08)
+- [Phase 05.1]: 05.1-02: the lfo_dynamic judge reads only the stream (no switch instant), so dyn is MAN and judges neither the TRG restart (D-220) nor switch timing (D-208)
+- [Phase 05.1]: 05.1-02: kill lists as the sweep observes: rel AF0,AF5,AF6,AF7,AF8; dyn AF0,AF2,AF4,AF5,AF6,AF7,AF8; ev_r8 AF0,AF8 (AF9 relabels no global record)
+- [Phase 05.1]: 05.1-02: chunk_equiv_audio_psg_lfo runs to 8,000,000 (chunk_equiv needs the DSV1 done state, 7,951,284, before its deadline, D-95); the other proof-set cases stop at 3,750,000 = R9 $01 stamp 3,509,820 + 2 x 115,200, rounded up
+- [Phase 05.1]: 05.1-02: no epoch, serial or text bump; the LFO scenes fill behaviour into the unreleased epoch 6 (C-08)
+- [Phase 05.1]: 05.1-03: LED-AUD-0002 stays assumed although every clause has a MAN group in a guest-fixture case; the ER-2 promotion edits were not made (orchestrator direction) and the clause table is recorded in the entry
+- [Phase 05.1]: 05.1-03: the README claims only the MAN LFO rows under the bound divisor 6 (P8-7 reading of the w - 16 extension named); the restart and the 12-bit wrap are labelled assumptions; trigger (3) fires on the instruction measure (+28.65 and +30.23 percent over 05-01), recorded not decided on
 
 ### Pending Todos
 
@@ -359,6 +415,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-12T23:36:58.502Z
-Stopped at: Phase 04.1 complete, ready to plan Phase 5
+Last session: 2026-11-14T12:27:46.496Z
+Stopped at: Phase 5.1 complete, ready to plan Phase 6
 Resume file: None

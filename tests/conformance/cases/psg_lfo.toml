@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The guest verdict of the authored PSG LFO fixture (plan 05.1-01; D-212, ER-4, ER-21): fixtures/src/psg_lfo.s plays the held-modulation scenes lfo_static, lfo_ctl1 and lfo_needs_sel1 (05.1-01) and, since 05.1-02, lfo_release (select 1 alone, released from TRG 1) and lfo_dynamic (running modulation), then checks its own table data two ways (GUEST).
+# The PSG is write only, so these checks never judge the sound: the audio cases do. until_mclk is the RF-12 bound of the ROM after 05.1-02 (C-11): a guest run goes to it.
+id = "psg_lfo"
+kind = "guest"
+fixture = "authored:psg-lfo"
+request = ""
+expect = "id=29"
+meaning = "The authored psg_lfo fixture plays its held-modulation, release and running-modulation scenes at the power-up low speed and finishes its DSV1 block with passing GUEST checks of its own table data, identical under three power-on policies"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 15000000
+checks = 2

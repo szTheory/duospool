@@ -1,0 +1,76 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# psg_lfo.aexp - the hand-derived literal rows of the audio scenes of fixtures/src/psg_lfo.s (plan 05.1-01, grown by 05.1-02; D-184, D-185, D-192, D-206..D-212, D-219, D-230, D-233, C-05, ER-14..ER-21). scripts/fixture-build writes it without comments as build/gate/fixtures/psg-lfo.aexp.tsv
+# for the runner kind audio; scripts/audio-check judges this source. Selectors and windows as in psg_tone.aexp (a window holds the samples s with from <= 192s < to, D-187). No literal comes from a case file, a run or a hash (R7). One comment line per group (D-233).
+# Byte budget (D-230, D-233): this file stays under 32,768 bytes and 512 rows after 05.1-01 and 05.1-02 (the reader cap is 49,152). Every row with a window carries r1, al, r5 and a side: R1 $FF, AL $1F, R5 $FF give S = 0 on both sides (att 0) for select 0.
+# Anchor counts from boot (05-06, 05-12 notes): R9 (ch=G) $80 nth 1 setup, 2 lfo_static, 3 lfo_needs_sel1; $82 nth 1; $83 nth 1; $81 nth 1 lfo_ctl1, 2 lfo_needs_sel1. R0 $00 nth 1 (a), 2 the select-0 setup; R0 $01 nth 1 (a), 2 the select-1 setup, 3 lfo_needs_sel1;
+#   R0 $02..$05 nth 1 (a). 05.1-02 appends its writes after the last write of lfo_needs_sel1, so none of these counts moves: lfo_release adds R0 $00 nth 3, R9 $80 nth 4, R0 $01 nth 4 and R9 $00 nth 1; lfo_dynamic R0 $01 nth 5, R9 $81 nth 3, R0 $00 nth 4 and R9 $01 nth 1.
+# The modulation (D-184, D-219): select 1 holds word 0 = $18 under TRG 1 (frozen), select 0 at F0 = 512 reloads with F0' = (512 + 4096 + (24 << s) - (16 << s)) & 4095, s = 2 x (CTL - 1): CTL 1 520, CTL 2 544, CTL 3 640 (the lint recomputes F' and d = k x F').
+#   A phase starts at its R9 write w; the select-0 reload after it comes within 6 x 640 master clocks, so from w + 192 F' + 2,000 every step is 6 F' apart: the rising crossing (word 31 -> word 0, the only one: the table's words 0..15 are 16..31, words 16..31 are 0..15)
+#   of each cycle is 192 F' master clocks = F' samples after the last; the first crossing in the window comes before w + 2 x 192 F' + 2,000 and the third before w + 4 x 192 F' + 2,000 < to = w + 5 x 192 F', so the distance of k = 2 cycles is d = 2 F'.
+aexp	sample_mclk=192
+# lfo_static (D-208, D-219): CTL 0, 2 and 3 under TRG 1 with select 1 on and silent (R5 $00, MAN:P8-10 byte zero) and select 0 solo; the AF kills of the scene are judged by audio_fault_sweep_lfo_static (D-209).
+scene	lfo_static	case=audio_lfo_static	role=literal
+# ev_lfo (MAN:P8-2+P8-3+P8-6, D-196 by hand; C-05): select 1's R2 $83 after the program-written R3 $08 posts the 12-bit F $883, chan 1, index 0 (the upload wrapped it); R9 $82 and $83 post & $83 with chan $FE and LFO_RESET ($10, TRG 1).
+group	lfo_static	ev_lfo	form=EV	kind=ev_decode	class=MAN:P8-2+P8-3+P8-6	kills=AF0,AF8,AF9
+row	lfo_static	ev_lfo	anchor=ev:ch=1;reg=R2;val=$83;nth=1;ev=+0	chan=1;effect=$00;wave_idx=0;post=$0883
+row	lfo_static	ev_lfo	anchor=ev:ch=G;reg=R9;val=$82;nth=1;ev=+0	chan=$FE;effect=$10;wave_idx=$FF;post=$0082
+row	lfo_static	ev_lfo	anchor=ev:ch=G;reg=R9;val=$83;nth=1;ev=+0	chan=$FE;effect=$10;wave_idx=$FF;post=$0083
+# per0 (MAN:P8-9+H8-23; ER-14, no pitch claim): CTL 0, no modulation (D-219): 192 x 512 = 98,304 = 512 samples per cycle, two cycles d = 1,024 (f=512;k=2;d=1024, d = k x f), from R9 $80 + 100,304 to + 491,520.
+group	lfo_static	per0	form=ROWS	kind=period	class=MAN:P8-9+H8-23	kills=AF0,AF2,AF4,AF5,AF6
+row	lfo_static	per0	anchor=ev:ch=G;reg=R9;val=$80;nth=2;from=+100304;to=+491520;side=L	f=512;k=2;d=1024;r1=$FF;al=$1F;r5=$FF
+row	lfo_static	per0	anchor=ev:ch=G;reg=R9;val=$80;nth=2;from=+100304;to=+491520;side=R	f=512;k=2;d=1024;r1=$FF;al=$1F;r5=$FF
+# ord0 (MAN:P8-4+P8-5; RF-14): the plateaus between two rising crossings rank as select 0's table (a permutation of 0..31, so the literal is the table) up to rotation.
+group	lfo_static	ord0	form=ROWS	kind=cycle_order	class=MAN:P8-4+P8-5	kills=AF0,AF5,AF6,AF7
+row	lfo_static	ord0	anchor=ev:ch=G;reg=R9;val=$80;nth=2;from=+100304;to=+491520;side=L	words=19,26,17,24,31,22,29,20,27,18,25,16,23,30,21,28,9,4,15,10,5,0,11,6,1,12,7,2,13,8,3,14;r1=$FF;al=$1F;r5=$FF
+row	lfo_static	ord0	anchor=ev:ch=G;reg=R9;val=$80;nth=2;from=+100304;to=+491520;side=R	words=19,26,17,24,31,22,29,20,27,18,25,16,23,30,21,28,9,4,15,10,5,0,11,6,1,12,7,2,13,8,3,14;r1=$FF;al=$1F;r5=$FF
+# lfo2 (MAN:P8-6+P8-7+P8-8+P8-9+H8-23): CTL 2, w $18 held (TRG 1, D-219): F' = 512 + 96 - 64 = 544, 192 x 544 = 104,448; d = 2 x 544 = 1,088, from R9 $82 + 106,448 to + 522,240.
+group	lfo_static	lfo2	form=ROWS	kind=lfo_static	class=MAN:P8-6+P8-7+P8-8+P8-9+H8-23	kills=AF0,AF2,AF4,AF5,AF6
+row	lfo_static	lfo2	anchor=ev:ch=G;reg=R9;val=$82;nth=1;from=+106448;to=+522240;side=L	f=512;w=$18;shift=2;k=2;d=1088;r1=$FF;al=$1F;r5=$FF
+row	lfo_static	lfo2	anchor=ev:ch=G;reg=R9;val=$82;nth=1;from=+106448;to=+522240;side=R	f=512;w=$18;shift=2;k=2;d=1088;r1=$FF;al=$1F;r5=$FF
+# ord2 (MAN:P8-4+P8-5): the cycle order of select 0's table at CTL 2.
+group	lfo_static	ord2	form=ROWS	kind=cycle_order	class=MAN:P8-4+P8-5	kills=AF0,AF5,AF6,AF7
+row	lfo_static	ord2	anchor=ev:ch=G;reg=R9;val=$82;nth=1;from=+106448;to=+522240;side=L	words=19,26,17,24,31,22,29,20,27,18,25,16,23,30,21,28,9,4,15,10,5,0,11,6,1,12,7,2,13,8,3,14;r1=$FF;al=$1F;r5=$FF
+row	lfo_static	ord2	anchor=ev:ch=G;reg=R9;val=$82;nth=1;from=+106448;to=+522240;side=R	words=19,26,17,24,31,22,29,20,27,18,25,16,23,30,21,28,9,4,15,10,5,0,11,6,1,12,7,2,13,8,3,14;r1=$FF;al=$1F;r5=$FF
+# lfo3 (MAN:P8-6+P8-7+P8-8+P8-9+H8-23): CTL 3, w $18 held: F' = 512 + 384 - 256 = 640, 192 x 640 = 122,880; d = 2 x 640 = 1,280, from R9 $83 + 124,880 to + 614,400.
+group	lfo_static	lfo3	form=ROWS	kind=lfo_static	class=MAN:P8-6+P8-7+P8-8+P8-9+H8-23	kills=AF0,AF2,AF4,AF5,AF6
+row	lfo_static	lfo3	anchor=ev:ch=G;reg=R9;val=$83;nth=1;from=+124880;to=+614400;side=L	f=512;w=$18;shift=4;k=2;d=1280;r1=$FF;al=$1F;r5=$FF
+row	lfo_static	lfo3	anchor=ev:ch=G;reg=R9;val=$83;nth=1;from=+124880;to=+614400;side=R	f=512;w=$18;shift=4;k=2;d=1280;r1=$FF;al=$1F;r5=$FF
+# ord3 (MAN:P8-4+P8-5): the cycle order of select 0's table at CTL 3.
+group	lfo_static	ord3	form=ROWS	kind=cycle_order	class=MAN:P8-4+P8-5	kills=AF0,AF5,AF6,AF7
+row	lfo_static	ord3	anchor=ev:ch=G;reg=R9;val=$83;nth=1;from=+124880;to=+614400;side=L	words=19,26,17,24,31,22,29,20,27,18,25,16,23,30,21,28,9,4,15,10,5,0,11,6,1,12,7,2,13,8,3,14;r1=$FF;al=$1F;r5=$FF
+row	lfo_static	ord3	anchor=ev:ch=G;reg=R9;val=$83;nth=1;from=+124880;to=+614400;side=R	words=19,26,17,24,31,22,29,20,27,18,25,16,23,30,21,28,9,4,15,10,5,0,11,6,1,12,7,2,13,8,3,14;r1=$FF;al=$1F;r5=$FF
+# lfo_ctl1 (D-208, D-219): CTL 1 under TRG 1 (s = 0), its own case so that the toy psg-lfo-shift can keep it green (D-210).
+scene	lfo_ctl1	case=audio_lfo_ctl1	role=literal
+# ev_ctl1 (MAN:P8-2+P8-6, D-196 by hand; C-05): R9 $81 posts $0081, chan $FE, LFO_RESET. AF0 only: AF8 moves nth 1 onto the identical R9 $81 of lfo_needs_sel1 and AF9 relabels no global record (AUDIO_TOY_EXEMPT).
+group	lfo_ctl1	ev_ctl1	form=EV	kind=ev_decode	class=MAN:P8-2+P8-6	kills=AF0
+row	lfo_ctl1	ev_ctl1	anchor=ev:ch=G;reg=R9;val=$81;nth=1;ev=+0	chan=$FE;effect=$10;wave_idx=$FF;post=$0081
+# lfo1 (MAN:P8-6+P8-7+P8-8+P8-9+H8-23): CTL 1, w $18 held: F' = 512 + 24 - 16 = 520, 192 x 520 = 99,840 (a step of 16.25 samples, a cycle of 520); d = 2 x 520 = 1,040, from R9 $81 + 101,840 to + 499,200.
+group	lfo_ctl1	lfo1	form=ROWS	kind=lfo_static	class=MAN:P8-6+P8-7+P8-8+P8-9+H8-23	kills=AF0,AF2,AF4,AF5,AF6
+row	lfo_ctl1	lfo1	anchor=ev:ch=G;reg=R9;val=$81;nth=1;from=+101840;to=+499200;side=L	f=512;w=$18;shift=0;k=2;d=1040;r1=$FF;al=$1F;r5=$FF
+row	lfo_ctl1	lfo1	anchor=ev:ch=G;reg=R9;val=$81;nth=1;from=+101840;to=+499200;side=R	f=512;w=$18;shift=0;k=2;d=1040;r1=$FF;al=$1F;r5=$FF
+# ord1 (MAN:P8-4+P8-5): the cycle order of select 0's table at CTL 1 (plateaus of 16 or 17 samples).
+group	lfo_ctl1	ord1	form=ROWS	kind=cycle_order	class=MAN:P8-4+P8-5	kills=AF0,AF5,AF6,AF7
+row	lfo_ctl1	ord1	anchor=ev:ch=G;reg=R9;val=$81;nth=1;from=+101840;to=+499200;side=L	words=19,26,17,24,31,22,29,20,27,18,25,16,23,30,21,28,9,4,15,10,5,0,11,6,1,12,7,2,13,8,3,14;r1=$FF;al=$1F;r5=$FF
+row	lfo_ctl1	ord1	anchor=ev:ch=G;reg=R9;val=$81;nth=1;from=+101840;to=+499200;side=R	words=19,26,17,24,31,22,29,20,27,18,25,16,23,30,21,28,9,4,15,10,5,0,11,6,1,12,7,2,13,8,3,14;r1=$FF;al=$1F;r5=$FF
+# lfo_needs_sel1 (D-208, D-219): select 1 keyed off (R4 $00), then CTL 0 (R9 $80) and CTL 1 (R9 $81): modulation needs select 1 on (MAN:P8-6+P8-9), so select 0 stays at 512 in both phases.
+scene	lfo_needs_sel1	case=audio_lfo_needs_sel1	role=literal
+# need (MAN:P8-6+P8-9): the 1,024 samples (two cycles) from the first rising crossing of the CTL 0 window and of the CTL 1 window are equal (aligned at the crossing, D-185); each window is R9 + 100,304 to + 491,520.
+group	lfo_needs_sel1	need	form=REL	kind=lfo_needs_sel1	class=MAN:P8-6+P8-9	kills=AF0,AF5,AF6
+row	lfo_needs_sel1	need	anchor=ev:ch=G;reg=R9;val=$80;nth=3;from=+100304;to=+491520;side=L	n=1024;r1=$FF;al=$1F;r5=$FF
+row	lfo_needs_sel1	need	anchor=ev:ch=G;reg=R9;val=$81;nth=2;from=+100304;to=+491520;side=L	r1=$FF;al=$1F;r5=$FF
+# lfo_release (plan 05.1-02; C-04, D-220): CTL 0, select 0 off, select 1 keyed on under TRG 1 (R9 $80: widx[1] = 0, frozen at word 0), then R9 $00: the uncoupled select 1 restarts; select 1 alone is audible (R1 $FF, AL $1F, R5 $FF: S = 0, att 0).
+scene	lfo_release	case=audio_lfo_release	role=literal
+# rel (ASSUMED:LED-AUD-0004+LED-AUD-0011, D-220; the d_rel shape of psg_mod): from the R9 $00 release + 192 the first 32 plateaus are select 1's table from word 0 (16 + ((5i + 8) mod 16), then (3i + 1) mod 16): its counter restarts from word 0 on TRG 1 -> 0.
+group	lfo_release	rel	form=ROWS	kind=cycle_phase	class=ASSUMED:LED-AUD-0004+LED-AUD-0011	kills=AF0,AF5,AF6,AF7,AF8
+row	lfo_release	rel	anchor=ev:ch=G;reg=R9;val=$00;nth=1;from=+192;to=+60000;side=L	words=24,29,18,23,28,17,22,27,16,21,26,31,20,25,30,19,1,4,7,10,13,0,3,6,9,12,15,2,5,8,11,14;r1=$FF;al=$1F;r5=$FF
+# lfo_dynamic (plan 05.1-02; D-208, D-219, D-231): after R9 $01 select 1 (silent: R5 $00, MAN:P8-10 byte zero) steps through table 2 (16 x $18, 16 x $08) every 6 x 128 x 150 = 115,200 master clocks, so select 0 (F0 = 192, solo) reloads at F0' = 200 or 184.
+scene	lfo_dynamic	case=audio_lfo_dynamic	role=literal
+# ev_r8 (MAN:P8-2+P8-6, D-196 by hand; C-05): R8 $96 posts $0096 (FLF 150), chan $FE, no effect; AF9 relabels no global record, so the group is killed by AF0 and AF8.
+group	lfo_dynamic	ev_r8	form=EV	kind=ev_decode	class=MAN:P8-2+P8-6	kills=AF0,AF8
+row	lfo_dynamic	ev_r8	anchor=ev:ch=G;reg=R8;val=$96;nth=1;ev=+0	chan=$FE;effect=$00;wave_idx=$FF;post=$0096
+# dyn (MAN:P8-6+P8-7+P8-8+P8-9+H8-23): from R9 $01 + 0 to + 4,032,000 (21,000 samples, inside the scene) the complete select-0 cycles are 200 or 184 samples (F0' = 192 + 24 - 16 or 192 + 8 - 16) in runs read from the stream; no switch instant is computed (D-208, D-220).
+group	lfo_dynamic	dyn	form=ROWS	kind=lfo_dynamic	class=MAN:P8-6+P8-7+P8-8+P8-9+H8-23	kills=AF0,AF2,AF4,AF5,AF6,AF7,AF8
+row	lfo_dynamic	dyn	anchor=ev:ch=G;reg=R9;val=$01;nth=1;from=+0;to=+4032000;side=L	f=192;w1=$18;w2=$08;f2=128;flf=150;step=115200;set=200,184;r1=$FF;al=$1F;r5=$FF
+row	lfo_dynamic	dyn	anchor=ev:ch=G;reg=R9;val=$01;nth=1;from=+0;to=+4032000;side=R	f=192;w1=$18;w2=$08;f2=128;flf=150;step=115200;set=200,184;r1=$FF;al=$1F;r5=$FF

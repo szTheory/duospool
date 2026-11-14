@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Hostile register programs (plan 05-07; D-195, D-201, D-212, T-05-25): kind psg_random_regs (tests/conformance/psgkinds.c), the vdc_random_regs shape. Programs are built in memory from a splitmix64 stream of the case seed; no file, host randomness or ROM.
+id = "psg_random_regs"
+kind = "psg_random_regs"
+fixture = "none"
+request = ""
+expect = "programs=32;seed=20261113"
+meaning = "32 random PSG register programs, including F = 0, NFc = 0, FLF = 0 and F1 = FLF = 1, terminate at their deadline, log every window write and lose no record or frame with sinks sized by the D-201 closed forms, under the sanitizer build too (E0)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 300000

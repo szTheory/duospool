@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# Chunk equivalence of the audio streams over the 32 random programs of chunk_equiv_random32 (plan 05-04; D-200, PR-11): kind chunk_equiv with the compare item audio and random=32. The programs write the hardware page at random, so those that reach window 2 exercise the decode and the
+# counters; every program produces DSPA frames. Each program is run to one deadline in one call and in calls to five schedules (7, 191, 193, 1366, vframe); the concatenated DSPE and DSPA bytes must equal the uninterrupted run's, with the per-call closed form of the pcm header and the
+# first-frame chain. No restore schedule (the restore of an audio run is snapshot_restore_audio). Evidence tier E0 repeatability; no hardware claim.
+id = "chunk_equiv_random32_audio"
+kind = "chunk_equiv"
+fixture = "none"
+request = ""
+expect = "compare=verdict,machine_time,stops,digest,audio;random=32"
+meaning = "32 in-process random programs, each run to one deadline in one call and in calls to the deadlines of five chunk schedules, end with the machine time, steps, verdict RAM, stop sequence, digest and concatenated DSPE and DSPA bytes of the uninterrupted run, E0 repeatability"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 600000
+chunks = "7,191,193,1366,vframe"

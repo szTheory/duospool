@@ -26,12 +26,12 @@
 #include "ds_snapshot.h"
 #include "runner.h"
 
-/* ---- the hand-kept stream layout (independent of serial.c): the prefix and its NUL, the version, then 21 frames of tag, u32 length and payload ---- */
+/* ---- the hand-kept stream layout (independent of serial.c): the prefix and its NUL, the version, then 24 frames of tag, u32 length and payload ---- */
 
 #define SK_PREFIX_BYTES 15u
-#define SK_VERSION 8u
-#define SK_FRAMES 21u
-#define SK_EXPECTED_SIZE 92255u /* 15 + 4 + 21 * 8 + 92068 payload bytes: the 24890 of serial version 7 and the 67178 of the seven Phase 4 regions (3 + 1024 + 45 + 33 + 25 + 65536 + 512), derived by hand (plan 04-03) */
+#define SK_VERSION 9u
+#define SK_FRAMES 24u
+#define SK_EXPECTED_SIZE 92553u /* 15 + 4 + 24 * 8 + 92342 payload bytes: the 24890 of serial version 7, the 67178 of the seven Phase 4 regions (3 + 1024 + 45 + 33 + 25 + 65536 + 512, plan 04-03) and the 274 of PSG0, PSGW and PSGT (42 + 192 + 40, plan 05-03), derived by hand */
 
 static const struct {
     const char *tag;
@@ -40,8 +40,9 @@ static const struct {
     {"PROF", 32u}, {"CONT", 40u}, {"POWR", 16u}, {"TIME", 8u}, {"RAM8", 8192u}, {"MPRS", 8u}, {"CPU0", 8u},
     {"BUS0", 3u},  {"TIMR", 11u}, {"IRQC", 3u},  {"IRQS", 160u}, {"BLKT", 11u}, {"IOPT", 6u}, {"SCHD", 16392u},
     {"VCE0", 3u},  {"PALT", 1024u}, {"VDC0", 45u}, {"BEAM", 33u},  {"VDMA", 25u}, {"VRAM", 65536u}, {"SATB", 512u},
+    {"PSG0", 42u}, {"PSGW", 192u}, {"PSGT", 40u},
 };
-enum { RG_PROF, RG_CONT, RG_POWR, RG_TIME, RG_RAM8, RG_MPRS, RG_CPU0, RG_BUS0, RG_TIMR, RG_IRQC, RG_IRQS, RG_BLKT, RG_IOPT, RG_SCHD, RG_VCE0, RG_PALT, RG_VDC0, RG_BEAM, RG_VDMA, RG_VRAM, RG_SATB };
+enum { RG_PROF, RG_CONT, RG_POWR, RG_TIME, RG_RAM8, RG_MPRS, RG_CPU0, RG_BUS0, RG_TIMR, RG_IRQC, RG_IRQS, RG_BLKT, RG_IOPT, RG_SCHD, RG_VCE0, RG_PALT, RG_VDC0, RG_BEAM, RG_VDMA, RG_VRAM, RG_SATB, RG_PSG0, RG_PSGW, RG_PSGT };
 
 /* the offset of the frame (the tag) of region r, and of its payload */
 static size_t sk_frame_off(unsigned r)
@@ -79,7 +80,7 @@ static const struct sk_tile sk_tiles[] = {DS_INSTANCE_TILING(SK_TILE)};
 /* the members that a restore does not write because they are not machine state of the stream: the identity of the instance (profile, content id, size class) is checked by pass 1, mapper, byte order and header are derived at boot, the ROM is excluded and the tail is padding */
 static int sk_is_identity(const char *name)
 {
-    static const char *const ids[] = {"profile", "content_id", "mapper", "size_class", "byte_order", "header", "rom", "tail_pad", "vid_pad"};
+    static const char *const ids[] = {"profile", "content_id", "mapper", "size_class", "byte_order", "header", "rom", "tail_pad", "vid_pad", "psg_pad"};
     size_t i;
 
     for (i = 0u; i < sizeof ids / sizeof ids[0]; i++) {
@@ -1326,6 +1327,15 @@ static void ed_blk_toggle_tia(uint8_t *b)
     p[2] = 1u;
     sk_put32(p + 3u, 4u);
 }
+/* an edit that moves the machine time also moves the noise counters onto the tick grid of the new time (plan 05-03, D-203: the next event time + r - 1 is a multiple of d; 6 serves d = 3 and d = 6), as the beam follows the time since plan 04-19; channel counters of these snapshots are frozen */
+static void sk_psg_follow_time(uint8_t *b, uint64_t time)
+{
+    uint32_t r = (uint32_t)((UINT64_C(7) - time % UINT64_C(6)) % UINT64_C(6));
+
+    r = r == 0u ? 6u : r;
+    sk_put32(b + sk_payload_off(RG_PSGT) + 24u, r);
+    sk_put32(b + sk_payload_off(RG_PSGT) + 28u, r);
+}
 static void ed_time_2_63(uint8_t *b)
 {
     sk_put64(b + sk_payload_off(RG_TIME), UINT64_C(1) << 63);
@@ -1339,14 +1349,15 @@ static void ed_time_below(uint8_t *b)
     sk_put64(b + sk_payload_off(RG_TIME), (UINT64_C(1) << 63) - 1u);
     /* the fold window rule of plan 04-19 (D-166) refuses a beam whose next event is behind the machine time, so the beam follows the time: the next line event is the first one at or after it (ceiling of time / 1365), which the line-limit rule also allows */
     sk_put64(b + sk_payload_off(RG_BEAM), ((UINT64_C(1) << 63) - UINT64_C(1) + UINT64_C(1364)) / UINT64_C(1365));
+    sk_psg_follow_time(b, (UINT64_C(1) << 63) - 1u);
 }
 static void ed_p_b_bit(uint8_t *b)
 {
     b[sk_payload_off(RG_CPU0) + 4u] |= 0x10u;
 }
-static void ed_policy5(uint8_t *b)
+static void ed_policy6(uint8_t *b)
 {
-    sk_put32(b + sk_payload_off(RG_POWR), 5u); /* policy 5 is the first unknown policy since seeded-prng-v3 took 4 (plan 04-18) */
+    sk_put32(b + sk_payload_off(RG_POWR), 6u); /* policy 6 is the first unknown policy since seeded-prng-v4 took 5 (plan 05-03, D-228; 5 until then, plan 04-18) */
 }
 static void ed_policy_other(uint8_t *b)
 {
@@ -1638,6 +1649,7 @@ static void ed_ld_0_late(uint8_t *b)
 static void win_set(uint8_t *b, uint64_t time, uint64_t line_idx, uint8_t stage)
 {
     sk_put64(b + sk_payload_off(RG_TIME), time);
+    sk_psg_follow_time(b, time);
     sk_put64(BM_AT(b, 0u), line_idx);
     b[sk_payload_off(RG_BEAM) + 8u] = stage;
     b[sk_payload_off(RG_BEAM) + 29u] = 2u;
@@ -1785,6 +1797,74 @@ static void ed_dw_16_run(uint8_t *b)
     sk_put16(b + sk_payload_off(RG_VDMA) + 19u, 16u);
 }
 
+/*
+ * The PSG restore domain (plan 05-03; D-203, D-231, F-59): each row first sets PSG0 to zero and every channel distance to 0 (a valid state: every channel frozen; the noise distances and LFSRs stay as the run left them, on the grid of the snapshot's time), then
+ * writes its one defect or its one boundary. Distances are chosen on the tick grid of d = 6 of the snapshot's time T (r with (T + r - 1) mod 6 = 0) unless the row is about the grid, so a range row fails only its range check.
+ */
+#define P0(b) ((b) + sk_payload_off(RG_PSG0))
+#define PW(b) ((b) + sk_payload_off(RG_PSGW))
+#define PT(b) ((b) + sk_payload_off(RG_PSGT))
+static uint32_t psg_r0(const uint8_t *b)
+{
+    uint64_t time = sk_get64(b + sk_payload_off(RG_TIME));
+    uint32_t r = (uint32_t)((UINT64_C(7) - time % UINT64_C(6)) % UINT64_C(6));
+
+    return r == 0u ? 6u : r;
+}
+/* the largest on-grid distance <= max, and the smallest one above it */
+static uint32_t psg_grid_max(const uint8_t *b, uint32_t max)
+{
+    return psg_r0(b) + (max - psg_r0(b)) / 6u * 6u;
+}
+static void psg_base(uint8_t *b)
+{
+    unsigned i;
+
+    memset(P0(b), 0, 42u);
+    for (i = 0u; i < 6u; i++) {
+        sk_put32(PT(b) + 4u * i, 0u);
+    }
+}
+static void ed_psg_sel8(uint8_t *b) { psg_base(b); P0(b)[12] = 8u; }
+static void ed_psg_sel7(uint8_t *b) { psg_base(b); P0(b)[12] = 7u; }
+static void ed_psg_f1000(uint8_t *b) { psg_base(b); P0(b)[5] = 0x10u; }       /* freq[2] = $1000 */
+static void ed_psg_ffff(uint8_t *b) { psg_base(b); P0(b)[4] = 0xFFu; P0(b)[5] = 0x0Fu; } /* freq[2] = $FFF */
+static void ed_psg_ctl20(uint8_t *b) { psg_base(b); P0(b)[16 + 3] = 0x20u; }
+static void ed_psg_ctl9f(uint8_t *b) { psg_base(b); P0(b)[16 + 3] = 0x1Fu; P0(b)[22 + 3] = 0xFFu; } /* AL 31 with chON 0, any balance */
+static void ed_psg_widx32(uint8_t *b) { psg_base(b); P0(b)[28 + 4] = 32u; }
+static void ed_psg_dda32(uint8_t *b) { psg_base(b); P0(b)[34 + 5] = 32u; }
+static void ed_psg_nz20(uint8_t *b) { psg_base(b); P0(b)[41] = 0x20u; }
+static void ed_psg_nz40(uint8_t *b) { psg_base(b); P0(b)[40] = 0x40u; }
+static void ed_psg_nz9f(uint8_t *b) { psg_base(b); P0(b)[40] = 0x9Fu; }
+static void ed_psg_lfo04(uint8_t *b) { psg_base(b); P0(b)[15] = 0x04u; }
+static void ed_psg_lfo83(uint8_t *b) { psg_base(b); P0(b)[15] = 0x83u; P0(b)[14] = 0xFFu; P0(b)[13] = 0xFFu; }
+static void ed_psg_wave32(uint8_t *b) { psg_base(b); PW(b)[191] = 32u; }
+static void ed_psg_wave31(uint8_t *b) { psg_base(b); PW(b)[191] = 31u; PW(b)[0] = 31u; }
+static void ed_psg_ddaidx(uint8_t *b) { psg_base(b); P0(b)[16] = 0x40u; P0(b)[28] = 1u; }       /* DDA set with widx 1 */
+static void ed_psg_ddaok(uint8_t *b) { psg_base(b); P0(b)[16] = 0xC0u; P0(b)[34] = 31u; }      /* chON and DDA, widx 0, latch 31, frozen */
+static void ed_psg_offrem(uint8_t *b) { psg_base(b); sk_put32(PT(b), psg_r0(b)); }             /* chON 0 with a pending event */
+static void ed_psg_ddarem(uint8_t *b) { psg_base(b); P0(b)[16] = 0xC0u; sk_put32(PT(b), psg_r0(b)); } /* DDA 1 with a pending event */
+static void ed_psg_trgrem(uint8_t *b) { psg_base(b); P0(b)[15] = 0x80u; P0(b)[17] = 0x80u; sk_put32(PT(b) + 4u, psg_r0(b)); } /* select 1 under TRG with a pending event */
+static void ed_psg_onrem0(uint8_t *b) { psg_base(b); P0(b)[16] = 0x80u; }                       /* chON 1, DDA 0, distance 0 */
+static void ed_psg_remmax(uint8_t *b) { psg_base(b); P0(b)[16] = 0x80u; sk_put32(PT(b), psg_grid_max(b, 24576u)); }
+static void ed_psg_remover(uint8_t *b) { psg_base(b); P0(b)[16] = 0x80u; sk_put32(PT(b), psg_grid_max(b, 24576u) + 6u); }
+/* a running select 1 has the coupled bound 6,291,456 at d = 6 whatever the coupling (plan 05.1-01, 05.1-CONTEXT C-09; a pending coupled distance outlives a coupling change): the channel maximum, one grid step past it and the coupled maximum are accepted, one grid step
+ * past the coupled maximum is refused */
+static void ed_psg_rem1max(uint8_t *b) { psg_base(b); P0(b)[17] = 0x80u; sk_put32(PT(b) + 4u, psg_grid_max(b, 24576u)); }
+static void ed_psg_rem1over(uint8_t *b) { psg_base(b); P0(b)[17] = 0x80u; sk_put32(PT(b) + 4u, psg_grid_max(b, 24576u) + 6u); }
+static void ed_psg_rem1coupled(uint8_t *b) { psg_base(b); P0(b)[17] = 0x80u; sk_put32(PT(b) + 4u, psg_grid_max(b, 6291456u)); }
+static void ed_psg_rem1coupover(uint8_t *b) { psg_base(b); P0(b)[17] = 0x80u; sk_put32(PT(b) + 4u, psg_grid_max(b, 6291456u) + 6u); }
+static void ed_psg_remgrid(uint8_t *b) { psg_base(b); P0(b)[16] = 0x80u; sk_put32(PT(b), psg_r0(b) + 1u); }
+static void ed_psg_nrem0(uint8_t *b) { psg_base(b); sk_put32(PT(b) + 24u, 0u); }
+static void ed_psg_nremmax(uint8_t *b) { psg_base(b); sk_put32(PT(b) + 28u, psg_grid_max(b, 11904u)); }
+static void ed_psg_nremover(uint8_t *b) { psg_base(b); sk_put32(PT(b) + 28u, psg_grid_max(b, 11904u) + 6u); }
+static void ed_psg_nremgrid(uint8_t *b) { psg_base(b); sk_put32(PT(b) + 24u, psg_grid_max(b, 11904u) + 1u > 11904u ? psg_grid_max(b, 11904u) - 1u : psg_grid_max(b, 11904u) + 1u); }
+static void ed_psg_lfsr0(uint8_t *b) { psg_base(b); sk_put32(PT(b) + 32u, 0u); }
+static void ed_psg_lfsr4(uint8_t *b) { psg_base(b); sk_put32(PT(b) + 36u, 0x40000u); }
+static void ed_psg_lfsrmax(uint8_t *b) { psg_base(b); sk_put32(PT(b) + 32u, 0x3FFFFu); }
+/* D-231: R9 $80, R0 1, R4 $00 and five R6 writes leave select 1 under TRG with widx 5 and no pending event: reachable, so accepted */
+static void ed_psg_trgidx(uint8_t *b) { psg_base(b); P0(b)[15] = 0x80u; P0(b)[12] = 1u; P0(b)[28 + 1] = 5u; }
+
 static const struct {
     const char *name;
     int mode;
@@ -1817,7 +1897,7 @@ static const struct {
     {"time-max", M_EDIT, ed_time_max},
     {"time-2-63-1", M_EDIT, ed_time_below},
     {"p-b-bit", M_EDIT, ed_p_b_bit},
-    {"policy-5", M_EDIT, ed_policy5},
+    {"policy-6", M_EDIT, ed_policy6},
     {"policy-other", M_EDIT, ed_policy_other},
     {"seed-no-flag", M_EDIT, ed_seed_no_flag},
     {"tma-zero-2", M_EDIT, ed_tma2},
@@ -1942,6 +2022,42 @@ static const struct {
     {"buffer-in-instance", M_OVERLAP, ed_none},
     {"snapshot-capacity", M_SNAP_CAPACITY, ed_none},
     {"snapshot-overlap", M_SNAP_OVERLAP, ed_none},
+    {"p-sel8", M_EDIT, ed_psg_sel8},
+    {"p-sel7", M_EDIT, ed_psg_sel7},
+    {"p-f1000", M_EDIT, ed_psg_f1000},
+    {"p-ffff", M_EDIT, ed_psg_ffff},
+    {"p-ctl20", M_EDIT, ed_psg_ctl20},
+    {"p-ctl9f", M_EDIT, ed_psg_ctl9f},
+    {"p-widx32", M_EDIT, ed_psg_widx32},
+    {"p-dda32", M_EDIT, ed_psg_dda32},
+    {"p-nz20", M_EDIT, ed_psg_nz20},
+    {"p-nz40", M_EDIT, ed_psg_nz40},
+    {"p-nz9f", M_EDIT, ed_psg_nz9f},
+    {"p-lfo04", M_EDIT, ed_psg_lfo04},
+    {"p-lfo83", M_EDIT, ed_psg_lfo83},
+    {"p-wave32", M_EDIT, ed_psg_wave32},
+    {"p-wave31", M_EDIT, ed_psg_wave31},
+    {"p-ddaidx", M_EDIT, ed_psg_ddaidx},
+    {"p-ddaok", M_EDIT, ed_psg_ddaok},
+    {"p-offrem", M_EDIT, ed_psg_offrem},
+    {"p-ddarem", M_EDIT, ed_psg_ddarem},
+    {"p-trgrem", M_EDIT, ed_psg_trgrem},
+    {"p-onrem0", M_EDIT, ed_psg_onrem0},
+    {"p-remmax", M_EDIT, ed_psg_remmax},
+    {"p-remover", M_EDIT, ed_psg_remover},
+    {"p-rem1max", M_EDIT, ed_psg_rem1max},
+    {"p-rem1over", M_EDIT, ed_psg_rem1over},
+    {"p-rem1coupled", M_EDIT, ed_psg_rem1coupled},
+    {"p-rem1coupover", M_EDIT, ed_psg_rem1coupover},
+    {"p-remgrid", M_EDIT, ed_psg_remgrid},
+    {"p-nrem0", M_EDIT, ed_psg_nrem0},
+    {"p-nremmax", M_EDIT, ed_psg_nremmax},
+    {"p-nremover", M_EDIT, ed_psg_nremover},
+    {"p-nremgrid", M_EDIT, ed_psg_nremgrid},
+    {"p-lfsr0", M_EDIT, ed_psg_lfsr0},
+    {"p-lfsr4", M_EDIT, ed_psg_lfsr4},
+    {"p-lfsrmax", M_EDIT, ed_psg_lfsrmax},
+    {"p-trgidx", M_EDIT, ed_psg_trgidx},
 };
 #define SK_ROWS_N (sizeof sk_rows / sizeof sk_rows[0])
 

@@ -398,6 +398,29 @@ void kind_digest_stream(const struct kase *k, struct ctx *c, char *got, size_t g
             check(c, fw[i].len == DS_VRAM_BYTES && memcmp(pl, inst->vdc_vram, DS_VRAM_BYTES) == 0, msg);
         } else if (strcmp(fw[i].tag, "SATB") == 0) {
             check(c, fw[i].len == DS_SATB_BYTES && memcmp(pl, inst->vdc_satb, DS_SATB_BYTES) == 0, msg);
+        } else if (strcmp(fw[i].tag, "PSG0") == 0) {
+            /* psg_freq u16 x 6 at 0, select 12, main_bal 13, lfo_freq 14, lfo_ctl 15, ctl 16..21, bal 22..27, widx 28..33, dda 34..39, noise 40..41 (plan 05-03): 42 bytes */
+            int ok = fw[i].len == 42u && pl[12] == inst->psg_select && pl[13] == inst->psg_main_bal && pl[14] == inst->psg_lfo_freq && pl[15] == inst->psg_lfo_ctl && pl[40] == inst->psg_noise[0] && pl[41] == inst->psg_noise[1];
+            unsigned ch;
+
+            for (ch = 0u; ok && ch < 6u; ch++) {
+                ok = (unsigned)(pl[2u * ch] | ((unsigned)pl[2u * ch + 1u] << 8)) == (unsigned)inst->psg_freq[ch] && pl[16u + ch] == inst->psg_ctl[ch] && pl[22u + ch] == inst->psg_bal[ch] && pl[28u + ch] == inst->psg_widx[ch] && pl[34u + ch] == inst->psg_dda[ch];
+            }
+            check(c, ok, msg);
+        } else if (strcmp(fw[i].tag, "PSGW") == 0) {
+            check(c, fw[i].len == 192u && memcmp(pl, inst->psg_wave, 192u) == 0, msg);
+        } else if (strcmp(fw[i].tag, "PSGT") == 0) {
+            /* psg_rem u32 x 6 at 0, psg_nrem u32 x 2 at 24, psg_lfsr u32 x 2 at 32 (plan 05-03): 40 bytes */
+            int ok = fw[i].len == 40u;
+            unsigned kk;
+
+            for (kk = 0u; ok && kk < 6u; kk++) {
+                ok = rd32(pl + 4u * kk) == inst->psg_rem[kk];
+            }
+            for (kk = 0u; ok && kk < 2u; kk++) {
+                ok = rd32(pl + 24u + 4u * kk) == inst->psg_nrem[kk] && rd32(pl + 32u + 4u * kk) == inst->psg_lfsr[kk];
+            }
+            check(c, ok, msg);
         } else {
             harness_error(c, "a digest_stream frame names a tag that the case does not know");
             break;

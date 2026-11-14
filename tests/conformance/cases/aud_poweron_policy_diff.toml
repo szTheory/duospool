@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The power-on policy negative control of the audio identity rule (plan 05-04; D-204, D-212, R4): kind aud_poweron_policy_diff (audiokinds.c) builds an in-memory program that keys on select 3 at F = 256 with R1 $FF, R5 $FF and AL $1F and never writes its wave RAM, runs it under zero,
+# seeded-prng-v4 seeds 1 and 2 and seeded-prng-v3 seed 1, and requires the DSPA streams of v4 seeds 1 and 2 to differ, zero and v4 seed 1 to differ (reported by au_streams_differ, the zero-versus-v4 identity check every audio literal case relies on, so that check is shown able to fail),
+# and zero and v3 seed 1 to be identical (v3 draws no wave RAM). Evidence tier E0; no hardware claim.
+id = "aud_poweron_policy_diff"
+kind = "aud_poweron_policy_diff"
+fixture = "none"
+request = ""
+expect = "program=sel3-keyon-no-wave"
+meaning = "A channel keyed on with no wave upload sounds different under seeded-prng-v4 seeds 1 and 2 and under zero against v4 seed 1, and the same under zero and v3 seed 1, so the zero-versus-v4 identity check of the audio cases can fail (E0)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 200000

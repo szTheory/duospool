@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The psg sink channel of ds_run (plan 05-02; D-196, D-198, F-2, T-05-04): the fourth caller-owned sink, the dev shape (16-byte header count, lost, seq; 24-byte records, drop-newest). No PSG record has a producer in the core until plan 05-04.
+# Part attached: the authored ds-proto is run once with no sink (the reference) and once with only a psg sink whose header and buffer are poisoned with $A5 inside guard bytes. The header after the run must read lost 0 and seq = count within the capacity (a poisoned header
+# is overwritten, which also shows that ds_run opens the log for a request carrying only psg); the buffer past the stored records and the guards keep their poison; the run keeps the machine time, steps and digest of the run with no sink.
+# Part append: direct channel calls with capacities 0, 1, 4 and 64: the first count records are stored whole and back to back, lost = seq - count, once full every later record is lost; ds_obs_begin overwrites a poisoned header; an absent sink and a NULL log do nothing.
+# The literals are written by hand from that rule. Evidence tier E0 (repeatability and non-interference; the layout is a definition, LED-AUD-0013): a mechanism check, no hardware claim, and the word pass is not a support claim.
+id = "psg_chan_append"
+kind = "psg_chan_append"
+fixture = "authored:ds-proto"
+request = ""
+expect = "parts=attached,append"
+meaning = "A ds_run request that carries only a psg sink is accepted, overwrites the poisoned header and leaves the run unchanged; the channel stores whole 24-byte records, drops the newest and counts lost = seq - count (E0 mechanism, no hardware claim)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 40000

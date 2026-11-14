@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# r7_ignored (plan 05-07; D-189, D-208): scene mod_r7 of fixtures/src/psg_mod.aexp, a same group (MAN:P8-2+P8-9) and the dropped-write record as an ASSUMED ev_edge row (LED-AUD-0004).
+id = "audio_mod_r7"
+kind = "audio"
+fixture = "authored:psg-mod"
+request = ""
+expect = "rom=psg-mod;id=28;checks=8;scene=mod_r7"
+meaning = "An R7 write at select 2 is logged with no target and changes nothing: select 2 plays the same samples, aligned at a rising crossing, before and after it; identical under zero and v4 seed 1 (E0)"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000

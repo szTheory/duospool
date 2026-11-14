@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The guest verdict of the authored PSG tone fixture (plan 05-04; D-212, ER-4, ER-21): fixtures/src/psg_tone.s writes every channel chON 0, uploads a 32-word table to select 0 by TIN, keys it on for a counted 444,096 master clocks and keys it off, then checks its own table data
+# two ways (the sum of the words against the sum of the counter, the high half against its closed form, the permutation map); from plan 05-06 it plays the pan-pair scenes and checks that each of its six channel tables sums to 496 two ways (checks 5..10). The PSG is write only, so these GUEST checks never judge the sound: the audio cases audio_tone_sel0 and audio_tone_sel0_d3 judge the streams.
+# Run under the default guest policies (zero, seeded-prng-v4 seeds 1 and 2) with identical verdicts. Evidence tier E0; a pass is not a support claim.
+id = "psg_tone"
+kind = "guest"
+fixture = "authored:psg-tone"
+request = ""
+expect = "id=27"
+meaning = "The authored psg_tone fixture runs its PSG write sequence at the power-up low speed and finishes its DSV1 block with 10 passing GUEST checks of its own table data (two sums of 496, the closed form of the high half, the permutation, the sum of each of six channel tables), identical under three power-on policies"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 12000000
+checks = 10

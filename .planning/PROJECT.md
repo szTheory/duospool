@@ -55,6 +55,18 @@ and evidenced is not supported, regardless of how it looks in a frontend.
   RAM through the status register) — Phase 4.1 (evidence tier E0
   repeatability; no sprite ledger entry is supported, the sprite statements
   are labelled assumptions with their page disagreements recorded)
+- ✓ Raw PSG audio: six channels, wave RAM, noise and DDA, a 30-step volume curve, a
+  timestamped PSG event log and PCM at one point sample per 192 master clocks,
+  judged by hand-written literals in the audio-check stage with a fault sweep and
+  toy controls — Phase 5 (evidence tier E0 repeatability; LED-AUD-0005 and
+  LED-AUD-0008 are supported at E1 documentary, the other audio entries are
+  labelled assumptions; the PSG clock divisor stays an open profile field)
+- ✓ PSG LFO: select 1 modulates select 0 by the page-level shifts, with the
+  12-bit wrap, the TRG hold and the coupled select-1 step, judged by hand
+  literals in a third audio fixture with a shift toy that turns red — Phase 5.1
+  (evidence tier E0; only the manual-literal rows are claimed, under divisor 6;
+  the restart, the wrap and LED-AUD-0011 are labelled assumptions and no LFO
+  rate, depth or timing claim is made)
 
 ### Active
 
@@ -71,7 +83,7 @@ live in `.planning/REQUIREMENTS.md`.
       (PSG events and PCM, before device playback), and guest progress.
       (Instruction and device-write sinks, the pad read log, machine time and
       guest-RAM verdicts exist from Phase 3, the raw video sink from Phase 4,
-      sprites from Phase 4.1; audio is Phase 5.)
+      sprites from Phase 4.1, the PSG event and PCM sinks from Phase 5.)
 - [ ] A headless runner (or equivalent consumer) that can load content, apply a
       scripted input, run for a bounded machine time, and emit observations.
 - [ ] Original, rights-cleared diagnostic fixtures with a manifest (source,
@@ -220,4 +232,4 @@ This document evolves at phase transitions and milestone boundaries.
 5. Refresh only the sibling/LibFuturo evidence that could change the live decision
 
 ---
-*Last updated: 2026-11-12 after Phase 4.1 (VDC sprites in the raw video record; E0 repeatability, no sprite entry supported; the supported set stays thirteen E1 entries)*
+*Last updated: 2026-11-14 after Phase 5.1 (PSG LFO modelled and judged by hand literals; E0 repeatability; the supported set stays fifteen E1 entries)*

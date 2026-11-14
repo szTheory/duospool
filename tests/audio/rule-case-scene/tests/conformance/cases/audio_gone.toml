@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# a case of the mini-root: kind audio, REQUIRED, and its scene gone is in no .aexp.
+id = "audio_gone"
+kind = "audio"
+expect = "rom=t;id=2;checks=1;scene=gone"

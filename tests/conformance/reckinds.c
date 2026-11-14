@@ -243,8 +243,8 @@ void kind_record_refusal(const struct kase *k, struct ctx *c, char *got, size_t 
     if (st != DS_TEXT_OK || reason == NULL) {
         return;
     }
-    check(c, strncmp(text, "[record]\nformat_version = 7\n\n[core]\nbuild_id = \"", 47u) == 0, "the refusal record does not start with the record and core tables");
-    check(c, strstr(text, "\nbehaviour_epoch = 5\n") != NULL, "the refusal record has no behaviour_epoch line");
+    check(c, strncmp(text, "[record]\nformat_version = 8\n\n[core]\nbuild_id = \"", 47u) == 0, "the refusal record does not start with the record and core tables");
+    check(c, strstr(text, "\nbehaviour_epoch = 6\n") != NULL, "the refusal record has no behaviour_epoch line");
     refusal_tail(tail, sizeof tail, reason, s.profile, s.rev);
     tlen = strlen(tail);
     check(c, len > tlen && strcmp(text + len - tlen, tail) == 0, "the record does not end in the refusal table with reason, requested id and rev");
@@ -445,7 +445,8 @@ static unsigned withheld_expected(const struct spec *s)
     for (i = 0u; i < ds_profile_unresolved_count(); i++) {
         bad |= wh_add_list(&n, ds_profile_unresolved(i)) != 0;
     }
-    bad |= wh_add_list(&n, "LED-LOAD-0003|LED-LOAD-0005|LED-PROF-0002") != 0;
+    /* LED-AUD-0009 joins the fixed list with text.c in the same change (plan 05-03, PR-8) */
+    bad |= wh_add_list(&n, "LED-AUD-0009|LED-LOAD-0003|LED-LOAD-0005|LED-PROF-0002") != 0;
     for (i = 0u; i < (uint32_t)DS_MODEL_COUNT; i++) {
         bad |= wh_add_list(&n, ds_model_ledger(i)) != 0;
     }
@@ -1214,7 +1215,8 @@ struct crow {
     char value[16];
     char ledger[16];
 };
-#define CROWS_MAX 40u
+/* 64 = WH_MAX of src/text/text.c (plan 05-03, F-53, PR-3): Phase 5 reaches 49 rows (34 before it plus the 15 psg_ rows); the added-row control below needs n + 1 <= CROWS_MAX */
+#define CROWS_MAX 64u
 
 /* copy the field starting at p and ending at the first stop character into out (cap bytes, terminated); the end pointer, or NULL when it does not fit or no stop character follows */
 static const char *take_field(const char *p, char stop, char *out, size_t cap)

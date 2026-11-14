@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: 0BSD
+# SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors
+#
+# The guest verdict of the authored PSG noise and DDA fixture (plan 05-07; D-212, ER-4, ER-21): fixtures/src/psg_mod.s plays noise on selects 4 and 5, an R7 write at select 2 and, from Task 2, a timer-paced DDA scene, then checks its own data two ways (GUEST). The PSG is write only, so these checks never judge the sound: the audio cases audio_mod_* judge the streams.
+id = "psg_mod"
+kind = "guest"
+fixture = "authored:psg-mod"
+request = ""
+expect = "id=28"
+meaning = "The authored psg_mod fixture plays its noise, r7 and DDA scenes at the power-up low speed and finishes its DSV1 block with passing GUEST checks of its own table data and write schedule, identical under three power-on policies"
+required = true
+control = false
+expect_outcome = "pass"
+pins = []
+until_mclk = 4000000
+checks = 8

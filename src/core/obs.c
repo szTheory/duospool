@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT OR Apache-2.0 */
 /* SPDX-FileCopyrightText: Copyright (c) 2026 The DuoSpool Authors */
 /*
- * obs.c - the instruction sink, device-register sink and video sink writers (plans 03-10, 03-19 and 04-02; D-119, D-131, D-162). The layouts, the header rules and the refusal cases are in ds_obs.h. Records and the header are written byte by byte,
+ * obs.c - the instruction sink, device-register sink, video sink, PSG sink and PCM sink writers (plans 03-10, 03-19, 04-02, 05-02 and 05-04; D-119, D-131, D-162, D-197, D-198). The layouts, the header rules and the refusal cases are in ds_obs.h. Records and the header are written byte by byte,
  * little-endian, from widened unsigned values: no struct is written through a cast, so host byte order and alignment never reach the output. Nothing here reads caller memory except the
  * input fields of the sinks (the record pointer and the capacity); the header is overwritten and never read back. No allocation, no global, no clock.
  */
@@ -93,6 +93,38 @@ static void sink_ref_dev(struct sink_ref *r, const struct ds_dev_sink *s)
     r->records = NULL;
 }
 
+/* the PSG sink (plan 05-02): the dev shape */
+static void sink_ref_psg(struct sink_ref *r, const struct ds_psg_sink *s)
+{
+    r->present = s != NULL;
+    r->obj = (uintptr_t)s;
+    r->obj_bytes = sizeof(struct ds_psg_sink);
+    r->obj_align = (size_t)_Alignof(struct ds_psg_sink);
+    r->rec_align = (size_t)DS_PSG_ALIGN;
+    r->rec_unit = (size_t)DS_PSG_RECORD_BYTES;
+    r->limit = (uint32_t)DS_SINK_MAX_RECORDS;
+    r->capacity = 0u;
+    r->rec = 0u;
+    r->rec_bytes = 0u;
+    r->records = NULL;
+}
+
+/* the PCM sink (plan 05-02; D-197): its capacity is in frames of DS_PCM_FRAME_BYTES */
+static void sink_ref_pcm(struct sink_ref *r, const struct ds_pcm_sink *s)
+{
+    r->present = s != NULL;
+    r->obj = (uintptr_t)s;
+    r->obj_bytes = sizeof(struct ds_pcm_sink);
+    r->obj_align = (size_t)_Alignof(struct ds_pcm_sink);
+    r->rec_align = (size_t)DS_PCM_ALIGN;
+    r->rec_unit = (size_t)DS_PCM_FRAME_BYTES;
+    r->limit = (uint32_t)DS_PCM_SINK_MAX_FRAMES;
+    r->capacity = 0u;
+    r->rec = 0u;
+    r->rec_bytes = 0u;
+    r->records = NULL;
+}
+
 /* the video sink: its capacity is already a byte count, so the unit is one byte */
 static void sink_ref_vid(struct sink_ref *r, const struct ds_vid_sink *s)
 {
@@ -123,7 +155,12 @@ static int record_range_ok(struct sink_ref *r)
     return (uintptr_t)r->rec_bytes <= UINTPTR_MAX - r->rec; /* the range would wrap the address space */
 }
 
-#define DS_OBS_SINKS 3u /* the channels of the table: insn, dev, vid (Phase 5 adds aud) */
+#define DS_OBS_SINKS 5u /* the channels of the table: insn, dev, vid and the two audio sinks psg and pcm of plan 05-02 (D-198) */
+
+int ds_obs_overlaps_instance(const struct ds_instance *inst, const void *p, size_t n)
+{
+    return inst != NULL && p != NULL && ranges_overlap((uintptr_t)p, n, (uintptr_t)inst, sizeof *inst);
+}
 
 uint32_t ds_obs_sinks_check(const struct ds_run_request *request, const struct ds_instance *inst, const struct ds_run_result *result)
 {
@@ -131,9 +168,15 @@ uint32_t ds_obs_sinks_check(const struct ds_run_request *request, const struct d
     unsigned i;
     unsigned j;
 
+    /* 0: the call's own memory (IN-03, plan 05-02, D-198): a request or a result that overlaps the instance is refused before any sink is looked at; nothing of the request but its address is used here */
+    if (ds_obs_overlaps_instance(inst, request, sizeof *request) || ds_obs_overlaps_instance(inst, result, sizeof *result)) {
+        return (uint32_t)DS_RUNREF_memory_invalid;
+    }
     sink_ref_insn(&s[0], request->insn);
     sink_ref_dev(&s[1], request->dev);
     sink_ref_vid(&s[2], request->vid);
+    sink_ref_psg(&s[3], request->psg);
+    sink_ref_pcm(&s[4], request->pcm);
     /* 1: the sink structs (nothing of a sink is read before its struct is known to be aligned and clear of the call's memory and of every other struct) */
     for (i = 0u; i < DS_OBS_SINKS; i++) {
         if (s[i].present && ((s[i].obj % (uintptr_t)s[i].obj_align) != 0u || touches_call(s[i].obj, s[i].obj_bytes, inst, request, result))) {
@@ -159,6 +202,14 @@ uint32_t ds_obs_sinks_check(const struct ds_run_request *request, const struct d
     if (s[2].present) {
         s[2].capacity = request->vid->capacity;
         s[2].records = request->vid->bytes;
+    }
+    if (s[3].present) {
+        s[3].capacity = request->psg->capacity;
+        s[3].records = request->psg->records;
+    }
+    if (s[4].present) {
+        s[4].capacity = request->pcm->capacity;
+        s[4].records = request->pcm->frames;
     }
     for (i = 0u; i < DS_OBS_SINKS; i++) {
         if (s[i].present && s[i].capacity > s[i].limit) {
@@ -211,6 +262,22 @@ static void write_vheader(const struct ds_obs_vchan *ch)
     }
 }
 
+/* the pcm header (plan 05-02; D-197): +00 u32 count, +04 u32 lost, +08 u64 seq, +16 u64 first, +24 u32 sample_mclk, +28 u16 frame_bytes, +30 u8 version, +31 u8 format; since plan 05-04 first is ceil(T0 / 192) of the call and sample_mclk 192 (PR-4), written at the
+ * start and at the end of the call; a channel the request did not carry writes nothing */
+static void write_pheader(const struct ds_obs_chan *ch)
+{
+    if (ch->on) {
+        put_u32(ch->header, ch->count);
+        put_u32(ch->header + 4, ch->lost);
+        put_u64(ch->header + 8, ch->seq);
+        put_u64(ch->header + 16, ch->first);
+        put_u32(ch->header + 24, (uint32_t)DS_CONST_psg_mclk_per_sample);
+        put_u16(ch->header + 28, (uint32_t)DS_PCM_FRAME_BYTES);
+        ch->header[30] = (uint8_t)DS_PCM_VERSION;
+        ch->header[31] = (uint8_t)DS_PCM_FORMAT;
+    }
+}
+
 static void chan_open(struct ds_obs_chan *ch, uint8_t *header, uint8_t *records, uint32_t capacity, int on)
 {
     ch->on = on;
@@ -220,6 +287,8 @@ static void chan_open(struct ds_obs_chan *ch, uint8_t *header, uint8_t *records,
     ch->count = 0u;
     ch->lost = 0u;
     ch->seq = UINT64_C(0);
+    ch->first = UINT64_C(0);
+    ch->cursor = UINT64_C(0);
     write_header(ch);
 }
 
@@ -257,11 +326,23 @@ static void vchan_open(struct ds_obs_vchan *ch, struct ds_vid_sink *vid)
     write_vheader(ch);
 }
 
-void ds_obs_begin(struct ds_obs_log *log, struct ds_insn_sink *insn, struct ds_dev_sink *dev, struct ds_vid_sink *vid)
+void ds_obs_begin(struct ds_obs_log *log, const struct ds_run_request *request, uint64_t machine_time)
 {
+    struct ds_insn_sink *insn = request->insn;
+    struct ds_dev_sink *dev = request->dev;
+    struct ds_psg_sink *psg = request->psg;
+    struct ds_pcm_sink *pcm = request->pcm;
+
     chan_open(&log->insn, insn != NULL ? insn->header : NULL, insn != NULL ? insn->records : NULL, insn != NULL ? insn->capacity : 0u, insn != NULL);
     chan_open(&log->dev, dev != NULL ? dev->header : NULL, dev != NULL ? dev->records : NULL, dev != NULL ? dev->capacity : 0u, dev != NULL);
-    vchan_open(&log->vid, vid);
+    vchan_open(&log->vid, request->vid);
+    chan_open(&log->psg, psg != NULL ? psg->header : NULL, psg != NULL ? psg->records : NULL, psg != NULL ? psg->capacity : 0u, psg != NULL);
+    chan_open(&log->pcm, pcm != NULL ? pcm->header : NULL, pcm != NULL ? pcm->frames : NULL, pcm != NULL ? pcm->capacity : 0u, pcm != NULL);
+    /* the first sample instant at or after T0 (D-187, PR-4): ceil(T0 / 192), written without forming T0 + 191; the sample grid has phase 0 (pinned below and in psg.c) */
+    _Static_assert(DS_CONST_psg_sample_phase_mclk == 0, "ds_obs_begin computes the first frame on the phase-0 sample grid only (LED-AUD-0014)");
+    log->pcm.first = machine_time / (uint64_t)DS_CONST_psg_mclk_per_sample + (machine_time % (uint64_t)DS_CONST_psg_mclk_per_sample != 0u ? UINT64_C(1) : UINT64_C(0));
+    log->pcm.cursor = log->pcm.first;
+    write_pheader(&log->pcm); /* chan_open wrote the first 16 bytes of the 32-byte pcm header; this writes all of them */
 }
 
 void ds_obs_end(struct ds_obs_log *log)
@@ -270,6 +351,8 @@ void ds_obs_end(struct ds_obs_log *log)
         write_header(&log->insn);
         write_header(&log->dev);
         write_vheader(&log->vid);
+        write_header(&log->psg);
+        write_pheader(&log->pcm);
     }
 }
 
@@ -356,4 +439,38 @@ void ds_obs_vid(struct ds_obs_log *log, const uint8_t *rec, uint32_t rec_bytes)
     }
     ch->stored = ch->stored + (uint64_t)rec_bytes;
     ch->count = ch->count + 1u;
+}
+
+/* one whole DSPE record (plan 05-02; D-196): the dev rule of chan_slot (drop-newest, lost saturating, seq counts every offer); copied byte by byte */
+void ds_obs_psg(struct ds_obs_log *log, const uint8_t rec[DS_PSG_RECORD_BYTES])
+{
+    uint8_t *r;
+    uint32_t i;
+
+    if (log == NULL || rec == NULL) {
+        return;
+    }
+    r = chan_slot(&log->psg, (size_t)DS_PSG_RECORD_BYTES);
+    if (r == NULL) {
+        return;
+    }
+    for (i = 0u; i < DS_PSG_RECORD_BYTES; i++) {
+        r[i] = rec[i];
+    }
+}
+
+/* one raw-audio frame (plan 05-02; D-197): u32 L then u32 R, little-endian, written byte by byte. Frames have one size, so chan_slot's drop-newest rule is the sticky full rule of F-2: once count reaches the capacity every later frame of the call is lost, and lost = seq - count */
+void ds_obs_pcm(struct ds_obs_log *log, uint32_t l, uint32_t r)
+{
+    uint8_t *f;
+
+    if (log == NULL) {
+        return;
+    }
+    f = chan_slot(&log->pcm, (size_t)DS_PCM_FRAME_BYTES);
+    if (f == NULL) {
+        return;
+    }
+    put_u32(f, l);
+    put_u32(f + 4, r);
 }
