@@ -17,7 +17,7 @@
 _Static_assert(6u * (uint32_t)DS_CONST_psg_f0_as == DS_PSG_CHAN_REM_MAX, "the largest channel step at d = 6 is not 24,576");
 _Static_assert(6u * (uint32_t)DS_CONST_psg_f0_as * (uint32_t)DS_CONST_psg_lfo_f0_as == DS_PSG_COUPLED_REM_MAX, "the largest coupled step at d = 6 is not 6,291,456");
 _Static_assert(6u * 64u * 31u == DS_PSG_NOISE_REM_MAX && 6u * (uint32_t)DS_CONST_psg_noise_nf0_ticks < DS_PSG_NOISE_REM_MAX, "the largest noise period at d = 6 is not 11,904");
-_Static_assert(600u + DS_PSG_COUPLED_REM_MAX < (1u << 23), "a fold offset does not stay below 2^23 (D-195, D-221)");
+_Static_assert(600u + DS_PSG_COUPLED_REM_MAX < (1u << 23), "a fold offset does not stay below 2^23 (D-195, D-221)"); /* 600 = ds_max_step_mclk(), a run-time value: the case psg_fold checks it */
 _Static_assert((uint32_t)DS_CONST_psg_lfsr_taps == ((1u << 0) | (1u << 1) | (1u << 11) | (1u << 12) | (1u << 17)), "the taps constant does not name bits 0, 1, 11, 12 and 17");
 _Static_assert(DS_CONST_reset_cost_mclk == 0, "the PSG power-on state is the state at machine time 0: the boot must charge no reset cost (RF-15)");
 _Static_assert(DS_CONST_psg_tick_phase_mclk == 0 && DS_CONST_psg_sample_phase_mclk == 0,

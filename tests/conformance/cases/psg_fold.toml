@@ -3,7 +3,8 @@
 #
 # The PSG fold is composable (plan 05-04; D-185, D-186, D-195, D-200, D-221, F-64; the vdc_fold shape): kind psg_fold (psgkinds.c) folds a program of register writes, drawn from a splitmix64 stream of the seed (E0: the stream only picks the program), on a fresh instance in one
 # jump and in 8 random partitions of steps of 1 to 600 master clocks, with a pcm channel: equal PSG state, equal absolute next-event times and byte-identical samples; the D-186 invariant after every step_end fold; the D-185 tie order of an R6 write at a step event minus 1, at it and plus 1
-# (wave index 0, 1, 1 after a key-on at 1003 with F = 10: E = (w - w mod d) + d x F); and a key-on at the sample instant 3840 is heard from sample 21, not 20. Evidence tier E0; no hardware claim.
+# (wave index 0, 1, 1 after a key-on at 1003 with F = 10: E = (w - w mod d) + d x F); and a key-on at the sample instant 3840 is heard from sample 21, not 20.
+# The 600 of the partitions and of the fold-offset bound of psg.c is the largest step: a row requires ds_max_step_mclk() <= 600 (review IN-03). Evidence tier E0; no hardware claim.
 id = "psg_fold"
 kind = "psg_fold"
 fixture = "plain-256k"

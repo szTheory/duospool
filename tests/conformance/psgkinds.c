@@ -702,6 +702,8 @@ void kind_psg_fold(const struct kase *k, struct ctx *c, char *got, size_t gotcap
         harness_error(c, "a psg_fold case needs expect = seed=N;partitions=P (P 1 to 64)");
         return;
     }
+    /* the 600 of the fold-offset static assert of psg.c and of the step partitions here is the largest step (D-221): if the opcode table or a penalty grows past it, the stated bound drifts, so this row fails (review IN-03) */
+    check(c, ds_max_step_mclk() <= 600u, "ds_max_step_mclk() exceeds the 600 master clocks that the psg.c fold bound and these step partitions assume (D-221)");
     np = pf_program(seed, prog);
     w1 = pk_boot(c, k->val[K_FIXTURE], k->has[K_REQUEST] ? k->val[K_REQUEST] : "", &b1);
     if (w1 == NULL) {
